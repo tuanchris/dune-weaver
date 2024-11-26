@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Theta-Rho Controller</title>
+    <style>
+        #theta_rho_files li {
+            cursor: pointer;
+        }
+
+        #theta_rho_files li.selected {
+            font-weight: bold;
+            color: green;
+        }
+
+        .status {
+            margin-top: 1em;
+            font-weight: bold;
+        }
+
+        #serial_status {
+            color: blue;
+        }
+
+    </style>
+</head>
+<body>
+    <h1>Theta-Rho Controller</h1>
+
+    <h2>Serial Connection</h2>
+    <label for="serial_ports">Available Ports:</label>
+    <select id="serial_ports"></select>
+    <button onclick="connectSerial()">Connect</button>
+    <button onclick="disconnectSerial()">Disconnect</button>
+    <button onclick="restartSerial()">Restart</button>
+    <p id="serial_status" class="status">Status: Not connected</p>
+
+    <h2>Theta-Rho Files</h2>
+    <ul id="theta_rho_files"></ul>
+    <input type="file" id="upload_file">
+    <button onclick="uploadThetaRho()">Upload</button>
+
+    <h2>Run Theta-Rho</h2>
+    <button id="run_button" disabled>Run Selected File</button>
+    <button onclick="stopExecution()">Stop</button>
+
+    <h2>Quick Actions</h2>
+    <button onclick="sendHomeCommand()">Home Device</button>
+    <button onclick="runClearIn()">Clear from in</button>
+    <button onclick="runClearOut()">Clear from out</button>
+
+    <script>
+        let selectedFile = null;
+
+        async function loadSerialPorts() {
+            const response = await fetch('/list_serial_ports');
+            const ports = await response.json();
+            const select = document.getElementById('serial_ports');
+            select.innerHTML = '';
+            ports.forEach(port => {
+                const option = document.createElement('option');
+                option.value = port;
+                option.textContent = port;
+                select.appendChild(option);
+            });
+        }
+
+        async function connectSerial() {
+            const port = document.getElementById('serial_ports').value;
+            const response = await fetch('/connect_serial', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ port })
+            });
+            const result = await response.json();
+            if (result.success) {
+                document.getElementById('serial_status').textContent = `Status: Connected to ${port}`;
+                alert('Connected to serial port!');
+            } else {
+                alert(`Error connecting to serial port: ${result.error}`);
+            }
+        }
+
+        async function disconnectSerial() {
+            const response = await fetch('/disconnect_serial', { method: 'POST' });
+            const result = await response.json();
+            if (result.success) {
+                document.getElementById('serial_status').textContent = 'Status: Disconnected';
+                alert('Serial port disconnected!');
+            } else {
+                alert(`Error disconnecting: ${result.error}`);
+            }
+        }
+
+        async function restartSerial() {
+            const port = document.getElementById('serial_ports').value;
+            const response = await fetch('/restart_serial', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ port })
+            });
+            const result = await response.json();
+            if (result.success) {
+                document.getElementById('serial_status').textContent = `Status: Restarted connection to ${port}`;
+                alert('Serial connection restarted!');
+            } else {
+                alert(`Error restarting serial connection: ${result.error}`);
+            }
+        }
+
+        async function loadThetaRhoFiles() {
+            const response = await fetch('/list_theta_rho_files');
+            const files = await response.json();
+            const ul = document.getElementById('theta_rho_files');
+            ul.innerHTML = '';
+            files.forEach(file => {
+                const li = document.createElement('li');
+                li.textContent = file;
+                li.onclick = () => selectFile(file, li);
+                ul.appendChild(li);
+            });
+        }
+
+        function selectFile(file, listItem) {
+            selectedFile = file;
+            document.querySelectorAll('#theta_rho_files li').forEach(li => li.classList.remove('selected'));
+            listItem.classList.add('selected');
+            document.getElementById('run_button').disabled = false;
+        }
+
+        async function uploadThetaRho() {
+            const fileInput = document.getElementById('upload_file');
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch('/upload_theta_rho', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                alert('File uploaded successfully!');
+                loadThetaRhoFiles();
+            } else {
+                alert('Failed to upload file.');
+            }
+        }
+
+        async function runThetaRho() {
+            if (!selectedFile) return;
+
+            const response = await fetch('/run_theta_rho', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_name: selectedFile })
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                alert(`Running Theta-Rho file: ${selectedFile}`);
+            } else {
+                alert(`Error starting Theta-Rho execution: ${result.error}`);
+            }
+        }
+
+        async function stopExecution() {
+            const response = await fetch('/stop_execution', { method: 'POST' });
+            const result = await response.json();
+            if (result.success) {
+                alert('Execution stopped.');
+            } else {
+                alert('Failed to stop execution.');
+            }
+        }
+
+        async function sendHomeCommand() {
+            const response = await fetch('/send_home', { method: 'POST' });
+            const result = await response.json();
+            if (result.success) {
+                alert('HOME command sent successfully!');
+            } else {
+                alert('Failed to send HOME command.');
+            }
+        }
+
+        async function runClearIn() {
+            await runFile('clear_from_in.thr');
+        }
+
+        async function runClearOut() {
+            await runFile('clear_from_out.thr');
+        }
+
+        async function runFile(fileName) {
+            const response = await fetch(`/run_theta_rho_file/${fileName}`, { method: 'POST' });
+            const result = await response.json();
+            if (result.success) {
+                alert(`Running file: ${fileName}`);
+            } else {
+                alert(`Failed to run file: ${fileName}`);
+            }
+        }
+
+        // Initial load of serial ports and Theta-Rho files
+        loadSerialPorts();
+        loadThetaRhoFiles();
+
+        // Attach runThetaRho function to the Run button
+        document.getElementById('run_button').onclick = runThetaRho;
+    </script>
+</body>
+</html>
