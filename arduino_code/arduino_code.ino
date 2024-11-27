@@ -30,10 +30,10 @@ bool batchComplete = false;
 void setup() {
     // Set maximum speed and acceleration
     rotStepper.setMaxSpeed(2000);  // Adjust as needed
-    rotStepper.setAcceleration(1);  // Adjust as needed
+    rotStepper.setAcceleration(500);  // Adjust as needed
 
     inOutStepper.setMaxSpeed(2000);  // Adjust as needed
-    inOutStepper.setAcceleration(1);  // Adjust as needed
+    inOutStepper.setAcceleration(500);  // Adjust as needed
     // inOutStepper.setPinsInverted(true, false, false);
 
     // Add steppers to MultiStepper
@@ -108,7 +108,7 @@ void homing() {
     inOutStepper.setSpeed(-5000);  // Adjust speed for homing
     while (true) {
         inOutStepper.runSpeed();
-        if (inOutStepper.currentPosition() <= -5760 * 1.1) {  // Adjust distance for homing
+        if (inOutStepper.currentPosition() <= -inOut_total_steps * 1.1) {  // Adjust distance for homing
             break;
         }
     }
@@ -135,8 +135,5 @@ void movePolar(float theta, float rho) {
 
     // Move both motors synchronously
     multiStepper.moveTo(targetPositions);
-    unsigned long lastStepTime = 0;
-    const unsigned long stepInterval = 10;  // 10 ms between checks
-
     multiStepper.runSpeedToPosition();  // Blocking call
 }

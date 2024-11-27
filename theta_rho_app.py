@@ -111,13 +111,13 @@ def run_theta_rho_file(file_path):
         return
 
     # Interpolate paths between points with fine resolution
-    step_size = 0.005  # Smaller values create finer steps for smoother movement
+    step_size = 0.01  # Smaller values create finer steps for smoother movement
     interpolated_coordinates = []
     for i in range(len(coordinates) - 1):
         interpolated_coordinates.extend(interpolate_path(coordinates[i], coordinates[i + 1], step_size=step_size))
 
     # Optimize batch size for smoother execution
-    batch_size = 20  # Smaller batches may smooth movement further
+    batch_size = 8  # Smaller batches may smooth movement further
     for i in range(0, len(interpolated_coordinates), batch_size):
         if stop_requested:
             print("Execution stopped by user.")
