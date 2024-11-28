@@ -27,14 +27,17 @@ float buffer[BUFFER_SIZE][2];  // Store theta, rho pairs
 int bufferCount = 0;   // Number of pairs in the buffer
 bool batchComplete = false;
 
+// Track the current position in polar coordinates
+float currentTheta = 0.0;  // Current theta in radians
+float currentRho = 0.0;    // Current rho (0 to 1)
+
 void setup() {
     // Set maximum speed and acceleration
-    rotStepper.setMaxSpeed(2000);  // Adjust as needed
-    rotStepper.setAcceleration(500);  // Adjust as needed
+    rotStepper.setMaxSpeed(5000);  // Adjust as needed
+    rotStepper.setAcceleration(5000);  // Adjust as needed
 
-    inOutStepper.setMaxSpeed(2000);  // Adjust as needed
-    inOutStepper.setAcceleration(500);  // Adjust as needed
-    // inOutStepper.setPinsInverted(true, false, false);
+    inOutStepper.setMaxSpeed(5000);  // Adjust as needed
+    inOutStepper.setAcceleration(5000);  // Adjust as needed
 
     // Add steppers to MultiStepper
     multiStepper.addStepper(rotStepper);
@@ -92,9 +95,23 @@ void loop() {
 
     // Process the buffer if a batch is ready
     if (batchComplete && bufferCount > 0) {
+        // Start interpolation from the current position
+        float startTheta = currentTheta;
+        float startRho = currentRho;
+
         for (int i = 0; i < bufferCount; i++) {
-            movePolar(buffer[i][0], buffer[i][1]);
+            // Interpolate from the starting point to the next buffer point
+            interpolatePath(
+                startTheta, startRho,     // Start theta and rho
+                buffer[i][0], buffer[i][1],  // End theta and rho
+                0.001                      // Step size
+            );
+
+            // Update the starting point for the next segment
+            startTheta = buffer[i][0];
+            startRho = buffer[i][1];
         }
+
         bufferCount = 0;        // Clear buffer
         batchComplete = false;  // Reset batch flag
         Serial.println("READY");
@@ -113,6 +130,8 @@ void homing() {
         }
     }
     inOutStepper.setCurrentPosition(0);  // Set home position
+    currentTheta = 0.0;  // Reset polar coordinates
+    currentRho = 0.0;
     Serial.println("HOMED");
 }
 
@@ -136,4 +155,23 @@ void movePolar(float theta, float rho) {
     // Move both motors synchronously
     multiStepper.moveTo(targetPositions);
     multiStepper.runSpeedToPosition();  // Blocking call
+
+    // Update the current coordinates
+    currentTheta = theta;
+    currentRho = rho;
+}
+
+void interpolatePath(float startTheta, float startRho, float endTheta, float endRho, float stepSize) {
+    // Calculate the total distance in the polar coordinate system
+    float distance = sqrt(pow(endTheta - startTheta, 2) + pow(endRho - startRho, 2));
+    int numSteps = max(1, (int)(distance / stepSize));  // Ensure at least one step
+
+    for (int step = 0; step <= numSteps; step++) {
+        float t = (float)step / numSteps;  // Interpolation factor (0 to 1)
+        float interpolatedTheta = startTheta + t * (endTheta - startTheta);
+        float interpolatedRho = startRho + t * (endRho - startRho);
+
+        // Move to the interpolated theta-rho
+        movePolar(interpolatedTheta, interpolatedRho);
+    }
 }

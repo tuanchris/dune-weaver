@@ -82,24 +82,6 @@ def send_command(command):
                 break
         time.sleep(0.5)  # Small delay to avoid busy waiting
 
-def interpolate_path(start, end, step_size=0.001):
-    """Interpolate a straight path between two theta-rho points with a fixed step size."""
-    start_theta, start_rho = start
-    end_theta, end_rho = end
-
-    # Calculate the total distance in the polar coordinate system
-    distance = math.sqrt((end_theta - start_theta)**2 + (end_rho - start_rho)**2)
-    num_steps = max(1, int(distance / step_size))  # Ensure at least one step
-
-    interpolated_points = []
-    for step in range(num_steps + 1):
-        t = step / num_steps  # Interpolation factor (0 to 1)
-        theta = start_theta + t * (end_theta - start_theta)
-        rho = start_rho + t * (end_rho - start_rho)
-        interpolated_points.append((theta, rho))
-
-    return interpolated_points
-
 def run_theta_rho_file(file_path):
     """Run a theta-rho file by interpolating straight paths and sending data in optimized batches."""
     global stop_requested
@@ -110,20 +92,14 @@ def run_theta_rho_file(file_path):
         print("Not enough coordinates for interpolation.")
         return
 
-    # Interpolate paths between points with fine resolution
-    step_size = 0.01  # Smaller values create finer steps for smoother movement
-    interpolated_coordinates = []
-    for i in range(len(coordinates) - 1):
-        interpolated_coordinates.extend(interpolate_path(coordinates[i], coordinates[i + 1], step_size=step_size))
-
     # Optimize batch size for smoother execution
-    batch_size = 8  # Smaller batches may smooth movement further
-    for i in range(0, len(interpolated_coordinates), batch_size):
+    batch_size = 10  # Smaller batches may smooth movement further
+    for i in range(0, len(coordinates), batch_size):
         if stop_requested:
             print("Execution stopped by user.")
             break
 
-        batch = interpolated_coordinates[i:i + batch_size]
+        batch = coordinates[i:i + batch_size]
         while True:
             if ser.in_waiting > 0:
                 response = ser.readline().decode().strip()
