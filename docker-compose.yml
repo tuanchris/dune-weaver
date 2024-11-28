@@ -1,0 +1,11 @@
+version: '3.8'
+services:
+  flask-app:
+    build: .
+    ports:
+      - "8080:8080" # Map port 8080 of the container to 8080 of the host
+    volumes:
+      - ./theta_rho_files:/app/theta_rho_files # Map host folder to container folder
+    environment:
+      - FLASK_ENV=development # Set environment variables for Flask
+    container_name: flask-theta-rho-app
