@@ -169,6 +169,8 @@ def restart():
 @app.route('/list_theta_rho_files', methods=['GET'])
 def list_theta_rho_files():
     files = os.listdir(THETA_RHO_DIR)
+    # Exclude clear_from_in.thr and clear_from_out.thr and sort
+    files = sorted(file for file in files if file not in ['clear_from_in.thr', 'clear_from_out.thr'])
     return jsonify(files)
 
 @app.route('/upload_theta_rho', methods=['POST'])
@@ -223,6 +225,40 @@ def run_specific_theta_rho_file(file_name):
 def download_file(filename):
     """Download a file from the theta-rho directory."""
     return send_from_directory(THETA_RHO_DIR, filename)
+
+@app.route('/run_theta_rho_with_action', methods=['POST'])
+def run_theta_rho_with_action():
+    """Run a theta-rho file with a pre-execution action if specified."""
+    data = request.json
+    file_name = data.get('file_name')
+    action = data.get('action', 'none')  # Default to 'none' if no action is specified
+
+    if not file_name:
+        return jsonify({'error': 'No file name provided'}), 400
+
+    # Handle pre-execution action
+    if action != 'none':
+        action_file_path = os.path.join(THETA_RHO_DIR, f"{action}.thr")
+        if not os.path.exists(action_file_path):
+            return jsonify({'error': f"Action file {action}.thr not found"}), 404
+
+        try:
+            # Run the pre-execution file synchronously
+            run_theta_rho_file(action_file_path)
+        except Exception as e:
+            return jsonify({'error': f"Failed to execute pre-action {action}: {str(e)}"}), 500
+
+    # Run the main Theta-Rho file
+    file_path = os.path.join(THETA_RHO_DIR, file_name)
+    if not os.path.exists(file_path):
+        return jsonify({'error': 'File not found'}), 404
+
+    try:
+        # Start a thread to run the main file asynchronously
+        threading.Thread(target=run_theta_rho_file, args=(file_path,)).start()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': f"Failed to execute file {file_name}: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8080)

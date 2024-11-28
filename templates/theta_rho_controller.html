@@ -48,6 +48,17 @@
     <button onclick="restartSerial()">Restart</button>
     <p id="serial_status" class="status">Status: Not connected</p>
 
+    <h2>Pre-Execution Options</h2>
+    <label>
+        <input type="radio" name="clear_action" value="clear_from_in"> Clear from In
+    </label>
+    <label>
+        <input type="radio" name="clear_action" value="clear_from_out"> Clear from Out
+    </label>
+    <label>
+        <input type="radio" name="clear_action" value="none" checked> None
+    </label>
+
     <h2>Theta-Rho Files</h2>
     <ul id="theta_rho_files"></ul>
     <input type="file" id="upload_file">
@@ -56,11 +67,6 @@
     <h2>Run Theta-Rho</h2>
     <button id="run_button" disabled>Run Selected File</button>
     <button onclick="stopExecution()">Stop</button>
-
-    <h2>Quick Actions</h2>
-    <button onclick="sendHomeCommand()">Home Device</button>
-    <button onclick="runClearIn()">Clear from in</button>
-    <button onclick="runClearOut()">Clear from out</button>
 
     <div id="status_log">
         <h3>Status Log</h3>
@@ -137,7 +143,12 @@
 
         async function loadThetaRhoFiles() {
             const response = await fetch('/list_theta_rho_files');
-            const files = await response.json();
+            let files = await response.json();
+
+            // Exclude specific files and sort
+            files = files.filter(file => !['clear_from_in.thr', 'clear_from_out.thr'].includes(file))
+                         .sort();
+
             const ul = document.getElementById('theta_rho_files');
             ul.innerHTML = '';
             files.forEach(file => {
@@ -146,7 +157,7 @@
                 li.onclick = () => selectFile(file, li);
                 ul.appendChild(li);
             });
-            logMessage('Theta-Rho files loaded.');
+            logMessage('Theta-Rho files loaded and sorted.');
         }
 
         function selectFile(file, listItem) {
@@ -180,17 +191,23 @@
         async function runThetaRho() {
             if (!selectedFile) return;
 
-            const response = await fetch('/run_theta_rho', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ file_name: selectedFile })
-            });
+            const clearAction = document.querySelector('input[name="clear_action"]:checked').value;
 
-            const result = await response.json();
-            if (result.success) {
-                logMessage(`Running Theta-Rho file: ${selectedFile}`);
-            } else {
-                logMessage(`Error starting Theta-Rho execution: ${result.error}`);
+            try {
+                const response = await fetch('/run_theta_rho_with_action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file_name: selectedFile, action: clearAction })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    logMessage(`Execution started successfully for file: ${selectedFile}`);
+                } else {
+                    logMessage(`Error during execution: ${result.error}`);
+                }
+            } catch (error) {
+                logMessage(`Error during execution: ${error.message}`);
             }
         }
 
@@ -201,34 +218,6 @@
                 logMessage('Execution stopped.');
             } else {
                 logMessage('Failed to stop execution.');
-            }
-        }
-
-        async function sendHomeCommand() {
-            const response = await fetch('/send_home', { method: 'POST' });
-            const result = await response.json();
-            if (result.success) {
-                logMessage('HOME command sent successfully.');
-            } else {
-                logMessage('Failed to send HOME command.');
-            }
-        }
-
-        async function runClearIn() {
-            await runFile('clear_from_in.thr');
-        }
-
-        async function runClearOut() {
-            await runFile('clear_from_out.thr');
-        }
-
-        async function runFile(fileName) {
-            const response = await fetch(`/run_theta_rho_file/${fileName}`, { method: 'POST' });
-            const result = await response.json();
-            if (result.success) {
-                logMessage(`Running file: ${fileName}`);
-            } else {
-                logMessage(`Failed to run file: ${fileName}`);
             }
         }
 
