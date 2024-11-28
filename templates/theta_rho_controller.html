@@ -23,6 +23,18 @@
             color: blue;
         }
 
+        #status_log {
+            margin-top: 2em;
+            padding: 1em;
+            border: 1px solid #ccc;
+            background: #f9f9f9;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        #status_log p {
+            margin: 0.5em 0;
+        }
     </style>
 </head>
 <body>
@@ -50,8 +62,21 @@
     <button onclick="runClearIn()">Clear from in</button>
     <button onclick="runClearOut()">Clear from out</button>
 
+    <div id="status_log">
+        <h3>Status Log</h3>
+        <!-- Messages will be appended here -->
+    </div>
+
     <script>
         let selectedFile = null;
+
+        function logMessage(message) {
+            const log = document.getElementById('status_log');
+            const entry = document.createElement('p');
+            entry.textContent = message;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight; // Scroll to the bottom
+        }
 
         async function loadSerialPorts() {
             const response = await fetch('/list_serial_ports');
@@ -64,6 +89,7 @@
                 option.textContent = port;
                 select.appendChild(option);
             });
+            logMessage('Serial ports loaded.');
         }
 
         async function connectSerial() {
@@ -76,9 +102,9 @@
             const result = await response.json();
             if (result.success) {
                 document.getElementById('serial_status').textContent = `Status: Connected to ${port}`;
-                alert('Connected to serial port!');
+                logMessage(`Connected to serial port: ${port}`);
             } else {
-                alert(`Error connecting to serial port: ${result.error}`);
+                logMessage(`Error connecting to serial port: ${result.error}`);
             }
         }
 
@@ -87,9 +113,9 @@
             const result = await response.json();
             if (result.success) {
                 document.getElementById('serial_status').textContent = 'Status: Disconnected';
-                alert('Serial port disconnected!');
+                logMessage('Serial port disconnected.');
             } else {
-                alert(`Error disconnecting: ${result.error}`);
+                logMessage(`Error disconnecting: ${result.error}`);
             }
         }
 
@@ -103,9 +129,9 @@
             const result = await response.json();
             if (result.success) {
                 document.getElementById('serial_status').textContent = `Status: Restarted connection to ${port}`;
-                alert('Serial connection restarted!');
+                logMessage('Serial connection restarted.');
             } else {
-                alert(`Error restarting serial connection: ${result.error}`);
+                logMessage(`Error restarting serial connection: ${result.error}`);
             }
         }
 
@@ -120,6 +146,7 @@
                 li.onclick = () => selectFile(file, li);
                 ul.appendChild(li);
             });
+            logMessage('Theta-Rho files loaded.');
         }
 
         function selectFile(file, listItem) {
@@ -127,6 +154,7 @@
             document.querySelectorAll('#theta_rho_files li').forEach(li => li.classList.remove('selected'));
             listItem.classList.add('selected');
             document.getElementById('run_button').disabled = false;
+            logMessage(`File selected: ${file}`);
         }
 
         async function uploadThetaRho() {
@@ -142,10 +170,10 @@
 
             const result = await response.json();
             if (result.success) {
-                alert('File uploaded successfully!');
+                logMessage('File uploaded successfully.');
                 loadThetaRhoFiles();
             } else {
-                alert('Failed to upload file.');
+                logMessage('Failed to upload file.');
             }
         }
 
@@ -160,9 +188,9 @@
 
             const result = await response.json();
             if (result.success) {
-                alert(`Running Theta-Rho file: ${selectedFile}`);
+                logMessage(`Running Theta-Rho file: ${selectedFile}`);
             } else {
-                alert(`Error starting Theta-Rho execution: ${result.error}`);
+                logMessage(`Error starting Theta-Rho execution: ${result.error}`);
             }
         }
 
@@ -170,9 +198,9 @@
             const response = await fetch('/stop_execution', { method: 'POST' });
             const result = await response.json();
             if (result.success) {
-                alert('Execution stopped.');
+                logMessage('Execution stopped.');
             } else {
-                alert('Failed to stop execution.');
+                logMessage('Failed to stop execution.');
             }
         }
 
@@ -180,9 +208,9 @@
             const response = await fetch('/send_home', { method: 'POST' });
             const result = await response.json();
             if (result.success) {
-                alert('HOME command sent successfully!');
+                logMessage('HOME command sent successfully.');
             } else {
-                alert('Failed to send HOME command.');
+                logMessage('Failed to send HOME command.');
             }
         }
 
@@ -198,9 +226,9 @@
             const response = await fetch(`/run_theta_rho_file/${fileName}`, { method: 'POST' });
             const result = await response.json();
             if (result.success) {
-                alert(`Running file: ${fileName}`);
+                logMessage(`Running file: ${fileName}`);
             } else {
-                alert(`Failed to run file: ${fileName}`);
+                logMessage(`Failed to run file: ${fileName}`);
             }
         }
 

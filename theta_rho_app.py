@@ -63,7 +63,7 @@ def parse_theta_rho_file(file_path):
 
 def send_coordinate_batch(ser, coordinates):
     """Send a batch of theta-rho pairs to the Arduino."""
-    print("Sending batch:", coordinates)
+    # print("Sending batch:", coordinates)
     batch_str = ";".join(f"{theta:.3f},{rho:.3f}" for theta, rho in coordinates) + ";\n"
     ser.write(batch_str.encode())
 
@@ -95,18 +95,24 @@ def run_theta_rho_file(file_path):
     # Optimize batch size for smoother execution
     batch_size = 10  # Smaller batches may smooth movement further
     for i in range(0, len(coordinates), batch_size):
-        if stop_requested:
-            print("Execution stopped by user.")
-            break
-
         batch = coordinates[i:i + batch_size]
+
+        # Wait until Arduino is READY before sending the batch
         while True:
             if ser.in_waiting > 0:
                 response = ser.readline().decode().strip()
-                print(f"Arduino response: {response}")
                 if response == "READY":
                     send_coordinate_batch(ser, batch)
                     break
+                else:
+                    print(f"Arduino response: {response}")
+        
+        # Check stop_requested flag after sending the batch
+        if stop_requested:
+            print("Execution stopped by user after completing the current batch.")
+            break
+
+    # Reset theta after execution or stopping
     reset_theta()
                 
 def reset_theta():
@@ -118,8 +124,6 @@ def reset_theta():
             if response == "THETA_RESET":
                 print("Theta successfully reset.")
                 break
-            else:
-                print("No response or unexpected response:", response)
         time.sleep(0.5)  # Small delay to avoid busy waiting
 
 @app.route('/')
