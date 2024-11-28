@@ -49,14 +49,27 @@ void setup() {
     homing();
 }
 
+void resetThetaToNearestMultiple() {
+    currentTheta = fmod(currentTheta, 2.0 * M_PI);
+    Serial.print("currentTheta reset to: ");
+    Serial.println(currentTheta);
+}
+
 void loop() {
     // Check for incoming serial commands or theta-rho pairs
     if (Serial.available() > 0) {
         String input = Serial.readStringUntil('\n');
 
         // Ignore invalid messages
-        if (input != "HOME" && !input.endsWith(";")) {
+        if (input != "HOME" && input != "RESET_THETA" && !input.endsWith(";")) {
             Serial.println("IGNORED");
+            return;
+        }
+
+        if (input == "RESET_THETA") {
+            resetThetaToNearestMultiple();  // Reset currentTheta
+            Serial.println("THETA_RESET"); // Notify Python
+            Serial.println("READY");
             return;
         }
 

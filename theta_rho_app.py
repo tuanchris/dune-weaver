@@ -107,6 +107,20 @@ def run_theta_rho_file(file_path):
                 if response == "READY":
                     send_coordinate_batch(ser, batch)
                     break
+    reset_theta()
+                
+def reset_theta():
+    ser.write(b"RESET_THETA\n")
+    while True:
+        if ser.in_waiting > 0:
+            response = ser.readline().decode().strip()
+            print(f"Arduino response: {response}")
+            if response == "THETA_RESET":
+                print("Theta successfully reset.")
+                break
+            else:
+                print("No response or unexpected response:", response)
+        time.sleep(0.5)  # Small delay to avoid busy waiting
 
 @app.route('/')
 def index():
@@ -178,6 +192,7 @@ def run_theta_rho():
 def stop_execution():
     global stop_requested
     stop_requested = True
+    reset_theta()
     return jsonify({'success': True})
 
 @app.route('/send_home', methods=['POST'])
