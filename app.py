@@ -188,7 +188,7 @@ def restart():
 @app.route('/list_theta_rho_files', methods=['GET'])
 def list_theta_rho_files():
     files = os.listdir(THETA_RHO_DIR)
-    return jsonify(files)
+    return jsonify(sorted(files))
 
 @app.route('/upload_theta_rho', methods=['POST'])
 def upload_theta_rho():
@@ -201,6 +201,8 @@ def upload_theta_rho():
 @app.route('/run_theta_rho', methods=['POST'])
 def run_theta_rho():
     file_name = request.json.get('file_name')
+    pre_execution = request.json.get('pre_execution')  # New parameter for pre-execution action
+
     if not file_name:
         return jsonify({'error': 'No file name provided'}), 400
 
@@ -208,8 +210,25 @@ def run_theta_rho():
     if not os.path.exists(file_path):
         return jsonify({'error': 'File not found'}), 404
 
-    threading.Thread(target=run_theta_rho_file, args=(file_path,)).start()
-    return jsonify({'success': True})
+    try:
+        # Handle pre-execution actions
+        if pre_execution == 'clear_in':
+            clear_in_thread = threading.Thread(target=run_theta_rho_file, args=('./patterns/clear_from_in.thr',))
+            clear_in_thread.start()
+            clear_in_thread.join()  # Wait for completion before proceeding
+        elif pre_execution == 'clear_out':
+            clear_out_thread = threading.Thread(target=run_theta_rho_file, args=('./patterns/clear_from_out.thr',))
+            clear_out_thread.start()
+            clear_out_thread.join()  # Wait for completion before proceeding
+        elif pre_execution == 'none':
+            pass  # No pre-execution action required
+
+        # Start the main pattern execution
+        threading.Thread(target=run_theta_rho_file, args=(file_path,)).start()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
 
 @app.route('/stop_execution', methods=['POST'])
 def stop_execution():

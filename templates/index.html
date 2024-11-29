@@ -54,10 +54,23 @@
                 <h2>Pattern Files</h2>
                 <input type="text" id="search_pattern" placeholder="Search files..." oninput="searchPatternFiles()">
                 <ul id="theta_rho_files"></ul>
+                <div class="pre-execution-toggles">
+                    <h3>Pre-Execution Action</h3>
+                    <label>
+                        <input type="radio" name="pre_execution" value="clear_in" id="clear_in"> Clear from In
+                    </label>
+                    <label>
+                        <input type="radio" name="pre_execution" value="clear_out" id="clear_out"> Clear from Out
+                    </label>
+                    <label>
+                        <input type="radio" name="pre_execution" value="none" id="no_action" checked> None
+                    </label>
+                </div>
                 <div class="button-group">
                     <button id="run_button" disabled>Run Selected File</button>
                     <button onclick="stopExecution()" class="delete-button">Stop</button>
                 </div>
+            </div>
             </div>
         </div>
     </div>
@@ -175,14 +188,17 @@
                 logMessage("No file selected to run.");
                 return;
             }
-
-            logMessage(`Running file: ${selectedFile}...`);
+        
+            // Get the selected pre-execution action
+            const preExecutionAction = document.querySelector('input[name="pre_execution"]:checked').value;
+        
+            logMessage(`Running file: ${selectedFile} with pre-execution action: ${preExecutionAction}...`);
             const response = await fetch('/run_theta_rho', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ file_name: selectedFile })
+                body: JSON.stringify({ file_name: selectedFile, pre_execution: preExecutionAction })
             });
-
+        
             const result = await response.json();
             if (result.success) {
                 logMessage(`File running: ${selectedFile}`);

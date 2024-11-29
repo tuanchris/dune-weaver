@@ -179,6 +179,54 @@ li.selected {
     box-shadow: 0 0 5px rgba(74, 144, 226, 0.5);
 }
 
+/* Radio Buttons and Labels */
+.pre-execution-toggles {
+    margin: 10px 0;
+    padding: 10px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.pre-execution-toggles h3 {
+    margin: 0 0 10px 0;
+    color: #4A90E2;
+    font-size: 1.1em;
+}
+
+.pre-execution-toggles label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 5px 0;
+    font-size: 1em;
+    color: #333;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.pre-execution-toggles label:hover {
+    color: #4A90E2;
+}
+
+input[type="radio"] {
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #4A90E2;
+    border-radius: 50%;
+    outline: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+input[type="radio"]:checked {
+    background-color: #4A90E2;
+    border-color: #4A90E2;
+    box-shadow: 0 0 3px rgba(74, 144, 226, 0.5);
+}
+
 /* Responsive Layout for Small Screens */
 @media (max-width: 768px) {
     .container {
