@@ -138,8 +138,10 @@ li.selected {
     border-top: 1px solid #ddd;
     padding: 10px;
     max-height: 150px;
-    overflow-y: auto;
+    overflow-y: scroll; /* Use scroll explicitly */
     box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
+    -webkit-overflow-scrolling: touch; /* Enables smooth scrolling on mobile */
+    touch-action: auto; /* Ensures touch gestures are handled properly */
 }
 
 
@@ -188,6 +190,6 @@ li.selected {
     }
 
     #status_log {
-        max-height: 300px;
+        max-height: 250px;
     }
 }

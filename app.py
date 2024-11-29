@@ -116,7 +116,7 @@ def run_theta_rho_file(file_path):
     reset_theta()
                 
 def reset_theta():
-    ser.write(b"RESET_THETA\n")
+    ser.write("RESET_THETA\n".encode())
     while True:
         if ser.in_waiting > 0:
             response = ser.readline().decode().strip()
