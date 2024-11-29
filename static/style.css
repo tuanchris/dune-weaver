@@ -190,6 +190,6 @@ li.selected {
     }
 
     #status_log {
-        max-height: 250px;
+        display: none; /* Completely hides the status log on small screens */
     }
 }
