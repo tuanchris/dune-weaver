@@ -12,6 +12,7 @@
 
 #define rot_total_steps 16000.0
 #define inOut_total_steps 5760.0
+#define gearRatio 10
 
 #define BUFFER_SIZE 10 // Maximum number of theta-rho pairs in a batch
 
@@ -30,7 +31,8 @@ bool batchComplete = false;
 // Track the current position in polar coordinates
 float currentTheta = 0.0; // Current theta in radians
 float currentRho = 0.0;   // Current rho (0 to 1)
-bool skipInterpolation = true;
+bool isFirstCoordinates = true;
+float totalRevolutions = 0.0; // Tracks cumulative revolutions
 
 void setup()
 {
@@ -51,10 +53,28 @@ void setup()
     homing();
 }
 
-void resetThetaToNearestMultiple()
+void printCurrentCoordinates(String description)
 {
-    currentTheta = 0;
-    skipInterpolation = true; // Set flag to skip interpolation for the next movement
+    Serial.print(description);
+    Serial.print(" Theta: ");
+    Serial.print(currentTheta);
+    Serial.print(" Rho: ");
+    Serial.println(currentRho);
+}
+
+void printCurrentMotorPositions()
+{
+  Serial.print(" Rot: ");
+  Serial.print(rotStepper.currentPosition());
+  Serial.print(" Inout: ");
+  Serial.println(inOutStepper.currentPosition());
+}
+
+void resetTheta(float targetTheta)
+{
+    // currentTheta = 0;
+    isFirstCoordinates = true; // Set flag to skip interpolation for the next movement
+    Serial.println("THETA_RESET"); // Notify Python
 }
 
 void loop()
@@ -71,19 +91,20 @@ void loop()
             return;
         }
 
-        if (input == "RESET_THETA")
-        {
-            resetThetaToNearestMultiple(); // Reset currentTheta
-            Serial.println("THETA_RESET"); // Notify Python
-            Serial.println("READY");
-            return;
-        }
-
         if (input == "HOME")
         {
             homing();
             return;
         }
+
+        if (input == "RESET_THETA")
+        {
+            resetTheta(0); // Reset currentTheta
+            Serial.println("THETA_RESET"); // Notify Python
+            Serial.println("READY");
+            return;
+        }
+
 
         // If not a command, assume it's a batch of theta-rho pairs
         if (!batchComplete)
@@ -125,26 +146,26 @@ void loop()
 
         for (int i = 0; i < bufferCount; i++)
         {
-            if (skipInterpolation)
+            if (isFirstCoordinates)
             {
-                // float targetRotSteps = buffer[0][0] * (rot_total_steps / (2.0 * M_PI));
-                // rotStepper.setCurrentPosition(targetRotSteps);
+                // Directly move to the first coordinate of the new pattern
+                long initialRotSteps = buffer[0][0] * (rot_total_steps / (2.0 * M_PI));
+                rotStepper.setCurrentPosition(initialRotSteps);
+                inOutStepper.setCurrentPosition(inOutStepper.currentPosition() - totalRevolutions * rot_total_steps / gearRatio);
                 currentTheta = buffer[0][0];
-                // Move only the in-out axis to the first coordinate's rho
+                totalRevolutions = 0;
+                isFirstCoordinates = false; // Reset the flag after the first movement
                 movePolar(buffer[0][0], buffer[0][1]);
-                // Reset the flag after the first movement
-                skipInterpolation = false;
             }
-            else
-            {
+              else
+              {
                 // Use interpolation for subsequent movements
                 interpolatePath(
                     startTheta, startRho,
                     buffer[i][0], buffer[i][1],
                     0.001 // Step size
                 );
-            }
-
+              }
             // Update the starting point for the next segment
             startTheta = buffer[i][0];
             startRho = buffer[i][1];
@@ -184,7 +205,10 @@ void movePolar(float theta, float rho)
 
     // Calculate offset for inOut axis
     float revolutions = theta / (2.0 * M_PI); // Fractional revolutions (can be positive or negative)
-    long offsetSteps = revolutions * 1600;    // 1600 steps inward or outward per revolution
+    long offsetSteps = revolutions * rot_total_steps / gearRatio;    // 1600 steps inward or outward per revolution
+
+    // Update the total revolutions to keep track of the offset history
+    totalRevolutions += (theta - currentTheta) / (2.0 * M_PI);
 
     // Apply the offset to the inout axis
     inOutSteps += offsetSteps;

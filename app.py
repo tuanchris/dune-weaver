@@ -10,16 +10,18 @@ app = Flask(__name__)
 
 # Theta-rho directory
 THETA_RHO_DIR = './patterns'
+IGNORE_PORTS = ['/dev/cu.debug-console', '/dev/cu.Bluetooth-Incoming-Port']
 os.makedirs(THETA_RHO_DIR, exist_ok=True)
 
 # Serial connection (default None, will be set by user)
 ser = None
 stop_requested = False
 
+
 def list_serial_ports():
     """Return a list of available serial ports."""
     ports = serial.tools.list_ports.comports()
-    return [port.device for port in ports]
+    return [port.device for port in ports if port.device not in IGNORE_PORTS]
 
 def connect_to_serial(port, baudrate=115200):
     """Connect to the specified serial port."""
@@ -83,7 +85,7 @@ def send_command(command):
         time.sleep(0.5)  # Small delay to avoid busy waiting
 
 def run_theta_rho_file(file_path):
-    """Run a theta-rho file by interpolating straight paths and sending data in optimized batches."""
+    """Run a theta-rho file by sending data in optimized batches."""
     global stop_requested
     stop_requested = False
 
@@ -114,6 +116,7 @@ def run_theta_rho_file(file_path):
 
     # Reset theta after execution or stopping
     reset_theta()
+    ser.write("FINISHED\n".encode())
                 
 def reset_theta():
     ser.write("RESET_THETA\n".encode())
@@ -125,6 +128,22 @@ def reset_theta():
                 print("Theta successfully reset.")
                 break
         time.sleep(0.5)  # Small delay to avoid busy waiting
+        
+def read_serial_responses():
+    """Continuously read and print all responses from the Arduino."""
+    global ser
+    if ser is None or not ser.is_open:
+        print("Serial connection not established.")
+        return
+    
+    while True:
+        try:
+            if ser.in_waiting > 0:
+                response = ser.readline().decode().strip()
+                print(f"Arduino response: {response}")
+        except Exception as e:
+            print(f"Error reading from serial: {e}")
+            break
 
 @app.route('/')
 def index():
@@ -271,4 +290,7 @@ def download_file(filename):
     return send_from_directory(THETA_RHO_DIR, filename)
 
 if __name__ == '__main__':
+    # Start the thread for reading Arduino responses
+    threading.Thread(target=read_serial_responses, daemon=True).start()
+    
     app.run(debug=True, host='0.0.0.0', port=8080)
