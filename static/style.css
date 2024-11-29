@@ -1,0 +1,193 @@
+/* General Styling */
+body {
+    font-family: 'Roboto', sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f4f4f9;
+    color: #333;
+}
+
+h1 {
+    text-align: center;
+    color: #4A90E2;
+    margin: 20px 0;
+}
+
+h2 {
+    color: #4A90E2;
+    margin: 10px 0;
+}
+
+/* Container Layout */
+.container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 20px;
+    width: 90%;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Columns */
+.left-column {
+    flex: 1;
+    min-width: 300px;
+}
+
+.right-column {
+    flex: 1;
+    min-width: 300px;
+}
+
+/* Sections */
+.section {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+/* Buttons Inline */
+.button-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px 15px;
+}
+
+button {
+    background: #4A90E2;
+    color: #fff;
+    cursor: pointer;
+    padding: 10px 15px;
+    font-size: 1em;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    outline: none;
+    transition: all 0.3s ease;
+}
+
+button:hover {
+    background: #357ABD;
+}
+
+/* Delete Button */
+.delete-button {
+    background: #e74c3c; /* Red color */
+    color: #fff;
+    cursor: pointer;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 5px;
+    font-size: 1em;
+    transition: all 0.3s ease;
+}
+
+.delete-button:hover {
+    background: #c0392b; /* Darker red on hover */
+}
+
+select, input[type="file"] {
+    display: block;
+    width: 100%;
+    max-width: 300px;
+    padding: 10px;
+    margin: 10px 0;
+    font-size: 1em;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    outline: none;
+}
+
+/* File List */
+ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+li {
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+li:hover {
+    background: #f1f1f1;
+}
+
+li.selected {
+    background: #4A90E2;
+    color: white;
+    font-weight: bold;
+    padding: 5px;
+    border-radius: 5px;
+}
+
+/* Status Log */
+#status_log {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border-top: 1px solid #ddd;
+    padding: 10px;
+    max-height: 150px;
+    overflow-y: auto;
+    box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
+}
+
+
+#status_log p {
+    margin: 0.5em 0;
+    font-size: 0.9em;
+    color: #444;
+}
+
+#theta_rho_files {
+    max-height: 545px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    background-color: #fff;
+    padding: 10px;
+}
+
+/* Search Bar */
+#search_pattern {
+    display: block;
+    width: 100%;
+    max-width: 300px;
+    padding: 10px;
+    margin: 10px 0;
+    font-size: 1em;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    outline: none;
+    transition: all 0.3s ease;
+}
+
+#search_pattern:focus {
+    border-color: #4A90E2;
+    box-shadow: 0 0 5px rgba(74, 144, 226, 0.5);
+}
+
+/* Responsive Layout for Small Screens */
+@media (max-width: 768px) {
+    .container {
+        flex-direction: column; /* Stack columns vertically */
+    }
+
+    .left-column, .right-column {
+        width: 100%;
+    }
+
+    #status_log {
+        max-height: 300px;
+    }
+}

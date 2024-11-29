@@ -128,7 +128,7 @@ def reset_theta():
 
 @app.route('/')
 def index():
-    return render_template('theta_rho_controller.html')
+    return render_template('index.html')
 
 @app.route('/list_serial_ports', methods=['GET'])
 def list_ports():
@@ -217,6 +217,52 @@ def run_specific_theta_rho_file(file_name):
 
     threading.Thread(target=run_theta_rho_file, args=(file_path,)).start()
     return jsonify({'success': True})
+
+@app.route('/delete_theta_rho_file', methods=['POST'])
+def delete_theta_rho_file():
+    data = request.json
+    file_name = data.get('file_name')
+
+    if not file_name:
+        return jsonify({"success": False, "error": "No file name provided"}), 400
+
+    file_path = os.path.join(THETA_RHO_DIR, file_name)
+
+    if not os.path.exists(file_path):
+        return jsonify({"success": False, "error": "File not found"}), 404
+
+    try:
+        os.remove(file_path)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/move_to_center', methods=['POST'])
+def move_to_center():
+    """Move the sand table to the center position."""
+    try:
+        if ser is None or not ser.is_open:
+            return jsonify({"success": False, "error": "Serial connection not established"}), 400
+
+        coordinates = [(0, 0)]  # Center position
+        send_coordinate_batch(ser, coordinates)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    
+@app.route('/move_to_perimeter', methods=['POST'])
+def move_to_perimeter():
+    """Move the sand table to the perimeter position."""
+    try:
+        if ser is None or not ser.is_open:
+            return jsonify({"success": False, "error": "Serial connection not established"}), 400
+
+        MAX_RHO = 1
+        coordinates = [(0, MAX_RHO)]  # Perimeter position
+        send_coordinate_batch(ser, coordinates)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 # Expose files for download if needed
 @app.route('/download/<filename>', methods=['GET'])
