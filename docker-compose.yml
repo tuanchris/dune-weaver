@@ -1,6 +1,7 @@
 services:
   flask-app:
     build: .
+    restart: always
     ports:
       - "8080:8080" # Map port 8080 of the container to 8080 of the host
     volumes:
