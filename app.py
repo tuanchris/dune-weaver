@@ -9,7 +9,7 @@ import math
 app = Flask(__name__)
 
 # Theta-rho directory
-THETA_RHO_DIR = './theta_rho_files'
+THETA_RHO_DIR = './patterns'
 os.makedirs(THETA_RHO_DIR, exist_ok=True)
 
 # Serial connection (default None, will be set by user)

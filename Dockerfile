@@ -17,4 +17,4 @@ EXPOSE 8080
 ENV FLASK_ENV=development
 
 # Run the command to start the app
-CMD ["python", "theta_rho_app.py"]
+CMD ["python", "app.py"]
