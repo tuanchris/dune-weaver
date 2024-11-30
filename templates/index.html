@@ -33,18 +33,20 @@
                 </br>
                     <button onclick="runClearIn()">Clear from In</button>
                     <button onclick="runClearOut()">Clear from Out</button>
-                   
+                    <div class="coordinate-input">
+                        <label for="theta_input">θ:</label>
+                        <input type="number" id="theta_input" placeholder="Theta">
+                        <label for="rho_input">ρ:</label>
+                        <input type="number" id="rho_input" placeholder="Rho">
+                        <button onclick="sendCoordinate()">Send</button>
+                    </div>
                 </div>
             </div>
             <div class="section">
-                <h2>Upload new files</h2>
-                <div class="button-group">
-                    <input type="file" id="upload_file">
-                    <div class="button-group">
-                        <button onclick="uploadThetaRho()">Upload</button>
-                        <button id="delete_selected_button" class="delete-button" onclick="deleteSelectedFile()" disabled>Delete Selected File</button>
-                    </div>
-                </div>
+                <h2>Preview</h2>
+                <canvas id="patternPreviewCanvas" style="width: 100%; height: 100%;"></canvas>
+                <p id="first_coordinate">First Coordinate: Not available</p>
+                <p id="last_coordinate">Last Coordinate: Not available</p>
             </div>
         </div>
 
@@ -69,6 +71,16 @@
                 <div class="button-group">
                     <button id="run_button" disabled>Run Selected File</button>
                     <button onclick="stopExecution()" class="delete-button">Stop</button>
+                </div>
+            </div>
+            <div class="section">
+                <h2>Upload new files</h2>
+                <div class="button-group">
+                    <input type="file" id="upload_file">
+                    <div class="button-group">
+                        <button onclick="uploadThetaRho()">Upload</button>
+                        <button id="delete_selected_button" class="delete-button" onclick="deleteSelectedFile()" disabled>Delete Selected File</button>
+                    </div>
                 </div>
             </div>
             </div>
@@ -111,18 +123,21 @@
             logMessage('Theta-Rho files loaded successfully.');
         }
 
-        function selectFile(file, listItem) {
+        async function selectFile(file, listItem) {
             selectedFile = file;
-
+        
             // Highlight the selected file
             document.querySelectorAll('#theta_rho_files li').forEach(li => li.classList.remove('selected'));
             listItem.classList.add('selected');
-
+        
             // Enable buttons
             document.getElementById('run_button').disabled = false;
             document.getElementById('delete_selected_button').disabled = false;
-
+        
             logMessage(`Selected file: ${file}`);
+        
+            // Fetch and preview the selected file
+            await previewPattern(file);
         }
 
         async function uploadThetaRho() {
@@ -354,6 +369,94 @@
             } else {
                 logMessage(`Failed to move to perimeter: ${result.error}`);
             }
+        }
+
+        async function sendCoordinate() {
+            const theta = parseFloat(document.getElementById('theta_input').value);
+            const rho = parseFloat(document.getElementById('rho_input').value);
+        
+            if (isNaN(theta) || isNaN(rho)) {
+                logMessage('Invalid input: θ and ρ must be numbers.');
+                return;
+            }
+        
+            logMessage(`Sending coordinate: θ=${theta}, ρ=${rho}...`);
+            const response = await fetch('/send_coordinate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ theta, rho })
+            });
+        
+            const result = await response.json();
+            if (result.success) {
+                logMessage(`Coordinate executed successfully: θ=${theta}, ρ=${rho}`);
+            } else {
+                logMessage(`Failed to execute coordinate: ${result.error}`);
+            }
+        }
+
+        async function previewPattern(fileName) {
+            logMessage(`Fetching data to preview file: ${fileName}...`);
+            const response = await fetch('/preview_thr', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_name: fileName })
+            });
+        
+            const result = await response.json();
+            if (result.success) {
+                const coordinates = result.coordinates;
+        
+                // Update coordinates display
+                if (coordinates.length > 0) {
+                    const firstCoord = coordinates[0];
+                    const lastCoord = coordinates[coordinates.length - 1];
+                    document.getElementById('first_coordinate').textContent = `First Coordinate: θ=${firstCoord[0]}, ρ=${firstCoord[1]}`;
+                    document.getElementById('last_coordinate').textContent = `Last Coordinate: θ=${lastCoord[0]}, ρ=${lastCoord[1]}`;
+                } else {
+                    document.getElementById('first_coordinate').textContent = 'First Coordinate: Not available';
+                    document.getElementById('last_coordinate').textContent = 'Last Coordinate: Not available';
+                }
+        
+                renderPattern(coordinates);
+            } else {
+                logMessage(`Failed to fetch preview for file: ${result.error}`);
+                // Clear the coordinate display on error
+                document.getElementById('first_coordinate').textContent = 'First Coordinate: Not available';
+                document.getElementById('last_coordinate').textContent = 'Last Coordinate: Not available';
+            }
+        }
+        
+        function renderPattern(coordinates) {
+            const canvas = document.getElementById('patternPreviewCanvas');
+            const ctx = canvas.getContext('2d');
+        
+            // Make canvas full screen
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        
+            // Clear the canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+            // Convert polar to Cartesian and draw the pattern
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const maxRho = Math.max(...coordinates.map(coord => coord[1]));
+            const scale = Math.min(canvas.width, canvas.height) / (2 * maxRho); // Scale to fit within the screen
+        
+            ctx.beginPath();
+            coordinates.forEach(([theta, rho], index) => {
+                const x = centerX + rho * Math.cos(theta) * scale;
+                const y = centerY - rho * Math.sin(theta) * scale; // Invert y-axis for canvas
+                if (index === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            ctx.closePath();
+            ctx.stroke();
+            logMessage('Pattern preview rendered at full screen.');
         }
 
         // Initial load of serial ports and Theta-Rho files

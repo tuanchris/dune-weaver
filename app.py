@@ -301,6 +301,55 @@ def move_to_perimeter():
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+    
+@app.route('/preview_thr', methods=['POST'])
+def preview_thr():
+    file_name = request.json.get('file_name')
+    
+    if not file_name:
+        return jsonify({'error': 'No file name provided'}), 400
+
+    file_path = os.path.join(THETA_RHO_DIR, file_name)
+    if not os.path.exists(file_path):
+        return jsonify({'error': 'File not found'}), 404
+
+    try:
+        # Read the .thr file and parse the coordinates
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+
+        coordinates = []
+        for line in lines:
+            # Ignore comments or blank lines
+            if line.strip().startswith('#') or not line.strip():
+                continue
+            theta, rho = map(float, line.split())
+            coordinates.append((theta, rho))
+        
+        return jsonify({'success': True, 'coordinates': coordinates})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
+@app.route('/send_coordinate', methods=['POST'])
+def send_coordinate():
+    """Send a single (theta, rho) coordinate to the Arduino."""
+    global ser
+    if ser is None or not ser.is_open:
+        return jsonify({"success": False, "error": "Serial connection not established"}), 400
+
+    try:
+        data = request.json
+        theta = data.get('theta')
+        rho = data.get('rho')
+
+        if theta is None or rho is None:
+            return jsonify({"success": False, "error": "Theta and Rho are required"}), 400
+
+        # Send the coordinate to the Arduino
+        send_coordinate_batch(ser, [(theta, rho)])
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 # Expose files for download if needed
 @app.route('/download/<filename>', methods=['GET'])

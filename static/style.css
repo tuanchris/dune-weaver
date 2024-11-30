@@ -130,6 +130,7 @@ li.selected {
 
 /* Status Log */
 #status_log {
+    display: none;
     position: fixed;
     bottom: 0;
     left: 0;
@@ -152,7 +153,7 @@ li.selected {
 }
 
 #theta_rho_files {
-    max-height: 545px;
+    max-height: 507px;
     overflow-y: auto;
     border: 1px solid #ddd;
     border-radius: 5px;
@@ -225,6 +226,22 @@ input[type="radio"]:checked {
     background-color: #4A90E2;
     border-color: #4A90E2;
     box-shadow: 0 0 3px rgba(74, 144, 226, 0.5);
+}
+
+.coordinate-input {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+}
+.coordinate-input label, 
+.coordinate-input input, 
+.coordinate-input button {
+    font-size: 1rem;
+    padding: 5px;
+}
+.coordinate-input input {
+    width: 80px;
 }
 
 /* Responsive Layout for Small Screens */
