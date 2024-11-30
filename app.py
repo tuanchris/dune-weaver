@@ -347,6 +347,7 @@ def send_coordinate():
 
         # Send the coordinate to the Arduino
         send_coordinate_batch(ser, [(theta, rho)])
+        reset_theta()
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
