@@ -163,7 +163,7 @@ void loop()
                 interpolatePath(
                     startTheta, startRho,
                     buffer[i][0], buffer[i][1],
-                    0.001 // Step size
+                    0.0009 // Step size
                 );
               }
             // Update the starting point for the next segment

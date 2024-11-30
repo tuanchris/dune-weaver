@@ -459,6 +459,24 @@
             logMessage('Pattern preview rendered at full screen.');
         }
 
+        async function checkSerialStatus() {
+            const response = await fetch('/serial_status');
+            const status = await response.json();
+            const statusElement = document.getElementById('serial_status');
+            
+            if (status.connected) {
+                const port = status.port || 'Unknown'; // Fallback if port is undefined
+                statusElement.textContent = `Status: Connected to ${port}`;
+                logMessage(`Reconnected to serial port: ${port}`);
+            } else {
+                statusElement.textContent = 'Status: Not connected';
+                logMessage('No active serial connection.');
+            }
+        }
+        
+        // Call this function on page load
+        checkSerialStatus();
+
         // Initial load of serial ports and Theta-Rho files
         loadSerialPorts();
         loadThetaRhoFiles();

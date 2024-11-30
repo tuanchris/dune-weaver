@@ -15,6 +15,7 @@ os.makedirs(THETA_RHO_DIR, exist_ok=True)
 
 # Serial connection (default None, will be set by user)
 ser = None
+ser_port = None  # Global variable to store the serial port name
 stop_requested = False
 
 
@@ -25,18 +26,20 @@ def list_serial_ports():
 
 def connect_to_serial(port, baudrate=115200):
     """Connect to the specified serial port."""
-    global ser
+    global ser, ser_port
     if ser and ser.is_open:
         ser.close()
     ser = serial.Serial(port, baudrate)
+    ser_port = port  # Store the connected port globally
     time.sleep(2)  # Allow time for the connection to establish
 
 def disconnect_serial():
     """Disconnect the current serial connection."""
-    global ser
+    global ser, ser_port
     if ser and ser.is_open:
         ser.close()
         ser = None
+    ser_port = None  # Reset the port name
 
 def restart_serial(port, baudrate=115200):
     """Restart the serial connection."""
@@ -188,6 +191,7 @@ def restart():
 @app.route('/list_theta_rho_files', methods=['GET'])
 def list_theta_rho_files():
     files = os.listdir(THETA_RHO_DIR)
+    files = sorted([file for file in files if files not in ['clear_from_in.thr', 'clear_from_out.thr']])
     return jsonify(sorted(files))
 
 @app.route('/upload_theta_rho', methods=['POST'])
@@ -357,6 +361,14 @@ def send_coordinate():
 def download_file(filename):
     """Download a file from the theta-rho directory."""
     return send_from_directory(THETA_RHO_DIR, filename)
+
+@app.route('/serial_status', methods=['GET'])
+def serial_status():
+    global ser, ser_port
+    return jsonify({
+        'connected': ser.is_open if ser else False,
+        'port': ser_port  # Include the port name
+    })
 
 if __name__ == '__main__':
     # Start the thread for reading Arduino responses
