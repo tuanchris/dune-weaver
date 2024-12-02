@@ -1,5 +1,7 @@
 # Dune Weaver
 
+![Dune Weaver Gif](./static/IMG_7404.gif)
+
 Dune Weaver is a project for a mesmerizing, motorized sand table that draws intricate patterns in sand using a steel ball moved by a magnet. This project combines hardware and software, leveraging an Arduino for hardware control and a Python/Flask-based web interface for interaction.
 
 ## Features
@@ -31,6 +33,8 @@ Dune Weaver is a project for a mesmerizing, motorized sand table that draws intr
 5. Computer with USB connection to the Arduino.
 
 ### Software Requirements
+
+![UI](./static/UI.png)
 
 - Python 3.7+
 - Arduino IDE
