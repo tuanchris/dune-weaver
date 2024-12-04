@@ -101,7 +101,9 @@ def run_theta_rho_file(file_path):
     batch_size = 10  # Smaller batches may smooth movement further
     for i in range(0, len(coordinates), batch_size):
         batch = coordinates[i:i + batch_size]
-
+        if i == 0:
+            send_coordinate_batch(ser, batch)
+            continue
         # Wait until Arduino is READY before sending the batch
         while True:
             if ser.in_waiting > 0:
@@ -369,6 +371,31 @@ def serial_status():
         'connected': ser.is_open if ser else False,
         'port': ser_port  # Include the port name
     })
+    
+@app.route('/set_speed', methods=['POST'])
+def set_speed():
+    """Set the speed for the Arduino."""
+    global ser
+    if ser is None or not ser.is_open:
+        return jsonify({"success": False, "error": "Serial connection not established"}), 400
+
+    try:
+        # Parse the speed value from the request
+        data = request.json
+        speed = data.get('speed')
+
+        if speed is None:
+            return jsonify({"success": False, "error": "Speed is required"}), 400
+
+        if not isinstance(speed, (int, float)) or speed <= 0:
+            return jsonify({"success": False, "error": "Invalid speed value"}), 400
+
+        # Send the SET_SPEED command to the Arduino
+        command = f"SET_SPEED {speed}"
+        send_command(command)
+        return jsonify({"success": True, "speed": speed})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
     # Start the thread for reading Arduino responses

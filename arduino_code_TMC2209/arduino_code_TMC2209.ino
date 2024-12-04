@@ -33,8 +33,8 @@ float currentTheta = 0.0; // Current theta in radians
 float currentRho = 0.0;   // Current rho (0 to 1)
 bool isFirstCoordinates = true;
 float totalRevolutions = 0.0; // Tracks cumulative revolutions
-float maxSpeed = 5000;
-float maxAcceleration = 5000;
+float maxSpeed = 1000;
+float maxAcceleration = 50;
 
 void setup()
 {
@@ -181,7 +181,8 @@ void loop()
                 // Directly move to the first coordinate of the new pattern
                 long initialRotSteps = buffer[0][0] * (rot_total_steps / (2.0 * M_PI));
                 rotStepper.setCurrentPosition(initialRotSteps);
-                inOutStepper.setCurrentPosition(inOutStepper.currentPosition() - totalRevolutions * rot_total_steps / gearRatio);
+                inOutStepper.setCurrentPosition(inOutStepper.currentPosition() + (totalRevolutions * rot_total_steps / gearRatio));
+                
                 currentTheta = buffer[0][0];
                 totalRevolutions = 0;
                 isFirstCoordinates = false; // Reset the flag after the first movement
@@ -241,7 +242,7 @@ void movePolar(float theta, float rho)
     totalRevolutions += (theta - currentTheta) / (2.0 * M_PI);
 
     // Apply the offset to the inout axis
-    inOutSteps += offsetSteps;
+    inOutSteps -= offsetSteps;
 
     // Define target positions for both motors
     long targetPositions[2];

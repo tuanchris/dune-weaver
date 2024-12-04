@@ -22,6 +22,8 @@
                     <button onclick="restartSerial()">Restart</button>
                 </div>
                 <p id="serial_status" class="status">Status: Not connected</p>
+                <input type="number" id="speed_input" placeholder="Set speed" min="1" step="1">
+                <button onclick="changeSpeed()">Set Speed</button>
             </div>
 
             <div class="section">
@@ -471,6 +473,31 @@
             } else {
                 statusElement.textContent = 'Status: Not connected';
                 logMessage('No active serial connection.');
+            }
+        }
+
+        async function changeSpeed() {
+            const speedInput = document.getElementById('speed_input');
+            const speed = parseFloat(speedInput.value);
+        
+            if (isNaN(speed) || speed <= 0) {
+                logMessage('Invalid speed. Please enter a positive number.');
+                return;
+            }
+        
+            logMessage(`Setting speed to: ${speed}...`);
+            const response = await fetch('/set_speed', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ speed })
+            });
+        
+            const result = await response.json();
+            if (result.success) {
+                document.getElementById('speed_status').textContent = `Current Speed: ${speed}`;
+                logMessage(`Speed set to: ${speed}`);
+            } else {
+                logMessage(`Failed to set speed: ${result.error}`);
             }
         }
         
