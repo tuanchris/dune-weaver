@@ -35,6 +35,7 @@ bool isFirstCoordinates = true;
 float totalRevolutions = 0.0; // Tracks cumulative revolutions
 float maxSpeed = 1000;
 float maxAcceleration = 50;
+long interpolationResolution = 0.001;
 
 void setup()
 {
@@ -51,26 +52,10 @@ void setup()
 
     // Initialize serial communication
     Serial.begin(115200);
-    Serial.println("READY");
+    Serial.println("R");
     homing();
 }
 
-void printCurrentCoordinates(String description)
-{
-    Serial.print(description);
-    Serial.print(" Theta: ");
-    Serial.print(currentTheta);
-    Serial.print(" Rho: ");
-    Serial.println(currentRho);
-}
-
-void printCurrentMotorPositions()
-{
-  Serial.print(" Rot: ");
-  Serial.print(rotStepper.currentPosition());
-  Serial.print(" Inout: ");
-  Serial.println(inOutStepper.currentPosition());
-}
 
 void resetTheta()
 {
@@ -107,7 +92,7 @@ void loop()
                     rotStepper.setMaxSpeed(speed);
                     inOutStepper.setMaxSpeed(speed);
                     Serial.println("SPEED_SET");
-                    Serial.println("READY");
+                    Serial.println("R");
                 }
                 else
                 {
@@ -131,7 +116,7 @@ void loop()
         {
             resetTheta(); // Reset currentTheta
             Serial.println("THETA_RESET"); // Notify Python
-            Serial.println("READY");
+            Serial.println("R");
             return;
         }
 
@@ -194,7 +179,7 @@ void loop()
                 interpolatePath(
                     startTheta, startRho,
                     buffer[i][0], buffer[i][1],
-                    0.0009 // Step size
+                    interpolationResolution
                 );
               }
             // Update the starting point for the next segment
@@ -202,9 +187,9 @@ void loop()
             startRho = buffer[i][1];
         }
 
-        bufferCount = 0;       // Clear buffer
         batchComplete = false; // Reset batch flag
-        Serial.println("READY");
+        bufferCount = 0;       // Clear buffer
+        Serial.println("R");
     }
 }
 

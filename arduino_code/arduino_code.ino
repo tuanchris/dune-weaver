@@ -35,6 +35,7 @@ bool isFirstCoordinates = true;
 float totalRevolutions = 0.0; // Tracks cumulative revolutions
 float maxSpeed = 5000;
 float maxAcceleration = 5000;
+long interpolationResolution = 0.001;
 
 void setup()
 {
@@ -51,7 +52,7 @@ void setup()
 
     // Initialize serial communication
     Serial.begin(115200);
-    Serial.println("READY");
+    Serial.println("R");
     homing();
 }
 
@@ -107,7 +108,7 @@ void loop()
                     rotStepper.setMaxSpeed(speed);
                     inOutStepper.setMaxSpeed(speed);
                     Serial.println("SPEED_SET");
-                    Serial.println("READY");
+                    Serial.println("R");
                 }
                 else
                 {
@@ -131,7 +132,7 @@ void loop()
         {
             resetTheta(); // Reset currentTheta
             Serial.println("THETA_RESET"); // Notify Python
-            Serial.println("READY");
+            Serial.println("R");
             return;
         }
 
@@ -167,7 +168,7 @@ void loop()
         }
     }
 
-    // Process the buffer if a batch is ready
+    // Process the buffer if a batch is R
     if (batchComplete && bufferCount > 0)
     {
         // Start interpolation from the current position
@@ -193,7 +194,7 @@ void loop()
                 interpolatePath(
                     startTheta, startRho,
                     buffer[i][0], buffer[i][1],
-                    0.0009 // Step size
+                    interpolationResolution
                 );
               }
             // Update the starting point for the next segment
@@ -203,7 +204,7 @@ void loop()
 
         bufferCount = 0;       // Clear buffer
         batchComplete = false; // Reset batch flag
-        Serial.println("READY");
+        Serial.println("R");
     }
 }
 

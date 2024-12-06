@@ -69,7 +69,7 @@ def parse_theta_rho_file(file_path):
 def send_coordinate_batch(ser, coordinates):
     """Send a batch of theta-rho pairs to the Arduino."""
     # print("Sending batch:", coordinates)
-    batch_str = ";".join(f"{theta:.3f},{rho:.3f}" for theta, rho in coordinates) + ";\n"
+    batch_str = ";".join(f"{theta:.2f},{rho:.2f}" for theta, rho in coordinates) + ";\n"
     ser.write(batch_str.encode())
 
 def send_command(command):
@@ -85,7 +85,7 @@ def send_command(command):
             if response == "DONE":
                 print("Command execution completed.")
                 break
-        time.sleep(0.5)  # Small delay to avoid busy waiting
+        # time.sleep(0.5)  # Small delay to avoid busy waiting
 
 def run_theta_rho_file(file_path):
     """Run a theta-rho file by sending data in optimized batches."""
@@ -98,7 +98,7 @@ def run_theta_rho_file(file_path):
         return
 
     # Optimize batch size for smoother execution
-    batch_size = 10  # Smaller batches may smooth movement further
+    batch_size = 1  # Smaller batches may smooth movement further
     for i in range(0, len(coordinates), batch_size):
         batch = coordinates[i:i + batch_size]
         if i == 0:
@@ -108,7 +108,7 @@ def run_theta_rho_file(file_path):
         while True:
             if ser.in_waiting > 0:
                 response = ser.readline().decode().strip()
-                if response == "READY":
+                if response == "R":
                     send_coordinate_batch(ser, batch)
                     break
                 else:
