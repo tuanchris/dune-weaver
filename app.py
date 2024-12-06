@@ -98,7 +98,7 @@ def run_theta_rho_file(file_path):
         return
 
     # Optimize batch size for smoother execution
-    batch_size = 1  # Smaller batches may smooth movement further
+    batch_size = 10  # Smaller batches may smooth movement further
     for i in range(0, len(coordinates), batch_size):
         batch = coordinates[i:i + batch_size]
         if i == 0:
