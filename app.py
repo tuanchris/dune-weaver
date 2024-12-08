@@ -100,6 +100,10 @@ def run_theta_rho_file(file_path):
     # Optimize batch size for smoother execution
     batch_size = 1  # Smaller batches may smooth movement further
     for i in range(0, len(coordinates), batch_size):
+        # Check stop_requested flag after sending the batch
+        if stop_requested:
+            print("Execution stopped by user after completing the current batch.")
+            break
         batch = coordinates[i:i + batch_size]
         if i == 0:
             send_coordinate_batch(ser, batch)
@@ -113,12 +117,7 @@ def run_theta_rho_file(file_path):
                     break
                 else:
                     print(f"Arduino response: {response}")
-        
-        # Check stop_requested flag after sending the batch
-        if stop_requested:
-            print("Execution stopped by user after completing the current batch.")
-            break
-
+                
     # Reset theta after execution or stopping
     reset_theta()
     ser.write("FINISHED\n".encode())
@@ -240,7 +239,6 @@ def run_theta_rho():
 def stop_execution():
     global stop_requested
     stop_requested = True
-    reset_theta()
     return jsonify({'success': True})
 
 @app.route('/send_home', methods=['POST'])
