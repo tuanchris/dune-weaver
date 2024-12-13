@@ -328,7 +328,18 @@ def preview_thr():
             if line.strip().startswith('#') or not line.strip():
                 continue
             theta, rho = map(float, line.split())
-            coordinates.append((theta, rho))
+
+            # Rotate 90 degrees clockwise
+            theta_rotated = theta - (math.pi / 2)
+            if theta_rotated < 0:  # Ensure theta stays within [0, 2π)
+                theta_rotated += 2 * math.pi
+            
+            # Apply vertical mirror (negate theta)
+            theta_mirrored = -theta_rotated
+            if theta_mirrored < 0:  # Ensure theta stays within [0, 2π)
+                theta_mirrored += 2 * math.pi
+
+            coordinates.append((theta_mirrored, rho))
         
         return jsonify({'success': True, 'coordinates': coordinates})
     except Exception as e:
