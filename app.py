@@ -46,24 +46,41 @@ def restart_serial(port, baudrate=115200):
     disconnect_serial()
     connect_to_serial(port, baudrate)
 
-def parse_theta_rho_file(file_path):
-    """Parse a theta-rho file and return a list of (theta, rho) pairs."""
+def parse_theta_rho_file(file_path, apply_transformations=False):
+    """
+    Parse a theta-rho file and return a list of (theta, rho) pairs.
+    Optionally apply transformations (rotation and mirroring).
+    """
     coordinates = []
-    with open(file_path, 'r') as file:
-        for line in file:
-            line = line.strip()
-            
-            # Skip header or comment lines (starting with '#' or empty lines)
-            if not line or line.startswith("#"):
-                print(f"Skipping invalid line: {line}")
-                continue
+    try:
+        with open(file_path, 'r') as file:
+            for line in file:
+                line = line.strip()
+                # Skip header or comment lines (starting with '#' or empty lines)
+                if not line or line.startswith("#"):
+                    continue
 
-            # Parse lines with theta and rho separated by spaces
-            try:
-                theta, rho = map(float, line.split())
-                coordinates.append((theta, rho))
-            except ValueError:
-                print(f"Skipping invalid line: {line}")
+                # Parse lines with theta and rho separated by spaces
+                try:
+                    theta, rho = map(float, line.split())
+                    if apply_transformations:
+                        # Rotate 90 degrees clockwise
+                        theta_rotated = theta - (math.pi / 2)
+                        if theta_rotated < 0:  # Ensure theta stays within [0, 2π)
+                            theta_rotated += 2 * math.pi
+
+                        # Apply vertical mirror (negate theta)
+                        theta_mirrored = -theta_rotated
+                        if theta_mirrored < 0:  # Ensure theta stays within [0, 2π)
+                            theta_mirrored += 2 * math.pi
+
+                        coordinates.append((theta_mirrored, rho))
+                    else:
+                        coordinates.append((theta, rho))
+                except ValueError:
+                    print(f"Skipping invalid line: {line}")
+    except Exception as e:
+        print(f"Error reading file: {e}")
     return coordinates
 
 def send_coordinate_batch(ser, coordinates):
@@ -92,7 +109,7 @@ def run_theta_rho_file(file_path):
     global stop_requested
     stop_requested = False
 
-    coordinates = parse_theta_rho_file(file_path)
+    coordinates = parse_theta_rho_file(file_path, True)
     if len(coordinates) < 2:
         print("Not enough coordinates for interpolation.")
         return
@@ -149,6 +166,7 @@ def read_serial_responses():
             print(f"Error reading from serial: {e}")
             break
 
+# Flask endpoints
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -191,15 +209,22 @@ def restart():
 
 @app.route('/list_theta_rho_files', methods=['GET'])
 def list_theta_rho_files():
-    files = os.listdir(THETA_RHO_DIR)
-    files = sorted([file for file in files if files not in ['clear_from_in.thr', 'clear_from_out.thr']])
+    files = []
+    for root, _, filenames in os.walk(THETA_RHO_DIR):
+        for file in filenames:
+            # Construct the relative file path
+            relative_path = os.path.relpath(os.path.join(root, file), THETA_RHO_DIR)
+            files.append(relative_path)
     return jsonify(sorted(files))
 
 @app.route('/upload_theta_rho', methods=['POST'])
 def upload_theta_rho():
+    custom_patterns_dir = os.path.join(THETA_RHO_DIR, 'custom_patterns')
+    os.makedirs(custom_patterns_dir, exist_ok=True)  # Ensure the directory exists
+
     file = request.files['file']
     if file:
-        file.save(os.path.join(THETA_RHO_DIR, file.filename))
+        file.save(os.path.join(custom_patterns_dir, file.filename))
         return jsonify({'success': True})
     return jsonify({'success': False})
 
@@ -318,29 +343,8 @@ def preview_thr():
         return jsonify({'error': 'File not found'}), 404
 
     try:
-        # Read the .thr file and parse the coordinates
-        with open(file_path, 'r') as file:
-            lines = file.readlines()
-
-        coordinates = []
-        for line in lines:
-            # Ignore comments or blank lines
-            if line.strip().startswith('#') or not line.strip():
-                continue
-            theta, rho = map(float, line.split())
-
-            # Rotate 90 degrees clockwise
-            theta_rotated = theta - (math.pi / 2)
-            if theta_rotated < 0:  # Ensure theta stays within [0, 2π)
-                theta_rotated += 2 * math.pi
-            
-            # Apply vertical mirror (negate theta)
-            theta_mirrored = -theta_rotated
-            if theta_mirrored < 0:  # Ensure theta stays within [0, 2π)
-                theta_mirrored += 2 * math.pi
-
-            coordinates.append((theta_mirrored, rho))
-        
+        # Parse the .thr file with transformations
+        coordinates = parse_theta_rho_file(file_path, apply_transformations=True)
         return jsonify({'success': True, 'coordinates': coordinates})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
