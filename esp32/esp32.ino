@@ -247,10 +247,12 @@ void movePolar(float theta, float rho)
     else if (rho > 1.0) 
         rho = 1.0;
 
-    float rotSteps = theta * (rot_total_steps / (2.0 * M_PI));
-    float inOutSteps = rho * inOut_total_steps;
+    long rotSteps = (long)(theta * (rot_total_steps / (2.0f * M_PI)));
     float revolutions = theta / (2.0 * M_PI);
-    float offsetSteps = revolutions * rot_total_steps / gearRatio;
+    long offsetSteps = (long)(revolutions * (rot_total_steps / gearRatio));
+
+    // Now inOutSteps is always derived from the absolute rho, not incrementally
+    long inOutSteps = (long)(rho * inOut_total_steps);
 
     inOutSteps -= offsetSteps;
 
