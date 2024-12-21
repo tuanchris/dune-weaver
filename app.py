@@ -109,7 +109,7 @@ def run_theta_rho_file(file_path):
     global stop_requested
     stop_requested = False
 
-    coordinates = parse_theta_rho_file(file_path, True)
+    coordinates = parse_theta_rho_file(file_path, apply_transformations = False)
     if len(coordinates) < 2:
         print("Not enough coordinates for interpolation.")
         return
