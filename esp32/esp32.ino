@@ -42,7 +42,7 @@ bool isFirstCoordinates = true;
 float totalRevolutions = 0.0; // Tracks cumulative revolutions
 float maxSpeed = 550;
 float maxAcceleration = 5000;
-float interpolationResolution = 0.001;
+float interpolationResolution = 0.01;
 
 int modulus(int x, int y) {
   return x < 0 ? ((x + 1) % y) + y - 1 : x % y;
@@ -65,28 +65,6 @@ void setup()
     Serial.begin(115200);
     Serial.println("R");
     homing();
-}
-
-
-void resetTheta()
-{
-    // Reset angle and revolutions
-    currentTheta = 0.0;
-    totalRevolutions = 0.0;
-
-    // Update the stepper positions to match the current coordinates:
-    // rotStepper at 0 (corresponding to theta = 0)
-    rotStepper.setCurrentPosition(0);
-
-    // inOutStepper at currentRho * inOut_total_steps (no offset since theta=0)
-    long inOutPos = (long)(currentRho * inOut_total_steps);
-    inOutStepper.setCurrentPosition(inOutPos);
-
-    // Set the flag to handle the next coordinate as the "first" one
-    isFirstCoordinates = true;
-
-    // Notify Python about the reset
-    Serial.println("THETA_RESET");
 }
 
 void loop()
@@ -140,7 +118,6 @@ void loop()
 
         if (input == "RESET_THETA")
         {
-            resetTheta(); // Reset currentTheta
             Serial.println("THETA_RESET"); // Notify Python
             Serial.println("R");
             return;
@@ -189,21 +166,12 @@ void loop()
 
         for (int i = 0; i < bufferCount; i++)
         {
-            if (isFirstCoordinates)
-            {
-                movePolar(buffer[0][0], buffer[0][1]);
-                isFirstCoordinates = false; // Reset the flag after the first movement
-            }
-              else
-              {
-                // Use interpolation for subsequent movements
-                // movePolar(buffer[i][0], buffer[i][1]);
-                interpolatePath(
-                    startTheta, startRho,
-                    buffer[i][0], buffer[i][1],
-                    interpolationResolution
-                );
-              }
+ 
+            interpolatePath(
+                startTheta, startRho,
+                buffer[i][0], buffer[i][1],
+                interpolationResolution
+            );
             // Update the starting point for the next segment
             startTheta = buffer[i][0];
             startRho = buffer[i][1];
@@ -267,21 +235,17 @@ void movePolar(float theta, float rho)
 
 void interpolatePath(float startTheta, float startRho, float endTheta, float endRho, float stepSize)
 {
+    // Calculate the total distance in the polar coordinate system
     float distance = sqrt(pow(endTheta - startTheta, 2) + pow(endRho - startRho, 2));
-    int numSteps = max(1, (int)(distance / stepSize));
-
-    // Calculate the shortest angle difference
-    float angleDiff = endTheta - startTheta;
-    while (angleDiff > M_PI) angleDiff -= 2.0f * M_PI;
-    while (angleDiff < -M_PI) angleDiff += 2.0f * M_PI;
+    int numSteps = max(1, (int)(distance / stepSize)); // Ensure at least one step
 
     for (int step = 0; step <= numSteps; step++)
     {
-        float t = (float)step / numSteps;
-        
-        float interpolatedTheta = startTheta + t * angleDiff;
+        float t = (float)step / numSteps; // Interpolation factor (0 to 1)
+        float interpolatedTheta = startTheta + t * (endTheta - startTheta);
         float interpolatedRho = startRho + t * (endRho - startRho);
 
+        // Move to the interpolated theta-rho
         movePolar(interpolatedTheta, interpolatedRho);
     }
 }
