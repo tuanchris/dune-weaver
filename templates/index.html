@@ -50,6 +50,7 @@
                 <p id="first_coordinate">First Coordinate: Not available</p>
                 <p id="last_coordinate">Last Coordinate: Not available</p>
             </div>
+            
         </div>
 
         <!-- Right Column -->
@@ -73,6 +74,27 @@
                 <div class="button-group">
                     <button id="run_button" disabled>Run Selected File</button>
                     <button onclick="stopExecution()" class="delete-button">Stop</button>
+                </div>
+                <div class="section">
+                    <h2>Playlist Management</h2>
+                    <div>
+                        <label for="playlist_name">Playlist Name:</label>
+                        <input type="text" id="playlist_name" placeholder="Enter playlist name">
+                    </div>
+                    <div>
+                        <label for="selected_playlist">Select Existing Playlist:</label>
+                        <select id="selected_playlist" onchange="loadPlaylistFiles()">
+                            <option value="" disabled selected>Select a playlist</option>
+                        </select>
+                    </div>
+                    <ul id="selected_files_for_playlist">
+                        <!-- List of selected files for the playlist -->
+                    </ul>
+                    <div class="button-group">
+                        <button onclick="addSelectedFileToPlaylist()">Add Selected File</button>
+                        <button onclick="savePlaylist()">Save Playlist</button>
+                        <button onclick="deletePlaylist()">Delete Playlist</button>
+                    </div>
                 </div>
             </div>
             <div class="section">

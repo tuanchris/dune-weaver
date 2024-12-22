@@ -5,6 +5,7 @@ import time
 import threading
 import serial.tools.list_ports
 import math
+import json
 
 app = Flask(__name__)
 
@@ -17,6 +18,7 @@ os.makedirs(THETA_RHO_DIR, exist_ok=True)
 ser = None
 ser_port = None  # Global variable to store the serial port name
 stop_requested = False
+PLAYLISTS_FILE = 'playlists.json'
 
 
 def list_serial_ports():
@@ -165,6 +167,16 @@ def read_serial_responses():
         except Exception as e:
             print(f"Error reading from serial: {e}")
             break
+        
+def load_playlists():
+    """Load playlists from the file."""
+    with open(PLAYLISTS_FILE, 'r') as f:
+        return json.load(f)
+
+def save_playlists(playlists):
+    """Save playlists to the file."""
+    with open(PLAYLISTS_FILE, 'w') as f:
+        json.dump(playlists, f, indent=4)
 
 # Flask endpoints
 @app.route('/')
@@ -409,8 +421,94 @@ def set_speed():
         return jsonify({"success": True, "speed": speed})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+    
+@app.route('/playlists', methods=['GET'])
+def get_playlists():
+    """Get all playlists."""
+    return jsonify(load_playlists())
+
+@app.route('/playlists', methods=['POST'])
+def create_playlist():
+    """Create a new playlist."""
+    data = request.json
+    name = data.get('name')
+    tracks = data.get('tracks', [])
+
+    if not name:
+        return jsonify({'error': 'Playlist name is required'}), 400
+
+    playlists = load_playlists()
+    if name in playlists:
+        return jsonify({'error': 'Playlist already exists'}), 400
+
+    playlists[name] = {'tracks': tracks}
+    save_playlists(playlists)
+    return jsonify({'success': True, 'playlist': {name: playlists[name]}})
+
+@app.route('/playlists/<name>', methods=['PUT'])
+def modify_playlist(name):
+    """Modify an existing playlist."""
+    data = request.json
+    tracks = data.get('tracks')
+
+    playlists = load_playlists()
+    if name not in playlists:
+        return jsonify({'error': 'Playlist not found'}), 404
+
+    if tracks is not None:
+        playlists[name]['tracks'] = tracks
+
+    save_playlists(playlists)
+    return jsonify({'success': True, 'playlist': {name: playlists[name]}})
+
+@app.route('/playlists/<name>', methods=['DELETE'])
+def delete_playlist(name):
+    """Delete a playlist."""
+    playlists = load_playlists()
+    if name not in playlists:
+        return jsonify({'error': 'Playlist not found'}), 404
+
+    del playlists[name]
+    save_playlists(playlists)
+    return jsonify({'success': True})
+
+@app.route('/playlists/run', methods=['POST'])
+def run_playlist():
+    """Run a playlist with specified options."""
+    data = request.json
+    name = data.get('name')
+    options = data.get('options', {})
+    loop = options.get('loop', False)
+    shuffle = options.get('shuffle', False)
+    delay = options.get('delay', 0)  # Time between patterns in seconds
+
+    playlists = load_playlists()
+    if name not in playlists:
+        return jsonify({'error': 'Playlist not found'}), 404
+
+    tracks = playlists[name]['tracks']
+    if shuffle:
+        import random
+        random.shuffle(tracks)
+
+    def run_tracks():
+        while True:
+            for track in tracks:
+                run_theta_rho_file(os.path.join(THETA_RHO_DIR, track))
+                time.sleep(delay)
+
+            if not loop:
+                break
+
+    threading.Thread(target=run_tracks, daemon=True).start()
+    return jsonify({'success': True, 'message': 'Playlist execution started'})
 
 if __name__ == '__main__':
+    # Ensure the playlists file exists
+    if not os.path.exists(PLAYLISTS_FILE):
+        with open(PLAYLISTS_FILE, 'w') as f:
+            json.dump({}, f)
+
     # Start the thread for reading Arduino responses
     threading.Thread(target=read_serial_responses, daemon=True).start()
     
