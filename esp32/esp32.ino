@@ -16,10 +16,10 @@
 #define INOUT_PIN4 19
 
 
-#define rot_total_steps 13730
+#define rot_total_steps 12800
 #define inOut_total_steps 4642
 // #define inOut_total_steps 4660
-const float gearRatio = 100.0f / 15.0f;
+const float gearRatio = 100.0f / 16.0f;
 
 #define BUFFER_SIZE 10 // Maximum number of theta-rho pairs in a batch
 
@@ -42,7 +42,7 @@ bool isFirstCoordinates = true;
 float totalRevolutions = 0.0; // Tracks cumulative revolutions
 float maxSpeed = 550;
 float maxAcceleration = 5000;
-float interpolationResolution = 0.0004;
+float interpolationResolution = 0.001;
 
 int modulus(int x, int y) {
   return x < 0 ? ((x + 1) % y) + y - 1 : x % y;
