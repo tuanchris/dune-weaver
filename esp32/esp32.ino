@@ -42,7 +42,7 @@ bool isFirstCoordinates = true;
 float totalRevolutions = 0.0; // Tracks cumulative revolutions
 float maxSpeed = 550;
 float maxAcceleration = 5000;
-float interpolationResolution = 0.01;
+float interpolationResolution = 1;
 
 int modulus(int x, int y) {
   return x < 0 ? ((x + 1) % y) + y - 1 : x % y;
