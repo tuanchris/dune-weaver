@@ -86,7 +86,7 @@ def parse_theta_rho_file(file_path, apply_transformations=False):
 def send_coordinate_batch(ser, coordinates):
     """Send a batch of theta-rho pairs to the Arduino."""
     # print("Sending batch:", coordinates)
-    batch_str = ";".join(f"{theta:.3f},{rho:.3f}" for theta, rho in coordinates) + ";\n"
+    batch_str = ";".join(f"{theta:.5f},{rho:.5f}" for theta, rho in coordinates) + ";\n"
     ser.write(batch_str.encode())
 
 def send_command(command):
