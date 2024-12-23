@@ -19,7 +19,7 @@
 #define rot_total_steps 12800
 #define inOut_total_steps 4642
 // #define inOut_total_steps 4660
-const float gearRatio = 100.0f / 16.0f;
+const double gearRatio = 100.0f / 16.0f;
 
 #define BUFFER_SIZE 10 // Maximum number of theta-rho pairs in a batch
 
@@ -31,18 +31,18 @@ AccelStepper inOutStepper(AccelStepper::FULL4WIRE, INOUT_PIN1, INOUT_PIN3, INOUT
 MultiStepper multiStepper;
 
 // Buffer for storing theta-rho pairs
-float buffer[BUFFER_SIZE][2]; // Store theta, rho pairs
+double buffer[BUFFER_SIZE][2]; // Store theta, rho pairs
 int bufferCount = 0;          // Number of pairs in the buffer
 bool batchComplete = false;
 
 // Track the current position in polar coordinates
-float currentTheta = 0.0; // Current theta in radians
-float currentRho = 0.0;   // Current rho (0 to 1)
+double currentTheta = 0.0; // Current theta in radians
+double currentRho = 0.0;   // Current rho (0 to 1)
 bool isFirstCoordinates = true;
-float totalRevolutions = 0.0; // Tracks cumulative revolutions
-float maxSpeed = 550;
-float maxAcceleration = 5000;
-float interpolationResolution = 1;
+double totalRevolutions = 0.0; // Tracks cumulative revolutions
+double maxSpeed = 550;
+double maxAcceleration = 5000;
+double interpolationResolution = 1;
 
 int modulus(int x, int y) {
   return x < 0 ? ((x + 1) % y) + y - 1 : x % y;
@@ -89,7 +89,7 @@ void loop()
             if (spaceIndex != -1)
             {
                 String speedStr = input.substring(spaceIndex + 1);
-                float speed = speedStr.toFloat();
+                double speed = speedStr.toDouble();
 
                 if (speed > 0) // Ensure valid speed
                 {
@@ -118,6 +118,9 @@ void loop()
 
         if (input == "RESET_THETA")
         {
+            isFirstCoordinates = true;
+            currentTheta = 0;
+            currentRho = 0;
             Serial.println("THETA_RESET"); // Notify Python
             Serial.println("R");
             return;
@@ -141,8 +144,8 @@ void loop()
                 int commaIndex = pair.indexOf(',');
 
                 // Parse theta and rho values
-                float theta = pair.substring(0, commaIndex).toFloat(); // Theta in radians
-                float rho = pair.substring(commaIndex + 1).toFloat();  // Rho (0 to 1)
+                double theta = pair.substring(0, commaIndex).toDouble(); // Theta in radians
+                double rho = pair.substring(commaIndex + 1).toDouble();  // Rho (0 to 1)
 
                 buffer[pairIndex][0] = theta;
                 buffer[pairIndex][1] = rho;
@@ -161,8 +164,13 @@ void loop()
         rotStepper.enableOutputs();
         inOutStepper.enableOutputs();
         // Start interpolation from the current position
-        float startTheta = currentTheta;
-        float startRho = currentRho;
+        double startTheta = currentTheta;
+        double startRho = currentRho;
+
+        if (isFirstCoordinates) {
+          homing();
+          isFirstCoordinates = false;
+        }
 
         for (int i = 0; i < bufferCount; i++)
         {
@@ -208,7 +216,7 @@ void homing()
 }
 
 
-void movePolar(float theta, float rho)
+void movePolar(double theta, double rho)
 {
     if (rho < 0.0) 
         rho = 0.0;
@@ -216,7 +224,7 @@ void movePolar(float theta, float rho)
         rho = 1.0;
 
     long rotSteps = (long)(theta * (rot_total_steps / (2.0f * M_PI)));
-    float revolutions = theta / (2.0 * M_PI);
+    double revolutions = theta / (2.0 * M_PI);
     long offsetSteps = (long)(revolutions * (rot_total_steps / gearRatio));
 
     // Now inOutSteps is always derived from the absolute rho, not incrementally
@@ -233,17 +241,17 @@ void movePolar(float theta, float rho)
     currentRho = rho;
 }
 
-void interpolatePath(float startTheta, float startRho, float endTheta, float endRho, float stepSize)
+void interpolatePath(double startTheta, double startRho, double endTheta, double endRho, double stepSize)
 {
     // Calculate the total distance in the polar coordinate system
-    float distance = sqrt(pow(endTheta - startTheta, 2) + pow(endRho - startRho, 2));
-    int numSteps = max(1, (int)(distance / stepSize)); // Ensure at least one step
+    double distance = sqrt(pow(endTheta - startTheta, 2) + pow(endRho - startRho, 2));
+    long numSteps = max(1, (int)(distance / stepSize)); // Ensure at least one step
 
-    for (int step = 0; step <= numSteps; step++)
+    for (long step = 0; step <= numSteps; step++)
     {
-        float t = (float)step / numSteps; // Interpolation factor (0 to 1)
-        float interpolatedTheta = startTheta + t * (endTheta - startTheta);
-        float interpolatedRho = startRho + t * (endRho - startRho);
+        double t = (double)step / numSteps; // Interpolation factor (0 to 1)
+        double interpolatedTheta = startTheta + t * (endTheta - startTheta);
+        double interpolatedRho = startRho + t * (endRho - startRho);
 
         // Move to the interpolated theta-rho
         movePolar(interpolatedTheta, interpolatedRho);
