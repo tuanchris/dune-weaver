@@ -17,7 +17,7 @@ os.makedirs(THETA_RHO_DIR, exist_ok=True)
 ser = None
 ser_port = None  # Global variable to store the serial port name
 stop_requested = False
-
+serial_lock = threading.Lock()
 
 def list_serial_ports():
     """Return a list of available serial ports."""
@@ -27,11 +27,12 @@ def list_serial_ports():
 def connect_to_serial(port, baudrate=115200):
     """Connect to the specified serial port."""
     global ser, ser_port
-    if ser and ser.is_open:
-        ser.close()
-    ser = serial.Serial(port, baudrate)
-    ser_port = port  # Store the connected port globally
-    time.sleep(2)  # Allow time for the connection to establish
+    with serial_lock:
+        if ser and ser.is_open:
+            ser.close()
+        ser = serial.Serial(port, baudrate)
+        ser_port = port  # Store the connected port globally
+        time.sleep(2)  # Allow time for the connection to establish
 
 def disconnect_serial():
     """Disconnect the current serial connection."""
@@ -96,12 +97,13 @@ def send_command(command):
     
     # Wait for "DONE" acknowledgment from Arduino
     while True:
-        if ser.in_waiting > 0:
-            response = ser.readline().decode().strip()
-            print(f"Arduino response: {response}")
-            if response == "DONE":
-                print("Command execution completed.")
-                break
+        with serial_lock:
+            if ser.in_waiting > 0:
+                response = ser.readline().decode().strip()
+                print(f"Arduino response: {response}")
+                if response == "DONE":
+                    print("Command execution completed.")
+                    break
         # time.sleep(0.5)  # Small delay to avoid busy waiting
 
 def run_theta_rho_file(file_path):
@@ -115,7 +117,7 @@ def run_theta_rho_file(file_path):
         return
 
     # Optimize batch size for smoother execution
-    batch_size = 1  # Smaller batches may smooth movement further
+    batch_size = 10  # Smaller batches may smooth movement further
     for i in range(0, len(coordinates), batch_size):
         # Check stop_requested flag after sending the batch
         if stop_requested:
@@ -127,13 +129,14 @@ def run_theta_rho_file(file_path):
             continue
         # Wait until Arduino is READY before sending the batch
         while True:
-            if ser.in_waiting > 0:
-                response = ser.readline().decode().strip()
-                if response == "R":
-                    send_coordinate_batch(ser, batch)
-                    break
-                else:
-                    print(f"Arduino response: {response}")
+            with serial_lock:
+                if ser.in_waiting > 0:
+                    response = ser.readline().decode().strip()
+                    if response == "R":
+                        send_coordinate_batch(ser, batch)
+                        break
+                    else:
+                        print(f"Arduino response: {response}")
                 
     # Reset theta after execution or stopping
     reset_theta()
@@ -142,29 +145,14 @@ def run_theta_rho_file(file_path):
 def reset_theta():
     ser.write("RESET_THETA\n".encode())
     while True:
-        if ser.in_waiting > 0:
-            response = ser.readline().decode().strip()
-            print(f"Arduino response: {response}")
-            if response == "THETA_RESET":
-                print("Theta successfully reset.")
-                break
-        time.sleep(0.5)  # Small delay to avoid busy waiting
-        
-def read_serial_responses():
-    """Continuously read and print all responses from the Arduino."""
-    global ser
-    if ser is None or not ser.is_open:
-        print("Serial connection not established.")
-        return
-    
-    while True:
-        try:
+        with serial_lock:
             if ser.in_waiting > 0:
                 response = ser.readline().decode().strip()
                 print(f"Arduino response: {response}")
-        except Exception as e:
-            print(f"Error reading from serial: {e}")
-            break
+                if response == "THETA_RESET":
+                    print("Theta successfully reset.")
+                    break
+        time.sleep(0.5)  # Small delay to avoid busy waiting
 
 # Flask endpoints
 @app.route('/')
@@ -411,7 +399,5 @@ def set_speed():
         return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
-    # Start the thread for reading Arduino responses
-    threading.Thread(target=read_serial_responses, daemon=True).start()
-    
+    # Start the thread for reading Arduino responses    
     app.run(debug=True, host='0.0.0.0', port=8080)
