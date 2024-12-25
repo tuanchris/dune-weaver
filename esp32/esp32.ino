@@ -40,7 +40,7 @@ double currentTheta = 0.0; // Current theta in radians
 double currentRho = 0.0;   // Current rho (0 to 1)
 bool isFirstCoordinates = true;
 double totalRevolutions = 0.0; // Tracks cumulative revolutions
-double maxSpeed = 550;
+double maxSpeed = 500;
 double maxAcceleration = 5000;
 double subSteps = 1;
 
