@@ -28,35 +28,35 @@ def list_serial_ports():
 def connect_to_serial(port=None, baudrate=115200, retry_interval=10, max_retries=5):
     """Automatically connect to the first available serial port or a specified port."""
     global ser, ser_port
-    with serial_lock:
-        if ser and ser.is_open:
-            ser.close()
-        retries = 0
+    retries = 0
 
-        while retries < max_retries:
-            try:
-                if port is None:
-                    ports = list_serial_ports()
-                    if not ports:
-                        print("No serial ports available. Retrying...")
-                        time.sleep(retry_interval)
-                        retries += 1
-                        continue
-                    port = ports[0]  # Auto-select the first available port
+    while retries < max_retries:
+        try:
+            if port is None:
+                ports = list_serial_ports()
+                if not ports:
+                    print("No serial ports available. Retrying...")
+                    time.sleep(retry_interval)
+                    retries += 1
+                    continue
+                port = ports[0]  # Auto-select the first available port
 
+            with serial_lock:
+                if ser and ser.is_open:
+                    ser.close()
                 ser = serial.Serial(port, baudrate)
                 ser_port = port  # Store the connected port globally
-                print(f"Connected to serial port: {port}")
-                time.sleep(2)  # Allow time for the connection to establish
-                return True  # Successfully connected
-            except serial.SerialException as e:
-                print(f"Failed to connect to serial port {port}: {e}")
-                port = None  # Reset the port to try the next available one
-                retries += 1
-                time.sleep(retry_interval)
+            print(f"Connected to serial port: {port}")
+            time.sleep(2)  # Allow time for the connection to establish
+            return True  # Successfully connected
+        except serial.SerialException as e:
+            print(f"Failed to connect to serial port {port}: {e}")
+            port = None  # Reset the port to try the next available one
+            retries += 1
+            time.sleep(retry_interval)
 
-        print("Max retries reached. Could not connect to a serial port.")
-        return False
+    print("Max retries reached. Could not connect to a serial port.")
+    return False
 
 def trigger_default_pattern():
     """Run the default pattern automatically after connecting to the serial port."""
@@ -133,7 +133,7 @@ def send_command(command):
     """Send a single command to the Arduino."""
     ser.write(f"{command}\n".encode())
     print(f"Sent: {command}")
-    
+
     # Wait for "DONE" acknowledgment from Arduino
     while True:
         with serial_lock:
@@ -143,14 +143,13 @@ def send_command(command):
                 if response == "DONE":
                     print("Command execution completed.")
                     break
-        # time.sleep(0.5)  # Small delay to avoid busy waiting
 
 def run_theta_rho_file(file_path):
     """Run a theta-rho file by sending data in optimized batches."""
     global stop_requested
     stop_requested = False
 
-    coordinates = parse_theta_rho_file(file_path, apply_transformations = False)
+    coordinates = parse_theta_rho_file(file_path, apply_transformations=False)
     if len(coordinates) < 2:
         print("Not enough coordinates for interpolation.")
         return
@@ -176,11 +175,11 @@ def run_theta_rho_file(file_path):
                         break
                     else:
                         print(f"Arduino response: {response}")
-                
+
     # Reset theta after execution or stopping
     reset_theta()
     ser.write("FINISHED\n".encode())
-                
+
 def reset_theta():
     """Reset theta on the Arduino."""
     ser.write("RESET_THETA\n".encode())
