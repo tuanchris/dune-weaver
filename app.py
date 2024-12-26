@@ -28,10 +28,10 @@ def list_serial_ports():
 def connect_to_serial(port=None, baudrate=115200, retry_interval=10, max_retries=5):
     """Automatically connect to the first available serial port or a specified port."""
     global ser, ser_port
-     with serial_lock:
-         if ser and ser.is_open:
-             ser.close()
-         retries = 0
+    with serial_lock:
+        if ser and ser.is_open:
+            ser.close()
+        retries = 0
 
         while retries < max_retries:
             try:
