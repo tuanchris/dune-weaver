@@ -42,7 +42,7 @@ bool isFirstCoordinates = true;
 double totalRevolutions = 0.0; // Tracks cumulative revolutions
 double maxSpeed = 550;
 double maxAcceleration = 5000;
-double interpolationResolution = 1;
+double subSteps = 1;
 
 int modulus(int x, int y) {
   return x < 0 ? ((x + 1) % y) + y - 1 : x % y;
@@ -178,7 +178,7 @@ void loop()
             interpolatePath(
                 startTheta, startRho,
                 buffer[i][0], buffer[i][1],
-                interpolationResolution
+                subSteps
             );
             // Update the starting point for the next segment
             startTheta = buffer[i][0];
@@ -199,10 +199,11 @@ void homing()
     inOutStepper.enableOutputs();
     // Move inOutStepper inward for homing
     inOutStepper.setSpeed(-maxSpeed); // Adjust speed for homing
+    long currentInOut = inOutStepper.currentPosition();
     while (true)
     {
         inOutStepper.runSpeed();
-        if (inOutStepper.currentPosition() <= -inOut_total_steps * 1.1)
+        if (inOutStepper.currentPosition() <= currentInOut - inOut_total_steps * 1.1)
         { // Adjust distance for homing
             break;
         }
@@ -223,13 +224,13 @@ void movePolar(double theta, double rho)
     else if (rho > 1.0) 
         rho = 1.0;
 
-    long rotSteps = (long)(theta * (rot_total_steps / (2.0f * M_PI)));
+    long rotSteps = lround(theta * (rot_total_steps / (2.0f * M_PI)));
     double revolutions = theta / (2.0 * M_PI);
-    long offsetSteps = (long)(revolutions * (rot_total_steps / gearRatio));
+    long offsetSteps = lround(revolutions * (rot_total_steps / gearRatio));
 
     // Now inOutSteps is always derived from the absolute rho, not incrementally
-    long inOutSteps = (long)(rho * inOut_total_steps);
-
+    long inOutSteps = lround(rho * inOut_total_steps);
+    
     inOutSteps -= offsetSteps;
 
     long targetPositions[2] = {rotSteps, inOutSteps};
@@ -241,12 +242,12 @@ void movePolar(double theta, double rho)
     currentRho = rho;
 }
 
-void interpolatePath(double startTheta, double startRho, double endTheta, double endRho, double stepSize)
+void interpolatePath(double startTheta, double startRho, double endTheta, double endRho, double subSteps)
 {
     // Calculate the total distance in the polar coordinate system
     double distance = sqrt(pow(endTheta - startTheta, 2) + pow(endRho - startRho, 2));
-    long numSteps = max(1, (int)(distance / stepSize)); // Ensure at least one step
-
+    long numSteps = max(1, (int)(distance / subSteps)); // Ensure at least one step
+    
     for (long step = 0; step <= numSteps; step++)
     {
         double t = (double)step / numSteps; // Interpolation factor (0 to 1)
