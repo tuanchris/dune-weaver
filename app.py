@@ -149,7 +149,7 @@ def run_theta_rho_file(file_path):
     global stop_requested
     stop_requested = False
 
-    coordinates = parse_theta_rho_file(file_path, apply_transformations=False)
+    coordinates = parse_theta_rho_file(file_path, apply_transformations = False)
     if len(coordinates) < 2:
         print("Not enough coordinates for interpolation.")
         return
@@ -285,7 +285,6 @@ def run_theta_rho():
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-    
 
 @app.route('/stop_execution', methods=['POST'])
 def stop_execution():
@@ -343,7 +342,7 @@ def move_to_center():
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-    
+
 @app.route('/move_to_perimeter', methods=['POST'])
 def move_to_perimeter():
     """Move the sand table to the perimeter position."""
@@ -357,11 +356,11 @@ def move_to_perimeter():
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-    
+
 @app.route('/preview_thr', methods=['POST'])
 def preview_thr():
     file_name = request.json.get('file_name')
-    
+
     if not file_name:
         return jsonify({'error': 'No file name provided'}), 400
 
@@ -439,7 +438,7 @@ def serial_status():
         'connected': ser.is_open if ser else False,
         'port': ser_port  # Include the port name
     })
-    
+
 @app.route('/set_speed', methods=['POST'])
 def set_speed():
     """Set the speed for the Arduino."""
@@ -466,9 +465,9 @@ def set_speed():
         return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
-   # Auto-connect to serial and trigger the default pattern in a separate thread
+    # Auto-connect to serial and trigger the default pattern in a separate thread
     if connect_to_serial():
         threading.Thread(target=trigger_default_pattern, daemon=True).start()
 
-    # Start the thread for reading Arduino responses
+    # Start the Flask app
     app.run(debug=True, host='0.0.0.0', port=8080)
