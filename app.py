@@ -8,12 +8,13 @@ import math
 
 app = Flask(__name__)
 
-# Theta-rho directory
+# Configuration
 THETA_RHO_DIR = './patterns'
+DEFAULT_PATTERN = 'custom_patterns/default_pattern.thr'
 IGNORE_PORTS = ['/dev/cu.debug-console', '/dev/cu.Bluetooth-Incoming-Port']
 os.makedirs(THETA_RHO_DIR, exist_ok=True)
 
-# Serial connection (default None, will be set by user)
+# Serial connection (First available will be selected by default)
 ser = None
 ser_port = None  # Global variable to store the serial port name
 stop_requested = False
@@ -24,15 +25,53 @@ def list_serial_ports():
     ports = serial.tools.list_ports.comports()
     return [port.device for port in ports if port.device not in IGNORE_PORTS]
 
-def connect_to_serial(port, baudrate=115200):
-    """Connect to the specified serial port."""
+def connect_to_serial(port=None, baudrate=115200, retry_interval=10, max_retries=5):
+    """Automatically connect to the first available serial port or a specified port."""
     global ser, ser_port
-    with serial_lock:
-        if ser and ser.is_open:
-            ser.close()
-        ser = serial.Serial(port, baudrate)
-        ser_port = port  # Store the connected port globally
-        time.sleep(2)  # Allow time for the connection to establish
+    retries = 0
+
+    while retries < max_retries:
+        try:
+            if port is None:
+                ports = list_serial_ports()
+                if not ports:
+                    print("No serial ports available. Retrying...")
+                    time.sleep(retry_interval)
+                    retries += 1
+                    continue
+                port = ports[0]  # Auto-select the first available port
+
+            with serial_lock:
+                if ser and ser.is_open:
+                    ser.close()
+                ser = serial.Serial(port, baudrate)
+                ser_port = port  # Store the connected port globally
+            print(f"Connected to serial port: {port}")
+            time.sleep(2)  # Allow time for the connection to establish
+            return True  # Successfully connected
+        except serial.SerialException as e:
+            print(f"Failed to connect to serial port {port}: {e}")
+            port = None  # Reset the port to try the next available one
+            retries += 1
+            time.sleep(retry_interval)
+
+    print("Max retries reached. Could not connect to a serial port.")
+    return False
+
+def trigger_default_pattern():
+    """Run the default pattern automatically after connecting to the serial port."""
+    if not ser or not ser.is_open:
+        print("Serial connection not established. Cannot trigger default pattern.")
+        return
+
+    # Check if the default pattern file exists
+    file_path = os.path.join(THETA_RHO_DIR, DEFAULT_PATTERN)
+    if not os.path.exists(file_path):
+        print(f"Default pattern file not found: {file_path}")
+        return
+
+    print(f"Triggering default pattern: {DEFAULT_PATTERN}")
+    threading.Thread(target=run_theta_rho_file, args=(file_path,)).start()
 
 def disconnect_serial():
     """Disconnect the current serial connection."""
@@ -81,7 +120,7 @@ def send_command(command):
     """Send a single command to the Arduino."""
     ser.write(f"{command}\n".encode())
     print(f"Sent: {command}")
-    
+
     # Wait for "DONE" acknowledgment from Arduino
     while True:
         with serial_lock:
@@ -91,7 +130,6 @@ def send_command(command):
                 if response == "DONE":
                     print("Command execution completed.")
                     break
-        # time.sleep(0.5)  # Small delay to avoid busy waiting
 
 def run_theta_rho_file(file_path):
     """Run a theta-rho file by sending data in optimized batches."""
@@ -124,12 +162,13 @@ def run_theta_rho_file(file_path):
                         break
                     else:
                         print(f"Arduino response: {response}")
-                
+
     # Reset theta after execution or stopping
     reset_theta()
     ser.write("FINISHED\n".encode())
-                
+
 def reset_theta():
+    """Reset theta on the Arduino."""
     ser.write("RESET_THETA\n".encode())
     while True:
         with serial_lock:
@@ -141,7 +180,7 @@ def reset_theta():
                     break
         time.sleep(0.5)  # Small delay to avoid busy waiting
 
-# Flask endpoints
+# Flask API Endpoints
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -233,7 +272,6 @@ def run_theta_rho():
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-    
 
 @app.route('/stop_execution', methods=['POST'])
 def stop_execution():
@@ -291,7 +329,7 @@ def move_to_center():
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-    
+
 @app.route('/move_to_perimeter', methods=['POST'])
 def move_to_perimeter():
     """Move the sand table to the perimeter position."""
@@ -305,11 +343,11 @@ def move_to_perimeter():
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-    
+
 @app.route('/preview_thr', methods=['POST'])
 def preview_thr():
     file_name = request.json.get('file_name')
-    
+
     if not file_name:
         return jsonify({'error': 'No file name provided'}), 400
 
@@ -323,7 +361,35 @@ def preview_thr():
         return jsonify({'success': True, 'coordinates': coordinates})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-    
+
+@app.route('/set_default_pattern', methods=['POST'])
+def set_default_pattern():
+    """Set a selected file as the default pattern."""
+    data = request.json
+    file_name = data.get('file_name')
+
+    if not file_name or not file_name.endswith('.thr'):
+        return jsonify({"success": False, "error": "Invalid file name"}), 400
+
+    # Paths for source and target files
+    source_path = os.path.join(THETA_RHO_DIR, file_name)
+    target_path = os.path.join(THETA_RHO_DIR, DEFAULT_PATTERN)
+
+    if not os.path.exists(source_path):
+        return jsonify({"success": False, "error": "File not found"}), 404
+
+    try:
+        # Ensure the target directory exists
+        target_dir = os.path.dirname(target_path)
+        os.makedirs(target_dir, exist_ok=True)
+
+        # Copy the file to the default pattern location
+        import shutil
+        shutil.copyfile(source_path, target_path)
+        return jsonify({"success": True, "message": f"{file_name} set as default pattern."})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/send_coordinate', methods=['POST'])
 def send_coordinate():
     """Send a single (theta, rho) coordinate to the Arduino."""
@@ -359,7 +425,7 @@ def serial_status():
         'connected': ser.is_open if ser else False,
         'port': ser_port  # Include the port name
     })
-    
+
 @app.route('/set_speed', methods=['POST'])
 def set_speed():
     """Set the speed for the Arduino."""
@@ -386,5 +452,9 @@ def set_speed():
         return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
-    # Start the thread for reading Arduino responses    
+    # Auto-connect to serial and trigger the default pattern in a separate thread
+    if connect_to_serial():
+        threading.Thread(target=trigger_default_pattern, daemon=True).start()
+
+    # Start the Flask app
     app.run(debug=True, host='0.0.0.0', port=8080)

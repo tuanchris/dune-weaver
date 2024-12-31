@@ -14,16 +14,16 @@
         <div class="left-column">
             <div class="section">
                 <h2>Serial Connection</h2>
-                <label for="serial_ports">Available Ports:</label>
-                <select id="serial_ports"></select>
-                <div class="button-group">
+                <div id="serial_status_container">Status: <span id="serial_status" class="status"> Not connected</span></div>
+                <div id="serial_ports_container">
+                    <label for="serial_ports">Available Ports:</label>
+                    <select id="serial_ports"></select>
                     <button onclick="connectSerial()">Connect</button>
+                </div>
+                <div id="serial_ports_buttons" class="button-group">
                     <button onclick="disconnectSerial()">Disconnect</button>
                     <button onclick="restartSerial()">Restart</button>
                 </div>
-                <p id="serial_status" class="status">Status: Not connected</p>
-                <input type="number" id="speed_input" placeholder="Set speed" min="1" step="1">
-                <button onclick="changeSpeed()">Set Speed</button>
             </div>
 
             <div class="section">
@@ -32,21 +32,26 @@
                     <button onclick="sendHomeCommand()">Home Device</button>
                     <button onclick="moveToCenter()">Move to Center</button>
                     <button onclick="moveToPerimeter()">Move to Perimeter</button>
-                </br>
                     <button onclick="runClearIn()">Clear from In</button>
                     <button onclick="runClearOut()">Clear from Out</button>
-                    <div class="coordinate-input">
-                        <label for="theta_input">θ:</label>
-                        <input type="number" id="theta_input" placeholder="Theta">
-                        <label for="rho_input">ρ:</label>
-                        <input type="number" id="rho_input" placeholder="Rho">
-                        <button onclick="sendCoordinate()">Send</button>
-                    </div>
+                    <button onclick="stopExecution()" class="delete-button">Stop</button>
+                </div>
+                <div class="coordinate-input button-group">
+                    <label for="theta_input">θ:</label>
+                    <input type="number" id="theta_input" placeholder="Theta">
+                    <label for="rho_input">ρ:</label>
+                    <input type="number" id="rho_input" placeholder="Rho">
+                    <button class="small-button" onclick="sendCoordinate()">Send to coordinate</button>
+                </div>
+                <div class="button-group">
+                    <label for="speed_input">Speed:</label>
+                    <input type="number" id="speed_input" placeholder="1-5000" min="1" step="1" max="5000">
+                    <button class="small-button"  onclick="changeSpeed()">Set Speed</button>
                 </div>
             </div>
             <div class="section">
                 <h2>Preview</h2>
-                <canvas id="patternPreviewCanvas" style="width: 100%; height: 100%;"></canvas>
+                <canvas id="patternPreviewCanvas" style="width: 100%;"></canvas>
                 <p id="first_coordinate">First Coordinate: Not available</p>
                 <p id="last_coordinate">Last Coordinate: Not available</p>
             </div>
@@ -71,8 +76,8 @@
                     </label>
                 </div>
                 <div class="button-group">
-                    <button id="run_button" disabled>Run Selected File</button>
-                    <button onclick="stopExecution()" class="delete-button">Stop</button>
+                    <button id="run_button" disabled>Run Selected Pattern</button>
+                    <button id="set_default_button" onclick="setAsDefaultPattern()" disabled>Set as Default Pattern</button>
                 </div>
             </div>
             <div class="section">
@@ -85,14 +90,24 @@
                     </div>
                 </div>
             </div>
-            </div>
         </div>
-    </div>
 
-    <div id="status_log">
-        <h2>Status Log</h2>
-        <!-- Messages will be appended here -->
-    </div>
+        <div class="footer">
+            <div id="github">
+                <span>Help us improve! <a href="https://github.com/tuanchris/dune-weaver/pulls" target="_blank">Submit a Pull Request</a> or <a href="https://github.com/tuanchris/dune-weaver/issues/new" target="_blank">Report a Bug</a>.</span>
+                <a href="https://github.com/tuanchris/dune-weaver/issues" target="_blank">
+                    <img src="https://img.shields.io/github/issues/tuanchris/dune-weaver?style=flat-square" alt="GitHub Issues">
+                </a>
+            </div>
+
+            <button id="debug_button" class="small-button" onclick="toggleDebugLog()">
+                Show Debug log
+            </button>
+        </div>
+
+        <div id="status_log">
+            <!-- Messages will be appended here -->
+        </div>
 
     <script>
         let selectedFile = null;
@@ -105,41 +120,46 @@
             log.scrollTop = log.scrollHeight; // Keep log scrolled to the bottom
         }
 
-        async function loadThetaRhoFiles() {
-            logMessage('Loading Theta-Rho files...');
-            const response = await fetch('/list_theta_rho_files');
-            const files = await response.json();
-            const ul = document.getElementById('theta_rho_files');
-            ul.innerHTML = ''; // Clear current list
-
-            files.forEach(file => {
-                const li = document.createElement('li');
-                li.textContent = file;
-
-                // Highlight the selected file when clicked
-                li.onclick = () => selectFile(file, li);
-
-                ul.appendChild(li);
-            });
-
-            logMessage('Theta-Rho files loaded successfully.');
-        }
-
         async function selectFile(file, listItem) {
             selectedFile = file;
-        
+
             // Highlight the selected file
             document.querySelectorAll('#theta_rho_files li').forEach(li => li.classList.remove('selected'));
             listItem.classList.add('selected');
-        
+
             // Enable buttons
             document.getElementById('run_button').disabled = false;
             document.getElementById('delete_selected_button').disabled = false;
-        
+
+            // Enable "Set as Default Pattern" button
+            document.getElementById('set_default_button').disabled = false;
+
             logMessage(`Selected file: ${file}`);
-        
+
             // Fetch and preview the selected file
             await previewPattern(file);
+        }
+
+        async function setAsDefaultPattern() {
+            if (!selectedFile) {
+                logMessage("No file selected to set as default.");
+                return;
+            }
+
+            const response = await fetch('/set_default_pattern', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_name: selectedFile })
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                logMessage(result.message);
+                // Reload files to reflect the change
+                await loadThetaRhoFiles();
+            } else {
+                logMessage(`Failed to set default pattern: ${result.error}`);
+            }
         }
 
         async function uploadThetaRho() {
@@ -205,17 +225,17 @@
                 logMessage("No file selected to run.");
                 return;
             }
-        
+
             // Get the selected pre-execution action
             const preExecutionAction = document.querySelector('input[name="pre_execution"]:checked').value;
-        
+
             logMessage(`Running file: ${selectedFile} with pre-execution action: ${preExecutionAction}...`);
             const response = await fetch('/run_theta_rho', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ file_name: selectedFile, pre_execution: preExecutionAction })
             });
-        
+
             const result = await response.json();
             if (result.success) {
                 logMessage(`File running: ${selectedFile}`);
@@ -258,8 +278,9 @@
             });
             const result = await response.json();
             if (result.success) {
-                document.getElementById('serial_status').textContent = `Status: Connected to ${port}`;
                 logMessage(`Connected to serial port: ${port}`);
+                // Refresh the status
+                await checkSerialStatus();
             } else {
                 logMessage(`Error connecting to serial port: ${result.error}`);
             }
@@ -269,8 +290,9 @@
             const response = await fetch('/disconnect_serial', { method: 'POST' });
             const result = await response.json();
             if (result.success) {
-                document.getElementById('serial_status').textContent = 'Status: Disconnected';
                 logMessage('Serial port disconnected.');
+                // Refresh the status
+                await checkSerialStatus();
             } else {
                 logMessage(`Error disconnecting: ${result.error}`);
             }
@@ -285,12 +307,15 @@
             });
             const result = await response.json();
             if (result.success) {
-                document.getElementById('serial_status').textContent = `Status: Restarted connection to ${port}`;
+                document.getElementById('serial_status').textContent = `Restarted connection to ${port}`;
                 logMessage('Serial connection restarted.');
+
+                // No need to change visibility for restart
             } else {
                 logMessage(`Error restarting serial connection: ${result.error}`);
             }
         }
+
         async function sendHomeCommand() {
             const response = await fetch('/send_home', { method: 'POST' });
             const result = await response.json();
@@ -320,14 +345,48 @@
         }
 
         let allFiles = []; // Store all files for filtering
+        const defaultPatternFile = 'custom_patterns/default_pattern.thr';
 
         async function loadThetaRhoFiles() {
             logMessage('Loading Theta-Rho files...');
             const response = await fetch('/list_theta_rho_files');
-            const files = await response.json();
-            allFiles = files; // Store the full list of files
-            displayFiles(allFiles); // Initially display all files
+            let files = await response.json();
+
+            // Ensure the default pattern is included only if it exists
+            if (!files.includes(defaultPatternFile)) {
+                logMessage(`Default pattern file does not exist: ${defaultPatternFile}`);
+            } else {
+                logMessage(`Default pattern file exists: ${defaultPatternFile}`);
+            }
+
+            // Filter only .thr files
+            files = files.filter(file => file.endsWith('.thr'));
+
+            // Separate files into categories
+            const customPatternsFiles = files.filter(file => file.startsWith('custom_patterns/') && file !== defaultPatternFile);
+            const otherFiles = files.filter(file => !file.startsWith('custom_patterns/'));
+
+            // Sort the files
+            const sortedFiles = [
+                ...(files.includes(defaultPatternFile) ? [defaultPatternFile] : []), // Add default pattern if it exists
+                ...customPatternsFiles.sort(), // Custom patterns next
+                ...otherFiles.sort() // Remaining files sorted alphabetically
+            ];
+
+            allFiles = sortedFiles; // Store the sorted list of files
+            displayFiles(allFiles); // Display the sorted files
+
             logMessage('Theta-Rho files loaded successfully.');
+
+            // Automatically preview the default pattern file if it exists
+            if (files.includes(defaultPatternFile)) {
+                const defaultFileElement = Array.from(document.getElementById('theta_rho_files').children)
+                    .find(li => li.textContent === defaultPatternFile);
+
+                if (defaultFileElement) {
+                    selectFile(defaultPatternFile, defaultFileElement);
+                }
+            }
         }
 
         function displayFiles(files) {
@@ -361,7 +420,7 @@
                 logMessage(`Failed to move to center: ${result.error}`);
             }
         }
-        
+
         async function moveToPerimeter() {
             logMessage('Moving to perimeter...');
             const response = await fetch('/move_to_perimeter', { method: 'POST' });
@@ -376,19 +435,19 @@
         async function sendCoordinate() {
             const theta = parseFloat(document.getElementById('theta_input').value);
             const rho = parseFloat(document.getElementById('rho_input').value);
-        
+
             if (isNaN(theta) || isNaN(rho)) {
                 logMessage('Invalid input: θ and ρ must be numbers.');
                 return;
             }
-        
+
             logMessage(`Sending coordinate: θ=${theta}, ρ=${rho}...`);
             const response = await fetch('/send_coordinate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ theta, rho })
             });
-        
+
             const result = await response.json();
             if (result.success) {
                 logMessage(`Coordinate executed successfully: θ=${theta}, ρ=${rho}`);
@@ -404,11 +463,11 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ file_name: fileName })
             });
-        
+
             const result = await response.json();
             if (result.success) {
                 const coordinates = result.coordinates;
-        
+
                 // Update coordinates display
                 if (coordinates.length > 0) {
                     const firstCoord = coordinates[0];
@@ -419,7 +478,7 @@
                     document.getElementById('first_coordinate').textContent = 'First Coordinate: Not available';
                     document.getElementById('last_coordinate').textContent = 'Last Coordinate: Not available';
                 }
-        
+
                 renderPattern(coordinates);
             } else {
                 logMessage(`Failed to fetch preview for file: ${result.error}`);
@@ -428,24 +487,24 @@
                 document.getElementById('last_coordinate').textContent = 'Last Coordinate: Not available';
             }
         }
-        
+
         function renderPattern(coordinates) {
             const canvas = document.getElementById('patternPreviewCanvas');
             const ctx = canvas.getContext('2d');
-        
+
             // Make canvas full screen
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-        
+
             // Clear the canvas
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
+
             // Convert polar to Cartesian and draw the pattern
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
             const maxRho = Math.max(...coordinates.map(coord => coord[1]));
             const scale = Math.min(canvas.width, canvas.height) / (2 * maxRho); // Scale to fit within the screen
-        
+
             ctx.beginPath();
             coordinates.forEach(([theta, rho], index) => {
                 const x = centerX + rho * Math.cos(theta) * scale;
@@ -461,37 +520,75 @@
             logMessage('Pattern preview rendered at full screen.');
         }
 
+        function toggleDebugLog() {
+            const statusLog = document.getElementById('status_log');
+            const debugButton = document.getElementById('debug_button');
+
+            if (statusLog.style.display === 'block') {
+                statusLog.style.display = 'none';
+                debugButton.textContent = 'Show Debug Log'; // Update the button label
+            } else {
+                statusLog.style.display = 'block';
+                debugButton.textContent = 'Hide Debug Log'; // Update the button label
+                statusLog.scrollIntoView({ behavior: 'smooth', block: 'start' }); // Smooth scrolling to the log
+            }
+        }
+
         async function checkSerialStatus() {
             const response = await fetch('/serial_status');
             const status = await response.json();
             const statusElement = document.getElementById('serial_status');
-            
+            const serialPortsContainer = document.getElementById('serial_ports_container');
+
+            const connectButton = document.querySelector('button[onclick="connectSerial()"]');
+            const disconnectButton = document.querySelector('button[onclick="disconnectSerial()"]');
+            const restartButton = document.querySelector('button[onclick="restartSerial()"]');
+
             if (status.connected) {
                 const port = status.port || 'Unknown'; // Fallback if port is undefined
-                statusElement.textContent = `Status: Connected to ${port}`;
+                statusElement.textContent = `Connected to ${port}`;
+                statusElement.classList.add('connected');
+                statusElement.classList.remove('not-connected');
                 logMessage(`Reconnected to serial port: ${port}`);
+
+                // Hide Available Ports and show disconnect/restart buttons
+                serialPortsContainer.style.display = 'none';
+                connectButton.style.display = 'none';
+                disconnectButton.style.display = 'inline-block';
+                restartButton.style.display = 'inline-block';
             } else {
-                statusElement.textContent = 'Status: Not connected';
+                statusElement.textContent = 'Not connected';
+                statusElement.classList.add('not-connected');
+                statusElement.classList.remove('connected');
                 logMessage('No active serial connection.');
+
+                // Show Available Ports and the connect button
+                serialPortsContainer.style.display = 'block';
+                connectButton.style.display = 'inline-block';
+                disconnectButton.style.display = 'none';
+                restartButton.style.display = 'none';
+
+                // Attempt to auto-load available ports
+                await loadSerialPorts();
             }
         }
 
         async function changeSpeed() {
             const speedInput = document.getElementById('speed_input');
             const speed = parseFloat(speedInput.value);
-        
+
             if (isNaN(speed) || speed <= 0) {
                 logMessage('Invalid speed. Please enter a positive number.');
                 return;
             }
-        
+
             logMessage(`Setting speed to: ${speed}...`);
             const response = await fetch('/set_speed', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ speed })
             });
-        
+
             const result = await response.json();
             if (result.success) {
                 document.getElementById('speed_status').textContent = `Current Speed: ${speed}`;
@@ -500,14 +597,14 @@
                 logMessage(`Failed to set speed: ${result.error}`);
             }
         }
-        
+
         // Call this function on page load
         checkSerialStatus();
 
         // Initial load of serial ports and Theta-Rho files
         loadSerialPorts();
         loadThetaRhoFiles();
-        
+
         document.getElementById('run_button').onclick = runThetaRho;
 
     </script>
