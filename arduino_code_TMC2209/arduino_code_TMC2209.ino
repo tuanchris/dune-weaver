@@ -43,6 +43,7 @@ float totalRevolutions = 0.0; // Tracks cumulative revolutions
 float maxSpeed = 1000;
 float maxAcceleration = 50;
 long interpolationResolution = 0.001;
+float userDefinedSpeed = maxSpeed; // Store user-defined speed
 
 // Running Mode
 int currentMode = MODE_APP; // Default mode is app mode.
@@ -104,8 +105,12 @@ void handleModeChange(int newMode) {
     // Print mode switch information
     if (newMode == MODE_SPIROGRAPH) {
         Serial.println("Spirograph Mode Active");
+        rotStepper.setMaxSpeed(userDefinedSpeed * 0.5); // Use 50% of user-defined speed
+        inOutStepper.setMaxSpeed(userDefinedSpeed * 0.5);
     } else if (newMode == MODE_APP) {
         Serial.println("App Mode Active");
+        rotStepper.setMaxSpeed(userDefinedSpeed); // Restore user-defined speed
+        inOutStepper.setMaxSpeed(userDefinedSpeed);
         resetTheta();
     }
 
@@ -194,6 +199,7 @@ void appMode()
 
                 if (speed > 0) // Ensure valid speed
                 {
+                    userDefinedSpeed = speed;
                     rotStepper.setMaxSpeed(speed);
                     inOutStepper.setMaxSpeed(speed);
                     Serial.println("SPEED_SET");
