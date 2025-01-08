@@ -452,9 +452,8 @@ def set_speed():
         return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
-    # Auto-connect to serial and trigger the default pattern in a separate thread
-    if connect_to_serial():
-        threading.Thread(target=trigger_default_pattern, daemon=True).start()
-
     # Start the Flask app
     app.run(debug=True, host='0.0.0.0', port=8080)
+
+    # Auto-connect to serial
+    connect_to_serial()

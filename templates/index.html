@@ -77,7 +77,6 @@
                 </div>
                 <div class="button-group">
                     <button id="run_button" disabled>Run Selected Pattern</button>
-                    <button id="set_default_button" onclick="setAsDefaultPattern()" disabled>Set as Default Pattern</button>
                 </div>
             </div>
             <div class="section">
@@ -131,35 +130,10 @@
             document.getElementById('run_button').disabled = false;
             document.getElementById('delete_selected_button').disabled = false;
 
-            // Enable "Set as Default Pattern" button
-            document.getElementById('set_default_button').disabled = false;
-
             logMessage(`Selected file: ${file}`);
 
             // Fetch and preview the selected file
             await previewPattern(file);
-        }
-
-        async function setAsDefaultPattern() {
-            if (!selectedFile) {
-                logMessage("No file selected to set as default.");
-                return;
-            }
-
-            const response = await fetch('/set_default_pattern', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ file_name: selectedFile })
-            });
-
-            const result = await response.json();
-            if (result.success) {
-                logMessage(result.message);
-                // Reload files to reflect the change
-                await loadThetaRhoFiles();
-            } else {
-                logMessage(`Failed to set default pattern: ${result.error}`);
-            }
         }
 
         async function uploadThetaRho() {
@@ -345,31 +319,22 @@
         }
 
         let allFiles = []; // Store all files for filtering
-        const defaultPatternFile = 'custom_patterns/default_pattern.thr';
 
         async function loadThetaRhoFiles() {
             logMessage('Loading Theta-Rho files...');
             const response = await fetch('/list_theta_rho_files');
             let files = await response.json();
 
-            // Ensure the default pattern is included only if it exists
-            if (!files.includes(defaultPatternFile)) {
-                logMessage(`Default pattern file does not exist: ${defaultPatternFile}`);
-            } else {
-                logMessage(`Default pattern file exists: ${defaultPatternFile}`);
-            }
-
             // Filter only .thr files
             files = files.filter(file => file.endsWith('.thr'));
 
             // Separate files into categories
-            const customPatternsFiles = files.filter(file => file.startsWith('custom_patterns/') && file !== defaultPatternFile);
+            const customPatternsFiles = files.filter(file => file.startsWith('custom_patterns/'));
             const otherFiles = files.filter(file => !file.startsWith('custom_patterns/'));
 
             // Sort the files
             const sortedFiles = [
-                ...(files.includes(defaultPatternFile) ? [defaultPatternFile] : []), // Add default pattern if it exists
-                ...customPatternsFiles.sort(), // Custom patterns next
+                ...customPatternsFiles.sort(), // Custom patterns first
                 ...otherFiles.sort() // Remaining files sorted alphabetically
             ];
 
@@ -377,16 +342,6 @@
             displayFiles(allFiles); // Display the sorted files
 
             logMessage('Theta-Rho files loaded successfully.');
-
-            // Automatically preview the default pattern file if it exists
-            if (files.includes(defaultPatternFile)) {
-                const defaultFileElement = Array.from(document.getElementById('theta_rho_files').children)
-                    .find(li => li.textContent === defaultPatternFile);
-
-                if (defaultFileElement) {
-                    selectFile(defaultPatternFile, defaultFileElement);
-                }
-            }
         }
 
         function displayFiles(files) {
