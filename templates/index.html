@@ -107,7 +107,7 @@
         <div id="status_log">
             <!-- Messages will be appended here -->
         </div>
-
+    </div>
     <script>
         let selectedFile = null;
 
@@ -156,7 +156,7 @@
             const result = await response.json();
             if (result.success) {
                 logMessage(`File uploaded successfully: ${file.name}`);
-                loadThetaRhoFiles();
+                await loadThetaRhoFiles();
             } else {
                 logMessage(`Failed to upload file: ${file.name}`);
             }
