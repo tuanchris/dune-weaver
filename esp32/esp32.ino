@@ -75,38 +75,9 @@ void loop()
         String input = Serial.readStringUntil('\n');
 
         // Ignore invalid messages
-        if (input != "HOME" && input != "RESET_THETA" && !input.startsWith("SET_SPEED") && !input.endsWith(";"))
+        if (input != "HOME" && input != "RESET_THETA" && !input.endsWith(";"))
         {
             Serial.println("IGNORED");
-            return;
-        }
-
-
-        if (input.startsWith("SET_SPEED"))
-        {
-            // Parse and set the speed
-            int spaceIndex = input.indexOf(' ');
-            if (spaceIndex != -1)
-            {
-                String speedStr = input.substring(spaceIndex + 1);
-                double speed = speedStr.toDouble();
-
-                if (speed > 0) // Ensure valid speed
-                {
-                    rotStepper.setMaxSpeed(speed);
-                    inOutStepper.setMaxSpeed(speed);
-                    Serial.println("SPEED_SET");
-                    Serial.println("R");
-                }
-                else
-                {
-                    Serial.println("INVALID_SPEED");
-                }
-            }
-            else
-            {
-                Serial.println("INVALID_COMMAND");
-            }
             return;
         }
 
@@ -219,11 +190,6 @@ void homing()
 
 void movePolar(double theta, double rho)
 {
-    if (rho < 0.0) 
-        rho = 0.0;
-    else if (rho > 1.0) 
-        rho = 1.0;
-
     long rotSteps = lround(theta * (rot_total_steps / (2.0f * M_PI)));
     double revolutions = theta / (2.0 * M_PI);
     long offsetSteps = lround(revolutions * (rot_total_steps / gearRatio));

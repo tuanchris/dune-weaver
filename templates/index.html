@@ -34,6 +34,7 @@
                     <button onclick="moveToPerimeter()">Move to Perimeter</button>
                     <button onclick="runClearIn()">Clear from In</button>
                     <button onclick="runClearOut()">Clear from Out</button>
+                    <button onclick="runSideway()">Clear Sideway</button>
                     <button onclick="stopExecution()" class="delete-button">Stop</button>
                 </div>
                 <div class="coordinate-input button-group">
@@ -42,11 +43,6 @@
                     <label for="rho_input">ρ:</label>
                     <input type="number" id="rho_input" placeholder="Rho">
                     <button class="small-button" onclick="sendCoordinate()">Send to coordinate</button>
-                </div>
-                <div class="button-group">
-                    <label for="speed_input">Speed:</label>
-                    <input type="number" id="speed_input" placeholder="1-5000" min="1" step="1" max="5000">
-                    <button class="small-button"  onclick="changeSpeed()">Set Speed</button>
                 </div>
             </div>
             <div class="section">
@@ -70,6 +66,9 @@
                     </label>
                     <label>
                         <input type="radio" name="pre_execution" value="clear_out" id="clear_out"> Clear from Out
+                    </label>
+                    <label>
+                        <input type="radio" name="pre_execution" value="clear_sideway" id="clear_out"> Clear sideway
                     </label>
                     <label>
                         <input type="radio" name="pre_execution" value="none" id="no_action" checked> None
@@ -300,23 +299,6 @@
             }
         }
 
-        async function runClearIn() {
-            await runFile('clear_from_in.thr');
-        }
-
-        async function runClearOut() {
-            await runFile('clear_from_out.thr');
-        }
-
-        async function runFile(fileName) {
-            const response = await fetch(`/run_theta_rho_file/${fileName}`, { method: 'POST' });
-            const result = await response.json();
-            if (result.success) {
-                logMessage(`Running file: ${fileName}`);
-            } else {
-                logMessage(`Failed to run file: ${fileName}`);
-            }
-        }
 
         let allFiles = []; // Store all files for filtering
 
@@ -528,31 +510,28 @@
             }
         }
 
-        async function changeSpeed() {
-            const speedInput = document.getElementById('speed_input');
-            const speed = parseFloat(speedInput.value);
-
-            if (isNaN(speed) || speed <= 0) {
-                logMessage('Invalid speed. Please enter a positive number.');
-                return;
-            }
-
-            logMessage(`Setting speed to: ${speed}...`);
-            const response = await fetch('/set_speed', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ speed })
-            });
-
+        async function runFile(fileName) {
+            const response = await fetch(`/run_theta_rho_file/${fileName}`, { method: 'POST' });
             const result = await response.json();
             if (result.success) {
-                document.getElementById('speed_status').textContent = `Current Speed: ${speed}`;
-                logMessage(`Speed set to: ${speed}`);
+                logMessage(`Running file: ${fileName}`);
             } else {
-                logMessage(`Failed to set speed: ${result.error}`);
+                logMessage(`Failed to run file: ${fileName}`);
             }
         }
 
+        async function runClearIn() {
+            await runFile('clear_from_in.thr');
+        }
+
+        async function runClearOut() {
+            await runFile('clear_from_out.thr');
+        }
+
+        async function runSideway() {
+            await runFile('clear_sideway.thr');
+        }
+        
         // Call this function on page load
         checkSerialStatus();
 

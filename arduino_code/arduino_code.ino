@@ -180,7 +180,7 @@ void appMode()
         String input = Serial.readStringUntil('\n');
 
         // Ignore invalid messages
-        if (input != "HOME" && input != "RESET_THETA" && !input.startsWith("SET_SPEED") && !input.endsWith(";"))
+        if (input != "HOME" && input != "RESET_THETA" && !input.endsWith(";"))
         {
             Serial.println("IGNORED");
             return;
@@ -336,7 +336,9 @@ void movePolar(float theta, float rho)
     totalRevolutions += (theta - currentTheta) / (2.0 * M_PI);
 
     // Apply the offset to the inout axis
-    inOutSteps += offsetSteps;
+    if (!isFirstCoordinates) {
+        inOutSteps -= offsetSteps;
+    }
 
     // Define target positions for both motors
     long targetPositions[2];
