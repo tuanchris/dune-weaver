@@ -190,6 +190,11 @@ void homing()
 
 void movePolar(double theta, double rho)
 {
+    if (rho < 0.0) 
+        rho = 0.0;
+    else if (rho > 1.0) 
+        rho = 1.0;
+
     long rotSteps = lround(theta * (rot_total_steps / (2.0f * M_PI)));
     double revolutions = theta / (2.0 * M_PI);
     long offsetSteps = lround(revolutions * (rot_total_steps / gearRatio));

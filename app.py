@@ -111,10 +111,6 @@ def parse_theta_rho_file(file_path):
         # Shift all thetas so the first coordinate has theta=0
         normalized = []
         for (theta, rho) in coordinates:
-            if rho > 1:
-                rho = 1
-            elif rho < 0:
-                rho = 0
             normalized.append((theta - first_theta, rho))
 
         # Replace original list with normalized data
