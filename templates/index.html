@@ -66,27 +66,35 @@
 
         <!-- Right Column -->
         <div class="right-column">
-            <div class="section">
-                <h2>Pattern Files</h2>
-                <input type="text" id="search_pattern" placeholder="Search files..." oninput="searchPatternFiles()">
-                <ul id="theta_rho_files"></ul>
-                <div class="pre-execution-toggles modeSection single_run">
-                    <h3>Pre-Execution Action</h3>
-                    <label>
-                        <input type="radio" name="pre_execution" value="clear_in" id="clear_in"> Clear from In
-                    </label>
-                    <label>
-                        <input type="radio" name="pre_execution" value="clear_out" id="clear_out"> Clear from Out
-                    </label>
-                    <label>
-                        <input type="radio" name="pre_execution" value="clear_sideway" id="clear_out"> Clear sideway
-                    </label>
-                    <label>
-                        <input type="radio" name="pre_execution" value="none" id="no_action" checked> None
-                    </label>
-                </div>
-                <div class="button-group">
-                    <button id="run_button" disabled>Run Selected File</button>
+
+                <div class="section modeSection single_run create_playlist">
+                    <h2 class="modeSection single_run">Single Run</h2>
+                    <h2 class="modeSection create_playlist" style="display: none;"> Create Playlist</h2>
+                    <h2 class="modeSection run_playlist" style="display: none;"> Run Playlist</h2>
+                    <input class="modeSection single_run create_playlist" type="text" id="search_pattern" placeholder="Search files..." oninput="searchPatternFiles()">
+                    <ul  class="modeSection single_run create_playlist" id="theta_rho_files"></ul>
+                    <div class="pre-execution-toggles modeSection single_run">
+                        <h3>Pre-Execution Action</h3>
+                        <label>
+                            <input type="radio" name="pre_execution" value="clear_in" id="clear_in"> Clear from In
+                        </label>
+                        <label>
+                            <input type="radio" name="pre_execution" value="clear_out" id="clear_out"> Clear from Out
+                        </label>
+                        <label>
+                            <input type="radio" name="pre_execution" value="clear_sideway" id="clear_out"> Clear sideway
+                        </label>
+                        <label>
+                            <input type="radio" name="pre_execution" value="none" id="no_action" checked> None
+                        </label>
+                    </div>
+                    <div class="button-group modeSection single_run">
+                        <button id="run_button" disabled>Run Selected File</button>
+                        <button onclick="stopExecution()" class="delete-button">Stop</button>
+                    </div>
+                    <div class="button-group modeSection create_playlist" style="display: none;">
+                        <button onclick="addToPlaylist()">Add File to Playlist</button>
+                    </div>
                 </div>
                 <div class="section modeSection single_run">
                     <h2>Upload new files</h2>
