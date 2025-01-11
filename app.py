@@ -222,14 +222,13 @@ def run_theta_rho_files(
             run_theta_rho_file(path)
 
             if idx < len(file_paths) - 1:
+                if stop_requested:
+                    print("Execution stopped before running the next clear pattern.")
+                    return
                 # Pause after each pattern if requested
                 if pause_time > 0:
                     print(f"Pausing for {pause_time} seconds...")
                     time.sleep(pause_time)
-
-                if stop_requested:
-                    print("Execution stopped before running the next clear pattern.")
-                    return
 
                 # Determine the clear pattern to run
                 clear_file_path = get_clear_pattern_file(clear_pattern)
