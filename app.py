@@ -190,43 +190,69 @@ def get_clear_pattern_file(pattern_name):
 def run_theta_rho_files(
     file_paths,
     pause_time=0,
-    clear_pattern=None
+    clear_pattern=None,
+    run_mode="single",
+    shuffle=False
 ):
     """
-    Runs multiple .thr files in sequence, optionally pausing between each pattern,
-    and optionally running a clear pattern between files. 
-    Now supports:
-      - no_clear: skips running a clear pattern
-      - random: chooses any of the 3 clear patterns randomly
+    Runs multiple .thr files in sequence with options for pausing, clearing, shuffling, and looping.
+
+    Parameters:
+    - file_paths (list): List of file paths to run.
+    - pause_time (float): Seconds to pause between patterns.
+    - clear_pattern (str): Specific clear pattern to run ("clear_in", "clear_out", "clear_sideway", or "random").
+    - run_mode (str): "single" for one-time run or "indefinite" for looping.
+    - shuffle (bool): Whether to shuffle the playlist before running.
     """
     global stop_requested
-    stop_requested = False  # reset stop flag at the start
+    stop_requested = False  # Reset stop flag at the start
 
-    for idx, path in enumerate(file_paths):
-        if stop_requested:
-            print("Execution stopped before starting next pattern.")
+    if shuffle:
+        random.shuffle(file_paths)
+        print("Playlist shuffled.")
+
+    while True:
+        for idx, path in enumerate(file_paths):
+            if stop_requested:
+                print("Execution stopped before starting next pattern.")
+                return
+
+            # Run the main pattern
+            print(f"Running pattern {idx + 1} of {len(file_paths)}: {path}")
+            run_theta_rho_file(path)
+
+            if idx < len(file_paths) - 1:
+                # Pause after each pattern if requested
+                if pause_time > 0:
+                    print(f"Pausing for {pause_time} seconds...")
+                    time.sleep(pause_time)
+
+                if stop_requested:
+                    print("Execution stopped before running the next clear pattern.")
+                    return
+
+                # Determine the clear pattern to run
+                clear_file_path = get_clear_pattern_file(clear_pattern)
+                print(f"Running clear pattern: {clear_file_path}")
+                run_theta_rho_file(clear_file_path)
+
+        # After completing the playlist
+        if run_mode == "indefinite":
+            print("Playlist completed. Restarting as per 'indefinite' run mode.")
+            if pause_time > 0:
+                print(f"Pausing for {pause_time} seconds before restarting...")
+                time.sleep(pause_time)
+            if shuffle:
+                random.shuffle(file_paths)
+                print("Playlist reshuffled for the next loop.")
+            continue
+        else:
+            print("Playlist completed.")
             break
 
-        # Run the main pattern
-        print(f"Running pattern {idx + 1} of {len(file_paths)}: {path}")
-        run_theta_rho_file(path)
-
-        # If there are more files to run
-        if idx < len(file_paths) - 1:
-            # Pause after each pattern if requested
-            time.sleep(pause_time)
-
-            if stop_requested:
-                print("Execution stopped before running the next pattern or clear.")
-                break
-
-            if not clear_pattern:
-                continue
-            # Otherwise, get the file (could be random or a known pattern)
-            clear_file_path = get_clear_pattern_file(clear_pattern)
-            print(f"Running clear pattern: {clear_file_path}")
-            run_theta_rho_file(clear_file_path)
-
+    # Reset theta after execution or stopping
+    reset_theta()
+    ser.write("FINISHED\n".encode())
     print("All requested patterns completed (or stopped).")
 
 def reset_theta():
@@ -617,7 +643,9 @@ def run_playlist():
     {
         "playlist_name": "My Playlist",
         "pause_time": 1.0,                # Optional: seconds to pause between patterns
-        "clear_pattern": "random"          # Optional: "clear_in", "clear_out", "clear_sideway", or "random"
+        "clear_pattern": "random",         # Optional: "clear_in", "clear_out", "clear_sideway", or "random"
+        "run_mode": "single",              # 'single' or 'indefinite'
+        "shuffle": True                    # true or false
     }
     """
     data = request.get_json()
@@ -629,14 +657,25 @@ def run_playlist():
     playlist_name = data["playlist_name"]
     pause_time = data.get("pause_time", 0)
     clear_pattern = data.get("clear_pattern", None)
+    run_mode = data.get("run_mode", "single")  # Default to 'single' run
+    shuffle = data.get("shuffle", False)       # Default to no shuffle
 
     # Validate pause_time
     if not isinstance(pause_time, (int, float)) or pause_time < 0:
         return jsonify({"success": False, "error": "'pause_time' must be a non-negative number"}), 400
 
+    # Validate clear_pattern
     valid_patterns = ["clear_in", "clear_out", "clear_sideway", "random"]
     if clear_pattern not in valid_patterns and clear_pattern is not None:
         return jsonify({"success": False, "error": f"'clear_pattern' must be one of {valid_patterns} or null"}), 400
+
+    # Validate run_mode
+    if run_mode not in ["single", "indefinite"]:
+        return jsonify({"success": False, "error": "'run_mode' must be 'single' or 'indefinite'"}), 400
+
+    # Validate shuffle
+    if not isinstance(shuffle, bool):
+        return jsonify({"success": False, "error": "'shuffle' must be a boolean value"}), 400
 
     # Load playlists
     playlists = load_playlists()
@@ -657,7 +696,9 @@ def run_playlist():
             args=(file_paths,),
             kwargs={
                 'pause_time': pause_time,
-                'clear_pattern': clear_pattern
+                'clear_pattern': clear_pattern,
+                'run_mode': run_mode,
+                'shuffle': shuffle
             },
             daemon=True  # Daemonize thread to exit with the main program
         ).start()
