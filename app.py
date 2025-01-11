@@ -220,8 +220,8 @@ def run_theta_rho_files(
             # Run the main pattern
             print(f"Running pattern {idx + 1} of {len(file_paths)}: {path}")
             run_theta_rho_file(path)
-            
-            if idx < len(file_paths) -1:
+
+            if idx < len(file_paths) - 1:
                 if stop_requested:
                     print("Execution stopped before running the next clear pattern.")
                     return
