@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sand Table Controller</title>
+    <title>Dune Weaver Controller</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../static/style.css">
 </head>
 <body>
-    <h1>Sand Table Controller</h1>
+    <h1>Dune Weaver Controller</h1>
     <div class="container">
         <!-- Left Column -->
         <div class="left-column">
@@ -24,6 +24,7 @@
                     <button onclick="disconnectSerial()">Disconnect</button>
                     <button onclick="restartSerial()">Restart</button>
                 </div>
+                <p id="serial_status" class="status">Status: Not connected</p>
             </div>
 
             <div class="section">
@@ -75,7 +76,8 @@
                     </label>
                 </div>
                 <div class="button-group">
-                    <button id="run_button" disabled>Run Selected Pattern</button>
+                    <button id="run_button" disabled>Run Selected File</button>
+                    <button onclick="stopExecution()" class="delete-button">Stop</button>
                 </div>
             </div>
             <div class="section">
@@ -88,20 +90,9 @@
                     </div>
                 </div>
             </div>
-        </div>
-
-        <div class="footer">
-            <div id="github">
-                <span>Help us improve! <a href="https://github.com/tuanchris/dune-weaver/pulls" target="_blank">Submit a Pull Request</a> or <a href="https://github.com/tuanchris/dune-weaver/issues/new" target="_blank">Report a Bug</a>.</span>
-                <a href="https://github.com/tuanchris/dune-weaver/issues" target="_blank">
-                    <img src="https://img.shields.io/github/issues/tuanchris/dune-weaver?style=flat-square" alt="GitHub Issues">
-                </a>
             </div>
-
-            <button id="debug_button" class="small-button" onclick="toggleDebugLog()">
-                Show Debug log
-            </button>
         </div>
+    </div>
 
         <div id="status_log">
             <!-- Messages will be appended here -->
@@ -538,7 +529,7 @@
         // Initial load of serial ports and Theta-Rho files
         loadSerialPorts();
         loadThetaRhoFiles();
-
+        
         document.getElementById('run_button').onclick = runThetaRho;
 
     </script>

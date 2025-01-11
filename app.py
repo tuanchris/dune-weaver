@@ -6,6 +6,7 @@ import random
 import threading
 import serial.tools.list_ports
 import math
+import json
 
 app = Flask(__name__)
 
@@ -24,6 +25,13 @@ ser = None
 ser_port = None  # Global variable to store the serial port name
 stop_requested = False
 serial_lock = threading.Lock()
+
+PLAYLISTS_FILE = os.path.join(os.getcwd(), "playlists.json")
+
+# Ensure the file exists and contains at least an empty JSON object
+if not os.path.exists(PLAYLISTS_FILE):
+    with open(PLAYLISTS_FILE, "w") as f:
+        json.dump({}, f, indent=2)
 
 def list_serial_ports():
     """Return a list of available serial ports."""
@@ -182,7 +190,6 @@ def get_clear_pattern_file(pattern_name):
 def run_theta_rho_files(
     file_paths,
     pause_time=0,
-    clear_between_files=False,
     clear_pattern=None
 ):
     """
@@ -213,15 +220,12 @@ def run_theta_rho_files(
                 print("Execution stopped before running the next pattern or clear.")
                 break
 
-            # Conditionally run a "clear" pattern
-            if clear_between_files:
-                # If user explicitly wants no clear pattern, skip
-                if not clear_pattern:
-                    continue
-                # Otherwise, get the file (could be random or a known pattern)
-                clear_file_path = get_clear_pattern_file(clear_pattern)
-                print(f"Running clear pattern: {clear_file_path}")
-                run_theta_rho_file(clear_file_path)
+            if not clear_pattern:
+                continue
+            # Otherwise, get the file (could be random or a known pattern)
+            clear_file_path = get_clear_pattern_file(clear_pattern)
+            print(f"Running clear pattern: {clear_file_path}")
+            run_theta_rho_file(clear_file_path)
 
     print("All requested patterns completed (or stopped).")
 
@@ -335,7 +339,6 @@ def run_theta_rho():
             args=(files_to_run,),
             kwargs={
                 'pause_time': 0,
-                'clear_between_files': False,
                 'clear_pattern': None
             }
         ).start()
@@ -469,6 +472,198 @@ def serial_status():
         'connected': ser.is_open if ser else False,
         'port': ser_port  # Include the port name
     })
+    
+if not os.path.exists(PLAYLISTS_FILE):
+    with open(PLAYLISTS_FILE, "w") as f:
+        json.dump({}, f, indent=2)
+
+def load_playlists():
+    """
+    Load the entire playlists dictionary from the JSON file.
+    Returns something like: {
+        "My Playlist": ["file1.thr", "file2.thr"],
+        "Another": ["x.thr"]
+    }
+    """
+    with open(PLAYLISTS_FILE, "r") as f:
+        return json.load(f)
+
+def save_playlists(playlists_dict):
+    """
+    Save the entire playlists dictionary back to the JSON file.
+    """
+    with open(PLAYLISTS_FILE, "w") as f:
+        json.dump(playlists_dict, f, indent=2)
+
+@app.route("/list_all_playlists", methods=["GET"])
+def list_all_playlists():
+    """
+    Returns a list of all playlist names.
+    Example return: ["My Playlist", "Another Playlist"]
+    """
+    playlists_dict = load_playlists()
+    playlist_names = list(playlists_dict.keys())
+    return jsonify(playlist_names)
+
+@app.route("/get_playlist", methods=["GET"])
+def get_playlist():
+    """
+    GET /get_playlist?name=My%20Playlist
+    Returns: { "name": "My Playlist", "files": [... ] }
+    """
+    playlist_name = request.args.get("name", "")
+    if not playlist_name:
+        return jsonify({"error": "Missing playlist 'name' parameter"}), 400
+
+    playlists_dict = load_playlists()
+    if playlist_name not in playlists_dict:
+        return jsonify({"error": f"Playlist '{playlist_name}' not found"}), 404
+
+    files = playlists_dict[playlist_name]  # e.g. ["file1.thr", "file2.thr"]
+    return jsonify({
+        "name": playlist_name,
+        "files": files
+    })
+
+@app.route("/create_playlist", methods=["POST"])
+def create_playlist():
+    """
+    POST /create_playlist
+    Body: { "name": "My Playlist", "files": ["file1.thr", "file2.thr"] }
+    Creates or overwrites a playlist with the given name.
+    """
+    data = request.get_json()
+    if not data or "name" not in data or "files" not in data:
+        return jsonify({"success": False, "error": "Playlist 'name' and 'files' are required"}), 400
+
+    playlist_name = data["name"]
+    files = data["files"]
+
+    # Load all playlists
+    playlists_dict = load_playlists()
+
+    # Overwrite or create new
+    playlists_dict[playlist_name] = files
+
+    # Save changes
+    save_playlists(playlists_dict)
+
+    return jsonify({
+        "success": True,
+        "message": f"Playlist '{playlist_name}' created/updated"
+    })
+
+@app.route("/modify_playlist", methods=["POST"])
+def modify_playlist():
+    """
+    POST /modify_playlist
+    Body: { "name": "My Playlist", "files": ["file1.thr", "file2.thr"] }
+    Updates (or creates) the existing playlist with a new file list.
+    You can 404 if you only want to allow modifications to existing playlists.
+    """
+    data = request.get_json()
+    if not data or "name" not in data or "files" not in data:
+        return jsonify({"success": False, "error": "Playlist 'name' and 'files' are required"}), 400
+
+    playlist_name = data["name"]
+    files = data["files"]
+
+    # Load all playlists
+    playlists_dict = load_playlists()
+
+    # Optional: If you want to disallow creating a new playlist here:
+    # if playlist_name not in playlists_dict:
+    #     return jsonify({"success": False, "error": f"Playlist '{playlist_name}' not found"}), 404
+
+    # Overwrite or create new
+    playlists_dict[playlist_name] = files
+
+    # Save
+    save_playlists(playlists_dict)
+
+    return jsonify({"success": True, "message": f"Playlist '{playlist_name}' updated"})
+
+@app.route("/delete_playlist", methods=["DELETE"])
+def delete_playlist():
+    """
+    DELETE /delete_playlist
+    Body: { "name": "My Playlist" }
+    Removes the playlist from the single JSON file.
+    """
+    data = request.get_json()
+    if not data or "name" not in data:
+        return jsonify({"success": False, "error": "Missing 'name' field"}), 400
+
+    playlist_name = data["name"]
+
+    playlists_dict = load_playlists()
+    if playlist_name not in playlists_dict:
+        return jsonify({"success": False, "error": f"Playlist '{playlist_name}' not found"}), 404
+
+    # Remove from dict
+    del playlists_dict[playlist_name]
+    save_playlists(playlists_dict)
+
+    return jsonify({
+        "success": True,
+        "message": f"Playlist '{playlist_name}' deleted"
+    })
+    
+@app.route("/run_playlist", methods=["POST"])
+def run_playlist():
+    """
+    POST /run_playlist
+    Body (JSON):
+    {
+        "playlist_name": "My Playlist",
+        "pause_time": 1.0,                # Optional: seconds to pause between patterns
+        "clear_pattern": "random"          # Optional: "clear_in", "clear_out", "clear_sideway", or "random"
+    }
+    """
+    data = request.get_json()
+
+    # Validate input
+    if not data or "playlist_name" not in data:
+        return jsonify({"success": False, "error": "Missing 'playlist_name' field"}), 400
+
+    playlist_name = data["playlist_name"]
+    pause_time = data.get("pause_time", 0)
+    clear_pattern = data.get("clear_pattern", None)
+
+    # Validate pause_time
+    if not isinstance(pause_time, (int, float)) or pause_time < 0:
+        return jsonify({"success": False, "error": "'pause_time' must be a non-negative number"}), 400
+
+    valid_patterns = ["clear_in", "clear_out", "clear_sideway", "random"]
+    if clear_pattern not in valid_patterns and clear_pattern is not None:
+        return jsonify({"success": False, "error": f"'clear_pattern' must be one of {valid_patterns} or null"}), 400
+
+    # Load playlists
+    playlists = load_playlists()
+
+    if playlist_name not in playlists:
+        return jsonify({"success": False, "error": f"Playlist '{playlist_name}' not found"}), 404
+
+    file_paths = playlists[playlist_name]
+    file_paths = [os.path.join(THETA_RHO_DIR, file) for file in file_paths]
+
+    if not file_paths:
+        return jsonify({"success": False, "error": f"Playlist '{playlist_name}' is empty"}), 400
+
+    # Start the playlist execution in a separate thread
+    try:
+        threading.Thread(
+            target=run_theta_rho_files,
+            args=(file_paths,),
+            kwargs={
+                'pause_time': pause_time,
+                'clear_pattern': clear_pattern
+            },
+            daemon=True  # Daemonize thread to exit with the main program
+        ).start()
+        return jsonify({"success": True, "message": f"Playlist '{playlist_name}' is now running."})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8080)

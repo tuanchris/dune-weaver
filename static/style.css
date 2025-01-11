@@ -163,7 +163,7 @@ li.selected {
 }
 
 #theta_rho_files {
-    max-height: 507px;
+    max-height: 400px;
     overflow-y: auto;
     border: 1px solid #ddd;
     border-radius: 5px;
@@ -253,111 +253,6 @@ input[type="radio"]:checked {
     font-size: 1rem;
     padding: 5px;
     width: 80px;
-}
-
-/* Speed Control Section */
-.speed-control {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    margin-top: 10px;
-    background: #fff; /* Matches section background */
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 15px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-}
-
-.speed-control label {
-    font-weight: bold;
-    font-size: 1rem;
-    color: #333;
-    flex-shrink: 0;
-}
-
-.speed-control input[type="number"] {
-    width: 100px; /* Consistent input width */
-    padding: 8px;
-    font-size: 1rem;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    outline: none;
-    transition: all 0.3s ease;
-}
-
-.speed-control input[type="number"]:focus {
-    border-color: #4A90E2; /* Highlighted border */
-    box-shadow: 0 0 5px rgba(74, 144, 226, 0.5);
-}
-
-.speed-control button {
-    background: #4A90E2;
-    color: #fff;
-    padding: 10px 15px;
-    font-size: 1rem;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.speed-control button:hover {
-    background: #357ABD;
-}
-
-#speed_status {
-    margin-top: 10px;
-    font-size: 0.9rem;
-    color: #444;
-}
-
-#serial_ports_container > * {
-    display: inline-block;
-}
-
-#serial_ports_container select {
-    margin: 10px;
-    flex-basis: 100px;
-    flex-grow: 0;
-}
-
-#serial_ports {
-    width: auto;
-    min-width: 200px;
-}
-
-#serial_status_container,
-#serial_ports_buttons {
-    display: inline-block;
-}
-
-.status.connected {
-    color: #4CAF50;
-    font-weight: bold;
-}
-
-.status.not-connected {
-    color: #E53935;
-    font-weight: bold;
-}
-
-.footer {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    margin-bottom: 20px;
-    width: 100%;
-}
-
-.footer #github {
-    align-content: center;
-    display: flex;
-    font-size: 0.8em;
-}
-
-.footer #github img {
-    margin: 0 5px
 }
 
 /* Responsive Layout for Small Screens */
