@@ -221,7 +221,7 @@ def run_theta_rho_files(
             print(f"Running pattern {idx + 1} of {len(file_paths)}: {path}")
             run_theta_rho_file(path)
 
-            if idx < len(file_paths) - 1:
+            if clear_pattern and idx < len(file_paths) - 1:
                 if stop_requested:
                     print("Execution stopped before running the next clear pattern.")
                     return
@@ -665,8 +665,8 @@ def run_playlist():
 
     # Validate clear_pattern
     valid_patterns = ["clear_in", "clear_out", "clear_sideway", "random"]
-    if clear_pattern not in valid_patterns and clear_pattern is not None:
-        return jsonify({"success": False, "error": f"'clear_pattern' must be one of {valid_patterns} or null"}), 400
+    if clear_pattern not in valid_patterns:
+        clear_pattern = None
 
     # Validate run_mode
     if run_mode not in ["single", "indefinite"]:
