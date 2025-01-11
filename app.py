@@ -681,6 +681,14 @@ def run_playlist():
     if not isinstance(shuffle, bool):
         return jsonify({"success": False, "error": "'shuffle' must be a boolean value"}), 400
 
+    # Validate run_mode
+    if run_mode not in ["single", "indefinite"]:
+        return jsonify({"success": False, "error": "'run_mode' must be 'single' or 'indefinite'"}), 400
+
+    # Validate shuffle
+    if not isinstance(shuffle, bool):
+        return jsonify({"success": False, "error": "'shuffle' must be a boolean value"}), 400
+
     # Load playlists
     playlists = load_playlists()
 
