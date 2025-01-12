@@ -5,8 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [1.2.0] - Spirograph functionality
 
 ### Added
-- Added support for Spirograph mode on the DRV and TMC 
-  - runs on the Arduino and can be used if optional hardware of two potentiometers and a button is connected.
+- Added support for Spirograph mode for the arduino with DRV8825 or TMC2209 motor drivers
+  - can be used if optional hardware (two potentiometers and a button) is connected.
 
 ## [1.1.0] - Auto connect functionality
 
