@@ -7,6 +7,10 @@ body {
     color: #333;
 }
 
+body * {
+    box-sizing: border-box;
+}
+
 h1 {
     text-align: center;
     color: #4A90E2;
@@ -58,6 +62,10 @@ h2 {
     padding: 10px 15px;
 }
 
+.button-group label {
+    align-content: center;
+}
+
 button {
     background: #4A90E2;
     color: #fff;
@@ -72,6 +80,10 @@ button {
 
 button:hover {
     background: #357ABD;
+}
+
+.small-button {
+    font-size: 0.8rem;
 }
 
 /* Delete Button */
@@ -131,11 +143,8 @@ li.selected {
 /* Status Log */
 #status_log {
     display: none;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: #fff;
+    background: #000;
+    font-family: monospace;
     border-top: 1px solid #ddd;
     padding: 10px;
     max-height: 150px;
@@ -143,13 +152,14 @@ li.selected {
     box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
     -webkit-overflow-scrolling: touch; /* Enables smooth scrolling on mobile */
     touch-action: auto; /* Ensures touch gestures are handled properly */
+    width: 100%;
 }
 
 
 #status_log p {
-    margin: 0.5em 0;
+    margin: 0;
     font-size: 0.9em;
-    color: #444;
+    color: #ddd;
 }
 
 #theta_rho_files {
@@ -228,19 +238,20 @@ input[type="radio"]:checked {
     box-shadow: 0 0 3px rgba(74, 144, 226, 0.5);
 }
 
+#speed_input {
+    min-width: 80px;
+}
+
 .coordinate-input {
     display: flex;
     align-items: center;
     gap: 10px;
     margin-top: 10px;
 }
-.coordinate-input label, 
-.coordinate-input input, 
-.coordinate-input button {
+
+.coordinate-input input {
     font-size: 1rem;
     padding: 5px;
-}
-.coordinate-input input {
     width: 80px;
 }
 
@@ -300,8 +311,61 @@ input[type="radio"]:checked {
     color: #444;
 }
 
+#serial_ports_container > * {
+    display: inline-block;
+}
+
+#serial_ports_container select {
+    margin: 10px;
+    flex-basis: 100px;
+    flex-grow: 0;
+}
+
+#serial_ports {
+    width: auto;
+    min-width: 200px;
+}
+
+#serial_status_container,
+#serial_ports_buttons {
+    display: inline-block;
+}
+
+.status.connected {
+    color: #4CAF50;
+    font-weight: bold;
+}
+
+.status.not-connected {
+    color: #E53935;
+    font-weight: bold;
+}
+
+.footer {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    width: 100%;
+}
+
+.footer #github {
+    align-content: center;
+    display: flex;
+    font-size: 0.8em;
+}
+
+.footer #github img {
+    margin: 0 5px
+}
+
 /* Responsive Layout for Small Screens */
 @media (max-width: 768px) {
+    body {
+        font-size: 0.9rem;
+    }
+
     .container {
         flex-direction: column; /* Stack columns vertically */
     }
@@ -310,7 +374,7 @@ input[type="radio"]:checked {
         width: 100%;
     }
 
-    #status_log {
-        display: none; /* Completely hides the status log on small screens */
+    .footer {
+        flex-direction: column;
     }
 }
