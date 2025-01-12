@@ -103,19 +103,6 @@ def parse_theta_rho_file(file_path):
         print(f"Error reading file: {e}")
         return coordinates
 
-    # ---- Normalization Step ----
-    if coordinates:
-        # Take the first coordinate's theta
-        first_theta = coordinates[0][0]
-
-        # Shift all thetas so the first coordinate has theta=0
-        normalized = []
-        for (theta, rho) in coordinates:
-            normalized.append((theta - first_theta, rho))
-
-        # Replace original list with normalized data
-        coordinates = normalized
-
     return coordinates
 
 def send_coordinate_batch(ser, coordinates):
