@@ -16,6 +16,13 @@
 
 #define BUFFER_SIZE 10 // Maximum number of theta-rho pairs in a batch
 
+#define buttonPin 11 // Z- signal pin on the CNC shield
+#define pot1 A1      // Potentiometer 1, Abort pin on the CNC shield
+#define pot2 A0      // Potentiometer 2, Hold pint on the CNC shield
+
+#define MODE_APP 0
+#define MODE_SPIROGRAPH 1
+
 // Create stepper motor objects
 AccelStepper rotStepper(rotInterfaceType, stepPin_rot, dirPin_rot);
 AccelStepper inOutStepper(inOutInterfaceType, stepPin_InOut, dirPin_InOut);
@@ -36,6 +43,10 @@ float totalRevolutions = 0.0; // Tracks cumulative revolutions
 float maxSpeed = 5000;
 float maxAcceleration = 5000;
 long interpolationResolution = 0.001;
+float userDefinedSpeed = maxSpeed; // Store user-defined speed
+
+// Running Mode
+int currentMode = MODE_APP; // Default mode is app mode.
 
 void setup()
 {
@@ -50,27 +61,15 @@ void setup()
     multiStepper.addStepper(rotStepper);
     multiStepper.addStepper(inOutStepper);
 
+    // Configure the buttons and potentiometers for Spirograph mode
+    pinMode(buttonPin, INPUT_PULLUP); // Configure button pin with internal pull-up
+    pinMode(A0, INPUT); // Potentiometer 1 input
+    pinMode(A1, INPUT); // Potentiometer 2 input
+
     // Initialize serial communication
     Serial.begin(115200);
     Serial.println("R");
     homing();
-}
-
-void printCurrentCoordinates(String description)
-{
-    Serial.print(description);
-    Serial.print(" Theta: ");
-    Serial.print(currentTheta);
-    Serial.print(" Rho: ");
-    Serial.println(currentRho);
-}
-
-void printCurrentMotorPositions()
-{
-  Serial.print(" Rot: ");
-  Serial.print(rotStepper.currentPosition());
-  Serial.print(" Inout: ");
-  Serial.println(inOutStepper.currentPosition());
 }
 
 void resetTheta()
@@ -79,7 +78,101 @@ void resetTheta()
     Serial.println("THETA_RESET"); // Notify Python
 }
 
-void loop()
+void loop() {
+    updateModeSwitch(); // Check and handle mode switching
+
+    // Call the appropriate mode function based on the current mode
+    if (currentMode == MODE_SPIROGRAPH) {
+        spirographMode();
+    } else if (currentMode == MODE_APP) {
+        appMode();
+    }
+}
+
+void updateModeSwitch() {
+    // Read the current state of the latching switch
+    bool currentSwitchState = digitalRead(buttonPin);
+    int newMode = currentSwitchState == LOW ? MODE_SPIROGRAPH : MODE_APP;
+
+    if (newMode != currentMode) {
+        handleModeChange(newMode); // Handle mode-specific transitions
+        currentMode = newMode; // Update the current mode
+    }
+}
+
+void handleModeChange(int newMode) {
+    // Print mode switch information
+    if (newMode == MODE_SPIROGRAPH) {
+        Serial.println("Spirograph Mode Active");
+        rotStepper.setMaxSpeed(userDefinedSpeed * 0.5); // Use 50% of user-defined speed
+        inOutStepper.setMaxSpeed(userDefinedSpeed * 0.5);
+    } else if (newMode == MODE_APP) {
+        Serial.println("App Mode Active");
+        rotStepper.setMaxSpeed(userDefinedSpeed); // Restore user-defined speed
+        inOutStepper.setMaxSpeed(userDefinedSpeed);
+        resetTheta();
+    }
+
+    movePolar(currentTheta, 0); // Move to the center
+}
+
+void spirographMode() {
+    static float currentFrequency = 2.95; // Track the current frequency (default value)
+    static float phaseShift = 0.0;       // Track the phase shift for smooth transitions
+
+    // Read potentiometer for frequency adjustment
+    int pot1Value = analogRead(pot1);
+    float newFrequency = mapFloat(pot1Value, 0, 1023, 0.5, 6); // Map to range
+    newFrequency = round(newFrequency * 10) / 10.0;            // Round to one decimal place
+
+    // Force the value to x.95 or x.10 to have a slight variation each revolution
+    if (fmod(newFrequency, 1.0) >= 0.5) {
+        newFrequency = floor(newFrequency) + 0.95; // Round up to x.95
+    } else {
+        newFrequency = floor(newFrequency) + 0.10; // Round down to x.10
+    }
+
+    // Adjust phase shift if frequency changes
+    if (newFrequency != currentFrequency) {
+        phaseShift += currentTheta * (currentFrequency - newFrequency);
+        currentFrequency = newFrequency; // Update the current frequency
+    }
+
+    // Read variation knob to adjust the minimum rho
+    int pot2Value = analogRead(pot2);
+    float minRho = round(mapFloat(pot2Value, 0, 1023, 0, 0.5) * 20) / 20.0; // Minimum rho in steps of 0.05
+
+    // Calculate amplitude and offset for the sine wave
+    float amplitude = (1.0 - minRho) / 2.0; // Half of the oscillation range
+    float offset = minRho + amplitude;      // Center the wave within the range [minRho, 1]
+
+    // Calculate the next target theta
+    float stepSize = maxSpeed * (2 * M_PI / rot_total_steps) / 10; // Smaller steps for finer control
+    float nextTheta = currentTheta + stepSize;
+
+    // Count total revolutions
+    totalRevolutions = (nextTheta / (2 * M_PI));
+
+    // Calculate rho using the adjusted sine wave with phase shift
+    currentRho = offset + amplitude * cos((currentTheta * currentFrequency) + phaseShift);
+    float nextRho = offset + amplitude * cos((nextTheta * currentFrequency) + phaseShift);
+
+    // Move the steppers to the calculated position
+    movePolar(nextTheta, constrain(nextRho, 0, 1));
+
+    // Update the current theta to the new position
+    currentTheta = nextTheta;
+}
+
+float mapFloat(long x, long inMin, long inMax, float outMin, float outMax) {
+    if (inMax == inMin) {
+        Serial.println("Error: mapFloat division by zero");
+        return outMin; // Return the minimum output value as a fallback
+    }
+    return (float)(x - inMin) * (outMax - outMin) / (float)(inMax - inMin) + outMin;
+}
+
+void appMode()
 {
     // Check for incoming serial commands or theta-rho pairs
     if (Serial.available() > 0)
@@ -105,6 +198,7 @@ void loop()
 
                 if (speed > 0) // Ensure valid speed
                 {
+                    userDefinedSpeed = speed;
                     rotStepper.setMaxSpeed(speed);
                     inOutStepper.setMaxSpeed(speed);
                     Serial.println("SPEED_SET");
@@ -168,7 +262,7 @@ void loop()
         }
     }
 
-    // Process the buffer if a batch is R
+    // Process the buffer if a batch is ready
     if (batchComplete && bufferCount > 0)
     {
         // Start interpolation from the current position
@@ -202,8 +296,8 @@ void loop()
             startRho = buffer[i][1];
         }
 
-        bufferCount = 0;       // Clear buffer
         batchComplete = false; // Reset batch flag
+        bufferCount = 0;       // Clear buffer
         Serial.println("R");
     }
 }
