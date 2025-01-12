@@ -6,11 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - **Auto-connect Serial Connection when app is started**
-- **Retry Logic for Serial Connection:**
-    - Introduced retry functionality for serial connections with configurable retry intervals and maximum retries.
     - Automatically selected the first available serial port if none was specified.
 - **Added Footer with:**
-  - Links to github 
+  - Links to github
   - Toggle button to show/hide the debug log
 
 ### Changed
