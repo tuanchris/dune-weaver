@@ -349,8 +349,13 @@ void movePolar(float theta, float rho)
 
     // Move both motors synchronously
     multiStepper.moveTo(targetPositions);
-    multiStepper.runSpeedToPosition(); // Blocking call
-
+    isRunning = true;
+    
+    while (rotStepper.distanceToGo() != 0 || inOutStepper.distanceToGo() != 0)
+    {
+        multiStepper.run(); // Non-Blocking call
+    }
+    isRunning = false;
     // Update the current coordinates
     currentTheta = theta;
     currentRho = rho;
