@@ -5,10 +5,6 @@ All notable changes to this project will be documented in this file.
 ## [1.1.0] - Default Pattern functionality
 
 ### Added
-- **Default Pattern Feature:**
-    - Added a "Set as Default Pattern" button in the UI.
-    - Implemented the `/set_default_pattern` endpoint to allow users to set a selected `.thr` file as the default pattern.
-    - Automatically runs the `custom_patterns/default_pattern.thr` file upon establishing a serial connection, if the file exists.
 - **Auto-connect Serial Connection when app is started**
 - **Retry Logic for Serial Connection:**
     - Introduced retry functionality for serial connections with configurable retry intervals and maximum retries.

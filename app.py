@@ -10,7 +10,6 @@ app = Flask(__name__)
 
 # Configuration
 THETA_RHO_DIR = './patterns'
-DEFAULT_PATTERN = 'custom_patterns/default_pattern.thr'
 IGNORE_PORTS = ['/dev/cu.debug-console', '/dev/cu.Bluetooth-Incoming-Port']
 os.makedirs(THETA_RHO_DIR, exist_ok=True)
 
@@ -25,53 +24,32 @@ def list_serial_ports():
     ports = serial.tools.list_ports.comports()
     return [port.device for port in ports if port.device not in IGNORE_PORTS]
 
-def connect_to_serial(port=None, baudrate=115200, retry_interval=10, max_retries=5):
+def connect_to_serial(port=None, baudrate=115200):
     """Automatically connect to the first available serial port or a specified port."""
     global ser, ser_port
-    retries = 0
 
-    while retries < max_retries:
-        try:
-            if port is None:
-                ports = list_serial_ports()
-                if not ports:
-                    print("No serial ports available. Retrying...")
-                    time.sleep(retry_interval)
-                    retries += 1
-                    continue
-                port = ports[0]  # Auto-select the first available port
+    try:
+        if port is None:
+            ports = list_serial_ports()
+            if not ports:
+                print("No serial port connected")
+                return False
+            port = ports[0]  # Auto-select the first available port
 
-            with serial_lock:
-                if ser and ser.is_open:
-                    ser.close()
-                ser = serial.Serial(port, baudrate)
-                ser_port = port  # Store the connected port globally
-            print(f"Connected to serial port: {port}")
-            time.sleep(2)  # Allow time for the connection to establish
-            return True  # Successfully connected
-        except serial.SerialException as e:
-            print(f"Failed to connect to serial port {port}: {e}")
-            port = None  # Reset the port to try the next available one
-            retries += 1
-            time.sleep(retry_interval)
+        with serial_lock:
+            if ser and ser.is_open:
+                ser.close()
+            ser = serial.Serial(port, baudrate)
+            ser_port = port  # Store the connected port globally
+        print(f"Connected to serial port: {port}")
+        time.sleep(2)  # Allow time for the connection to establish
+        return True  # Successfully connected
+    except serial.SerialException as e:
+        print(f"Failed to connect to serial port {port}: {e}")
+        port = None  # Reset the port to try the next available one
 
     print("Max retries reached. Could not connect to a serial port.")
     return False
-
-def trigger_default_pattern():
-    """Run the default pattern automatically after connecting to the serial port."""
-    if not ser or not ser.is_open:
-        print("Serial connection not established. Cannot trigger default pattern.")
-        return
-
-    # Check if the default pattern file exists
-    file_path = os.path.join(THETA_RHO_DIR, DEFAULT_PATTERN)
-    if not os.path.exists(file_path):
-        print(f"Default pattern file not found: {file_path}")
-        return
-
-    print(f"Triggering default pattern: {DEFAULT_PATTERN}")
-    threading.Thread(target=run_theta_rho_file, args=(file_path,)).start()
 
 def disconnect_serial():
     """Disconnect the current serial connection."""
@@ -362,33 +340,6 @@ def preview_thr():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/set_default_pattern', methods=['POST'])
-def set_default_pattern():
-    """Set a selected file as the default pattern."""
-    data = request.json
-    file_name = data.get('file_name')
-
-    if not file_name or not file_name.endswith('.thr'):
-        return jsonify({"success": False, "error": "Invalid file name"}), 400
-
-    # Paths for source and target files
-    source_path = os.path.join(THETA_RHO_DIR, file_name)
-    target_path = os.path.join(THETA_RHO_DIR, DEFAULT_PATTERN)
-
-    if not os.path.exists(source_path):
-        return jsonify({"success": False, "error": "File not found"}), 404
-
-    try:
-        # Ensure the target directory exists
-        target_dir = os.path.dirname(target_path)
-        os.makedirs(target_dir, exist_ok=True)
-
-        # Copy the file to the default pattern location
-        import shutil
-        shutil.copyfile(source_path, target_path)
-        return jsonify({"success": True, "message": f"{file_name} set as default pattern."})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/send_coordinate', methods=['POST'])
 def send_coordinate():
@@ -452,8 +403,9 @@ def set_speed():
         return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
+    # Auto-connect to serial
+    connect_to_serial()
+    
     # Start the Flask app
     app.run(debug=True, host='0.0.0.0', port=8080)
 
-    # Auto-connect to serial
-    connect_to_serial()
