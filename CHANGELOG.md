@@ -2,7 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.1.0] - Default Pattern functionality
+## [1.2.0] - Spirograph functionality
+
+### Added
+- Added support for Spirograph mode on the DRV and TMC 
+  - runs on the Arduino and can be used if optional hardware of two potentiometers and a button is connected.
+
+## [1.1.0] - Auto connect functionality
 
 ### Added
 - **Auto-connect Serial Connection when app is started**
