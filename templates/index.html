@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sand Table Controller</title>
+    <title>Dune Weaver Controller</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../static/style.css">
 </head>
 <body>
-    <h1>Sand Table Controller</h1>
+    <h1>Dune Weaver Controller</h1>
     <div class="container">
         <!-- Left Column -->
         <div class="left-column">
@@ -24,8 +24,24 @@
                     <button onclick="disconnectSerial()">Disconnect</button>
                     <button onclick="restartSerial()">Restart</button>
                 </div>
+                <div class="button-group">
+                    <label for="speed_input">Speed:</label>
+                    <input type="number" id="speed_input" placeholder="1-100" min="1" step="1" max="5000">
+                    <button class="small-button"  onclick="changeSpeed()">Set Speed</button>
+                </div>
             </div>
-
+            <div class="section"> 
+                <h2>Mode</h2>
+                <label>
+                <input type="radio" name="mode" class="modeSelector" value="single_run" checked> Single Run
+                </label>
+                <label>
+                <input type="radio" name="mode" class="modeSelector" value="create_playlist"> Create Playlist
+                </label>
+                <label>
+                <input type="radio" name="mode" class="modeSelector" value="run_playlist"> Run Playlist
+                </label>
+            </div>
             <div class="section">
                 <h2>Quick Actions</h2>
                 <div class="button-group">
@@ -34,6 +50,7 @@
                     <button onclick="moveToPerimeter()">Move to Perimeter</button>
                     <button onclick="runClearIn()">Clear from In</button>
                     <button onclick="runClearOut()">Clear from Out</button>
+                    <button onclick="runSideway()">Clear Sideway</button>
                     <button onclick="stopExecution()" class="delete-button">Stop</button>
                 </div>
                 <div class="coordinate-input button-group">
@@ -42,11 +59,6 @@
                     <label for="rho_input">ρ:</label>
                     <input type="number" id="rho_input" placeholder="Rho">
                     <button class="small-button" onclick="sendCoordinate()">Send to coordinate</button>
-                </div>
-                <div class="button-group">
-                    <label for="speed_input">Speed:</label>
-                    <input type="number" id="speed_input" placeholder="1-5000" min="1" step="1" max="5000">
-                    <button class="small-button"  onclick="changeSpeed()">Set Speed</button>
                 </div>
             </div>
             <div class="section">
@@ -59,54 +71,124 @@
 
         <!-- Right Column -->
         <div class="right-column">
-            <div class="section">
-                <h2>Pattern Files</h2>
-                <input type="text" id="search_pattern" placeholder="Search files..." oninput="searchPatternFiles()">
-                <ul id="theta_rho_files"></ul>
-                <div class="pre-execution-toggles">
-                    <h3>Pre-Execution Action</h3>
-                    <label>
-                        <input type="radio" name="pre_execution" value="clear_in" id="clear_in"> Clear from In
-                    </label>
-                    <label>
-                        <input type="radio" name="pre_execution" value="clear_out" id="clear_out"> Clear from Out
-                    </label>
-                    <label>
-                        <input type="radio" name="pre_execution" value="none" id="no_action" checked> None
-                    </label>
-                </div>
-                <div class="button-group">
-                    <button id="run_button" disabled>Run Selected Pattern</button>
-                </div>
-            </div>
-            <div class="section">
-                <h2>Upload new files</h2>
-                <div class="button-group">
-                    <input type="file" id="upload_file">
-                    <div class="button-group">
-                        <button onclick="uploadThetaRho()">Upload</button>
-                        <button id="delete_selected_button" class="delete-button" onclick="deleteSelectedFile()" disabled>Delete Selected File</button>
+
+                <div class="section modeSection single_run create_playlist">
+                    <h2 class="modeSection single_run">Single Run</h2>
+                    <h2 class="modeSection create_playlist" style="display: none;"> Create Playlist</h2>
+                    <h2 class="modeSection run_playlist" style="display: none;"> Run Playlist</h2>
+                    <input class="modeSection single_run create_playlist" type="text" id="search_pattern" placeholder="Search files..." oninput="searchPatternFiles()">
+                    <ul  class="modeSection single_run create_playlist" id="theta_rho_files"></ul>
+                    <div class="pre-execution-toggles modeSection single_run">
+                        <h3>Pre-Execution Action</h3>
+                        <label>
+                            <input type="radio" name="pre_execution" value="clear_in" id="clear_in"> Clear from In
+                        </label>
+                        <label>
+                            <input type="radio" name="pre_execution" value="clear_out" id="clear_out"> Clear from Out
+                        </label>
+                        <label>
+                            <input type="radio" name="pre_execution" value="clear_sideway" id="clear_out"> Clear sideway
+                        </label>
+                        <label>
+                            <input type="radio" name="pre_execution" value="none" id="no_action" checked> None
+                        </label>
+                    </div>
+                    <div class="button-group modeSection single_run">
+                        <button id="run_button" disabled>Run Selected File</button>
+                    </div>
+                    <div class="button-group modeSection create_playlist" style="display: none;">
+                        <button onclick="addToPlaylist()">Add File to Playlist</button>
                     </div>
                 </div>
+                <div class="section modeSection single_run">
+                    <h2>Upload new files</h2>
+                    <div class="button-group">
+                        <input type="file" id="upload_file">
+                        <div class="button-group">
+                            <button onclick="uploadThetaRho()">Upload</button>
+                            <button id="delete_selected_button" class="delete-button" onclick="deleteSelectedFile()" disabled>Delete Selected File</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="section modeSection create_playlist run_playlist" style="display: none;">
+                    <h2>Create Playlist</h2>
+                    <!-- A list showing the files that have been added to the playlist -->
+                    <ul id="playlist_items"></ul>
+                  
+                    <!-- Buttons to reorder files in the playlist -->
+                    <div class="button-group">
+                      <button onclick="movePlaylistItemUp()">Up</button>
+                      <button onclick="movePlaylistItemDown()">Down</button>
+                      <button onclick="removeFromPlaylist()" class="delete-button">Remove</button>
+                    </div>
+                                        
+                    <div class="playlist-name-input">
+                        <label for="playlist_name">Playlist Name:</label>
+                        <input type="text" id="playlist_name" placeholder="Enter playlist name" />
+                      </div>
+                    
+                      <div class="button-group">
+                        <!-- Button to add the selected file (from #theta_rho_files) to the playlist -->
+                    
+                        <!-- Button to create/finalize the playlist -->
+                        <button onclick="savePlaylist()">Create Playlist</button>
+                    </div>
+                </div>
+                <div class="section modeSection create_playlist run_playlist" style="display: none;">
+                    <h2>Playlists</h2>
+                    
+                    <!-- Parameter Inputs -->
+                    <div class="playlist-parameters">
+                        <label for="pause_time">Pause Time (seconds):</label>
+                        <input type="number" id="pause_time" min="0" step="0.1" value="0">
+                        
+                        <label for="clear_pattern">Clear Pattern:</label>
+                        <select id="clear_pattern">
+                            <option value="none">None</option>
+                            <option value="clear_in">Clear from In</option>
+                            <option value="clear_out">Clear from Out</option>
+                            <option value="clear_sideway">Clear Sideway</option>
+                            <option value="random">Random</option>
+                        </select>
+                        
+                        <!-- New Parameters -->
+                        <div class="run-options">
+                            <label>Run Mode:</label>
+                            <label>
+                                <input type="radio" name="run_mode" value="single" checked> Single Run
+                            </label>
+                            <label>
+                                <input type="radio" name="run_mode" value="indefinite"> Indefinite Run
+                            </label>
+                            
+                            <label>
+                                <input type="checkbox" id="shuffle_playlist"> Shuffle Playlist
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Playlists List -->
+                    <ul id="all_playlists"></ul>
+                </div>
             </div>
         </div>
-
-        <div class="footer">
-            <div id="github">
-                <span>Help us improve! <a href="https://github.com/tuanchris/dune-weaver/pulls" target="_blank">Submit a Pull Request</a> or <a href="https://github.com/tuanchris/dune-weaver/issues/new" target="_blank">Report a Bug</a>.</span>
-                <a href="https://github.com/tuanchris/dune-weaver/issues" target="_blank">
-                    <img src="https://img.shields.io/github/issues/tuanchris/dune-weaver?style=flat-square" alt="GitHub Issues">
-                </a>
-            </div>
-
-            <button id="debug_button" class="small-button" onclick="toggleDebugLog()">
-                Show Debug log
-            </button>
+    </div>
+    
+    <div class="footer">
+        <div id="github">
+            <span>Help us improve! <a href="https://github.com/tuanchris/dune-weaver/pulls" target="_blank">Submit a Pull Request</a> or <a href="https://github.com/tuanchris/dune-weaver/issues/new" target="_blank">Report a Bug</a>.</span>
+            <a href="https://github.com/tuanchris/dune-weaver/issues" target="_blank">
+                <img src="https://img.shields.io/github/issues/tuanchris/dune-weaver?style=flat-square" alt="GitHub Issues">
+            </a>
         </div>
 
-        <div id="status_log">
-            <!-- Messages will be appended here -->
-        </div>
+        <button id="debug_button" class="small-button" onclick="toggleDebugLog()">
+            Show Debug log
+        </button>
+    </div>
+
+    <div id="status_log">
+        <!-- Messages will be appended here -->
     </div>
     <script>
         let selectedFile = null;
@@ -300,23 +382,6 @@
             }
         }
 
-        async function runClearIn() {
-            await runFile('clear_from_in.thr');
-        }
-
-        async function runClearOut() {
-            await runFile('clear_from_out.thr');
-        }
-
-        async function runFile(fileName) {
-            const response = await fetch(`/run_theta_rho_file/${fileName}`, { method: 'POST' });
-            const result = await response.json();
-            if (result.success) {
-                logMessage(`Running file: ${fileName}`);
-            } else {
-                logMessage(`Failed to run file: ${fileName}`);
-            }
-        }
 
         let allFiles = []; // Store all files for filtering
 
@@ -528,6 +593,56 @@
             }
         }
 
+        async function runFile(fileName) {
+            const response = await fetch(`/run_theta_rho_file/${fileName}`, { method: 'POST' });
+            const result = await response.json();
+            if (result.success) {
+                logMessage(`Running file: ${fileName}`);
+            } else {
+                logMessage(`Failed to run file: ${fileName}`);
+            }
+        }
+
+        async function runClearIn() {
+            await runFile('clear_from_in.thr');
+        }
+
+        async function runClearOut() {
+            await runFile('clear_from_out.thr');
+        }
+
+        async function runSideway() {
+            await runFile('clear_sideway.thr');
+        }
+        
+        // Call this function on page load
+        checkSerialStatus();
+
+        // Initial load of serial ports and Theta-Rho files
+        loadSerialPorts();
+        loadThetaRhoFiles();
+
+        document.getElementById('run_button').onclick = runThetaRho;
+        
+        document.querySelectorAll('.modeSelector').forEach((radio) => {
+            radio.addEventListener('change', function () {
+              // Hide all .modeSection first
+              document.querySelectorAll('.modeSection').forEach((section) => {
+                section.style.display = 'none';
+              });
+          
+              // Figure out which mode was selected
+              const selectedValue = this.value; // or document.querySelector('.modeSelector:checked').value
+          
+              // Show every element that has .modeSection AND the selected mode's class
+              document
+                .querySelectorAll(`.modeSection.${selectedValue}`)
+                .forEach((elem) => {
+                  elem.style.display = 'block';
+                });
+            });
+          });
+
         async function changeSpeed() {
             const speedInput = document.getElementById('speed_input');
             const speed = parseFloat(speedInput.value);
@@ -552,16 +667,288 @@
                 logMessage(`Failed to set speed: ${result.error}`);
             }
         }
+        // Keep track of the files in the new playlist
+        let playlist = [];
+        // Currently selected item in the playlist
+        let selectedPlaylistIndex = null;
+        
+        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        //  PART A: Loading / listing playlists from the server
+        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        
+        async function loadAllPlaylists() {
+            try {
+            const response = await fetch('/list_all_playlists'); // GET
+            const allPlaylists = await response.json();          // e.g. ["My Playlist", "Summer", ...]
+            displayAllPlaylists(allPlaylists);
+            } catch (err) {
+            logMessage(`Error loading playlists: ${err}`);
+            }
+        }
+        
+        // Function to display all playlists with Load, Run, and Delete buttons
+        function displayAllPlaylists(allPlaylists) {
+            const ul = document.getElementById('all_playlists');
+            ul.innerHTML = ''; // Clear current list
 
-        // Call this function on page load
-        checkSerialStatus();
+            allPlaylists.forEach((playlistName) => {
+                const li = document.createElement('li');
+                li.classList.add('playlist-item'); // For styling
 
-        // Initial load of serial ports and Theta-Rho files
-        loadSerialPorts();
-        loadThetaRhoFiles();
+                // Playlist Name
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = playlistName;
+                li.appendChild(nameSpan);
 
-        document.getElementById('run_button').onclick = runThetaRho;
+                // "Load" button
+                const loadBtn = document.createElement('button');
+                loadBtn.textContent = 'Load';
+                loadBtn.onclick = () => loadPlaylist(playlistName);
+                loadBtn.classList.add('load-button'); // For styling
+                li.appendChild(loadBtn);
 
+                // "Run" button
+                const runBtn = document.createElement('button');
+                runBtn.textContent = 'Run';
+                runBtn.onclick = () => runPlaylist(playlistName);
+                runBtn.classList.add('run-button'); // For styling
+                li.appendChild(runBtn);
+
+                // "Delete" button
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.onclick = () => deletePlaylist(playlistName);
+                deleteBtn.classList.add('delete-button'); // For styling
+                li.appendChild(deleteBtn);
+
+                ul.appendChild(li);
+            });
+        }
+
+        // Function to run the selected playlist with specified parameters
+        async function runPlaylist(playlistName) {
+            if (!playlistName) {
+                logMessage("No playlist selected to run.");
+                return;
+            }
+
+            // Get the parameters from the UI
+            const pauseTimeInput = document.getElementById('pause_time').value;
+            const clearPatternSelect = document.getElementById('clear_pattern').value;
+            const runMode = document.querySelector('input[name="run_mode"]:checked').value;
+            const shuffle = document.getElementById('shuffle_playlist').checked;
+
+            // Validate pause time
+            const pauseTime = parseFloat(pauseTimeInput);
+            if (isNaN(pauseTime) || pauseTime < 0) {
+                logMessage("Invalid pause time. Please enter a non-negative number.");
+                return;
+            }
+
+            // Map clear_pattern select value to backend expected values
+            let clearPattern = clearPatternSelect;
+            if (clearPatternSelect === "none") {
+                clearPattern = null;
+            }
+
+            logMessage(`Running playlist: ${playlistName} with pause_time=${pauseTime}, clear_pattern=${clearPattern || "None"}, run_mode=${runMode}, shuffle=${shuffle}`);
+
+            try {
+                const response = await fetch('/run_playlist', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        playlist_name: playlistName,
+                        pause_time: pauseTime,
+                        clear_pattern: clearPattern,
+                        run_mode: runMode, // 'single' or 'indefinite'
+                        shuffle: shuffle      // true or false
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    logMessage(`Playlist "${playlistName}" is now running.`);
+                } else {
+                    logMessage(`Failed to run playlist "${playlistName}": ${result.error}`);
+                }
+            } catch (error) {
+                logMessage(`Error running playlist "${playlistName}": ${error}`);
+            }
+        }
+        
+        async function loadPlaylist(playlistName) {
+            // This fetches the named playlist from /get_playlist?name=...
+            try {
+            const response = await fetch(`/get_playlist?name=${encodeURIComponent(playlistName)}`);
+            const data = await response.json(); // { "name": "XYZ", "files": [...] }
+        
+            if (data.error) {
+                logMessage(`Error loading playlist "${playlistName}": ${data.error}`);
+                return;
+            }
+        
+            // Clear current local playlist; replace with loaded data
+            playlist = data.files || [];
+            selectedPlaylistIndex = null;
+            document.getElementById('playlist_name').value = data.name; // Fill in the name field
+        
+            refreshPlaylistUI();
+            logMessage(`Loaded playlist: ${data.name} with ${playlist.length} file(s).`);
+            } catch (err) {
+            logMessage(`Error loading playlist: ${err}`);
+            }
+        }
+        
+        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        //  PART B: Creating or Saving (Overwriting) a Playlist
+        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        
+        // Instead of separate create/modify functions, we’ll unify them:
+        async function savePlaylist() {
+            const name = document.getElementById('playlist_name').value.trim();
+            if (!name) {
+            logMessage("Please enter a playlist name.");
+            return;
+            }
+            if (playlist.length === 0) {
+            logMessage("No files in this playlist. Add files first.");
+            return;
+            }
+        
+            logMessage(`Saving playlist "${name}" with ${playlist.length} file(s)...`);
+        
+            try {
+            // We can use /create_playlist or /modify_playlist. They do roughly the same in our single-file approach.
+            // Let's use /create_playlist to always overwrite or create anew.
+            const response = await fetch('/create_playlist', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                name: name,
+                files: playlist
+                })
+            });
+            const result = await response.json();
+            if (result.success) {
+                logMessage(result.message);
+                // Reload the entire list of playlists to reflect changes
+                loadAllPlaylists();
+            } else {
+                logMessage(`Failed to save playlist: ${result.error}`);
+            }
+            } catch (err) {
+            logMessage(`Error saving playlist: ${err}`);
+            }
+        }
+        
+        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        //  PART C: Deleting a playlist
+        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        
+        async function deletePlaylist(playlistName) {
+            if (!confirm(`Delete playlist "${playlistName}"? This cannot be undone.`)) {
+            return;
+            }
+            try {
+            const response = await fetch('/delete_playlist', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: playlistName })
+            });
+            const result = await response.json();
+            if (result.success) {
+                logMessage(result.message);
+                loadAllPlaylists(); // Refresh the UI
+            } else {
+                logMessage(`Failed to delete playlist: ${result.error}`);
+            }
+            } catch (err) {
+            logMessage(`Error deleting playlist: ${err}`);
+            }
+        }
+        
+        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        //  PART D: Local playlist array UI
+        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        
+        // Called when the user clicks "Add File to Playlist"
+        function addToPlaylist() {
+            if (!selectedFile) {
+            logMessage("No file selected to add to the playlist.");
+            return;
+            }
+            // Add the current selectedFile to the local array
+            playlist.push(selectedFile);
+            logMessage(`Added "${selectedFile}" to the playlist.`);
+            refreshPlaylistUI();
+        }
+        
+        function refreshPlaylistUI() {
+            const ul = document.getElementById('playlist_items');
+            ul.innerHTML = '';
+        
+            playlist.forEach((file, index) => {
+            const li = document.createElement('li');
+            li.textContent = file;
+        
+            // When you click on a file in the playlist, mark it as selected
+            li.onclick = () => selectPlaylistItem(index);
+        
+            // Highlight the currently selected playlist item
+            if (index === selectedPlaylistIndex) {
+                li.classList.add('selected');
+            }
+            ul.appendChild(li);
+            });
+        }
+        
+        function selectPlaylistItem(index) {
+            selectedPlaylistIndex = index;
+            refreshPlaylistUI();
+            logMessage(`Selected playlist file: ${playlist[index]}`);
+        }
+        
+        function movePlaylistItemUp() {
+            if (selectedPlaylistIndex === null || selectedPlaylistIndex <= 0) return;
+            const temp = playlist[selectedPlaylistIndex - 1];
+            playlist[selectedPlaylistIndex - 1] = playlist[selectedPlaylistIndex];
+            playlist[selectedPlaylistIndex] = temp;
+            selectedPlaylistIndex--;
+            refreshPlaylistUI();
+        }
+        
+        function movePlaylistItemDown() {
+            if (selectedPlaylistIndex === null || selectedPlaylistIndex >= playlist.length - 1) return;
+            const temp = playlist[selectedPlaylistIndex + 1];
+            playlist[selectedPlaylistIndex + 1] = playlist[selectedPlaylistIndex];
+            playlist[selectedPlaylistIndex] = temp;
+            selectedPlaylistIndex++;
+            refreshPlaylistUI();
+        }
+        
+        function removeFromPlaylist() {
+            if (selectedPlaylistIndex === null) {
+            logMessage("No item selected in the playlist to remove.");
+            return;
+            }
+            const removedFile = playlist[selectedPlaylistIndex];
+            playlist.splice(selectedPlaylistIndex, 1);
+            selectedPlaylistIndex = null;
+            refreshPlaylistUI();
+            logMessage(`Removed "${removedFile}" from the playlist.`);
+        }
+        
+        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        //  PART E: Page load initialization
+        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        
+        // Make sure we load the existing playlists list on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadAllPlaylists();
+        });
+         
     </script>
 </body>
 </html>

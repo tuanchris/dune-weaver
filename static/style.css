@@ -163,7 +163,7 @@ li.selected {
 }
 
 #theta_rho_files {
-    max-height: 507px;
+    max-height: 400px;
     overflow-y: auto;
     border: 1px solid #ddd;
     border-radius: 5px;
