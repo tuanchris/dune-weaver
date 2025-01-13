@@ -187,6 +187,18 @@ void appMode()
             Serial.println(input);
             return;
         }
+        if (input == "RESET_THETA")
+        {
+            resetTheta(); // Reset currentTheta
+            Serial.println("THETA_RESET"); // Notify Python
+            Serial.println("READY");
+            return;
+        }
+        if (input == "HOME")
+        {
+            homing();
+            return;
+        }
 
 
         if (input.startsWith("SET_SPEED"))
