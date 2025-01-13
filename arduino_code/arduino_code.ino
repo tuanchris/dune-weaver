@@ -182,7 +182,43 @@ void appMode()
         // Ignore invalid messages
         if (input != "HOME" && input != "RESET_THETA" && !input.startsWith("SET_SPEED") && !input.endsWith(";"))
         {
-            Serial.println("IGNORED");
+            Serial.print("IGNORED: ");
+            Serial.println(input);
+            return;
+        }
+
+        // Example: The user calls "SET_SPEED 60" => 60% of maxSpeed
+        if (input.startsWith("SET_SPEED"))
+        {
+            // Parse out the speed value from the command string
+            int spaceIndex = input.indexOf(' ');
+            if (spaceIndex != -1)
+            {
+                String speedStr = input.substring(spaceIndex + 1);
+                float speedPercentage = speedStr.toFloat();
+
+                // Make sure the percentage is valid
+                if (speedPercentage >= 1.0 && speedPercentage <= 100.0)
+                {
+                    // Convert percentage to actual speed
+                    long newSpeed = (speedPercentage / 100.0) * maxSpeed;
+
+                    // Set the stepper speeds
+                    rotStepper.setMaxSpeed(newSpeed);
+                    inOutStepper.setMaxSpeed(newSpeed);
+
+                    Serial.println("SPEED_SET");  
+                    Serial.println("R");
+                }
+                else
+                {
+                    Serial.println("INVALID_SPEED");
+                }
+            }
+            else
+            {
+                Serial.println("INVALID_COMMAND");
+            }
             return;
         }
 
@@ -336,7 +372,9 @@ void movePolar(float theta, float rho)
     totalRevolutions += (theta - currentTheta) / (2.0 * M_PI);
 
     // Apply the offset to the inout axis
-    inOutSteps += offsetSteps;
+    if (!isFirstCoordinates) {
+        inOutSteps -= offsetSteps;
+    }
 
     // Define target positions for both motors
     long targetPositions[2];
