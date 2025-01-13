@@ -191,50 +191,6 @@ void appMode()
 
         if (input.startsWith("SET_SPEED"))
         {
-            // Parse and set the speed
-            int spaceIndex = input.indexOf(' ');
-            if (spaceIndex != -1)
-            {
-                String speedStr = input.substring(spaceIndex + 1);
-                float speed = speedStr.toFloat();
-
-                if (speed > 0) // Ensure valid speed
-                {
-                    userDefinedSpeed = speed;
-                    rotStepper.setMaxSpeed(speed);
-                    inOutStepper.setMaxSpeed(speed);
-                    Serial.println("SPEED_SET");
-                    Serial.println("R");
-                }
-                else
-                {
-                    Serial.println("INVALID_SPEED");
-                }
-            }
-            else
-            {
-                Serial.println("INVALID_COMMAND");
-            }
-            return;
-        }
-
-        if (input == "HOME")
-        {
-            homing();
-            return;
-        }
-
-        if (input == "RESET_THETA")
-        {
-            resetTheta(); // Reset currentTheta
-            Serial.println("THETA_RESET"); // Notify Python
-            Serial.println("R");
-            return;
-        }
-
-        // Example: The user calls "SET_SPEED 60" => 60% of maxSpeed
-        if (input.startsWith("SET_SPEED"))
-        {
             // Parse out the speed value from the command string
             int spaceIndex = input.indexOf(' ');
             if (spaceIndex != -1)
@@ -247,6 +203,7 @@ void appMode()
                 {
                     // Convert percentage to actual speed
                     long newSpeed = (speedPercentage / 100.0) * maxSpeed;
+                    userDefinedSpeed = newSpeed;
 
                     // Set the stepper speeds
                     rotStepper.setMaxSpeed(newSpeed);
@@ -266,7 +223,6 @@ void appMode()
             }
             return;
         }
-
 
         // If not a command, assume it's a batch of theta-rho pairs
         if (!batchComplete)

@@ -213,19 +213,6 @@ def run_theta_rho_files(
                 print("Execution stopped before starting next pattern.")
                 return
 
-            # Run the main pattern
-            print(f"Running pattern {idx + 1} of {len(file_paths)}: {path}")
-            run_theta_rho_file(path)
-            
-            if idx < len(file_paths) -1:
-                if stop_requested:
-                    print("Execution stopped before running the next clear pattern.")
-                    return
-                # Pause after each pattern if requested
-                if pause_time > 0:
-                    print(f"Pausing for {pause_time} seconds...")
-                    time.sleep(pause_time)
-
             if clear_pattern:
                 if stop_requested:
                     print("Execution stopped before running the next clear pattern.")
@@ -235,6 +222,20 @@ def run_theta_rho_files(
                 clear_file_path = get_clear_pattern_file(clear_pattern)
                 print(f"Running clear pattern: {clear_file_path}")
                 run_theta_rho_file(clear_file_path)
+            
+            if not stop_requested:
+                # Run the main pattern
+                print(f"Running pattern {idx + 1} of {len(file_paths)}: {path}")
+                run_theta_rho_file(path)
+            
+            if idx < len(file_paths) -1:
+                if stop_requested:
+                    print("Execution stopped before running the next clear pattern.")
+                    return
+                # Pause after each pattern if requested
+                if pause_time > 0:
+                    print(f"Pausing for {pause_time} seconds...")
+                    time.sleep(pause_time)
 
         # After completing the playlist
         if run_mode == "indefinite":

@@ -5,8 +5,30 @@ All notable changes to this project will be documented in this file.
 ## [1.2.0] - Spirograph functionality
 
 ### Added
+
+#### Playlist mode
+
+- Added UI selection mode for single pattern run, create a playlist, and run a playlist. The UI is work in progress and will be changed in the near future.
+- Created playlist will be saved as a JSON file on disk. There are options to:
+  - Run the playlist once or on an indefinite loop
+  - Shuffle the playlist
+  - Add a clear pattern between files that will run immmidiately before each pattern. If you would like to customize the clear pattern, select None here and add clear patterns manually.
+  - Add a pause time (in second) between each pattern.
+
+#### Spirograph mode
+
 - Added support for Spirograph mode for the arduino with DRV8825 or TMC2209 motor drivers
-  - can be used if optional hardware (two potentiometers and a button) is connected.
+- Can be used if optional hardware (two potentiometers and a button) is connected.
+
+### Changed
+
+- Fixed a bug that created conflicting threads, leading to serial errors
+- Fixed a bug that caused the speed setting functionality to not work
+- Fixed a bug that caused the ball to move in slightly when a pattern starts at the perimeter and theta != 0
+
+### Known issues
+
+- Patterns with theta does not start with 0 will behave abnormally. To get around this, be sure to select start from center or perimeter when creating your pattern in sandify.org.
 
 ## [1.1.0] - Auto connect functionality
 
