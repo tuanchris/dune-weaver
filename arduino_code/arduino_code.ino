@@ -202,42 +202,13 @@ void appMode()
                 {
                     // Convert percentage to actual speed
                     long newSpeed = (speedPercentage / 100.0) * maxSpeed;
+                    userDefinedSpeed = newSpeed;
 
                     // Set the stepper speeds
                     rotStepper.setMaxSpeed(newSpeed);
                     inOutStepper.setMaxSpeed(newSpeed);
 
                     Serial.println("SPEED_SET");  
-                    Serial.println("R");
-                }
-                else
-                {
-                    Serial.println("INVALID_SPEED");
-                }
-            }
-            else
-            {
-                Serial.println("INVALID_COMMAND");
-            }
-            return;
-        }
-
-
-        if (input.startsWith("SET_SPEED"))
-        {
-            // Parse and set the speed
-            int spaceIndex = input.indexOf(' ');
-            if (spaceIndex != -1)
-            {
-                String speedStr = input.substring(spaceIndex + 1);
-                float speed = speedStr.toFloat();
-
-                if (speed > 0) // Ensure valid speed
-                {
-                    userDefinedSpeed = speed;
-                    rotStepper.setMaxSpeed(speed);
-                    inOutStepper.setMaxSpeed(speed);
-                    Serial.println("SPEED_SET");
                     Serial.println("R");
                 }
                 else
