@@ -129,13 +129,13 @@ def send_command(command):
     ser.write(f"{command}\n".encode())
     print(f"Sent: {command}")
 
-    # Wait for "DONE" acknowledgment from Arduino
+    # Wait for "R" acknowledgment from Arduino
     while True:
         with serial_lock:
             if ser.in_waiting > 0:
                 response = ser.readline().decode().strip()
                 print(f"Arduino response: {response}")
-                if response == "DONE":
+                if response == "R":
                     print("Command execution completed.")
                     break
 
@@ -703,6 +703,31 @@ def run_playlist():
             daemon=True  # Daemonize thread to exit with the main program
         ).start()
         return jsonify({"success": True, "message": f"Playlist '{playlist_name}' is now running."})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    
+@app.route('/set_speed', methods=['POST'])
+def set_speed():
+    """Set the speed for the Arduino."""
+    global ser
+    if ser is None or not ser.is_open:
+        return jsonify({"success": False, "error": "Serial connection not established"}), 400
+
+    try:
+        # Parse the speed value from the request
+        data = request.json
+        speed = data.get('speed')
+
+        if speed is None:
+            return jsonify({"success": False, "error": "Speed is required"}), 400
+
+        if not isinstance(speed, (int, float)) or speed <= 0:
+            return jsonify({"success": False, "error": "Invalid speed value"}), 400
+
+        # Send the SET_SPEED command to the Arduino
+        command = f"SET_SPEED {speed}"
+        send_command(command)
+        return jsonify({"success": True, "speed": speed})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

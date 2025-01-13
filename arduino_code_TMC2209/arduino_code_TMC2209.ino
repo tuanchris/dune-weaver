@@ -181,7 +181,7 @@ void appMode()
         String input = Serial.readStringUntil('\n');
 
         // Ignore invalid messages
-        if (input != "HOME" && input != "RESET_THETA" && !input.endsWith(";"))
+        if (input != "HOME" && input != "RESET_THETA" && !input.startsWith("SET_SPEED") && !input.endsWith(";"))
         {
             Serial.println("IGNORED");
             return;
@@ -228,6 +228,35 @@ void appMode()
             resetTheta(); // Reset currentTheta
             Serial.println("THETA_RESET"); // Notify Python
             Serial.println("R");
+            return;
+        }
+
+        if (input.startsWith("SET_SPEED"))
+        {
+            // Parse and set the speed
+            int spaceIndex = input.indexOf(' ');
+            if (spaceIndex != -1)
+            {
+                String speedStr = input.substring(spaceIndex + 1);
+                double speed = speedStr.toDouble();
+
+                if (speed > 0) // Ensure valid speed
+                {
+                    rotStepper.setMaxSpeed(speed);
+                    inOutStepper.setMaxSpeed(speed);
+                    Serial.print("SPEED_SET ");
+                    Serial.println(speed);
+                    Serial.println("R");
+                }
+                else
+                {
+                    Serial.println("INVALID_SPEED");
+                }
+            }
+            else
+            {
+                Serial.println("INVALID_COMMAND");
+            }
             return;
         }
 
@@ -349,13 +378,8 @@ void movePolar(float theta, float rho)
 
     // Move both motors synchronously
     multiStepper.moveTo(targetPositions);
-    isRunning = true;
-    
-    while (rotStepper.distanceToGo() != 0 || inOutStepper.distanceToGo() != 0)
-    {
-        multiStepper.run(); // Non-Blocking call
-    }
-    isRunning = false;
+    multiStepper.runSpeedToPosition(); // Blocking call
+
     // Update the current coordinates
     currentTheta = theta;
     currentRho = rho;
