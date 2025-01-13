@@ -40,7 +40,7 @@ float currentTheta = 0.0; // Current theta in radians
 float currentRho = 0.0;   // Current rho (0 to 1)
 bool isFirstCoordinates = true;
 float totalRevolutions = 0.0; // Tracks cumulative revolutions
-float maxSpeed = 1000;
+long maxSpeed = 1000;
 float maxAcceleration = 50;
 long interpolationResolution = 0.001;
 float userDefinedSpeed = maxSpeed; // Store user-defined speed
@@ -232,21 +232,27 @@ void appMode()
             return;
         }
 
+        // Example: The user calls "SET_SPEED 60" => 60% of maxSpeed
         if (input.startsWith("SET_SPEED"))
         {
-            // Parse and set the speed
+            // Parse out the speed value from the command string
             int spaceIndex = input.indexOf(' ');
             if (spaceIndex != -1)
             {
                 String speedStr = input.substring(spaceIndex + 1);
-                double speed = speedStr.toDouble();
+                float speedPercentage = speedStr.toFloat();
 
-                if (speed > 0) // Ensure valid speed
+                // Make sure the percentage is valid
+                if (speedPercentage >= 1.0 && speedPercentage <= 100.0)
                 {
-                    rotStepper.setMaxSpeed(speed);
-                    inOutStepper.setMaxSpeed(speed);
-                    Serial.print("SPEED_SET ");
-                    Serial.println(speed);
+                    // Convert percentage to actual speed
+                    long newSpeed = (speedPercentage / 100.0) * maxSpeed;
+
+                    // Set the stepper speeds
+                    rotStepper.setMaxSpeed(newSpeed);
+                    inOutStepper.setMaxSpeed(newSpeed);
+
+                    Serial.println("SPEED_SET");  
                     Serial.println("R");
                 }
                 else

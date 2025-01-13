@@ -26,7 +26,7 @@
                 </div>
                 <div class="button-group">
                     <label for="speed_input">Speed:</label>
-                    <input type="number" id="speed_input" placeholder="1-5000" min="1" step="1" max="5000">
+                    <input type="number" id="speed_input" placeholder="1-100" min="1" step="1" max="5000">
                     <button class="small-button"  onclick="changeSpeed()">Set Speed</button>
                 </div>
             </div>
@@ -95,7 +95,6 @@
                     </div>
                     <div class="button-group modeSection single_run">
                         <button id="run_button" disabled>Run Selected File</button>
-                        <button onclick="stopExecution()" class="delete-button">Stop</button>
                     </div>
                     <div class="button-group modeSection create_playlist" style="display: none;">
                         <button onclick="addToPlaylist()">Add File to Playlist</button>
