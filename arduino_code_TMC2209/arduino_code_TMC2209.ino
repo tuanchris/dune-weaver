@@ -183,7 +183,8 @@ void appMode()
         // Ignore invalid messages
         if (input != "HOME" && input != "RESET_THETA" && !input.startsWith("SET_SPEED") && !input.endsWith(";"))
         {
-            Serial.println("IGNORED");
+            Serial.print("IGNORED: ");
+            Serial.println(input);
             return;
         }
 

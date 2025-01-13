@@ -334,7 +334,7 @@ def upload_theta_rho():
 @app.route('/run_theta_rho', methods=['POST'])
 def run_theta_rho():
     file_name = request.json.get('file_name')
-    pre_execution = request.json.get('pre_execution')  # 'clear_in', 'clear_out', or 'none'
+    pre_execution = request.json.get('pre_execution')  # 'clear_in', 'clear_out', 'clear_sideway', or 'none'
 
     if not file_name:
         return jsonify({'error': 'No file name provided'}), 400
@@ -732,4 +732,6 @@ def set_speed():
         return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
+    # Auto-connect to serial
+    connect_to_serial()
     app.run(debug=True, host='0.0.0.0', port=8080)
