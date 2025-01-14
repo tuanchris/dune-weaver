@@ -5,8 +5,7 @@ body {
     background: #f9f9f9;
     display: flex;
     flex-direction: column;
-    height: 100vh;
-    overflow: hidden;
+    position: relative;
 }
 
 body * {
@@ -18,8 +17,11 @@ h1, h2 {
 }
 
 header {
-    position: relative;
+    position: sticky;
     height: 50px;
+    top: 0;
+    z-index: 10;
+    background: #f9f9f9;
 }
 
 h1 {
@@ -41,7 +43,6 @@ h3 {
 .app {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 50px);
 }
 
 .app-header {
@@ -62,11 +63,11 @@ h3 {
     flex: 1;
     overflow-y: auto;
     background: #fff;
-    margin-bottom: env(safe-area-inset-bottom);
 }
 
 .tab-content.active {
     display: flex;
+    position: relative;
     flex-direction: column;
 }
 
@@ -87,22 +88,22 @@ section.debug {
 }
 
 section.sticky {
-    position: sticky;
+    position: fixed;
     background-color: rgba(255, 255, 255, 0.75);
     backdrop-filter: blur(2px);
-    bottom: 0;
+    bottom: 60px;
     border-top: 1px solid grey;
     box-shadow: 0 0 20px grey;
     transform: translateY(0);
     transition: 250ms all;
     visibility: visible;
-    max-height: 75vh;
+    max-height: 60vh;
+    width: 100%;
 }
 
 section.sticky.hidden {
     transform: translateY(100%);
     visibility: hidden;
-    position: absolute;
     width: 100%;
 }
 
@@ -287,12 +288,13 @@ section .header .add-button {
 /* Bottom Navigation */
 .bottom-nav {
     display: flex;
+    position: fixed;
     justify-content: space-around;
-    bottom: env(safe-area-inset-bottom);
+    bottom: 0;
+    height: 60px;
     width: 100%;
     border-top: 1px solid #4A90E2FF;
     flex-wrap: wrap;
-    position: sticky;
 }
 
 .tab-button {
