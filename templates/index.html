@@ -21,11 +21,11 @@
             </div>
             <div id="add-pattern-container" class="add-to-container hidden">
                 <div class="action-buttons">
+                    <label for="upload_file">Upload pattern file (.thr):</label>
                     <input type="file" id="upload_file">
                     <button class="cancel" onclick="toggleSecondaryButtons('add-pattern-container')">Cancel</button>
                     <button onclick="uploadThetaRho()">Upload</button>
                 </div>
-                <span>Supported formats: .thr</span>
             </div>
             <input type="text" id="search_pattern" placeholder="Search files..." oninput="searchPatternFiles()">
             <ul id="theta_rho_files" class="file-list"></ul>
@@ -134,9 +134,11 @@
             <hr/>
             <div class="action-buttons">
                 <button onclick="runPlaylist()">Play</button>
-                <button onclick="savePlaylist()">Save</button>
                 <button onclick="toggleSecondaryButtons('rename-playlist-container')">Rename</button>
                 <button onclick="deleteCurrentPlaylist()" class="cancel">Delete</button>
+                <!-- Save and Cancel buttons -->
+                <button onclick="savePlaylist()" class="save-cancel" style="display: none;">Save</button>
+                <button onclick="cancelPlaylistChanges()" class="save-cancel cancel" style="display: none;">Cancel</button>
             </div>
             <!-- Playlist Rename Section -->
             <div id="rename-playlist-container" class="hidden">

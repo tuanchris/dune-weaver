@@ -221,7 +221,7 @@ async function runThetaRho() {
 
     const result = await response.json();
     if (result.success) {
-        logMessage(`File running: ${selectedFile}`, LOG_TYPE.SUCCESS);
+        logMessage(`Pattern running: ${selectedFile}`, LOG_TYPE.SUCCESS);
     } else {
         logMessage(`Failed to run file: ${selectedFile}`,LOG_TYPE.ERROR);
     }
@@ -572,6 +572,15 @@ function displayAllPlaylists(playlists) {
     });
 }
 
+// Cancel changes and close the editor
+function cancelPlaylistChanges() {
+    playlist = [...originalPlaylist]; // Revert to the original playlist
+    isPlaylistChanged = false;
+    toggleSaveCancelButtons(false); // Hide the save and cancel buttons
+    refreshPlaylistUI(); // Refresh the UI with the original state
+    closeStickySection('playlist-editor'); // Close the editor
+}
+
 // Open the playlist editor
 function openPlaylistEditor(playlistName) {
     logMessage(`Opening editor for playlist: ${playlistName}`);
@@ -635,6 +644,11 @@ async function runPlaylist(playlistName) {
     }
 }
 
+// Track changes in the playlist
+let originalPlaylist = [];
+let isPlaylistChanged = false;
+
+// Load playlist and set the original state
 async function loadPlaylist(playlistName) {
     try {
         logMessage(`Loading playlist: ${playlistName}`);
@@ -650,13 +664,15 @@ async function loadPlaylist(playlistName) {
             throw new Error('Playlist name is missing in the response.');
         }
 
-        // Populate playlist items
+        // Populate playlist items and set original state
         playlist = data.files || [];
-        selectedPlaylistIndex = null;
+        originalPlaylist = [...playlist]; // Clone the playlist as the original
+        isPlaylistChanged = false; // Reset change tracking
+        toggleSaveCancelButtons(false); // Hide the save and cancel buttons initially
         refreshPlaylistUI();
         logMessage(`Loaded playlist: "${playlistName}" with ${playlist.length} file(s).`);
     } catch (err) {
-        logMessage(`Error loading playlist: ${err.message}`,  LOG_TYPE.ERROR);
+        logMessage(`Error loading playlist: ${err.message}`, LOG_TYPE.ERROR);
         console.error('Error details:', err);
     }
 }
@@ -857,6 +873,7 @@ async function deleteCurrentPlaylist() {
 //  PART D: Local playlist array UI
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// Refresh the playlist UI and detect changes
 function refreshPlaylistUI() {
     const ul = document.getElementById('playlist_items');
     if (!ul) {
@@ -883,14 +900,6 @@ function refreshPlaylistUI() {
         filenameSpan.classList.add('filename'); // Add a class for styling
         li.appendChild(filenameSpan);
 
-        // Highlight the currently selected item
-        if (index === selectedPlaylistIndex) {
-            li.classList.add('highlighted');
-            setTimeout(() => {
-                li.classList.remove('highlighted');
-            }, 1000);
-        }
-
         // Move Up button
         const moveUpBtn = document.createElement('button');
         moveUpBtn.textContent = '▲'; // Up arrow symbol
@@ -900,7 +909,7 @@ function refreshPlaylistUI() {
                 const temp = playlist[index - 1];
                 playlist[index - 1] = playlist[index];
                 playlist[index] = temp;
-                selectedPlaylistIndex = index - 1; // Update the selected index
+                detectPlaylistChanges(); // Check for changes
                 refreshPlaylistUI();
             }
         };
@@ -915,7 +924,7 @@ function refreshPlaylistUI() {
                 const temp = playlist[index + 1];
                 playlist[index + 1] = playlist[index];
                 playlist[index] = temp;
-                selectedPlaylistIndex = index + 1; // Update the selected index
+                detectPlaylistChanges(); // Check for changes
                 refreshPlaylistUI();
             }
         };
@@ -927,7 +936,7 @@ function refreshPlaylistUI() {
         removeBtn.classList.add('remove-button');
         removeBtn.onclick = () => {
             playlist.splice(index, 1);
-            selectedPlaylistIndex = null; // Reset selection
+            detectPlaylistChanges(); // Check for changes
             refreshPlaylistUI();
         };
         li.appendChild(removeBtn);
@@ -935,6 +944,31 @@ function refreshPlaylistUI() {
         ul.appendChild(li);
     });
 }
+
+// Toggle the visibility of the save and cancel buttons
+function toggleSaveCancelButtons(show) {
+    const actionButtons = document.querySelector('#playlist-editor .action-buttons');
+    if (actionButtons) {
+        // Show/hide all buttons except Save and Cancel
+        actionButtons.querySelectorAll('button:not(.save-cancel)').forEach(button => {
+            button.style.display = show ? 'none' : 'inline-block';
+        });
+
+        // Show/hide Save and Cancel buttons
+        actionButtons.querySelectorAll('.save-cancel').forEach(button => {
+            button.style.display = show ? 'inline-block' : 'none';
+        });
+    } else {
+        logMessage('Error: Action buttons container not found.', LOG_TYPE.ERROR);
+    }
+}
+
+// Detect changes in the playlist
+function detectPlaylistChanges() {
+    isPlaylistChanged = JSON.stringify(originalPlaylist) !== JSON.stringify(playlist);
+    toggleSaveCancelButtons(isPlaylistChanged);
+}
+
 
 // Toggle the "Add to Playlist" section
 function toggleSecondaryButtons(containerId, onShowCallback = null) {

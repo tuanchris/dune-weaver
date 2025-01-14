@@ -95,7 +95,7 @@ section.sticky {
     transform: translateY(0);
     transition: 250ms all;
     visibility: visible;
-    max-height: 60vh;
+    max-height: 75vh;
 }
 
 section.sticky.hidden {
@@ -550,7 +550,7 @@ button#debug_button.active {
 }
 
 .control-group .item label {
-    padding: 10px 0;
+    padding: 5px;
 }
 
 #serial_ports_container > * {
