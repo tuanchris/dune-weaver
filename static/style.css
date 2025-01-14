@@ -95,7 +95,7 @@ section.sticky {
     border-top: 1px solid grey;
     box-shadow: 0 0 20px grey;
     transform: translateY(0);
-    transition: 250ms all;
+    transition: 250ms transform;
     visibility: visible;
     max-height: 60vh;
     width: 100%;
@@ -105,6 +105,10 @@ section.sticky.hidden {
     transform: translateY(100%);
     visibility: hidden;
     width: 100%;
+    position: absolute;
+    overflow:hidden;
+    height: 0;
+    padding: 0;
 }
 
 /* Close Button Styling */
@@ -288,7 +292,7 @@ section .header .add-button {
 /* Bottom Navigation */
 .bottom-nav {
     display: flex;
-    position: fixed;
+    position: sticky;
     justify-content: space-around;
     bottom: 0;
     height: 60px;
@@ -740,6 +744,11 @@ input[type="number"]:focus {
         grid-column: span 3;
         align-self: flex-end;
         height: 100%;
+    }
+
+    section.sticky {
+        position: sticky;
+        bottom: 0;
     }
 
     /* Show all tabs in grid layout */
