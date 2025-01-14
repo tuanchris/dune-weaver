@@ -710,7 +710,12 @@ async function savePlaylist() {
         if (result.success) {
             logMessage(`Playlist "${name}" with ${playlist.length} patterns saved`, LOG_TYPE.SUCCESS);
             // Reload the entire list of playlists to reflect changes
-            loadAllPlaylists();
+            // Check for changes and refresh the UI
+            detectPlaylistChanges();
+            refreshPlaylistUI();
+
+            // Restore default action buttons
+            toggleSaveCancelButtons(false);
         } else {
             logMessage(`Failed to save playlist: ${result.error}`, LOG_TYPE.ERROR);
         }
