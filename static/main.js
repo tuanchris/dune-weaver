@@ -600,7 +600,9 @@ function openPlaylistEditor(playlistName) {
 
 
 // Function to run the selected playlist with specified parameters
-async function runPlaylist(playlistName) {
+async function runPlaylist() {
+    const playlistName = document.getElementById('playlist_name_display').textContent;
+
     if (!playlistName) {
         logMessage("No playlist selected to run.");
         return;
