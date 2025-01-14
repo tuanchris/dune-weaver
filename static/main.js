@@ -114,6 +114,9 @@ async function selectFile(file, listItem) {
 
     logMessage(`Selected file: ${file}`);
     await previewPattern(file);
+
+    // Populate the playlist dropdown after selecting a pattern
+    await populatePlaylistDropdown();
 }
 
 // Fetch and display Theta-Rho files
@@ -301,11 +304,13 @@ async function previewPattern(fileName) {
         if (result.success) {
             const coordinates = result.coordinates;
             renderPattern(coordinates);
+
             // Update coordinate display
             const firstCoord = coordinates[0];
             const lastCoord = coordinates[coordinates.length - 1];
             document.getElementById('first_coordinate').textContent = `First Coordinate: θ=${firstCoord[0]}, ρ=${firstCoord[1]}`;
             document.getElementById('last_coordinate').textContent = `Last Coordinate: θ=${lastCoord[0]}, ρ=${lastCoord[1]}`;
+
             // Show the preview container
             const previewContainer = document.getElementById('pattern-preview-container');
             if (previewContainer) {
@@ -313,8 +318,14 @@ async function previewPattern(fileName) {
                 previewContainer.classList.add('visible');
             }
 
+            // Close the "Add to Playlist" container if it is open
+            const addToPlaylistContainer = document.getElementById('add-to-playlist-container');
+            if (addToPlaylistContainer && !addToPlaylistContainer.classList.contains('hidden')) {
+                toggleSecondaryButtons('add-to-playlist-container'); // Hide the container
+            }
+
         } else {
-            logMessage(`Failed to fetch preview for file: ${fileName}`,LOG_TYPE.WARNING);
+            logMessage(`Failed to fetch preview for file: ${fileName}`, LOG_TYPE.WARNING);
         }
     } catch (error) {
         logMessage(`Error previewing pattern: ${error.message}`, LOG_TYPE.WARNING);
@@ -731,20 +742,42 @@ async function savePlaylist() {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // Toggle the rename playlist input
 function populatePlaylistDropdown() {
-    fetch('/list_all_playlists')
+    return fetch('/list_all_playlists')
         .then(response => response.json())
         .then(playlists => {
             const select = document.getElementById('select-playlist');
             select.innerHTML = ''; // Clear existing options
+
+            // Retrieve the saved playlist from the cookie
+            const savedPlaylist = getCookie('selected_playlist');
+
             playlists.forEach(playlist => {
                 const option = document.createElement('option');
                 option.value = playlist;
                 option.textContent = playlist;
+
+                // Mark the saved playlist as selected
+                if (playlist === savedPlaylist) {
+                    option.selected = true;
+                }
+
                 select.appendChild(option);
             });
+
+            // Attach the onchange event listener after populating the dropdown
+            select.addEventListener('change', function () {
+                const selectedPlaylist = this.value;
+                setCookie('selected_playlist', selectedPlaylist, 7); // Save to cookie
+                logMessage(`Selected playlist saved: ${selectedPlaylist}`);
+            });
+
+            logMessage('Playlist dropdown populated, event listener attached, and saved playlist restored.');
         })
-        .catch(error => logMessage(`Error fetching playlists: ${error.message}`), LOG_TYPE.ERROR);
+        .catch(error => logMessage(`Error fetching playlists: ${error.message}`, LOG_TYPE.ERROR));
 }
+populatePlaylistDropdown().then(() => {
+    loadSettingsFromCookies(); // Restore selected playlist after populating the dropdown
+});
 
 // Confirm and save the renamed playlist
 async function confirmAddPlaylist() {
@@ -1163,6 +1196,15 @@ function loadSettingsFromCookies() {
     const preExecution = getCookie('pre_execution');
     if (preExecution !== null) {
         document.querySelector(`input[name="pre_execution"][value="${preExecution}"]`).checked = true;
+    }
+
+    // Load the selected playlist
+    const selectedPlaylist = getCookie('selected_playlist');
+    if (selectedPlaylist !== null) {
+        const playlistDropdown = document.getElementById('select-playlist');
+        if (playlistDropdown && [...playlistDropdown.options].some(option => option.value === selectedPlaylist)) {
+            playlistDropdown.value = selectedPlaylist;
+        }
     }
 
     logMessage('Settings loaded from cookies.');

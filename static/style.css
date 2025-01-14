@@ -62,6 +62,7 @@ h3 {
     flex: 1;
     overflow-y: auto;
     background: #fff;
+    margin-bottom: env(safe-area-inset-bottom);
 }
 
 .tab-content.active {
@@ -122,7 +123,6 @@ section.sticky.hidden {
 .close-button:hover {
     color: #ff0000;
 }
-
 
 section .header {
     position: relative;
@@ -288,10 +288,11 @@ section .header .add-button {
 .bottom-nav {
     display: flex;
     justify-content: space-around;
-    bottom: 0;
+    bottom: env(safe-area-inset-bottom);
     width: 100%;
     border-top: 1px solid #4A90E2FF;
     flex-wrap: wrap;
+    position: sticky;
 }
 
 .tab-button {
@@ -725,17 +726,17 @@ input[type="number"]:focus {
     .app {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 16px;
+        gap: 0 16px;
     }
 
     .bottom-nav {
-        grid-column: span 3;
-        background-color: grey;
-        border-top: 0;
+        display: none;
     }
 
-    .bottom-nav .tab-button {
-        display: none;
+    #status_log {
+        grid-column: span 3;
+        align-self: flex-end;
+        height: 100%;
     }
 
     /* Show all tabs in grid layout */

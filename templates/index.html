@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Dune Weaver Controller</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../static/style.css">
@@ -243,10 +243,11 @@
         <button class="tab-button" onclick="switchTab('patterns')" id="nav-patterns">Patterns</button>
         <button class="tab-button" onclick="switchTab('playlists')" id="nav-playlists">Playlists</button>
         <button class="tab-button" onclick="switchTab('settings')" id="nav-settings">Device</button>
-        <div id="status_log">
-            <!-- Messages will be appended here -->
-        </div>
     </nav>
+
+    <div id="status_log">
+        <!-- Messages will be appended here -->
+    </div>
 </div>
 
 <script src="../static/main.js"></script>
