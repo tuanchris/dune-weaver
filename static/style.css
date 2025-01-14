@@ -729,6 +729,7 @@ input[type="number"]:focus {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
         gap: 0 16px;
+        height: calc(100vh - 60px);
     }
 
     .bottom-nav {
