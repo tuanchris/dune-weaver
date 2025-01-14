@@ -235,21 +235,6 @@ void appMode()
             return;
         }
 
-        if (input == "HOME")
-        {
-            homing();
-            return;
-        }
-
-        if (input == "RESET_THETA")
-        {
-            resetTheta(); // Reset currentTheta
-            Serial.println("THETA_RESET"); // Notify Python
-            Serial.println("R");
-            return;
-        }
-
-
         // If not a command, assume it's a batch of theta-rho pairs
         if (!batchComplete)
         {
