@@ -2,146 +2,115 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Dune Weaver Controller</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../static/style.css">
 </head>
 <body>
-    <h1>Dune Weaver Controller</h1>
-    <div class="container">
-        <!-- Left Column -->
-        <div class="left-column">
-            <div class="section">
-                <h2>Serial Connection</h2>
-                <div id="serial_status_container">Status: <span id="serial_status" class="status"> Not connected</span></div>
-                <div id="serial_ports_container">
-                    <label for="serial_ports">Available Ports:</label>
-                    <select id="serial_ports"></select>
-                    <button onclick="connectSerial()">Connect</button>
-                </div>
-                <div id="serial_ports_buttons" class="button-group">
-                    <button onclick="disconnectSerial()">Disconnect</button>
-                    <button onclick="restartSerial()">Restart</button>
-                </div>
-                <div class="button-group">
-                    <label for="speed_input">Speed:</label>
-                    <input type="number" id="speed_input" placeholder="1-100" min="1" step="1" max="5000">
-                    <button class="small-button"  onclick="changeSpeed()">Set Speed</button>
+<header>
+    <h1 id="serial_status_header" class="status">Dune Weaver Controller</h1>
+</header>
+<div class="app">
+    <!-- Home Tab -->
+    <main class="tab-content" id="patterns-tab">
+        <section class="main">
+            <div class="header">
+                <h2>Patterns</h2>
+                <button class="add-button cta" onclick="toggleSecondaryButtons('add-pattern-container')">+</button>
+            </div>
+            <div id="add-pattern-container" class="add-to-container hidden">
+                <div class="action-buttons">
+                    <label for="upload_file">Upload pattern file (.thr):</label>
+                    <input type="file" id="upload_file">
+                    <button class="cancel" onclick="toggleSecondaryButtons('add-pattern-container')">Cancel</button>
+                    <button class="cta" onclick="uploadThetaRho()">Upload</button>
                 </div>
             </div>
-            <div class="section"> 
-                <h2>Mode</h2>
-                <label>
-                <input type="radio" name="mode" class="modeSelector" value="single_run" checked> Single Run
-                </label>
-                <label>
-                <input type="radio" name="mode" class="modeSelector" value="create_playlist"> Create Playlist
-                </label>
-                <label>
-                <input type="radio" name="mode" class="modeSelector" value="run_playlist"> Run Playlist
-                </label>
-            </div>
-            <div class="section">
-                <h2>Quick Actions</h2>
-                <div class="button-group">
-                    <button onclick="sendHomeCommand()">Home Device</button>
-                    <button onclick="moveToCenter()">Move to Center</button>
-                    <button onclick="moveToPerimeter()">Move to Perimeter</button>
-                    <button onclick="runClearIn()">Clear from In</button>
-                    <button onclick="runClearOut()">Clear from Out</button>
-                    <button onclick="runSideway()">Clear Sideway</button>
-                    <button onclick="stopExecution()" class="delete-button">Stop</button>
-                </div>
-                <div class="coordinate-input button-group">
-                    <label for="theta_input">θ:</label>
-                    <input type="number" id="theta_input" placeholder="Theta">
-                    <label for="rho_input">ρ:</label>
-                    <input type="number" id="rho_input" placeholder="Rho">
-                    <button class="small-button" onclick="sendCoordinate()">Send to coordinate</button>
-                </div>
-            </div>
-            <div class="section">
+            <input type="text" id="search_pattern" placeholder="Search files..." oninput="searchPatternFiles()">
+            <ul id="theta_rho_files" class="file-list"></ul>
+        </section>
+
+        <!-- Patterns Preview Section -->
+        <section id="pattern-preview-container" class="sticky hidden">
+            <div class="header">
                 <h2>Preview</h2>
-                <canvas id="patternPreviewCanvas" style="width: 100%;"></canvas>
-                <p id="first_coordinate">First Coordinate: Not available</p>
-                <p id="last_coordinate">Last Coordinate: Not available</p>
+                <button class="fullscreen-button">⛶</button>
+                <button class="close-button" onclick="closeStickySection('pattern-preview-container')">&times;</button>
             </div>
-        </div>
+            <div id="pattern-preview">
+                <canvas id="patternPreviewCanvas"></canvas>
+                <div id="first_coordinate"></div>
+                <div id="last_coordinate"></div>
+            </div>
 
-        <!-- Right Column -->
-        <div class="right-column">
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+                <button onclick="runThetaRho()" class="cta" >Run</button>
+                <button id="toggle-playlist-button" onclick="toggleSecondaryButtons('add-to-playlist-container', populatePlaylistDropdown)">Add to Playlist</button>
+                <button onclick="removeCurrentPattern()" class="cancel remove-button hidden">Delete</button>
+            </div>
 
-                <div class="section modeSection single_run create_playlist">
-                    <h2 class="modeSection single_run">Single Run</h2>
-                    <h2 class="modeSection create_playlist" style="display: none;"> Create Playlist</h2>
-                    <h2 class="modeSection run_playlist" style="display: none;"> Run Playlist</h2>
-                    <input class="modeSection single_run create_playlist" type="text" id="search_pattern" placeholder="Search files..." oninput="searchPatternFiles()">
-                    <ul  class="modeSection single_run create_playlist" id="theta_rho_files"></ul>
-                    <div class="pre-execution-toggles modeSection single_run">
-                        <h3>Pre-Execution Action</h3>
-                        <label>
-                            <input type="radio" name="pre_execution" value="clear_in" id="clear_in"> Clear from In
-                        </label>
-                        <label>
-                            <input type="radio" name="pre_execution" value="clear_out" id="clear_out"> Clear from Out
-                        </label>
-                        <label>
-                            <input type="radio" name="pre_execution" value="clear_sideway" id="clear_out"> Clear sideway
-                        </label>
-                        <label>
-                            <input type="radio" name="pre_execution" value="none" id="no_action" checked> None
-                        </label>
-                    </div>
-                    <div class="button-group modeSection single_run">
-                        <button id="run_button" disabled>Run Selected File</button>
-                    </div>
-                    <div class="button-group modeSection create_playlist" style="display: none;">
-                        <button onclick="addToPlaylist()">Add File to Playlist</button>
-                    </div>
+            <!-- Add to Playlist Section -->
+            <div id="add-to-playlist-container" class="hidden">
+                <h2>Select Playlist</h2>
+                <select id="select-playlist"></select>
+                <div class="action-buttons">
+                    <button onclick="toggleSecondaryButtons('add-to-playlist-container')" class="cancel">Cancel</button>
+                    <button onclick="saveToPlaylist()" class="cta">Save</button>
                 </div>
-                <div class="section modeSection single_run">
-                    <h2>Upload new files</h2>
-                    <div class="button-group">
-                        <input type="file" id="upload_file">
-                        <div class="button-group">
-                            <button onclick="uploadThetaRho()">Upload</button>
-                            <button id="delete_selected_button" class="delete-button" onclick="deleteSelectedFile()" disabled>Delete Selected File</button>
-                        </div>
-                    </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Playlists Tab -->
+    <main class="tab-content" id="playlists-tab">
+        <section>
+            <div class="header">
+                <h2>Playlists</h2>
+                <button class="cta add-button" onclick="toggleSecondaryButtons('add-playlist-container')">+</button>
+            </div>
+            <div id="add-playlist-container" class="add-to-container hidden">
+                <input type="text" id="new_playlist_name" placeholder="Enter new playlist name" />
+                <div class="action-buttons">
+                    <button onclick="confirmAddPlaylist()" class="cta">Save</button>
+                    <button onclick="toggleSecondaryButtons('add-playlist-container')" class="cancel">Cancel</button>
                 </div>
-                <div class="section modeSection create_playlist run_playlist" style="display: none;">
-                    <h2>Create Playlist</h2>
-                    <!-- A list showing the files that have been added to the playlist -->
-                    <ul id="playlist_items"></ul>
-                  
-                    <!-- Buttons to reorder files in the playlist -->
-                    <div class="button-group">
-                      <button onclick="movePlaylistItemUp()">Up</button>
-                      <button onclick="movePlaylistItemDown()">Down</button>
-                      <button onclick="removeFromPlaylist()" class="delete-button">Remove</button>
-                    </div>
-                                        
-                    <div class="playlist-name-input">
-                        <label for="playlist_name">Playlist Name:</label>
-                        <input type="text" id="playlist_name" placeholder="Enter playlist name" />
-                      </div>
-                    
-                      <div class="button-group">
-                        <!-- Button to add the selected file (from #theta_rho_files) to the playlist -->
-                    
-                        <!-- Button to create/finalize the playlist -->
-                        <button onclick="savePlaylist()">Create Playlist</button>
-                    </div>
+            </div>
+            <ul id="all_playlists" class="file-list">
+                <!-- Playlists will be dynamically inserted here -->
+            </ul>
+        </section>
+
+        <!-- Playlist Parameters -->
+        <section class="main">
+            <h2>Playlist Settings</h2>
+            <div class="playlist-parameters">
+                <h3>Run Playlist:</h3>
+                <div class="control-group">
+                    <label class="custom-input">
+                        <input type="radio" id="run_single" name="run_mode" value="single" checked>
+                        <span class="custom-radio"></span>
+                        Once
+                    </label>
+                    <label class="custom-input">
+                        <input type="radio" id="run_indefinite" name="run_mode" value="indefinite">
+                        <span class="custom-radio"></span>
+                        Indefinitely
+                    </label>
+                    <label class="custom-input">
+                        <input type="checkbox" id="shuffle_playlist">
+                        <span class="custom-checkbox"></span>
+                        Shuffle
+                    </label>
                 </div>
-                <div class="section modeSection create_playlist run_playlist" style="display: none;">
-                    <h2>Playlists</h2>
-                    
-                    <!-- Parameter Inputs -->
-                    <div class="playlist-parameters">
+                <h3>Between patterns:</h3>
+                <div class="control-group">
+                    <div class="item column">
                         <label for="pause_time">Pause Time (seconds):</label>
                         <input type="number" id="pause_time" min="0" step="0.1" value="0">
-                        
+                    </div>
+                    <div class="item column">
                         <label for="clear_pattern">Clear Pattern:</label>
                         <select id="clear_pattern">
                             <option value="none">None</option>
@@ -150,805 +119,139 @@
                             <option value="clear_sideway">Clear Sideway</option>
                             <option value="random">Random</option>
                         </select>
-                        
-                        <!-- New Parameters -->
-                        <div class="run-options">
-                            <label>Run Mode:</label>
-                            <label>
-                                <input type="radio" name="run_mode" value="single" checked> Single Run
-                            </label>
-                            <label>
-                                <input type="radio" name="run_mode" value="indefinite"> Indefinite Run
-                            </label>
-                            
-                            <label>
-                                <input type="checkbox" id="shuffle_playlist"> Shuffle Playlist
-                            </label>
-                        </div>
                     </div>
-                    
-                    <!-- Playlists List -->
-                    <ul id="all_playlists"></ul>
                 </div>
             </div>
-        </div>
-    </div>
-    
-    <div class="footer">
-        <div id="github">
-            <span>Help us improve! <a href="https://github.com/tuanchris/dune-weaver/pulls" target="_blank">Submit a Pull Request</a> or <a href="https://github.com/tuanchris/dune-weaver/issues/new" target="_blank">Report a Bug</a>.</span>
-            <a href="https://github.com/tuanchris/dune-weaver/issues" target="_blank">
-                <img src="https://img.shields.io/github/issues/tuanchris/dune-weaver?style=flat-square" alt="GitHub Issues">
-            </a>
-        </div>
-
-        <button id="debug_button" class="small-button" onclick="toggleDebugLog()">
-            Show Debug log
-        </button>
-    </div>
-
-    <div id="status_log">
-        <!-- Messages will be appended here -->
-    </div>
-    <script>
-        let selectedFile = null;
-
-        function logMessage(message) {
-            const log = document.getElementById('status_log');
-            const entry = document.createElement('p');
-            entry.textContent = message;
-            log.appendChild(entry);
-            log.scrollTop = log.scrollHeight; // Keep log scrolled to the bottom
-        }
-
-        async function selectFile(file, listItem) {
-            selectedFile = file;
-
-            // Highlight the selected file
-            document.querySelectorAll('#theta_rho_files li').forEach(li => li.classList.remove('selected'));
-            listItem.classList.add('selected');
-
-            // Enable buttons
-            document.getElementById('run_button').disabled = false;
-            document.getElementById('delete_selected_button').disabled = false;
-
-            logMessage(`Selected file: ${file}`);
-
-            // Fetch and preview the selected file
-            await previewPattern(file);
-        }
-
-        async function uploadThetaRho() {
-            const fileInput = document.getElementById('upload_file');
-            const file = fileInput.files[0];
-            if (!file) {
-                logMessage('No file selected for upload.');
-                return;
-            }
-
-            logMessage(`Uploading file: ${file.name}...`);
-            const formData = new FormData();
-            formData.append('file', file);
-
-            const response = await fetch('/upload_theta_rho', {
-                method: 'POST',
-                body: formData
-            });
-
-            const result = await response.json();
-            if (result.success) {
-                logMessage(`File uploaded successfully: ${file.name}`);
-                await loadThetaRhoFiles();
-            } else {
-                logMessage(`Failed to upload file: ${file.name}`);
-            }
-        }
-
-        async function deleteSelectedFile() {
-            if (!selectedFile) {
-                logMessage("No file selected for deletion.");
-                return;
-            }
-
-            const userConfirmed = confirm(`Are you sure you want to delete the selected file "${selectedFile}"?`);
-            if (!userConfirmed) return;
-
-            logMessage(`Deleting file: ${selectedFile}...`);
-            const response = await fetch('/delete_theta_rho_file', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ file_name: selectedFile }),
-            });
-
-            const result = await response.json();
-            if (result.success) {
-                const ul = document.getElementById('theta_rho_files');
-                const selectedItem = Array.from(ul.children).find(li => li.classList.contains('selected'));
-                if (selectedItem) selectedItem.remove();
-
-                selectedFile = null;
-                document.getElementById('run_button').disabled = true;
-                document.getElementById('delete_selected_button').disabled = true;
-
-                logMessage(`File deleted successfully: ${result.file_name}`);
-            } else {
-                logMessage(`Failed to delete file: ${selectedFile}`);
-            }
-        }
-
-        async function runThetaRho() {
-            if (!selectedFile) {
-                logMessage("No file selected to run.");
-                return;
-            }
-
-            // Get the selected pre-execution action
-            const preExecutionAction = document.querySelector('input[name="pre_execution"]:checked').value;
-
-            logMessage(`Running file: ${selectedFile} with pre-execution action: ${preExecutionAction}...`);
-            const response = await fetch('/run_theta_rho', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ file_name: selectedFile, pre_execution: preExecutionAction })
-            });
-
-            const result = await response.json();
-            if (result.success) {
-                logMessage(`File running: ${selectedFile}`);
-            } else {
-                logMessage(`Failed to run file: ${selectedFile}`);
-            }
-        }
-
-        async function stopExecution() {
-            logMessage('Stopping execution...');
-            const response = await fetch('/stop_execution', { method: 'POST' });
-            const result = await response.json();
-            if (result.success) {
-                logMessage('Execution stopped.');
-            } else {
-                logMessage('Failed to stop execution.');
-            }
-        }
-
-        async function loadSerialPorts() {
-            const response = await fetch('/list_serial_ports');
-            const ports = await response.json();
-            const select = document.getElementById('serial_ports');
-            select.innerHTML = '';
-            ports.forEach(port => {
-                const option = document.createElement('option');
-                option.value = port;
-                option.textContent = port;
-                select.appendChild(option);
-            });
-            logMessage('Serial ports loaded.');
-        }
-
-        async function connectSerial() {
-            const port = document.getElementById('serial_ports').value;
-            const response = await fetch('/connect_serial', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ port })
-            });
-            const result = await response.json();
-            if (result.success) {
-                logMessage(`Connected to serial port: ${port}`);
-                // Refresh the status
-                await checkSerialStatus();
-            } else {
-                logMessage(`Error connecting to serial port: ${result.error}`);
-            }
-        }
-
-        async function disconnectSerial() {
-            const response = await fetch('/disconnect_serial', { method: 'POST' });
-            const result = await response.json();
-            if (result.success) {
-                logMessage('Serial port disconnected.');
-                // Refresh the status
-                await checkSerialStatus();
-            } else {
-                logMessage(`Error disconnecting: ${result.error}`);
-            }
-        }
-
-        async function restartSerial() {
-            const port = document.getElementById('serial_ports').value;
-            const response = await fetch('/restart_serial', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ port })
-            });
-            const result = await response.json();
-            if (result.success) {
-                document.getElementById('serial_status').textContent = `Restarted connection to ${port}`;
-                logMessage('Serial connection restarted.');
-
-                // No need to change visibility for restart
-            } else {
-                logMessage(`Error restarting serial connection: ${result.error}`);
-            }
-        }
-
-        async function sendHomeCommand() {
-            const response = await fetch('/send_home', { method: 'POST' });
-            const result = await response.json();
-            if (result.success) {
-                logMessage('HOME command sent successfully.');
-            } else {
-                logMessage('Failed to send HOME command.');
-            }
-        }
-
-
-        let allFiles = []; // Store all files for filtering
-
-        async function loadThetaRhoFiles() {
-            logMessage('Loading Theta-Rho files...');
-            const response = await fetch('/list_theta_rho_files');
-            let files = await response.json();
-
-            // Filter only .thr files
-            files = files.filter(file => file.endsWith('.thr'));
-
-            // Separate files into categories
-            const customPatternsFiles = files.filter(file => file.startsWith('custom_patterns/'));
-            const otherFiles = files.filter(file => !file.startsWith('custom_patterns/'));
-
-            // Sort the files
-            const sortedFiles = [
-                ...customPatternsFiles.sort(), // Custom patterns first
-                ...otherFiles.sort() // Remaining files sorted alphabetically
-            ];
-
-            allFiles = sortedFiles; // Store the sorted list of files
-            displayFiles(allFiles); // Display the sorted files
-
-            logMessage('Theta-Rho files loaded successfully.');
-        }
-
-        function displayFiles(files) {
-            const ul = document.getElementById('theta_rho_files');
-            ul.innerHTML = ''; // Clear current list
-
-            files.forEach(file => {
-                const li = document.createElement('li');
-                li.textContent = file;
-
-                // Highlight the selected file when clicked
-                li.onclick = () => selectFile(file, li);
-
-                ul.appendChild(li);
-            });
-        }
-
-        function searchPatternFiles() {
-            const searchInput = document.getElementById('search_pattern').value.toLowerCase();
-            const filteredFiles = allFiles.filter(file => file.toLowerCase().includes(searchInput));
-            displayFiles(filteredFiles); // Display only matching files
-        }
-
-        async function moveToCenter() {
-            logMessage('Moving to center...');
-            const response = await fetch('/move_to_center', { method: 'POST' });
-            const result = await response.json();
-            if (result.success) {
-                logMessage('Moved to center successfully.');
-            } else {
-                logMessage(`Failed to move to center: ${result.error}`);
-            }
-        }
-
-        async function moveToPerimeter() {
-            logMessage('Moving to perimeter...');
-            const response = await fetch('/move_to_perimeter', { method: 'POST' });
-            const result = await response.json();
-            if (result.success) {
-                logMessage('Moved to perimeter successfully.');
-            } else {
-                logMessage(`Failed to move to perimeter: ${result.error}`);
-            }
-        }
-
-        async function sendCoordinate() {
-            const theta = parseFloat(document.getElementById('theta_input').value);
-            const rho = parseFloat(document.getElementById('rho_input').value);
-
-            if (isNaN(theta) || isNaN(rho)) {
-                logMessage('Invalid input: θ and ρ must be numbers.');
-                return;
-            }
-
-            logMessage(`Sending coordinate: θ=${theta}, ρ=${rho}...`);
-            const response = await fetch('/send_coordinate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ theta, rho })
-            });
-
-            const result = await response.json();
-            if (result.success) {
-                logMessage(`Coordinate executed successfully: θ=${theta}, ρ=${rho}`);
-            } else {
-                logMessage(`Failed to execute coordinate: ${result.error}`);
-            }
-        }
-
-        async function previewPattern(fileName) {
-            logMessage(`Fetching data to preview file: ${fileName}...`);
-            const response = await fetch('/preview_thr', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ file_name: fileName })
-            });
-
-            const result = await response.json();
-            if (result.success) {
-                const coordinates = result.coordinates;
-
-                // Update coordinates display
-                if (coordinates.length > 0) {
-                    const firstCoord = coordinates[0];
-                    const lastCoord = coordinates[coordinates.length - 1];
-                    document.getElementById('first_coordinate').textContent = `First Coordinate: θ=${firstCoord[0]}, ρ=${firstCoord[1]}`;
-                    document.getElementById('last_coordinate').textContent = `Last Coordinate: θ=${lastCoord[0]}, ρ=${lastCoord[1]}`;
-                } else {
-                    document.getElementById('first_coordinate').textContent = 'First Coordinate: Not available';
-                    document.getElementById('last_coordinate').textContent = 'Last Coordinate: Not available';
-                }
-
-                renderPattern(coordinates);
-            } else {
-                logMessage(`Failed to fetch preview for file: ${result.error}`);
-                // Clear the coordinate display on error
-                document.getElementById('first_coordinate').textContent = 'First Coordinate: Not available';
-                document.getElementById('last_coordinate').textContent = 'Last Coordinate: Not available';
-            }
-        }
-
-        function renderPattern(coordinates) {
-            const canvas = document.getElementById('patternPreviewCanvas');
-            const ctx = canvas.getContext('2d');
-
-            // Make canvas full screen
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-
-            // Clear the canvas
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Convert polar to Cartesian and draw the pattern
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
-            const maxRho = Math.max(...coordinates.map(coord => coord[1]));
-            const scale = Math.min(canvas.width, canvas.height) / (2 * maxRho); // Scale to fit within the screen
-
-            ctx.beginPath();
-            coordinates.forEach(([theta, rho], index) => {
-                const x = centerX + rho * Math.cos(theta) * scale;
-                const y = centerY - rho * Math.sin(theta) * scale; // Invert y-axis for canvas
-                if (index === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
-            });
-            ctx.closePath();
-            ctx.stroke();
-            logMessage('Pattern preview rendered at full screen.');
-        }
-
-        function toggleDebugLog() {
-            const statusLog = document.getElementById('status_log');
-            const debugButton = document.getElementById('debug_button');
-
-            if (statusLog.style.display === 'block') {
-                statusLog.style.display = 'none';
-                debugButton.textContent = 'Show Debug Log'; // Update the button label
-            } else {
-                statusLog.style.display = 'block';
-                debugButton.textContent = 'Hide Debug Log'; // Update the button label
-                statusLog.scrollIntoView({ behavior: 'smooth', block: 'start' }); // Smooth scrolling to the log
-            }
-        }
-
-        async function checkSerialStatus() {
-            const response = await fetch('/serial_status');
-            const status = await response.json();
-            const statusElement = document.getElementById('serial_status');
-            const serialPortsContainer = document.getElementById('serial_ports_container');
-
-            const connectButton = document.querySelector('button[onclick="connectSerial()"]');
-            const disconnectButton = document.querySelector('button[onclick="disconnectSerial()"]');
-            const restartButton = document.querySelector('button[onclick="restartSerial()"]');
-
-            if (status.connected) {
-                const port = status.port || 'Unknown'; // Fallback if port is undefined
-                statusElement.textContent = `Connected to ${port}`;
-                statusElement.classList.add('connected');
-                statusElement.classList.remove('not-connected');
-                logMessage(`Reconnected to serial port: ${port}`);
-
-                // Hide Available Ports and show disconnect/restart buttons
-                serialPortsContainer.style.display = 'none';
-                connectButton.style.display = 'none';
-                disconnectButton.style.display = 'inline-block';
-                restartButton.style.display = 'inline-block';
-            } else {
-                statusElement.textContent = 'Not connected';
-                statusElement.classList.add('not-connected');
-                statusElement.classList.remove('connected');
-                logMessage('No active serial connection.');
-
-                // Show Available Ports and the connect button
-                serialPortsContainer.style.display = 'block';
-                connectButton.style.display = 'inline-block';
-                disconnectButton.style.display = 'none';
-                restartButton.style.display = 'none';
-
-                // Attempt to auto-load available ports
-                await loadSerialPorts();
-            }
-        }
-
-        async function runFile(fileName) {
-            const response = await fetch(`/run_theta_rho_file/${fileName}`, { method: 'POST' });
-            const result = await response.json();
-            if (result.success) {
-                logMessage(`Running file: ${fileName}`);
-            } else {
-                logMessage(`Failed to run file: ${fileName}`);
-            }
-        }
-
-        async function runClearIn() {
-            await runFile('clear_from_in.thr');
-        }
-
-        async function runClearOut() {
-            await runFile('clear_from_out.thr');
-        }
-
-        async function runSideway() {
-            await runFile('clear_sideway.thr');
-        }
-        
-        // Call this function on page load
-        checkSerialStatus();
-
-        // Initial load of serial ports and Theta-Rho files
-        loadSerialPorts();
-        loadThetaRhoFiles();
-
-        document.getElementById('run_button').onclick = runThetaRho;
-        
-        document.querySelectorAll('.modeSelector').forEach((radio) => {
-            radio.addEventListener('change', function () {
-              // Hide all .modeSection first
-              document.querySelectorAll('.modeSection').forEach((section) => {
-                section.style.display = 'none';
-              });
-          
-              // Figure out which mode was selected
-              const selectedValue = this.value; // or document.querySelector('.modeSelector:checked').value
-          
-              // Show every element that has .modeSection AND the selected mode's class
-              document
-                .querySelectorAll(`.modeSection.${selectedValue}`)
-                .forEach((elem) => {
-                  elem.style.display = 'block';
-                });
-            });
-          });
-
-        async function changeSpeed() {
-            const speedInput = document.getElementById('speed_input');
-            const speed = parseFloat(speedInput.value);
-
-            if (isNaN(speed) || speed <= 0) {
-                logMessage('Invalid speed. Please enter a positive number.');
-                return;
-            }
-
-            logMessage(`Setting speed to: ${speed}...`);
-            const response = await fetch('/set_speed', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ speed })
-            });
-
-            const result = await response.json();
-            if (result.success) {
-                document.getElementById('speed_status').textContent = `Current Speed: ${speed}`;
-                logMessage(`Speed set to: ${speed}`);
-            } else {
-                logMessage(`Failed to set speed: ${result.error}`);
-            }
-        }
-        // Keep track of the files in the new playlist
-        let playlist = [];
-        // Currently selected item in the playlist
-        let selectedPlaylistIndex = null;
-        
-        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        //  PART A: Loading / listing playlists from the server
-        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        
-        async function loadAllPlaylists() {
-            try {
-            const response = await fetch('/list_all_playlists'); // GET
-            const allPlaylists = await response.json();          // e.g. ["My Playlist", "Summer", ...]
-            displayAllPlaylists(allPlaylists);
-            } catch (err) {
-            logMessage(`Error loading playlists: ${err}`);
-            }
-        }
-        
-        // Function to display all playlists with Load, Run, and Delete buttons
-        function displayAllPlaylists(allPlaylists) {
-            const ul = document.getElementById('all_playlists');
-            ul.innerHTML = ''; // Clear current list
-
-            allPlaylists.forEach((playlistName) => {
-                const li = document.createElement('li');
-                li.classList.add('playlist-item'); // For styling
-
-                // Playlist Name
-                const nameSpan = document.createElement('span');
-                nameSpan.textContent = playlistName;
-                li.appendChild(nameSpan);
-
-                // "Load" button
-                const loadBtn = document.createElement('button');
-                loadBtn.textContent = 'Load';
-                loadBtn.onclick = () => loadPlaylist(playlistName);
-                loadBtn.classList.add('load-button'); // For styling
-                li.appendChild(loadBtn);
-
-                // "Run" button
-                const runBtn = document.createElement('button');
-                runBtn.textContent = 'Run';
-                runBtn.onclick = () => runPlaylist(playlistName);
-                runBtn.classList.add('run-button'); // For styling
-                li.appendChild(runBtn);
-
-                // "Delete" button
-                const deleteBtn = document.createElement('button');
-                deleteBtn.textContent = 'Delete';
-                deleteBtn.onclick = () => deletePlaylist(playlistName);
-                deleteBtn.classList.add('delete-button'); // For styling
-                li.appendChild(deleteBtn);
-
-                ul.appendChild(li);
-            });
-        }
-
-        // Function to run the selected playlist with specified parameters
-        async function runPlaylist(playlistName) {
-            if (!playlistName) {
-                logMessage("No playlist selected to run.");
-                return;
-            }
-
-            // Get the parameters from the UI
-            const pauseTimeInput = document.getElementById('pause_time').value;
-            const clearPatternSelect = document.getElementById('clear_pattern').value;
-            const runMode = document.querySelector('input[name="run_mode"]:checked').value;
-            const shuffle = document.getElementById('shuffle_playlist').checked;
-
-            // Validate pause time
-            const pauseTime = parseFloat(pauseTimeInput);
-            if (isNaN(pauseTime) || pauseTime < 0) {
-                logMessage("Invalid pause time. Please enter a non-negative number.");
-                return;
-            }
-
-            // Map clear_pattern select value to backend expected values
-            let clearPattern = clearPatternSelect;
-            if (clearPatternSelect === "none") {
-                clearPattern = null;
-            }
-
-            logMessage(`Running playlist: ${playlistName} with pause_time=${pauseTime}, clear_pattern=${clearPattern || "None"}, run_mode=${runMode}, shuffle=${shuffle}`);
-
-            try {
-                const response = await fetch('/run_playlist', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        playlist_name: playlistName,
-                        pause_time: pauseTime,
-                        clear_pattern: clearPattern,
-                        run_mode: runMode, // 'single' or 'indefinite'
-                        shuffle: shuffle      // true or false
-                    })
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    logMessage(`Playlist "${playlistName}" is now running.`);
-                } else {
-                    logMessage(`Failed to run playlist "${playlistName}": ${result.error}`);
-                }
-            } catch (error) {
-                logMessage(`Error running playlist "${playlistName}": ${error}`);
-            }
-        }
-        
-        async function loadPlaylist(playlistName) {
-            // This fetches the named playlist from /get_playlist?name=...
-            try {
-            const response = await fetch(`/get_playlist?name=${encodeURIComponent(playlistName)}`);
-            const data = await response.json(); // { "name": "XYZ", "files": [...] }
-        
-            if (data.error) {
-                logMessage(`Error loading playlist "${playlistName}": ${data.error}`);
-                return;
-            }
-        
-            // Clear current local playlist; replace with loaded data
-            playlist = data.files || [];
-            selectedPlaylistIndex = null;
-            document.getElementById('playlist_name').value = data.name; // Fill in the name field
-        
-            refreshPlaylistUI();
-            logMessage(`Loaded playlist: ${data.name} with ${playlist.length} file(s).`);
-            } catch (err) {
-            logMessage(`Error loading playlist: ${err}`);
-            }
-        }
-        
-        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        //  PART B: Creating or Saving (Overwriting) a Playlist
-        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        
-        // Instead of separate create/modify functions, we’ll unify them:
-        async function savePlaylist() {
-            const name = document.getElementById('playlist_name').value.trim();
-            if (!name) {
-            logMessage("Please enter a playlist name.");
-            return;
-            }
-            if (playlist.length === 0) {
-            logMessage("No files in this playlist. Add files first.");
-            return;
-            }
-        
-            logMessage(`Saving playlist "${name}" with ${playlist.length} file(s)...`);
-        
-            try {
-            // We can use /create_playlist or /modify_playlist. They do roughly the same in our single-file approach.
-            // Let's use /create_playlist to always overwrite or create anew.
-            const response = await fetch('/create_playlist', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                name: name,
-                files: playlist
-                })
-            });
-            const result = await response.json();
-            if (result.success) {
-                logMessage(result.message);
-                // Reload the entire list of playlists to reflect changes
-                loadAllPlaylists();
-            } else {
-                logMessage(`Failed to save playlist: ${result.error}`);
-            }
-            } catch (err) {
-            logMessage(`Error saving playlist: ${err}`);
-            }
-        }
-        
-        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        //  PART C: Deleting a playlist
-        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        
-        async function deletePlaylist(playlistName) {
-            if (!confirm(`Delete playlist "${playlistName}"? This cannot be undone.`)) {
-            return;
-            }
-            try {
-            const response = await fetch('/delete_playlist', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: playlistName })
-            });
-            const result = await response.json();
-            if (result.success) {
-                logMessage(result.message);
-                loadAllPlaylists(); // Refresh the UI
-            } else {
-                logMessage(`Failed to delete playlist: ${result.error}`);
-            }
-            } catch (err) {
-            logMessage(`Error deleting playlist: ${err}`);
-            }
-        }
-        
-        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        //  PART D: Local playlist array UI
-        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        
-        // Called when the user clicks "Add File to Playlist"
-        function addToPlaylist() {
-            if (!selectedFile) {
-            logMessage("No file selected to add to the playlist.");
-            return;
-            }
-            // Add the current selectedFile to the local array
-            playlist.push(selectedFile);
-            logMessage(`Added "${selectedFile}" to the playlist.`);
-            refreshPlaylistUI();
-        }
-        
-        function refreshPlaylistUI() {
-            const ul = document.getElementById('playlist_items');
-            ul.innerHTML = '';
-        
-            playlist.forEach((file, index) => {
-            const li = document.createElement('li');
-            li.textContent = file;
-        
-            // When you click on a file in the playlist, mark it as selected
-            li.onclick = () => selectPlaylistItem(index);
-        
-            // Highlight the currently selected playlist item
-            if (index === selectedPlaylistIndex) {
-                li.classList.add('selected');
-            }
-            ul.appendChild(li);
-            });
-        }
-        
-        function selectPlaylistItem(index) {
-            selectedPlaylistIndex = index;
-            refreshPlaylistUI();
-            logMessage(`Selected playlist file: ${playlist[index]}`);
-        }
-        
-        function movePlaylistItemUp() {
-            if (selectedPlaylistIndex === null || selectedPlaylistIndex <= 0) return;
-            const temp = playlist[selectedPlaylistIndex - 1];
-            playlist[selectedPlaylistIndex - 1] = playlist[selectedPlaylistIndex];
-            playlist[selectedPlaylistIndex] = temp;
-            selectedPlaylistIndex--;
-            refreshPlaylistUI();
-        }
-        
-        function movePlaylistItemDown() {
-            if (selectedPlaylistIndex === null || selectedPlaylistIndex >= playlist.length - 1) return;
-            const temp = playlist[selectedPlaylistIndex + 1];
-            playlist[selectedPlaylistIndex + 1] = playlist[selectedPlaylistIndex];
-            playlist[selectedPlaylistIndex] = temp;
-            selectedPlaylistIndex++;
-            refreshPlaylistUI();
-        }
-        
-        function removeFromPlaylist() {
-            if (selectedPlaylistIndex === null) {
-            logMessage("No item selected in the playlist to remove.");
-            return;
-            }
-            const removedFile = playlist[selectedPlaylistIndex];
-            playlist.splice(selectedPlaylistIndex, 1);
-            selectedPlaylistIndex = null;
-            refreshPlaylistUI();
-            logMessage(`Removed "${removedFile}" from the playlist.`);
-        }
-        
-        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        //  PART E: Page load initialization
-        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        
-        // Make sure we load the existing playlists list on page load
-        document.addEventListener('DOMContentLoaded', () => {
-            loadAllPlaylists();
-        });
-         
-    </script>
+        </section>
+
+        <!-- Playlist View/Edit Section -->
+        <section id="playlist-editor" class="sticky hidden">
+            <div class="header">
+                <h2 id="playlist_title">Playlist: <span id="playlist_name_display"></span></h2>
+                <button class="fullscreen-button" onclick="toggleFullscreen(this)">⛶</button>
+                <button class="close-button" onclick="closeStickySection('playlist-editor')">&times;</button>
+            </div>
+            <ul id="playlist_items" class="file-list">
+            </ul>
+            <hr/>
+            <div class="action-buttons">
+                <button onclick="runPlaylist()" class="cta">Play</button>
+                <button onclick="toggleSecondaryButtons('rename-playlist-container')">Rename</button>
+                <button onclick="deleteCurrentPlaylist()" class="cancel">Delete</button>
+                <!-- Save and Cancel buttons -->
+                <button onclick="savePlaylist()" class="save-cancel cta" style="display: none;">Save</button>
+                <button onclick="cancelPlaylistChanges()" class="save-cancel cancel" style="display: none;">Cancel</button>
+            </div>
+            <!-- Playlist Rename Section -->
+            <div id="rename-playlist-container" class="hidden">
+                <input type="text" id="playlist_name_input" placeholder="Enter new playlist name">
+                <div class="action-buttons">
+                    <button onclick="confirmRenamePlaylist()" class="cta">Save</button>
+                    <button onclick="toggleSecondaryButtons('rename-playlist-container')" class="cancel">Cancel</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Device / Settings Tab -->
+    <main class="tab-content" id="settings-tab">
+        <section>
+            <div class="header">
+                <h2>Serial Connection</h2>
+            </div>
+            <div id="serial_status_container">Status: <span id="serial_status" class="status"> Not connected</span></div>
+            <div id="serial_ports_container">
+                <label for="serial_ports">Available Ports:</label>
+                <select id="serial_ports"></select>
+                <button onclick="connectSerial()" class="cta">Connect</button>
+            </div>
+            <div id="serial_ports_buttons" class="button-group">
+                <button onclick="disconnectSerial()" class="cancel">Disconnect</button>
+                <button onclick="restartSerial()" class="warn">Restart</button>
+            </div>
+        </section>
+
+        <section class="main">
+            <div class="header">
+                <h2>Device Controls</h2>
+            </div>
+
+            <div class="action-buttons">
+                <button onclick="stopExecution()" class="cancel">Stop Current Pattern</button>
+                <button onclick="runClearIn()">Clear In</button>
+                <button onclick="runClearOut()">Clear Out</button>
+                <button onclick="moveToCenter()">Move to Center</button>
+                <button onclick="moveToPerimeter()">Move to Perimeter</button>
+            </div>
+            <h3>Send to Coordinate</h3>
+            <div class="control-group">
+                <div class="item">
+                    <label for="theta_input">θ:</label>
+                    <input type="number" id="theta_input" placeholder="Theta">
+                </div>
+                <div class="item">
+                    <label for="rho_input">ρ:</label>
+                    <input type="number" id="rho_input" placeholder="Rho">
+                </div>
+                <div class="item cta">
+                    <button onclick="sendCoordinate()">Send</button>
+                </div>
+            </div>
+            <h3>Pre-Execution Action</h3>
+            <div class="control-group">
+                <label class="custom-input">
+                    <input type="radio" name="pre_execution" value="clear_in" id="clear_in">
+                    <span class="custom-radio"></span>
+                    Clear from In
+                </label>
+                <label class="custom-input">
+                    <input type="radio" name="pre_execution" value="clear_out" id="clear_out">
+                    <span class="custom-radio"></span>
+                    Clear from Out
+                </label>
+                <label class="custom-input">
+                    <input type="radio" name="pre_execution" value="none" id="no_action" checked>
+                    <span class="custom-radio"></span>
+                    None
+                </label>
+            </div>
+            <div class="control-group">
+                <h3>Speed</h3>
+                <div class="item">
+                    <input type="number" id="speed_input" placeholder="1-100" min="1" step="1" max="100">
+                </div>
+                <div class="item cta">
+                    <button class="small-button"  onclick="changeSpeed()">Set Speed</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="debug">
+            <div id="github">
+                <span>Help us improve! <a href="https://github.com/tuanchris/dune-weaver/pulls" target="_blank">Submit a Pull Request</a> or <a
+                        href="https://github.com/tuanchris/dune-weaver/issues/new"
+                        target="_blank">Report a Bug</a>.</span>
+                <a href="https://github.com/tuanchris/dune-weaver/issues" target="_blank">
+                    <img src="https://img.shields.io/github/issues/tuanchris/dune-weaver?style=flat-square"
+                         alt="GitHub Issues">
+                </a>
+            </div>
+            <button id="debug_button" onclick="toggleDebugLog()">🪲</button>
+        </section>
+    </main>
+</div>
+
+<!-- Tab Navigation -->
+<nav class="bottom-nav">
+    <button class="tab-button" onclick="switchTab('patterns')" id="nav-patterns">Patterns</button>
+    <button class="tab-button" onclick="switchTab('playlists')" id="nav-playlists">Playlists</button>
+    <button class="tab-button" onclick="switchTab('settings')" id="nav-settings">Device</button>
+</nav>
+
+<div id="status_log">
+    <!-- Messages will be appended here -->
+</div>
+
+<script src="../static/main.js"></script>
 </body>
 </html>

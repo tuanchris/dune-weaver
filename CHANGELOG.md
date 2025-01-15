@@ -2,7 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.2.0] - Spirograph functionality
+## [1.3.0] Revamped UI
+
+Massive thanks to Thokoop for helping us redesigning the UI just within a few days! The new design looks gorgeous on both PC and mobile. 
+
+![New UI](./static/UI_1.3.png)
+
+![New UI mobile](./static/IMG_9753.png)
+
+## [1.2.0] - Playlist mode, Spirograph functionality
 
 ### Added
 

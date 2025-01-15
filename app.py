@@ -174,7 +174,7 @@ def run_theta_rho_file(file_path):
     # Reset theta after execution or stopping
     reset_theta()
     ser.write("FINISHED\n".encode())
-    
+
 def get_clear_pattern_file(pattern_name):
     """Return a .thr file path based on pattern_name."""
     if pattern_name == "random":
@@ -222,12 +222,12 @@ def run_theta_rho_files(
                 clear_file_path = get_clear_pattern_file(clear_pattern)
                 print(f"Running clear pattern: {clear_file_path}")
                 run_theta_rho_file(clear_file_path)
-            
+
             if not stop_requested:
                 # Run the main pattern
                 print(f"Running pattern {idx + 1} of {len(file_paths)}: {path}")
                 run_theta_rho_file(path)
-            
+
             if idx < len(file_paths) -1:
                 if stop_requested:
                     print("Execution stopped before running the next clear pattern.")
@@ -347,7 +347,7 @@ def run_theta_rho():
     try:
         # Build a list of files to run in sequence
         files_to_run = []
-        
+
         if pre_execution == 'clear_in':
             files_to_run.append('./patterns/clear_from_in.thr')
         elif pre_execution == 'clear_out':
@@ -481,7 +481,6 @@ def send_coordinate():
 
         # Send the coordinate to the Arduino
         send_coordinate_batch(ser, [(theta, rho)])
-        reset_theta()
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -499,7 +498,7 @@ def serial_status():
         'connected': ser.is_open if ser else False,
         'port': ser_port  # Include the port name
     })
-    
+
 if not os.path.exists(PLAYLISTS_FILE):
     with open(PLAYLISTS_FILE, "w") as f:
         json.dump({}, f, indent=2)
@@ -635,7 +634,26 @@ def delete_playlist():
         "success": True,
         "message": f"Playlist '{playlist_name}' deleted"
     })
-    
+
+@app.route('/add_to_playlist', methods=['POST'])
+def add_to_playlist():
+    data = request.json
+    playlist_name = data.get('playlist_name')
+    pattern = data.get('pattern')
+
+    # Load existing playlists
+    with open('playlists.json', 'r') as f:
+        playlists = json.load(f)
+
+    # Add pattern to the selected playlist
+    if playlist_name in playlists:
+        playlists[playlist_name].append(pattern)
+        with open('playlists.json', 'w') as f:
+            json.dump(playlists, f)
+        return jsonify(success=True)
+    else:
+        return jsonify(success=False, error='Playlist not found'), 404
+
 @app.route("/run_playlist", methods=["POST"])
 def run_playlist():
     """
@@ -706,7 +724,7 @@ def run_playlist():
         return jsonify({"success": True, "message": f"Playlist '{playlist_name}' is now running."})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-    
+
 @app.route('/set_speed', methods=['POST'])
 def set_speed():
     """Set the speed for the Arduino."""
