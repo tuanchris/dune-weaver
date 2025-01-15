@@ -1,8 +1,45 @@
+:root {
+    --background-primary: #f9f9f9;
+    --background-secondary: #fff;
+    --background-tertiary: #ddd;
+    --background-accent: rgba(74, 144, 226, 0.75);
+    --background-info: var(--background-accent);
+    --background-success: rgba(76, 175, 80, 0.8);
+    --background-warning: rgba(255, 152, 0, 0.8);
+    --background-error: rgba(229, 57, 53, 0.8);
+
+    --theme-primary: #6A9AD9;
+    --theme-primary-hover: #A0CCF2;
+    --theme-secondary: #C4B4A0;
+    --theme-secondary-hover: #4E453F;
+
+    --color-info: var(--theme-primary);
+    --color-success: #4CAF50CC;
+    --color-warning: #FF9800CC;
+    --color-error: #E53935CC;
+
+    --text-primary: #333;
+    --text-secondary: #fff;
+
+    --border-primary: var(--background-tertiary);
+    --border-secondary: grey;
+    --border-accent: var(--theme-primary);
+    --border-hover: var(--theme-primary-hover);
+
+    --shadow-primary: 0 0 20px var(--border-secondary);
+
+    --transition-fast: 0.1s ease-in-out;
+    --transition-medium: 0.250s ease;
+    --transition-slow: 1s ease;
+}
+
+/* General
+
 /* General Styling */
 body {
     margin: 0;
     font-family: 'Roboto', sans-serif;
-    background: #f9f9f9;
+    background: var(--background-primary);
     display: flex;
     flex-direction: column;
     position: relative;
@@ -21,36 +58,160 @@ header {
     height: 50px;
     top: 0;
     z-index: 10;
-    background: #f9f9f9;
+    background: var(--background-primary);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
 }
 
-h1 {
-    font-size: 1.5rem;
-    text-align: center;
-    margin: 10px 0;
-}
-
-h2 {
-    font-size: 1.2rem;
-    color: #4A90E2;
+h1, h2 {
+    color: var(--theme-secondary-hover);
+    transition: var(--transition-slow) color;
 }
 
 h3 {
     margin: 10px 0;
 }
 
-/* App Layout */
-.app {
-    display: flex;
-    flex-direction: column;
+
+/* Inputs */
+input, select {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid var(--border-primary);
+    border-radius: 5px;
+    font-size: 1rem;
 }
 
-.app-header {
-    background: #4A90E2;
-    color: white;
-    padding: 15px;
-    text-align: center;
-    font-size: 1.5rem;
+/* Custom Input Wrapper */
+.custom-input {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    flex: 1 1 auto;
+}
+
+/* Hide the Native Input */
+.custom-input input {
+    display: none;
+}
+
+/* Checkbox and Radio Styles */
+.custom-checkbox,
+.custom-radio {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--theme-primary);
+    background-color: var(--background-secondary);
+    position: relative;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Checkbox Specific */
+.custom-checkbox {
+    border-radius: 4px;
+}
+.custom-checkbox::after {
+    content: '';
+    width: 10px;
+    height: 10px;
+    background-color: var(--theme-primary);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    transition: transform 0.2s ease-in-out;
+}
+
+/* Radio Specific */
+.custom-radio {
+    border-radius: 50%;
+}
+.custom-radio::after {
+    content: '';
+    width: 10px;
+    height: 10px;
+    background-color: var(--theme-primary);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    border-radius: 50%;
+    transition: transform 0.2s ease-in-out;
+}
+
+/* Checked State */
+.custom-input input:checked + .custom-checkbox::after,
+.custom-input input:checked + .custom-radio::after {
+    transform: translate(-50%, -50%) scale(1);
+}
+
+.custom-input input:checked + .custom-checkbox,
+.custom-input input:checked + .custom-radio {
+    background-color: var(--theme-primary);
+    border-color: var(--theme-primary-hover);
+}
+
+/* Focus State */
+.custom-input input:focus-visible + .custom-checkbox,
+.custom-input input:focus-visible + .custom-radio {
+    outline: 2px dashed var(--theme-primary);
+    outline-offset: 2px;
+}
+
+/* Hover Effects */
+.custom-checkbox:hover,
+.custom-radio:hover {
+    border-color: var(--theme-primary-hover);
+}
+
+/* Buttons */
+button {
+    background: var(--theme-primary);
+    color: var(--text-secondary);
+    padding: 10px 15px;
+    border: none;
+    font-weight: bold;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background 0.3s ease,color 0.3s ease;
+}
+
+button:not(.close-button, .fullscreen-button, .move-button, .remove-button):hover {
+    background: var(--background-info);
+}
+
+button.cancel {
+    flex-grow: 0;
+}
+
+button.cancel:hover {
+    background: var(--color-error);
+}
+
+button.cta:hover {
+    background: var(--color-success);
+}
+
+button.warn:hover {
+    background: var(--color-warning);
+}
+
+button.warning:hover{}
+
+/* App Layout */
+.app {
+    min-height: calc(100vh - 110px);
+    display: flex;
+    flex-direction: column;
 }
 
 .hidden:not(.sticky) {
@@ -62,7 +223,7 @@ h3 {
     display: none;
     flex: 1;
     overflow-y: auto;
-    background: #fff;
+    background: var(--background-secondary);
 }
 
 .tab-content.active {
@@ -89,16 +250,25 @@ section.debug {
 
 section.sticky {
     position: fixed;
-    background-color: rgba(255, 255, 255, 0.75);
-    backdrop-filter: blur(2px);
+    background-color: rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(10px);
     bottom: 60px;
-    border-top: 1px solid grey;
-    box-shadow: 0 0 20px grey;
+    border-top: 1px solid var(--border-primary);
+    box-shadow: var(--shadow-primary);
     transform: translateY(0);
-    transition: 250ms transform;
+    transition: 250ms transform, 250ms height;
     visibility: visible;
     max-height: 60vh;
     width: 100%;
+    z-index: 10;
+}
+
+section.sticky.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    max-height: none;
 }
 
 section.sticky.hidden {
@@ -111,30 +281,44 @@ section.sticky.hidden {
     padding: 0;
 }
 
-/* Close Button Styling */
-.close-button {
-    background: none;
-    border: none;
-    font-size: 1.5rem;
-    font-weight: bold;
-    color: #333;
-    cursor: pointer;
-    position: absolute;
-    top: -10px;
-    right: -10px;
-    line-height: 1;
-}
-
-.close-button:hover {
-    color: #ff0000;
-}
-
 section .header {
     position: relative;
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 10px;
+}
+
+section .header h2 {
+    flex-grow: 1;
+}
+
+/* Close Button Styling */
+.close-button,
+.fullscreen-button {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--text-primary);
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+    height: 100%;
+    width: auto;
+    aspect-ratio: 1 / 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-left: 10px;
+}
+
+.close-button:hover {
+    color: var(--color-error);
+}
+
+.fullscreen-button:hover {
+    color: var(--color-warning);
 }
 
 section .header .add-button {
@@ -185,7 +369,7 @@ section .header .add-button {
 .playlist-parameters .input-group select {
     width: 100%; /* Ensure inputs/selects stretch to full width */
     padding: 10px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-primary);
     border-radius: 5px;
     font-size: 1rem;
 }
@@ -199,10 +383,9 @@ section .header .add-button {
 
 /* Style for the filename span */
 .filename {
-    display: inline-block;
     flex-grow: 1; /* Use available space */
     font-size: 1rem;
-    color: #333;
+    color: var(--text-primary);
     margin-right: 10px; /* Space between filename and buttons */
     word-wrap: break-word;
     width: 100%;
@@ -216,16 +399,17 @@ section .header .add-button {
     list-style: none;
     padding: 0;
     margin: 0;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-primary);
     border-radius: 5px;
     overflow-y: auto;
-    background: white;
+    background: var(--background-primary);
+    flex-grow: 1;
 }
 
 .file-list li {
     display: flex;
     padding: 10px;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid var(--border-primary);
     cursor: pointer;
     transition: background-color 0.3s ease;
 }
@@ -235,15 +419,14 @@ section .header .add-button {
 }
 
 .file-list li.selected {
-    background: #4A90E2;
-    color: white;
+    background: var(--theme-primary);
+    color: var(--text-secondary);
     font-weight: bold;
-    border-radius: 5px;
 }
 
 .file-list li.selected .filename {
     font-weight: bold;
-    color: white;
+    color: var(--text-secondary);
 }
 
 .file-list button {
@@ -259,13 +442,13 @@ section .header .add-button {
     align-items: center;
 }
 
-.file-list button:hover:not(:active) {
-    background: white;
-    box-shadow: inset 0 0 4px grey;
+.file-list button:hover:not(:focus) {
+    background: var(--background-primary);
+    box-shadow: inset 0 0 4px var(--border-secondary);
 }
 
 .file-list button.remove-button {
-    color: #E53935;
+    color: var(--color-error);
 }
 
 .title-container {
@@ -276,8 +459,8 @@ section .header .add-button {
 
 .rename-button {
     margin-left: 10px;
-    background: #357ABD;
-    color: white;
+    background: var(--theme-primary-hover);
+    color: var(--text-secondary);
     border: none;
     border-radius: 5px;
     padding: 5px 10px;
@@ -297,8 +480,9 @@ section .header .add-button {
     bottom: 0;
     height: 60px;
     width: 100%;
-    border-top: 1px solid #4A90E2FF;
+    border-top: 1px solid var(--theme-primary);
     flex-wrap: wrap;
+    z-index: 10;
 }
 
 .tab-button {
@@ -307,141 +491,19 @@ section .header .add-button {
     text-align: center;
     font-size: 1rem;
     font-weight: bold;
-    color: white;
+    color: var(--text-secondary);
     background: none;
     border: none;
     cursor: pointer;
     transition: background 0.3s ease;
-    background: rgba(74, 144, 226, 0.75);
+    background: var(--background-info);
     backdrop-filter: blur(2px);
     border-radius: 0;
 }
 
 .bottom-nav .tab-button.active {
     background: rgba(255, 255, 255, 0.75);
-    color: #4A90E2;
-}
-
-/* Inputs */
-input, select {
-    display: block;
-    width: 100%;
-    padding: 10px;
-    margin-bottom: 10px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    font-size: 1rem;
-}
-
-/* Custom Input Wrapper */
-.custom-input {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 1rem;
-    color: #333;
-    cursor: pointer;
-    flex: 1 1 auto;
-}
-
-/* Hide the Native Input */
-.custom-input input {
-    display: none;
-}
-
-/* Checkbox and Radio Styles */
-.custom-checkbox,
-.custom-radio {
-    display: inline-block;
-    width: 20px;
-    height: 20px;
-    border: 2px solid #4A90E2;
-    background-color: #fff;
-    position: relative;
-    transition: background-color 0.3s ease, border-color 0.3s ease;
-}
-
-/* Checkbox Specific */
-.custom-checkbox {
-    border-radius: 4px;
-}
-.custom-checkbox::after {
-    content: '';
-    width: 10px;
-    height: 10px;
-    background-color: #4A90E2;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%) scale(0);
-    transition: transform 0.2s ease-in-out;
-}
-
-/* Radio Specific */
-.custom-radio {
-    border-radius: 50%;
-}
-.custom-radio::after {
-    content: '';
-    width: 10px;
-    height: 10px;
-    background-color: #4A90E2;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%) scale(0);
-    border-radius: 50%;
-    transition: transform 0.2s ease-in-out;
-}
-
-/* Checked State */
-.custom-input input:checked + .custom-checkbox::after,
-.custom-input input:checked + .custom-radio::after {
-    transform: translate(-50%, -50%) scale(1);
-}
-
-.custom-input input:checked + .custom-checkbox {
-    background-color: #4A90E2;
-    border-color: #357ABD;
-}
-
-.custom-input input:checked + .custom-radio {
-    background-color: #4A90E2;
-    border-color: #357ABD;
-}
-
-/* Focus State */
-.custom-input input:focus-visible + .custom-checkbox,
-.custom-input input:focus-visible + .custom-radio {
-    outline: 2px dashed #4A90E2;
-    outline-offset: 2px;
-}
-
-/* Hover Effects */
-.custom-checkbox:hover,
-.custom-radio:hover {
-    border-color: #357ABD;
-}
-
-/* Buttons */
-button {
-    background: #4A90E2;
-    color: white;
-    padding: 10px 15px;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 1rem;
-    transition: background 0.3s ease;
-}
-
-button:not(.close-button, .move-button, .remove-button):hover {
-    background: #357ABD;
-}
-
-button:disabled {
-    background: #ccc;
-    cursor: not-allowed;
+    color: var(--theme-primary);
 }
 
 /* Quick Action Buttons */
@@ -460,22 +522,6 @@ button:disabled {
     flex-grow: 1;
 }
 
-button.cancel {
-    background: #E53935; /* Red color */
-    color: white;
-    border: none;
-    padding: 10px 15px;
-    border-radius: 5px;
-    font-size: 1rem;
-    cursor: pointer;
-    transition: background 0.3s ease;
-    flex-grow: 0;
-}
-
-button.cancel:hover {
-    background: #c0392b; /* Darker red */
-}
-
 button#debug_button {
     width: 40px;
     padding: 0;
@@ -489,7 +535,7 @@ button#debug_button {
 
 button#debug_button:hover,
 button#debug_button.active {
-    box-shadow: inset 0 0 5px grey;
+    box-shadow: inset 0 0 4px var(--border-secondary);
 }
 
 #settings-tab button.cancel {
@@ -499,19 +545,33 @@ button#debug_button.active {
 /* Preview Canvas */
 #patternPreviewCanvas {
     width: 100%;
-    height: 200px;
-    border: 1px solid #ddd;
-    background: #f1f1f1;
-    border-radius: 5px;
+    max-width: 300px;
+    aspect-ratio: 1/1;
+    border: 1px solid var(--border-primary);
+    background: var(--theme-secondary);
+    border-radius: 100%;
+    padding: 30px;
+}
+
+#pattern-preview {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+#pattern-preview-container.fullscreen #patternPreviewCanvas {
+    width: initial;
+    max-width: calc(100vw - 30px);
 }
 
 /* Debug Log */
 #status_log {
     background: #000;
-    color: #fff;
+    color: var(--text-secondary);
     font-family: monospace;
     font-size: 0.9rem;
-    border-top: 1px solid #ddd;
+    border-top: 1px solid var(--border-primary);
     padding: 10px;
     max-height: 200px;
     overflow-y: scroll;
@@ -585,25 +645,31 @@ button#debug_button.active {
     height: 20px;
     border-radius: 50%;
     margin-right: 8px;
-    background-color: #E53935;
+    background-color: var(--text-primary);
     display: inline-block;
+    transition: var(--transition-slow) background-color;
 }
 
 #serial_status_header.connected::before {
-    background-color: #4CAF50;
+    background-color: var(--color-success);
 }
+
+#serial_status_header.not-connected::before {
+    background-color: var(--color-error);
+}
+
 
 #serial_ports_buttons {
     display: inline-block;
 }
 
 .status.connected {
-    color: #4CAF50;
+    color: var(--color-success);
     font-weight: bold;
 }
 
 .status.not-connected {
-    color: #E53935;
+    color: var(--color-error);
     font-weight: bold;
 }
 
@@ -615,7 +681,7 @@ button#debug_button.active {
 .speed-control label {
     font-weight: bold;
     font-size: 1rem;
-    color: #333;
+    color: var(--text-primary);
     flex-shrink: 0;
 }
 
@@ -623,15 +689,15 @@ button#debug_button.active {
     width: 100px; /* Consistent input width */
     padding: 8px;
     font-size: 1rem;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-primary);
     border-radius: 5px;
     outline: none;
     transition: all 0.3s ease;
 }
 
 input[type="number"]:focus {
-    border-color: #4A90E2;
-    box-shadow: 0 0 5px rgba(74, 144, 226, 0.5);
+    border-color: var(--theme-primary);
+    box-shadow: 0 0 4px var(--background-info);
 }
 
 #speed_status {
@@ -667,7 +733,7 @@ input[type="number"]:focus {
     left: 0;
     font-weight: bold;
     z-index: 1000;
-    color: white;
+    color: var(--text-secondary);
     width: 100%;
     height: 100%;
     justify-content: center;
@@ -681,17 +747,17 @@ input[type="number"]:focus {
 }
 
 .notification .close-button {
-    color: white;
+    color: var(--text-secondary);
     font-size: 2rem;
     top: 0;
     right: 0;
 }
 
 /* Notification Types */
-.notification.success { background-color: rgba(76, 175, 80, 0.8); }
-.notification.warning { background-color: rgba(255, 152, 0, 0.8); }
-.notification.error { background-color: rgba(229, 57, 53, 0.8); }
-.notification.info { background-color: rgba(74, 144, 226, 0.8); }
+.notification.success { background-color: var(--background-success); }
+.notification.warning { background-color: var(--background-warning); }
+.notification.error { background-color: var(--background-error); }
+.notification.info { background-color: var(--background-info); }
 
 .footer {
     align-items: center;
@@ -713,7 +779,7 @@ input[type="number"]:focus {
 }
 
 /* Responsive Design */
-@media (max-width: 1024px) {
+@media (max-width: 1023px) {
     body {
         font-size: 0.9rem;
     }
@@ -724,6 +790,24 @@ input[type="number"]:focus {
 
     .footer {
         display: none;
+    }
+
+    button.cancel {
+        background: var(--color-error);
+    }
+
+    button.cta {
+        background: var(--color-success);
+    }
+
+    button.warn {
+        background: var(--color-warning);
+    }
+
+    button.cancel:hover,
+    button.warn:hover,
+    button.cta:hover {
+        background: var(--theme-primary);
     }
 }
 
@@ -755,8 +839,8 @@ input[type="number"]:focus {
     .tab-content {
         display: flex !important; /* Always display tab-content */
         flex-direction: column;
-        border: 1px solid #ccc;
-        background-color: #f9f9f9;
+        border: 1px solid var(--border-primary);
+        background-color: var(--background-primary);
         border-radius: 8px;
         overflow-y: auto;
         overflow-x: hidden;

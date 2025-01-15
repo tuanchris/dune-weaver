@@ -359,6 +359,7 @@ function renderPattern(coordinates) {
     const scale = Math.min(rect.width, rect.height) / (2 * maxRho); // Scale to fit
 
     ctx.beginPath();
+    ctx.strokeStyle = 'white';
     coordinates.forEach(([theta, rho], index) => {
         const x = centerX + rho * Math.cos(theta) * scale;
         const y = centerY - rho * Math.sin(theta) * scale;
@@ -516,7 +517,7 @@ async function connectSerial() {
     });
     const result = await response.json();
     if (result.success) {
-        logMessage(`Connected to serial port: ${port}`);
+        logMessage(`Connected to serial port: ${port}`, LOG_TYPE.SUCCESS);
         // Refresh the status
         await checkSerialStatus();
     } else {
@@ -578,7 +579,21 @@ function displayAllPlaylists(playlists) {
         const li = document.createElement('li');
         li.textContent = playlistName;
         li.classList.add('playlist-item'); // Add a class for styling
-        li.onclick = () => openPlaylistEditor(playlistName); // Set click event
+
+        // Attach click event to handle selection
+        li.onclick = () => {
+            // Remove 'selected' class from all items
+            document.querySelectorAll('#all_playlists li').forEach(item => {
+                item.classList.remove('selected');
+            });
+
+            // Add 'selected' class to the clicked item
+            li.classList.add('selected');
+
+            // Open the playlist editor for the selected playlist
+            openPlaylistEditor(playlistName);
+        };
+
         ul.appendChild(li);
     });
 }
@@ -1114,12 +1129,54 @@ function closeStickySection(sectionId) {
     const section = document.getElementById(sectionId);
     if (section) {
         section.classList.remove('visible');
+        section.classList.remove('fullscreen');
         section.classList.add('hidden');
+        // Reset the fullscreen button text if it exists
+        const fullscreenButton = section.querySelector('.fullscreen-button');
+        if (fullscreenButton) {
+            fullscreenButton.textContent = '⛶'; // Reset to enter fullscreen icon/text
+        }
+
         logMessage(`Closed section: ${sectionId}`);
+
+        if(sectionId === 'playlist-editor') {
+            document.querySelectorAll('#all_playlists .playlist-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+        }
+
+        if(sectionId === 'pattern-preview-container') {
+            document.querySelectorAll('#theta_rho_files .file-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+        }
+
     } else {
         logMessage(`Error: Section with ID "${sectionId}" not found`);
     }
 }
+
+function attachFullScreenListeners() {
+    // Add event listener to all fullscreen buttons
+    document.querySelectorAll('.fullscreen-button').forEach(button => {
+        button.addEventListener('click', function () {
+            const stickySection = this.closest('.sticky'); // Find the closest sticky section
+            if (stickySection) {
+                stickySection.classList.toggle('fullscreen'); // Toggle fullscreen class
+
+                // Update button icon or text
+                if (stickySection.classList.contains('fullscreen')) {
+                    this.textContent = '-'; // Exit fullscreen icon/text
+                } else {
+                    this.textContent = '⛶'; // Enter fullscreen icon/text
+                }
+            } else {
+                console.error('Error: Fullscreen button is not inside a sticky section.');
+            }
+        });
+    });
+}
+
 
 // Utility function to manage cookies
 function setCookie(name, value, days) {
@@ -1266,4 +1323,5 @@ document.addEventListener('DOMContentLoaded', () => {
     loadAllPlaylists(); // Load all playlists on page load
     loadSettingsFromCookies(); // Load saved settings
     attachSettingsSaveListeners(); // Attach event listeners to save changes
+    attachFullScreenListeners();
 });

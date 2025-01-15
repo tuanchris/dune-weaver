@@ -17,14 +17,14 @@
         <section class="main">
             <div class="header">
                 <h2>Patterns</h2>
-                <button class="add-button" onclick="toggleSecondaryButtons('add-pattern-container')">+</button>
+                <button class="add-button cta" onclick="toggleSecondaryButtons('add-pattern-container')">+</button>
             </div>
             <div id="add-pattern-container" class="add-to-container hidden">
                 <div class="action-buttons">
                     <label for="upload_file">Upload pattern file (.thr):</label>
                     <input type="file" id="upload_file">
                     <button class="cancel" onclick="toggleSecondaryButtons('add-pattern-container')">Cancel</button>
-                    <button onclick="uploadThetaRho()">Upload</button>
+                    <button class="cta" onclick="uploadThetaRho()">Upload</button>
                 </div>
             </div>
             <input type="text" id="search_pattern" placeholder="Search files..." oninput="searchPatternFiles()">
@@ -35,19 +35,20 @@
         <section id="pattern-preview-container" class="sticky hidden">
             <div class="header">
                 <h2>Preview</h2>
+                <button class="fullscreen-button">⛶</button>
                 <button class="close-button" onclick="closeStickySection('pattern-preview-container')">&times;</button>
             </div>
-            <canvas id="patternPreviewCanvas"></canvas>
-
-            <span id="first_coordinate"></span>
-            <span id="last_coordinate"></span>
-            <hr/>
+            <div id="pattern-preview">
+                <canvas id="patternPreviewCanvas"></canvas>
+                <div id="first_coordinate"></div>
+                <div id="last_coordinate"></div>
+            </div>
 
             <!-- Action Buttons -->
             <div class="action-buttons">
-                <button onclick="runThetaRho()">Run</button>
+                <button onclick="runThetaRho()" class="cta" >Run</button>
                 <button id="toggle-playlist-button" onclick="toggleSecondaryButtons('add-to-playlist-container', populatePlaylistDropdown)">Add to Playlist</button>
-                <button class="cancel remove-button hidden" onclick="removeCurrentPattern()">Delete</button>
+                <button onclick="removeCurrentPattern()" class="cancel remove-button hidden">Delete</button>
             </div>
 
             <!-- Add to Playlist Section -->
@@ -55,7 +56,7 @@
                 <h2>Select Playlist</h2>
                 <select id="select-playlist"></select>
                 <div class="action-buttons">
-                    <button class="cancel" onclick="toggleSecondaryButtons('add-to-playlist-container')">Cancel</button>
+                    <button onclick="toggleSecondaryButtons('add-to-playlist-container')" class="cancel">Cancel</button>
                     <button onclick="saveToPlaylist()" class="cta">Save</button>
                 </div>
             </div>
@@ -67,7 +68,7 @@
         <section>
             <div class="header">
                 <h2>Playlists</h2>
-                <button class="add-button" onclick="toggleSecondaryButtons('add-playlist-container')">+</button>
+                <button class="cta add-button" onclick="toggleSecondaryButtons('add-playlist-container')">+</button>
             </div>
             <div id="add-playlist-container" class="add-to-container hidden">
                 <input type="text" id="new_playlist_name" placeholder="Enter new playlist name" />
@@ -127,17 +128,18 @@
         <section id="playlist-editor" class="sticky hidden">
             <div class="header">
                 <h2 id="playlist_title">Playlist: <span id="playlist_name_display"></span></h2>
+                <button class="fullscreen-button" onclick="toggleFullscreen(this)">⛶</button>
                 <button class="close-button" onclick="closeStickySection('playlist-editor')">&times;</button>
             </div>
             <ul id="playlist_items" class="file-list">
             </ul>
             <hr/>
             <div class="action-buttons">
-                <button onclick="runPlaylist()">Play</button>
+                <button onclick="runPlaylist()" class="cta">Play</button>
                 <button onclick="toggleSecondaryButtons('rename-playlist-container')">Rename</button>
                 <button onclick="deleteCurrentPlaylist()" class="cancel">Delete</button>
                 <!-- Save and Cancel buttons -->
-                <button onclick="savePlaylist()" class="save-cancel" style="display: none;">Save</button>
+                <button onclick="savePlaylist()" class="save-cancel cta" style="display: none;">Save</button>
                 <button onclick="cancelPlaylistChanges()" class="save-cancel cancel" style="display: none;">Cancel</button>
             </div>
             <!-- Playlist Rename Section -->
@@ -161,11 +163,11 @@
             <div id="serial_ports_container">
                 <label for="serial_ports">Available Ports:</label>
                 <select id="serial_ports"></select>
-                <button onclick="connectSerial()">Connect</button>
+                <button onclick="connectSerial()" class="cta">Connect</button>
             </div>
             <div id="serial_ports_buttons" class="button-group">
-                <button onclick="disconnectSerial()">Disconnect</button>
-                <button onclick="restartSerial()">Restart</button>
+                <button onclick="disconnectSerial()" class="cancel">Disconnect</button>
+                <button onclick="restartSerial()" class="warn">Restart</button>
             </div>
         </section>
 
