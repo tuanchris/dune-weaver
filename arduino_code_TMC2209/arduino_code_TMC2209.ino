@@ -49,7 +49,7 @@ float userDefinedSpeed = maxSpeed; // Store user-defined speed
 int currentMode = MODE_APP; // Default mode is app mode.
 
 // FIRMWARE VERSION
-const char* firmwareVersion = "1.4.0";
+const char* firmwareVersion = "1.4.1";
 const char* motorType = "TMC2209";
 
 void setup()
@@ -74,7 +74,7 @@ void setup()
     Serial.begin(115200);
     Serial.println("Table: Dune Weaver");
     Serial.println("Drivers: TMC2209");
-    Serial.println("Version: 1.4.0";)
+    Serial.println("Version: 1.4.1");
     Serial.println("R");
     homing();
 }
