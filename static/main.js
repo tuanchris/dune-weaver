@@ -241,6 +241,36 @@ async function stopExecution() {
     }
 }
 
+let isPaused = false;
+
+function togglePausePlay() {
+    const button = document.getElementById("pausePlayButton");
+
+    if (isPaused) {
+        // Resume execution
+        fetch('/resume_execution', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    isPaused = false;
+                    button.innerHTML = "⏸"; // Change to pause icon
+                }
+            })
+            .catch(error => console.error("Error resuming execution:", error));
+    } else {
+        // Pause execution
+        fetch('/pause_execution', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    isPaused = true;
+                    button.innerHTML = "▶"; // Change to play icon
+                }
+            })
+            .catch(error => console.error("Error pausing execution:", error));
+    }
+}
+
 function removeCurrentPattern() {
     if (!selectedFile) {
         logMessage('No file selected to remove.', LOG_TYPE.ERROR);

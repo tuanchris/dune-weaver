@@ -24,6 +24,9 @@ os.makedirs(THETA_RHO_DIR, exist_ok=True)
 ser = None
 ser_port = None  # Global variable to store the serial port name
 stop_requested = False
+pause_requested = False
+pause_condition = threading.Condition()
+
 serial_lock = threading.Lock()
 
 PLAYLISTS_FILE = os.path.join(os.getcwd(), "playlists.json")
@@ -156,6 +159,12 @@ def run_theta_rho_file(file_path):
         if stop_requested:
             print("Execution stopped by user after completing the current batch.")
             break
+        
+        with pause_condition:
+            while pause_requested:
+                print("Execution paused...")
+                pause_condition.wait()  # This will block execution until notified
+        
         batch = coordinates[i:i + batch_size]
         if i == 0:
             send_coordinate_batch(ser, batch)
@@ -498,10 +507,23 @@ def serial_status():
         'connected': ser.is_open if ser else False,
         'port': ser_port  # Include the port name
     })
+    
+@app.route('/pause_execution', methods=['POST'])
+def pause_execution():
+    """Pause the current execution."""
+    global pause_requested
+    with pause_condition:
+        pause_requested = True
+    return jsonify({'success': True, 'message': 'Execution paused'})
 
-if not os.path.exists(PLAYLISTS_FILE):
-    with open(PLAYLISTS_FILE, "w") as f:
-        json.dump({}, f, indent=2)
+@app.route('/resume_execution', methods=['POST'])
+def resume_execution():
+    """Resume execution after pausing."""
+    global pause_requested
+    with pause_condition:
+        pause_requested = False
+        pause_condition.notify_all()  # Unblock the waiting thread
+    return jsonify({'success': True, 'message': 'Execution resumed'})
 
 def load_playlists():
     """
