@@ -26,13 +26,19 @@ ser = None
 ser_port = None  # Global variable to store the serial port name
 stop_requested = False
 pause_requested = False
-current_playing_file = None
-execution_progress = None
 pause_condition = threading.Condition()
 
 # Global variables to store device information
 arduino_table_name = None
 arduino_driver_type = None
+
+# Table status
+current_playing_file = None
+execution_progress = None
+firmware_version = None
+current_playing_index = None
+current_playlist = None
+is_clearing = False
 
 serial_lock = threading.Lock()
 
@@ -82,6 +88,8 @@ def connect_to_serial(port=None, baudrate=115200):
                 arduino_table_name = line.replace("Table: ", "").strip()
             elif "Drivers:" in line:
                 arduino_driver_type = line.replace("Drivers: ", "").strip()
+            elif "Version:" in line:
+                firmware_version = line.replace("Version: ", "").strip()
 
         # Display stored values
         print(f"Detected Table: {arduino_table_name or 'Unknown'}")
@@ -299,14 +307,19 @@ def run_theta_rho_files(
     - shuffle (bool): Whether to shuffle the playlist before running.
     """
     global stop_requested
+    global current_playlist
+    global current_playing_index
     stop_requested = False  # Reset stop flag at the start
 
     if shuffle:
         random.shuffle(file_paths)
         print("Playlist shuffled.")
-
+    
+    current_playlist = file_paths
+    
     while True:
         for idx, path in enumerate(file_paths):
+            current_playing_index = idx
             schedule_checker(schedule_hours)
             if stop_requested:
                 print("Execution stopped before starting next pattern.")
@@ -320,7 +333,9 @@ def run_theta_rho_files(
                 # Determine the clear pattern to run
                 clear_file_path = get_clear_pattern_file(clear_pattern)
                 print(f"Running clear pattern: {clear_file_path}")
+                is_clearing = True
                 run_theta_rho_file(clear_file_path, schedule_hours)
+                is_clearing = False
 
             if not stop_requested:
                 # Run the main pattern
@@ -477,6 +492,12 @@ def run_theta_rho():
 def stop_execution():
     global stop_requested
     stop_requested = True
+    current_playing_index = None
+    current_playlist = None
+    is_clearing = False
+    current_playing_file = None
+    execution_progress = None
+
     return jsonify({'success': True})
 
 @app.route('/send_home', methods=['POST'])
@@ -616,7 +637,11 @@ def get_status():
         "current_playing_file": current_playing_file,
         "execution_progress": execution_progress,
         "arduino_table_name": arduino_table_name,
-        "arduino_driver_type": arduino_driver_type
+        "arduino_driver_type": arduino_driver_type,
+        "firmware_version": firmware_version,
+        "current_playing_index": current_playing_index,
+        "current_playlist": current_playlist,
+        "is_clearing": is_clearing
     })
 
 @app.route('/resume_execution', methods=['POST'])
