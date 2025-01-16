@@ -7,6 +7,7 @@ import threading
 import serial.tools.list_ports
 import math
 import json
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -141,8 +142,56 @@ def send_command(command):
                 if response == "R":
                     print("Command execution completed.")
                     break
+                
+def wait_for_start_time(schedule_hours):
+    """
+    Keep checking every 30 seconds if the time is within the schedule to resume execution.
+    """
+    global pause_requested
+    start_time, end_time = schedule_hours
 
-def run_theta_rho_file(file_path):
+    while pause_requested:
+        now = datetime.now().time()
+        if start_time <= now < end_time:
+            print("Resuming execution: Within schedule.")
+            pause_requested = False
+            with pause_condition:
+                pause_condition.notify_all()
+            break  # Exit the loop once resumed
+        else:
+            time.sleep(30)  # Wait for 30 seconds before checking again
+                
+# Function to check schedule based on start and end time
+def schedule_checker(schedule_hours):
+    """
+    Pauses/resumes execution based on a given time range.
+
+    Parameters:
+    - schedule_hours (tuple): (start_time, end_time) as `datetime.time` objects.
+    """
+    global pause_requested
+    if not schedule_hours:
+        return  # No scheduling restriction
+
+    start_time, end_time = schedule_hours
+    now = datetime.now().time()  # Get the current time as `datetime.time`
+
+    # Check if we are currently within the scheduled time
+    if start_time <= now < end_time:
+        if pause_requested:
+            print("Starting execution: Within schedule.")
+        pause_requested = False  # Resume execution
+        with pause_condition:
+            pause_condition.notify_all()
+    else:
+        if not pause_requested:
+            print("Pausing execution: Outside schedule.")
+        pause_requested = True  # Pause execution
+        
+        # Start a background thread to periodically check for start time
+        threading.Thread(target=wait_for_start_time, args=(schedule_hours,), daemon=True).start()
+
+def run_theta_rho_file(file_path, schedule_hours=None):
     """Run a theta-rho file by sending data in optimized batches."""
     global stop_requested
     stop_requested = False
@@ -171,6 +220,7 @@ def run_theta_rho_file(file_path):
             continue
         # Wait until Arduino is READY before sending the batch
         while True:
+            schedule_checker(schedule_hours)
             with serial_lock:
                 if ser.in_waiting > 0:
                     response = ser.readline().decode().strip()
@@ -197,7 +247,8 @@ def run_theta_rho_files(
     pause_time=0,
     clear_pattern=None,
     run_mode="single",
-    shuffle=False
+    shuffle=False,
+    schedule_hours=None
 ):
     """
     Runs multiple .thr files in sequence with options for pausing, clearing, shuffling, and looping.
@@ -218,6 +269,7 @@ def run_theta_rho_files(
 
     while True:
         for idx, path in enumerate(file_paths):
+            schedule_checker(schedule_hours)
             if stop_requested:
                 print("Execution stopped before starting next pattern.")
                 return
@@ -230,12 +282,12 @@ def run_theta_rho_files(
                 # Determine the clear pattern to run
                 clear_file_path = get_clear_pattern_file(clear_pattern)
                 print(f"Running clear pattern: {clear_file_path}")
-                run_theta_rho_file(clear_file_path)
+                run_theta_rho_file(clear_file_path, schedule_hours)
 
             if not stop_requested:
                 # Run the main pattern
                 print(f"Running pattern {idx + 1} of {len(file_paths)}: {path}")
-                run_theta_rho_file(path)
+                run_theta_rho_file(path, schedule_hours)
 
             if idx < len(file_paths) -1:
                 if stop_requested:
@@ -687,6 +739,8 @@ def run_playlist():
         "clear_pattern": "random",         # Optional: "clear_in", "clear_out", "clear_sideway", or "random"
         "run_mode": "single",              # 'single' or 'indefinite'
         "shuffle": True                    # true or false
+        "start_time": ""
+        "end_time": ""
     }
     """
     data = request.get_json()
@@ -700,6 +754,8 @@ def run_playlist():
     clear_pattern = data.get("clear_pattern", None)
     run_mode = data.get("run_mode", "single")  # Default to 'single' run
     shuffle = data.get("shuffle", False)       # Default to no shuffle
+    start_time = data.get("start_time", None)
+    end_time = data.get("end_time", None)
 
     # Validate pause_time
     if not isinstance(pause_time, (int, float)) or pause_time < 0:
@@ -717,6 +773,23 @@ def run_playlist():
     # Validate shuffle
     if not isinstance(shuffle, bool):
         return jsonify({"success": False, "error": "'shuffle' must be a boolean value"}), 400
+    
+    schedule_hours = None
+    if start_time and end_time:
+        try:
+            # Convert HH:MM to datetime.time objects
+            start_time_obj = datetime.strptime(start_time, "%H:%M").time()
+            end_time_obj = datetime.strptime(end_time, "%H:%M").time()
+
+            # Ensure start_time is before end_time
+            if start_time_obj >= end_time_obj:
+                return jsonify({"success": False, "error": "'start_time' must be earlier than 'end_time'"}), 400
+
+            # Create schedule tuple with full time
+            schedule_hours = (start_time_obj, end_time_obj)
+        except ValueError:
+            return jsonify({"success": False, "error": "Invalid time format. Use HH:MM (e.g., '09:30')"}), 400
+
 
     # Load playlists
     playlists = load_playlists()
@@ -739,7 +812,8 @@ def run_playlist():
                 'pause_time': pause_time,
                 'clear_pattern': clear_pattern,
                 'run_mode': run_mode,
-                'shuffle': shuffle
+                'shuffle': shuffle,
+                'schedule_hours': schedule_hours
             },
             daemon=True  # Daemonize thread to exit with the main program
         ).start()

@@ -121,6 +121,19 @@
                         </select>
                     </div>
                 </div>
+                <h3>Schedule:</h3>
+                <div class="control-group">
+                    <div class="item column">
+                        <label for="start_time">Start time</label>
+                        <input type="time" id="start_time" min="00:00" max="24:00">
+                    </div>
+                    <div class="item column">
+                        <label for="end_time">End time</label>
+                        <input type="time" id="end_time" min="00:00" max="24:00">
+                    </div>
+                </div>
+                <button onclick="clearSchedule()" class="cancel">Clear</button>
+
             </div>
         </section>
 
@@ -177,7 +190,7 @@
             </div>
 
             <div class="action-buttons">
-                <button onclick="stopExecution()" class="cancel">Stop Current Pattern</button>
+                <button onclick="stopExecution()" class="cancel">Stop Execution</button>
                 <button id="pausePlayButton" onclick="togglePausePlay()" class="cancel">⏸</button> <!-- Default: Pause Icon -->
                 <button onclick="runClearIn()">Clear In</button>
                 <button onclick="runClearOut()">Clear Out</button>
