@@ -452,6 +452,7 @@ async function checkSerialStatus() {
     const statusElement = document.getElementById('serial_status');
     const statusHeaderElement = document.getElementById('serial_status_header');
     const serialPortsContainer = document.getElementById('serial_ports_container');
+    const selectElement = document.getElementById('serial_ports');
 
     const connectButton = document.querySelector('button[onclick="connectSerial()"]');
     const disconnectButton = document.querySelector('button[onclick="disconnectSerial()"]');
@@ -473,6 +474,13 @@ async function checkSerialStatus() {
         connectButton.style.display = 'none';
         disconnectButton.style.display = 'inline-block';
         restartButton.style.display = 'inline-block';
+
+        // Preselect the connected port in the dropdown
+        const newOption = document.createElement('option');
+        newOption.value = port;
+        newOption.textContent = port;
+        selectElement.appendChild(newOption);
+        selectElement.value = port;
     } else {
         statusElement.textContent = 'Not connected';
         statusElement.classList.add('not-connected');
@@ -518,6 +526,7 @@ async function connectSerial() {
     const result = await response.json();
     if (result.success) {
         logMessage(`Connected to serial port: ${port}`, LOG_TYPE.SUCCESS);
+
         // Refresh the status
         await checkSerialStatus();
     } else {
@@ -539,6 +548,11 @@ async function disconnectSerial() {
 
 async function restartSerial() {
     const port = document.getElementById('serial_ports').value;
+
+    if(!port){
+        document.getElementById('serial_status').innerHTML;
+    }
+
     const response = await fetch('/restart_serial', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
