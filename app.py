@@ -333,9 +333,7 @@ def run_theta_rho_files(
                 # Determine the clear pattern to run
                 clear_file_path = get_clear_pattern_file(clear_pattern)
                 print(f"Running clear pattern: {clear_file_path}")
-                is_clearing = True
                 run_theta_rho_file(clear_file_path, schedule_hours)
-                is_clearing = False
 
             if not stop_requested:
                 # Run the main pattern
@@ -630,6 +628,12 @@ def pause_execution():
 @app.route('/status', methods=['GET'])
 def get_status():
     """Returns the current status of the sand table."""
+    global is_clearing
+    if current_playing_file in CLEAR_PATTERNS.values():
+        is_clearing = True
+    else:
+        is_clearing = False
+    
     return jsonify({
         "ser_port": ser_port,
         "stop_requested": stop_requested,
