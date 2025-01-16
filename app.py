@@ -56,11 +56,6 @@ if not os.path.exists(PLAYLISTS_FILE):
     with open(PLAYLISTS_FILE, "w") as f:
         json.dump({}, f, indent=2)
 
-# Ensure the file exists and contains at least an empty JSON object
-if not os.path.exists(OPTIONS_FILE):
-    with open(PLAYLISTS_FILE, "w") as f:
-        json.dump({}, f, indent=2)
-
 def get_ino_firmware_details(ino_file_path):
     """
     Extract firmware details, including version and motor type, from the given .ino file.
