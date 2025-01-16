@@ -49,7 +49,7 @@ float userDefinedSpeed = maxSpeed; // Store user-defined speed
 int currentMode = MODE_APP; // Default mode is app mode.
 
 // FIRMWARE VERSION
-const char* firmwareVersion = "1.4.1";
+const char* firmwareVersion = "1.4.0";
 const char* motorType = "DRV8825";
 
 void setup()
