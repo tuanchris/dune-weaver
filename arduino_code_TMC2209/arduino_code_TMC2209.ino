@@ -70,6 +70,7 @@ void setup()
     Serial.begin(115200);
     Serial.println("Table: Dune Weaver");
     Serial.println("Drivers: TMC2209");
+    Serial.println("Version: 1.4.0";)
     Serial.println("R");
     homing();
 }
