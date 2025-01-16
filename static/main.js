@@ -548,11 +548,6 @@ async function disconnectSerial() {
 
 async function restartSerial() {
     const port = document.getElementById('serial_ports').value;
-
-    if(!port){
-        document.getElementById('serial_status').innerHTML;
-    }
-
     const response = await fetch('/restart_serial', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
