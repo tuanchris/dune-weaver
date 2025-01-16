@@ -241,6 +241,36 @@ async function stopExecution() {
     }
 }
 
+let isPaused = false;
+
+function togglePausePlay() {
+    const button = document.getElementById("pausePlayButton");
+
+    if (isPaused) {
+        // Resume execution
+        fetch('/resume_execution', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    isPaused = false;
+                    button.innerHTML = "⏸"; // Change to pause icon
+                }
+            })
+            .catch(error => console.error("Error resuming execution:", error));
+    } else {
+        // Pause execution
+        fetch('/pause_execution', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    isPaused = true;
+                    button.innerHTML = "▶"; // Change to play icon
+                }
+            })
+            .catch(error => console.error("Error pausing execution:", error));
+    }
+}
+
 function removeCurrentPattern() {
     if (!selectedFile) {
         logMessage('No file selected to remove.', LOG_TYPE.ERROR);
@@ -815,6 +845,10 @@ function openPlaylistEditor(playlistName) {
     loadPlaylist(playlistName);
 }
 
+function clearSchedule() {
+    document.getElementById("start_time").value = "";
+    document.getElementById("end_time").value = "";
+}
 
 // Function to run the selected playlist with specified parameters
 async function runPlaylist() {
@@ -829,11 +863,44 @@ async function runPlaylist() {
     const clearPatternSelect = document.getElementById('clear_pattern').value;
     const runMode = document.querySelector('input[name="run_mode"]:checked').value;
     const shuffle = document.getElementById('shuffle_playlist').checked;
+    const startTimeInput = document.getElementById('start_time').value.trim();
+    const endTimeInput = document.getElementById('end_time').value.trim();
 
     const pauseTime = parseFloat(pauseTimeInput);
     if (isNaN(pauseTime) || pauseTime < 0) {
         logMessage("Invalid pause time. Please enter a non-negative number.", LOG_TYPE.WARNING);
         return;
+    }
+
+    // Validate start and end time format and logic
+    let startTime = startTimeInput || null;
+    let endTime = endTimeInput || null;
+
+    // Ensure that if one time is filled, the other must be as well
+    if ((startTime && !endTime) || (!startTime && endTime)) {
+        logMessage("Both start and end times must be provided together or left blank.", LOG_TYPE.WARNING);
+        return;
+    }
+
+    // If both are provided, validate format and ensure start_time < end_time
+    if (startTime && endTime) {
+        try {
+            const startDateTime = new Date(`1970-01-01T${startTime}:00`);
+            const endDateTime = new Date(`1970-01-01T${endTime}:00`);
+
+            if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+                logMessage("Invalid time format. Please use HH:MM format (e.g., 09:30).", LOG_TYPE.WARNING);
+                return;
+            }
+
+            if (startDateTime >= endDateTime) {
+                logMessage("Start time must be earlier than end time.", LOG_TYPE.WARNING);
+                return;
+            }
+        } catch (error) {
+            logMessage("Error parsing start or end time. Ensure correct HH:MM format.", LOG_TYPE.ERROR);
+            return;
+        }
     }
 
     logMessage(`Running playlist: ${playlistName} with pause_time=${pauseTime}, clear_pattern=${clearPatternSelect}, run_mode=${runMode}, shuffle=${shuffle}.`);
@@ -847,7 +914,9 @@ async function runPlaylist() {
                 pause_time: pauseTime,
                 clear_pattern: clearPatternSelect,
                 run_mode: runMode,
-                shuffle: shuffle
+                shuffle: shuffle,
+                start_time: startTimeInput,
+                end_time: endTimeInput
             })
         });
 

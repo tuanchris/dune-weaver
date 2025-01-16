@@ -7,6 +7,7 @@ import threading
 import serial.tools.list_ports
 import math
 import json
+from datetime import datetime
 import subprocess
 
 app = Flask(__name__)
@@ -25,10 +26,25 @@ os.makedirs(THETA_RHO_DIR, exist_ok=True)
 ser = None
 ser_port = None  # Global variable to store the serial port name
 stop_requested = False
+pause_requested = False
+pause_condition = threading.Condition()
+
+# Global variables to store device information
+arduino_table_name = None
+arduino_driver_type = None
+
+# Table status
+current_playing_file = None
+execution_progress = None
+firmware_version = None
+current_playing_index = None
+current_playlist = None
+is_clearing = False
+
 serial_lock = threading.Lock()
 
 PLAYLISTS_FILE = os.path.join(os.getcwd(), "playlists.json")
-OPTIONS_FILE = os.path.join(os.getcwd(), "options.json")
+
 MOTOR_TYPE_MAPPING = {
     "TMC2209": "./arduino_code_TMC2209/arduino_code_TMC2209.ino",
     "DRV8825": "./arduino_code/arduino_code.ino",
@@ -98,7 +114,7 @@ def list_serial_ports():
 
 def connect_to_serial(port=None, baudrate=115200):
     """Automatically connect to the first available serial port or a specified port."""
-    global ser, ser_port
+    global ser, ser_port, arduino_table_name, arduino_driver_type
 
     try:
         if port is None:
@@ -111,10 +127,32 @@ def connect_to_serial(port=None, baudrate=115200):
         with serial_lock:
             if ser and ser.is_open:
                 ser.close()
-            ser = serial.Serial(port, baudrate)
+            ser = serial.Serial(port, baudrate, timeout=2)  # Set timeout to avoid infinite waits
             ser_port = port  # Store the connected port globally
+
         print(f"Connected to serial port: {port}")
         time.sleep(2)  # Allow time for the connection to establish
+
+        # Read initial startup messages from Arduino
+        arduino_table_name = None
+        arduino_driver_type = None
+
+        while ser.in_waiting > 0:
+            line = ser.readline().decode().strip()
+            print(f"Arduino: {line}")  # Print the received message
+
+            # Store the device details based on the expected messages
+            if "Table:" in line:
+                arduino_table_name = line.replace("Table: ", "").strip()
+            elif "Drivers:" in line:
+                arduino_driver_type = line.replace("Drivers: ", "").strip()
+            elif "Version:" in line:
+                firmware_version = line.replace("Version: ", "").strip()
+
+        # Display stored values
+        print(f"Detected Table: {arduino_table_name or 'Unknown'}")
+        print(f"Detected Drivers: {arduino_driver_type or 'Unknown'}")
+
         return True  # Successfully connected
     except serial.SerialException as e:
         print(f"Failed to connect to serial port {port}: {e}")
@@ -197,41 +235,108 @@ def send_command(command):
                     print("Command execution completed.")
                     break
 
-def run_theta_rho_file(file_path):
+def wait_for_start_time(schedule_hours):
+    """
+    Keep checking every 30 seconds if the time is within the schedule to resume execution.
+    """
+    global pause_requested
+    start_time, end_time = schedule_hours
+
+    while pause_requested:
+        now = datetime.now().time()
+        if start_time <= now < end_time:
+            print("Resuming execution: Within schedule.")
+            pause_requested = False
+            with pause_condition:
+                pause_condition.notify_all()
+            break  # Exit the loop once resumed
+        else:
+            time.sleep(30)  # Wait for 30 seconds before checking again
+
+# Function to check schedule based on start and end time
+def schedule_checker(schedule_hours):
+    """
+    Pauses/resumes execution based on a given time range.
+
+    Parameters:
+    - schedule_hours (tuple): (start_time, end_time) as `datetime.time` objects.
+    """
+    global pause_requested
+    if not schedule_hours:
+        return  # No scheduling restriction
+
+    start_time, end_time = schedule_hours
+    now = datetime.now().time()  # Get the current time as `datetime.time`
+
+    # Check if we are currently within the scheduled time
+    if start_time <= now < end_time:
+        if pause_requested:
+            print("Starting execution: Within schedule.")
+        pause_requested = False  # Resume execution
+        with pause_condition:
+            pause_condition.notify_all()
+    else:
+        if not pause_requested:
+            print("Pausing execution: Outside schedule.")
+        pause_requested = True  # Pause execution
+
+        # Start a background thread to periodically check for start time
+        threading.Thread(target=wait_for_start_time, args=(schedule_hours,), daemon=True).start()
+
+def run_theta_rho_file(file_path, schedule_hours=None):
     """Run a theta-rho file by sending data in optimized batches."""
-    global stop_requested
+    global stop_requested, current_playing_file, execution_progress
     stop_requested = False
+    current_playing_file = file_path  # Track current playing file
+    execution_progress = (0, 0)  # Reset progress
 
     coordinates = parse_theta_rho_file(file_path)
-    if len(coordinates) < 2:
+    total_coordinates = len(coordinates)
+
+    if total_coordinates < 2:
         print("Not enough coordinates for interpolation.")
+        current_playing_file = None  # Clear tracking if failed
+        execution_progress = None
         return
 
-    # Optimize batch size for smoother execution
+    execution_progress = (0, total_coordinates)  # Update total coordinates
     batch_size = 10  # Smaller batches may smooth movement further
-    for i in range(0, len(coordinates), batch_size):
-        # Check stop_requested flag after sending the batch
+
+    for i in range(0, total_coordinates, batch_size):
         if stop_requested:
             print("Execution stopped by user after completing the current batch.")
             break
+
+        with pause_condition:
+            while pause_requested:
+                print("Execution paused...")
+                pause_condition.wait()  # This will block execution until notified
+
         batch = coordinates[i:i + batch_size]
         if i == 0:
             send_coordinate_batch(ser, batch)
+            execution_progress = (i + batch_size, total_coordinates)  # Update progress
             continue
-        # Wait until Arduino is READY before sending the batch
+
         while True:
+            schedule_checker(schedule_hours)  # Check if within schedule
             with serial_lock:
                 if ser.in_waiting > 0:
                     response = ser.readline().decode().strip()
                     if response == "R":
                         send_coordinate_batch(ser, batch)
+                        execution_progress = (i + batch_size, total_coordinates)  # Update progress
                         break
                     else:
                         print(f"Arduino response: {response}")
 
-    # Reset theta after execution or stopping
     reset_theta()
     ser.write("FINISHED\n".encode())
+
+    # Clear tracking variables when done
+    current_playing_file = None
+    execution_progress = None
+    print("Pattern execution completed.")
 
 def get_clear_pattern_file(pattern_name):
     """Return a .thr file path based on pattern_name."""
@@ -246,7 +351,8 @@ def run_theta_rho_files(
     pause_time=0,
     clear_pattern=None,
     run_mode="single",
-    shuffle=False
+    shuffle=False,
+    schedule_hours=None
 ):
     """
     Runs multiple .thr files in sequence with options for pausing, clearing, shuffling, and looping.
@@ -259,14 +365,20 @@ def run_theta_rho_files(
     - shuffle (bool): Whether to shuffle the playlist before running.
     """
     global stop_requested
+    global current_playlist
+    global current_playing_index
     stop_requested = False  # Reset stop flag at the start
 
     if shuffle:
         random.shuffle(file_paths)
         print("Playlist shuffled.")
 
+    current_playlist = file_paths
+
     while True:
         for idx, path in enumerate(file_paths):
+            current_playing_index = idx
+            schedule_checker(schedule_hours)
             if stop_requested:
                 print("Execution stopped before starting next pattern.")
                 return
@@ -279,12 +391,12 @@ def run_theta_rho_files(
                 # Determine the clear pattern to run
                 clear_file_path = get_clear_pattern_file(clear_pattern)
                 print(f"Running clear pattern: {clear_file_path}")
-                run_theta_rho_file(clear_file_path)
+                run_theta_rho_file(clear_file_path, schedule_hours)
 
             if not stop_requested:
                 # Run the main pattern
                 print(f"Running pattern {idx + 1} of {len(file_paths)}: {path}")
-                run_theta_rho_file(path)
+                run_theta_rho_file(path, schedule_hours)
 
             if idx < len(file_paths) -1:
                 if stop_requested:
@@ -436,6 +548,12 @@ def run_theta_rho():
 def stop_execution():
     global stop_requested
     stop_requested = True
+    current_playing_index = None
+    current_playlist = None
+    is_clearing = False
+    current_playing_file = None
+    execution_progress = None
+
     return jsonify({'success': True})
 
 @app.route('/send_home', methods=['POST'])
@@ -558,9 +676,45 @@ def serial_status():
         'port': ser_port  # Include the port name
     })
 
-if not os.path.exists(PLAYLISTS_FILE):
-    with open(PLAYLISTS_FILE, "w") as f:
-        json.dump({}, f, indent=2)
+@app.route('/pause_execution', methods=['POST'])
+def pause_execution():
+    """Pause the current execution."""
+    global pause_requested
+    with pause_condition:
+        pause_requested = True
+    return jsonify({'success': True, 'message': 'Execution paused'})
+
+@app.route('/status', methods=['GET'])
+def get_status():
+    """Returns the current status of the sand table."""
+    global is_clearing
+    if current_playing_file in CLEAR_PATTERNS.values():
+        is_clearing = True
+    else:
+        is_clearing = False
+
+    return jsonify({
+        "ser_port": ser_port,
+        "stop_requested": stop_requested,
+        "pause_requested": pause_requested,
+        "current_playing_file": current_playing_file,
+        "execution_progress": execution_progress,
+        "arduino_table_name": arduino_table_name,
+        "arduino_driver_type": arduino_driver_type,
+        "firmware_version": firmware_version,
+        "current_playing_index": current_playing_index,
+        "current_playlist": current_playlist,
+        "is_clearing": is_clearing
+    })
+
+@app.route('/resume_execution', methods=['POST'])
+def resume_execution():
+    """Resume execution after pausing."""
+    global pause_requested
+    with pause_condition:
+        pause_requested = False
+        pause_condition.notify_all()  # Unblock the waiting thread
+    return jsonify({'success': True, 'message': 'Execution resumed'})
 
 def load_playlists():
     """
@@ -724,6 +878,8 @@ def run_playlist():
         "clear_pattern": "random",         # Optional: "clear_in", "clear_out", "clear_sideway", or "random"
         "run_mode": "single",              # 'single' or 'indefinite'
         "shuffle": True                    # true or false
+        "start_time": ""
+        "end_time": ""
     }
     """
     data = request.get_json()
@@ -737,6 +893,8 @@ def run_playlist():
     clear_pattern = data.get("clear_pattern", None)
     run_mode = data.get("run_mode", "single")  # Default to 'single' run
     shuffle = data.get("shuffle", False)       # Default to no shuffle
+    start_time = data.get("start_time", None)
+    end_time = data.get("end_time", None)
 
     # Validate pause_time
     if not isinstance(pause_time, (int, float)) or pause_time < 0:
@@ -754,6 +912,23 @@ def run_playlist():
     # Validate shuffle
     if not isinstance(shuffle, bool):
         return jsonify({"success": False, "error": "'shuffle' must be a boolean value"}), 400
+
+    schedule_hours = None
+    if start_time and end_time:
+        try:
+            # Convert HH:MM to datetime.time objects
+            start_time_obj = datetime.strptime(start_time, "%H:%M").time()
+            end_time_obj = datetime.strptime(end_time, "%H:%M").time()
+
+            # Ensure start_time is before end_time
+            if start_time_obj >= end_time_obj:
+                return jsonify({"success": False, "error": "'start_time' must be earlier than 'end_time'"}), 400
+
+            # Create schedule tuple with full time
+            schedule_hours = (start_time_obj, end_time_obj)
+        except ValueError:
+            return jsonify({"success": False, "error": "Invalid time format. Use HH:MM (e.g., '09:30')"}), 400
+
 
     # Load playlists
     playlists = load_playlists()
@@ -776,7 +951,8 @@ def run_playlist():
                 'pause_time': pause_time,
                 'clear_pattern': clear_pattern,
                 'run_mode': run_mode,
-                'shuffle': shuffle
+                'shuffle': shuffle,
+                'schedule_hours': schedule_hours
             },
             daemon=True  # Daemonize thread to exit with the main program
         ).start()

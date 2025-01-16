@@ -67,6 +67,9 @@ void setup()
 
     // Initialize serial communication
     Serial.begin(115200);
+    Serial.println("Table: Mini Dune Weaver");
+    Serial.println("Drivers: ULN2003");
+    Serial.println("Version: 1.4.0";)
     Serial.println("R");
     homing();
 }
