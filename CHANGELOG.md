@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.0] Firmware updater
+
+- Added Firmware updater to make it possible to flash the Arduino Firmware from the web app.
+
 ## [1.3.0] Revamped UI
 
 Massive thanks to Thokoop for helping us redesigning the UI just within a few days! The new design looks gorgeous on both PC and mobile. 

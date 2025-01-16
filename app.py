@@ -7,6 +7,7 @@ import threading
 import serial.tools.list_ports
 import math
 import json
+import subprocess
 
 app = Flask(__name__)
 
@@ -27,11 +28,68 @@ stop_requested = False
 serial_lock = threading.Lock()
 
 PLAYLISTS_FILE = os.path.join(os.getcwd(), "playlists.json")
+OPTIONS_FILE = os.path.join(os.getcwd(), "options.json")
+MOTOR_TYPE_MAPPING = {
+    "TMC2209": "./arduino_code_TMC2209/arduino_code_TMC2209.ino",
+    "DRV8825": "./arduino_code/arduino_code.ino",
+    "esp32": "./esp32/esp32.ino"
+}
 
 # Ensure the file exists and contains at least an empty JSON object
 if not os.path.exists(PLAYLISTS_FILE):
     with open(PLAYLISTS_FILE, "w") as f:
         json.dump({}, f, indent=2)
+
+# Ensure the file exists and contains at least an empty JSON object
+if not os.path.exists(OPTIONS_FILE):
+    with open(PLAYLISTS_FILE, "w") as f:
+        json.dump({}, f, indent=2)
+
+def get_ino_firmware_details(ino_file_path):
+    """
+    Extract firmware details, including version and motor type, from the given .ino file.
+
+    Args:
+        ino_file_path (str): Path to the .ino file.
+
+    Returns:
+        dict: Dictionary containing firmware details such as version and motor type, or None if not found.
+    """
+    try:
+        if not ino_file_path:
+            raise ValueError("Invalid path: ino_file_path is None or empty.")
+
+        firmware_details = {"version": None, "motorType": None}
+
+        with open(ino_file_path, "r") as file:
+            for line in file:
+                # Extract firmware version
+                if "firmwareVersion" in line:
+                    start = line.find('"') + 1
+                    end = line.rfind('"')
+                    if start != -1 and end != -1 and start < end:
+                        firmware_details["version"] = line[start:end]
+
+                # Extract motor type
+                if "motorType" in line:
+                    start = line.find('"') + 1
+                    end = line.rfind('"')
+                    if start != -1 and end != -1 and start < end:
+                        firmware_details["motorType"] = line[start:end]
+
+        if not firmware_details["version"]:
+            print(f"Firmware version not found in file: {ino_file_path}")
+        if not firmware_details["motorType"]:
+            print(f"Motor type not found in file: {ino_file_path}")
+
+        return firmware_details if any(firmware_details.values()) else None
+
+    except FileNotFoundError:
+        print(f"File not found: {ino_file_path}")
+        return None
+    except Exception as e:
+        print(f"Error reading .ino file: {str(e)}")
+        return None
 
 def list_serial_ports():
     """Return a list of available serial ports."""
@@ -481,6 +539,7 @@ def send_coordinate():
 
         # Send the coordinate to the Arduino
         send_coordinate_batch(ser, [(theta, rho)])
+        reset_theta()
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -749,6 +808,164 @@ def set_speed():
         return jsonify({"success": True, "speed": speed})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/get_firmware_info', methods=['GET', 'POST'])
+def get_firmware_info():
+    """
+    Compare the installed firmware version and motor type with the one in the .ino file.
+    """
+    global ser
+    if ser is None or not ser.is_open:
+        return jsonify({"success": False, "error": "Arduino not connected or serial port not open"}), 400
+
+    try:
+        if request.method == "GET":
+            # Attempt to retrieve installed firmware details from the Arduino
+            ser.reset_input_buffer()
+            ser.reset_output_buffer()
+            ser.write(b"GET_VERSION\n")
+            time.sleep(0.5)
+
+            installed_version = 'Unknown'
+            installed_type = 'Unknown'
+            if ser.in_waiting > 0:
+                response = ser.readline().decode().strip()
+                if " | " in response:
+                    installed_version, installed_type = response.split(" | ", 1)
+
+            # If Arduino provides valid details, proceed with comparison
+            if installed_version != 'Unknown' and installed_type != 'Unknown':
+                ino_path = MOTOR_TYPE_MAPPING.get(installed_type)
+                firmware_details = get_ino_firmware_details(ino_path)
+
+                if not firmware_details or not firmware_details.get("version") or not firmware_details.get("motorType"):
+                    return jsonify({"success": False, "error": "Failed to retrieve .ino firmware details"}), 500
+
+                update_available = (
+                    installed_version != firmware_details["version"] or
+                    installed_type != firmware_details["motorType"]
+                )
+
+                return jsonify({
+                    "success": True,
+                    "installedVersion": installed_version,
+                    "installedType": installed_type,
+                    "inoVersion": firmware_details["version"],
+                    "inoType": firmware_details["motorType"],
+                    "updateAvailable": update_available
+                })
+
+            # If Arduino details are unknown, indicate the need for POST
+            return jsonify({
+                "success": True,
+                "installedVersion": installed_version,
+                "installedType": installed_type,
+                "updateAvailable": False
+            })
+
+        if request.method == "POST":
+            motor_type = request.json.get("motorType", None)
+            if not motor_type or motor_type not in MOTOR_TYPE_MAPPING:
+                return jsonify({"success": False, "error": "Invalid or missing motor type"}), 400
+
+            ino_path = MOTOR_TYPE_MAPPING.get(motor_type)
+            firmware_details = get_ino_firmware_details(ino_path)
+
+            if not firmware_details or not firmware_details.get("version") or not firmware_details.get("motorType"):
+                return jsonify({"success": False, "error": "Failed to retrieve .ino firmware details"}), 500
+
+            return jsonify({
+                "success": True,
+                "installedVersion": 'Unknown',
+                "installedType": motor_type,
+                "inoVersion": firmware_details["version"],
+                "inoType": firmware_details["motorType"],
+                "updateAvailable": True
+            })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/flash_firmware', methods=['POST'])
+def flash_firmware():
+    """
+    Compile and flash the firmware to the connected Arduino.
+    """
+    global ser_port
+
+    # Ensure the Arduino is connected
+    if ser_port is None or ser is None or not ser.is_open:
+        return jsonify({"success": False, "error": "No Arduino connected or connection lost"}), 400
+
+    build_dir = "/tmp/arduino_build"  # Temporary build directory
+
+    try:
+        data = request.json
+        motor_type = data.get("motorType", None)
+
+        # Validate motor type
+        if not motor_type or motor_type not in MOTOR_TYPE_MAPPING:
+            return jsonify({"success": False, "error": "Invalid or missing motor type"}), 400
+
+        # Get the .ino file path based on the motor type
+        ino_file_path = MOTOR_TYPE_MAPPING[motor_type]
+        ino_file_name = os.path.basename(ino_file_path)
+
+        # Install required libraries
+        required_libraries = ["AccelStepper"]  # AccelStepper includes MultiStepper
+        for library in required_libraries:
+            library_install_command = ["arduino-cli", "lib", "install", library]
+            install_process = subprocess.run(library_install_command, capture_output=True, text=True)
+            if install_process.returncode != 0:
+                return jsonify({
+                    "success": False,
+                    "error": f"Library installation failed for {library}: {install_process.stderr}"
+                }), 500
+
+        # Step 1: Compile the .ino file to a .hex file
+        compile_command = [
+            "arduino-cli",
+            "compile",
+            "--fqbn", "arduino:avr:uno",  # Use the detected FQBN
+            "--output-dir", build_dir,
+            ino_file_path
+        ]
+
+        compile_process = subprocess.run(compile_command, capture_output=True, text=True)
+        if compile_process.returncode != 0:
+            return jsonify({
+                "success": False,
+                "error": compile_process.stderr
+            }), 500
+
+        # Step 2: Flash the .hex file to the Arduino
+        hex_file_path = os.path.join(build_dir, ino_file_name+".hex")
+        flash_command = [
+            "avrdude",
+            "-v",
+            "-c", "arduino",  # Programmer type
+            "-p", "atmega328p",  # Microcontroller type
+            "-P", ser_port,  # Use the dynamic serial port
+            "-b", "115200",  # Baud rate
+            "-D",
+            "-U", f"flash:w:{hex_file_path}:i"  # Flash memory write command
+        ]
+
+        flash_process = subprocess.run(flash_command, capture_output=True, text=True)
+        if flash_process.returncode != 0:
+            return jsonify({
+                "success": False,
+                "error": flash_process.stderr
+            }), 500
+
+        return jsonify({"success": True, "message": "Firmware flashed successfully"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        # Clean up temporary files
+        if os.path.exists(build_dir):
+            for file in os.listdir(build_dir):
+                os.remove(os.path.join(build_dir, file))
+            os.rmdir(build_dir)
 
 if __name__ == '__main__':
     # Auto-connect to serial

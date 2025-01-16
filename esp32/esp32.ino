@@ -44,6 +44,10 @@ double maxSpeed = 500;
 double maxAcceleration = 5000;
 double subSteps = 1;
 
+// FIRMWARE VERSION
+const char* firmwareVersion = "1.4.0";
+const char* motorType = "esp32";
+
 int modulus(int x, int y) {
   return x < 0 ? ((x + 1) % y) + y - 1 : x % y;
 }
@@ -75,11 +79,20 @@ void loop()
         String input = Serial.readStringUntil('\n');
 
         // Ignore invalid messages
-        if (input != "HOME" && input != "RESET_THETA" && !input.startsWith("SET_SPEED") && !input.endsWith(";"))
+        if (input != "HOME" && input != "RESET_THETA"  && input != "GET_VERSION" && !input.startsWith("SET_SPEED") && !input.endsWith(";"))
         {
             Serial.println("IGNORED");
             return;
         }
+
+        if (input == "GET_VERSION")
+        {
+            Serial.print(firmwareVersion);
+            Serial.print(" | ");
+            Serial.println(motorType);
+            return;
+        }
+
 
         // Example: The user calls "SET_SPEED 60" => 60% of maxSpeed
         if (input.startsWith("SET_SPEED"))

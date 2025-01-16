@@ -48,6 +48,10 @@ float userDefinedSpeed = maxSpeed; // Store user-defined speed
 // Running Mode
 int currentMode = MODE_APP; // Default mode is app mode.
 
+// FIRMWARE VERSION
+const char* firmwareVersion = "1.5.0";
+const char* motorType = "TMC2209";
+
 void setup()
 {
     // Set maximum speed and acceleration
@@ -71,7 +75,6 @@ void setup()
     Serial.println("R");
     homing();
 }
-
 
 void resetTheta()
 {
@@ -181,12 +184,21 @@ void appMode()
         String input = Serial.readStringUntil('\n');
 
         // Ignore invalid messages
-        if (input != "HOME" && input != "RESET_THETA" && !input.startsWith("SET_SPEED") && !input.endsWith(";"))
+        if (input != "HOME" && input != "RESET_THETA" && input != "GET_VERSION" && !input.startsWith("SET_SPEED") && !input.endsWith(";"))
         {
             Serial.print("IGNORED: ");
             Serial.println(input);
             return;
         }
+
+        if (input == "GET_VERSION")
+        {
+            Serial.print(firmwareVersion);
+            Serial.print(" | ");
+            Serial.println(motorType);
+            return;
+        }
+
         if (input == "RESET_THETA")
         {
             resetTheta(); // Reset currentTheta
@@ -194,6 +206,7 @@ void appMode()
             Serial.println("READY");
             return;
         }
+
         if (input == "HOME")
         {
             homing();

@@ -248,6 +248,33 @@ section.debug {
     justify-content: space-between;
 }
 
+section.version {
+    flex-direction: row;
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+.version .header {
+    width: 100%;
+}
+
+.version #motor_selection h3 {
+    width: 100%;
+    flex-grow: 1;
+}
+
+.version #motor_selection {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    width: 100%;
+}
+
+.version select#manual_motor_type {
+    margin: 0 20px 0 0;
+    flex: 1;
+}
+
 section.sticky {
     position: fixed;
     background-color: rgba(255, 255, 255, 0.5);

@@ -155,22 +155,6 @@
 
     <!-- Device / Settings Tab -->
     <main class="tab-content" id="settings-tab">
-        <section>
-            <div class="header">
-                <h2>Serial Connection</h2>
-            </div>
-            <div id="serial_status_container">Status: <span id="serial_status" class="status"> Not connected</span></div>
-            <div id="serial_ports_container">
-                <label for="serial_ports">Available Ports:</label>
-                <select id="serial_ports"></select>
-                <button onclick="connectSerial()" class="cta">Connect</button>
-            </div>
-            <div id="serial_ports_buttons" class="button-group">
-                <button onclick="disconnectSerial()" class="cancel">Disconnect</button>
-                <button onclick="restartSerial()" class="warn">Restart</button>
-            </div>
-        </section>
-
         <section class="main">
             <div class="header">
                 <h2>Device Controls</h2>
@@ -226,6 +210,45 @@
             </div>
         </section>
 
+        <section>
+            <div class="header">
+                <h2>Serial Connection</h2>
+            </div>
+            <div id="serial_status_container">Status: <span id="serial_status" class="status"> Not connected</span></div>
+            <div id="serial_ports_container">
+                <label for="serial_ports">Available Ports:</label>
+                <select id="serial_ports"></select>
+                <button onclick="connectSerial()" class="cta">Connect</button>
+            </div>
+            <div id="serial_ports_buttons" class="button-group">
+                <button onclick="disconnectSerial()" class="cancel">Disconnect</button>
+                <button onclick="restartSerial()" class="warn">Restart</button>
+            </div>
+        </section>
+
+        <section class="version">
+            <div class="header">
+                <h2>Firmware Update</h2>
+            </div>
+            <div id="firmware_info">
+                <div id="motor_type"></div>
+                <div id="current_firmware_version"></div>
+                <div id="new_firmware_version"></div>
+            </div>
+            <div class="button-group">
+                <div id="motor_selection" style="display: none;">
+                    <h3>Select installed motor driver</h3>
+                    <select id="manual_motor_type">
+                        <option value="TMC2209">Arduino TMC2209</option>
+                        <option value="DRV8825">Arduino DRV8825</option>
+                        <option value="esp32">ESP32</option>
+                    </select>
+                    <button id="set_motor_type_button" onclick="setMotorType()">Set Motor Type</button>
+                </div>
+                <button id="check_updates_button" onclick="fetchFirmwareInfo()">Check for Updates</button>
+                <button id="update_firmware_button" class="cta" style="display: none;" onclick="updateFirmware()">Update Firmware</button>
+            </div>
+        </section>
         <section class="debug">
             <div id="github">
                 <span>Help us improve! <a href="https://github.com/tuanchris/dune-weaver/pulls" target="_blank">Submit a Pull Request</a> or <a
