@@ -35,8 +35,8 @@
         <section id="pattern-preview-container" class="sticky hidden">
             <div class="header">
                 <h2>Preview</h2>
-                <button class="fullscreen-button">⛶</button>
-                <button class="close-button" onclick="closeStickySection('pattern-preview-container')">&times;</button>
+                <button class="fullscreen-button no-bg">⛶</button>
+                <button class="close-button no-bg" onclick="closeStickySection('pattern-preview-container')">&times;</button>
             </div>
             <div id="pattern-preview">
                 <canvas id="patternPreviewCanvas"></canvas>
@@ -114,8 +114,8 @@
                         <label for="clear_pattern">Clear Pattern:</label>
                         <select id="clear_pattern">
                             <option value="none">None</option>
-                            <option value="clear_in">Clear from In</option>
-                            <option value="clear_out">Clear from Out</option>
+                            <option value="clear_in">Clear From Center</option>
+                            <option value="clear_out">Clear From Perimeter</option>
                             <option value="clear_sideway">Clear Sideways</option>
                             <option value="random">Random</option>
                         </select>
@@ -128,8 +128,8 @@
         <section id="playlist-editor" class="sticky hidden">
             <div class="header">
                 <h2 id="playlist_title">Playlist: <span id="playlist_name_display"></span></h2>
-                <button class="fullscreen-button" onclick="toggleFullscreen(this)">⛶</button>
-                <button class="close-button" onclick="closeStickySection('playlist-editor')">&times;</button>
+                <button class="fullscreen-button no-bg">⛶</button>
+                <button class="close-button no-bg" onclick="closeStickySection('playlist-editor')">&times;</button>
             </div>
             <ul id="playlist_items" class="file-list">
             </ul>
@@ -162,11 +162,20 @@
 
             <div class="action-buttons">
                 <button onclick="stopExecution()" class="cancel">Stop Current Pattern</button>
-                <button onclick="runClearIn()">Clear In</button>
-                <button onclick="runClearOut()">Clear Out</button>
-                <button onclick="sendHomeCommand()" class="warn">Home</button>
+                <div class="dropdown">
+                    <button id="clear_button" class="dropdown-button" onclick="executeClearAction()">
+                        <span>Clear <span id="clear_action_label">From Center</span></span>
+                        <span id="dropdown_toggle" class="dropdown-toggle" onclick="toggleClearDropdown(event)">▼</span>
+                    </button>
+                    <div id="clear_dropdown" class="dropdown-content" style="display: none;">
+                        <button onclick="updateClearAction('From Center', 'runClearIn')">Clear From Center</button>
+                        <button onclick="updateClearAction('From Perimeter', 'runClearOut')">Clear From Perimeter</button>
+                        <button onclick="updateClearAction('Sideways', 'runClearSide')">Clear Sideways</button>
+                    </div>
+                </div>
                 <button onclick="moveToCenter()">Move to Center</button>
                 <button onclick="moveToPerimeter()">Move to Perimeter</button>
+                <button onclick="sendHomeCommand()" class="small warn">Home</button>
             </div>
             <h3>Send to Coordinate</h3>
             <div class="control-group">
@@ -184,21 +193,12 @@
             </div>
             <h3>Pre-Execution Action</h3>
             <div class="control-group">
-                <label class="custom-input">
-                    <input type="radio" name="pre_execution" value="clear_in" id="clear_in">
-                    <span class="custom-radio"></span>
-                    Clear from In
-                </label>
-                <label class="custom-input">
-                    <input type="radio" name="pre_execution" value="clear_out" id="clear_out">
-                    <span class="custom-radio"></span>
-                    Clear from Out
-                </label>
-                <label class="custom-input">
-                    <input type="radio" name="pre_execution" value="none" id="no_action" checked>
-                    <span class="custom-radio"></span>
-                    None
-                </label>
+                <select id="pre_execution" name="pre_execution">
+                    <option value="none" selected>None</option>
+                    <option value="clear_in">Clear From Center</option>
+                    <option value="clear_out">Clear From Perimeter</option>
+                    <option value="clear_sideway">Clear Sideway</option>
+                </select>
             </div>
             <div class="control-group">
                 <h3>Speed</h3>

@@ -213,7 +213,7 @@ async function runThetaRho() {
     }
 
     // Get the selected pre-execution action
-    const preExecutionAction = document.querySelector('input[name="pre_execution"]:checked').value;
+    const preExecutionAction = document.getElementById('pre_execution').value;
 
     logMessage(`Running file: ${selectedFile} with pre-execution action: ${preExecutionAction}...`);
     const response = await fetch('/run_theta_rho', {
@@ -434,6 +434,50 @@ async function runClearIn() {
 async function runClearOut() {
     await runFile('clear_from_out.thr');
 }
+
+async function runClearSide() {
+    await runFile('side_wiper.thr');
+}
+
+let currentClearAction = 'runClearIn';
+
+function toggleClearDropdown(event) {
+    event.stopPropagation(); // Prevent the main button click event
+    const dropdown = document.getElementById('clear_dropdown');
+    dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+}
+
+function updateClearAction(label, actionFunction) {
+    // Update the button label
+    const clearActionLabel = document.getElementById('clear_action_label');
+    clearActionLabel.textContent = label;
+
+    // Update the current action function
+    currentClearAction = actionFunction;
+
+    // Save the new action to a cookie
+    setCookie('clear_action', label, 7);
+
+    // Close the dropdown
+    const dropdown = document.getElementById('clear_dropdown');
+    dropdown.style.display = 'none';
+}
+
+function executeClearAction() {
+    if (currentClearAction && typeof window[currentClearAction] === 'function') {
+        window[currentClearAction](); // Execute the selected clear action
+    } else {
+        logMessage('No clear action selected or function not found.', LOG_TYPE.ERROR);
+    }
+}
+
+// Close the dropdown if clicking outside
+document.addEventListener('click', () => {
+    const dropdown = document.getElementById('clear_dropdown');
+    if (dropdown) dropdown.style.display = 'none';
+});
+// Update the clear button's onclick handler to execute the selected action
+document.getElementById('clear_button').onclick = () => executeClearAction();
 
 async function runFile(fileName) {
     const response = await fetch(`/run_theta_rho_file/${fileName}`, { method: 'POST' });
@@ -1309,6 +1353,21 @@ function attachFullScreenListeners() {
         button.addEventListener('click', function () {
             const stickySection = this.closest('.sticky'); // Find the closest sticky section
             if (stickySection) {
+                // Close all other sections
+                document.querySelectorAll('.sticky').forEach(section => {
+                    if (section !== stickySection) {
+                        section.classList.remove('fullscreen');
+                        section.classList.remove('visible');
+                        section.classList.add('hidden');
+
+                        // Reset the fullscreen button text for other sections
+                        const otherFullscreenButton = section.querySelector('.fullscreen-button');
+                        if (otherFullscreenButton) {
+                            otherFullscreenButton.textContent = '⛶'; // Enter fullscreen icon/text
+                        }
+                    }
+                });
+
                 stickySection.classList.toggle('fullscreen'); // Toggle fullscreen class
 
                 // Update button icon or text
@@ -1364,8 +1423,12 @@ function saveSettingsToCookies() {
     setCookie('shuffle_playlist', shufflePlaylist, 7);
 
     // Save pre-execution action
-    const preExecution = document.querySelector('input[name="pre_execution"]:checked').value;
+    const preExecution = document.getElementById('pre_execution').value;
     setCookie('pre_execution', preExecution, 7);
+
+    // Save selected clear action
+    const clearAction = document.getElementById('clear_action_label').textContent.trim();
+    setCookie('clear_action', clearAction, 7);
 
     logMessage('Settings saved.');
 }
@@ -1399,15 +1462,22 @@ function loadSettingsFromCookies() {
     // Load the pre-execution action
     const preExecution = getCookie('pre_execution');
     if (preExecution !== null) {
-        document.querySelector(`input[name="pre_execution"][value="${preExecution}"]`).checked = true;
+        document.getElementById('pre_execution').value = preExecution;
     }
 
-    // Load the selected playlist
-    const selectedPlaylist = getCookie('selected_playlist');
-    if (selectedPlaylist !== null) {
-        const playlistDropdown = document.getElementById('select-playlist');
-        if (playlistDropdown && [...playlistDropdown.options].some(option => option.value === selectedPlaylist)) {
-            playlistDropdown.value = selectedPlaylist;
+    // Load selected clear action
+    const clearAction = getCookie('clear_action');
+    if (clearAction !== null) {
+        const clearLabel = document.getElementById('clear_action_label');
+        clearLabel.textContent = clearAction;
+
+        // Update the corresponding action function
+        if (clearAction === 'From Center') {
+            currentClearAction = 'runClearIn';
+        } else if (clearAction === 'From Perimeter') {
+            currentClearAction = 'runClearOut';
+        } else if (clearAction === 'Sideways') {
+            currentClearAction = 'runClearSide';
         }
     }
 
@@ -1423,9 +1493,7 @@ function attachSettingsSaveListeners() {
         input.addEventListener('change', saveSettingsToCookies);
     });
     document.getElementById('shuffle_playlist').addEventListener('change', saveSettingsToCookies);
-    document.querySelectorAll('input[name="pre_execution"]').forEach(input => {
-        input.addEventListener('change', saveSettingsToCookies);
-    });
+    document.getElementById('pre_execution').addEventListener('change', saveSettingsToCookies);
 }
 
 
@@ -1468,7 +1536,6 @@ document.addEventListener('DOMContentLoaded', () => {
     checkSerialStatus(); // Check serial connection status
     loadThetaRhoFiles(); // Load files on page load
     loadAllPlaylists(); // Load all playlists on page load
-    loadSettingsFromCookies(); // Load saved settings
     attachSettingsSaveListeners(); // Attach event listeners to save changes
     attachFullScreenListeners();
 });

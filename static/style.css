@@ -172,6 +172,71 @@ input, select {
     border-color: var(--theme-primary-hover);
 }
 
+.dropdown {
+    position: relative;
+    display: inline-block;
+    min-width: 200px;
+}
+
+.dropdown-button {
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+}
+
+.dropdown-button > span {
+    padding: 10px;
+}
+
+.dropdown-toggle {
+    margin-left: 10px;
+    cursor: pointer;
+    user-select: none;
+    height: 100%;
+    aspect-ratio: 1 / 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.dropdown-toggle:hover {
+    background: var(--text-secondary);
+    color: var(--theme-primary);
+    border-radius: 5px;
+}
+
+.dropdown-content {
+    position: absolute;
+    color: var(--theme-primary);
+    background: var(--text-secondary);
+    min-width: 120px;
+    box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.2);
+    z-index: 1;
+    display: none;
+    border-radius: 5px
+}
+
+.dropdown-content button {
+    width: 100%;
+    color: var(--theme-primary);
+    background: none;
+    border: none;
+    text-align: left;
+    padding: 10px;
+    cursor: pointer;
+}
+
+.dropdown-content button:hover {
+    background-color: var(--background-primary);
+}
+
+
 /* Buttons */
 button {
     background: var(--theme-primary);
@@ -185,7 +250,7 @@ button {
     transition: background 0.3s ease,color 0.3s ease;
 }
 
-button:not(.close-button, .fullscreen-button, .move-button, .remove-button):hover {
+button:not(.no-bg):hover{
     background: var(--background-info);
 }
 
@@ -285,7 +350,7 @@ section.sticky {
     transform: translateY(0);
     transition: 250ms transform, 250ms height;
     visibility: visible;
-    max-height: 60vh;
+    max-height: 70vh;
     width: 100%;
     z-index: 10;
 }
@@ -442,7 +507,7 @@ section .header .add-button {
 }
 
 .file-list li:hover {
-    background-color: #f1f1f1;
+    background-color: var(--background-primary);
 }
 
 .file-list li.selected {
@@ -495,10 +560,6 @@ section .header .add-button {
     transition: background 0.3s ease;
 }
 
-.rename-button:hover {
-    background: #285A8E;
-}
-
 /* Bottom Navigation */
 .bottom-nav {
     display: flex;
@@ -539,10 +600,15 @@ section .header .add-button {
     gap: 10px;
     flex-wrap: wrap;
     width: 100%;
+    justify-content: flex-end;
 }
 
 .action-buttons button {
     flex: 1;
+}
+.action-buttons button.small {
+    flex: 0;
+    flex-basis: calc(25% - 10px);
 }
 
 .action-buttons button.cta {
@@ -567,6 +633,10 @@ button#debug_button.active {
 
 #settings-tab button.cancel {
     flex-basis: 100%;
+}
+
+#settings-tab .dropdown {
+    min-width: 50%;
 }
 
 /* Preview Canvas */
