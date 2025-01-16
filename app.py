@@ -26,6 +26,8 @@ ser = None
 ser_port = None  # Global variable to store the serial port name
 stop_requested = False
 pause_requested = False
+current_playing_file = None
+execution_progress = None
 pause_condition = threading.Condition()
 
 # Global variables to store device information
@@ -217,18 +219,24 @@ def schedule_checker(schedule_hours):
 
 def run_theta_rho_file(file_path, schedule_hours=None):
     """Run a theta-rho file by sending data in optimized batches."""
-    global stop_requested
+    global stop_requested, current_playing_file, execution_progress
     stop_requested = False
+    current_playing_file = file_path  # Track current playing file
+    execution_progress = (0, 0)  # Reset progress
 
     coordinates = parse_theta_rho_file(file_path)
-    if len(coordinates) < 2:
+    total_coordinates = len(coordinates)
+    
+    if total_coordinates < 2:
         print("Not enough coordinates for interpolation.")
+        current_playing_file = None  # Clear tracking if failed
+        execution_progress = None
         return
 
-    # Optimize batch size for smoother execution
+    execution_progress = (0, total_coordinates)  # Update total coordinates
     batch_size = 10  # Smaller batches may smooth movement further
-    for i in range(0, len(coordinates), batch_size):
-        # Check stop_requested flag after sending the batch
+
+    for i in range(0, total_coordinates, batch_size):
         if stop_requested:
             print("Execution stopped by user after completing the current batch.")
             break
@@ -241,22 +249,28 @@ def run_theta_rho_file(file_path, schedule_hours=None):
         batch = coordinates[i:i + batch_size]
         if i == 0:
             send_coordinate_batch(ser, batch)
+            execution_progress = (i + batch_size, total_coordinates)  # Update progress
             continue
-        # Wait until Arduino is READY before sending the batch
+
         while True:
-            schedule_checker(schedule_hours)
+            schedule_checker(schedule_hours)  # Check if within schedule
             with serial_lock:
                 if ser.in_waiting > 0:
                     response = ser.readline().decode().strip()
                     if response == "R":
                         send_coordinate_batch(ser, batch)
+                        execution_progress = (i + batch_size, total_coordinates)  # Update progress
                         break
                     else:
                         print(f"Arduino response: {response}")
 
-    # Reset theta after execution or stopping
     reset_theta()
     ser.write("FINISHED\n".encode())
+
+    # Clear tracking variables when done
+    current_playing_file = None
+    execution_progress = None
+    print("Pattern execution completed.")
 
 def get_clear_pattern_file(pattern_name):
     """Return a .thr file path based on pattern_name."""
@@ -591,6 +605,19 @@ def pause_execution():
     with pause_condition:
         pause_requested = True
     return jsonify({'success': True, 'message': 'Execution paused'})
+
+@app.route('/status', methods=['GET'])
+def get_status():
+    """Returns the current status of the sand table."""
+    return jsonify({
+        "ser_port": ser_port,
+        "stop_requested": stop_requested,
+        "pause_requested": pause_requested,
+        "current_playing_file": current_playing_file,
+        "execution_progress": execution_progress,
+        "arduino_table_name": arduino_table_name,
+        "arduino_driver_type": arduino_driver_type
+    })
 
 @app.route('/resume_execution', methods=['POST'])
 def resume_execution():
