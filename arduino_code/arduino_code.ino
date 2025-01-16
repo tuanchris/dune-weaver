@@ -68,6 +68,8 @@ void setup()
 
     // Initialize serial communication
     Serial.begin(115200);
+    Serial.println("Table: Dune Weaver");
+    Serial.println("Drivers: DRV8825");
     Serial.println("R");
     homing();
 }

@@ -28,6 +28,10 @@ stop_requested = False
 pause_requested = False
 pause_condition = threading.Condition()
 
+# Global variables to store device information
+arduino_table_name = None
+arduino_driver_type = None
+
 serial_lock = threading.Lock()
 
 PLAYLISTS_FILE = os.path.join(os.getcwd(), "playlists.json")
@@ -44,7 +48,7 @@ def list_serial_ports():
 
 def connect_to_serial(port=None, baudrate=115200):
     """Automatically connect to the first available serial port or a specified port."""
-    global ser, ser_port
+    global ser, ser_port, arduino_table_name, arduino_driver_type
 
     try:
         if port is None:
@@ -57,10 +61,30 @@ def connect_to_serial(port=None, baudrate=115200):
         with serial_lock:
             if ser and ser.is_open:
                 ser.close()
-            ser = serial.Serial(port, baudrate)
+            ser = serial.Serial(port, baudrate, timeout=2)  # Set timeout to avoid infinite waits
             ser_port = port  # Store the connected port globally
+
         print(f"Connected to serial port: {port}")
         time.sleep(2)  # Allow time for the connection to establish
+
+        # Read initial startup messages from Arduino
+        arduino_table_name = None
+        arduino_driver_type = None
+
+        while ser.in_waiting > 0:
+            line = ser.readline().decode().strip()
+            print(f"Arduino: {line}")  # Print the received message
+
+            # Store the device details based on the expected messages
+            if "Table:" in line:
+                arduino_table_name = line.replace("Table: ", "").strip()
+            elif "Drivers:" in line:
+                arduino_driver_type = line.replace("Drivers: ", "").strip()
+
+        # Display stored values
+        print(f"Detected Table: {arduino_table_name or 'Unknown'}")
+        print(f"Detected Drivers: {arduino_driver_type or 'Unknown'}")
+
         return True  # Successfully connected
     except serial.SerialException as e:
         print(f"Failed to connect to serial port {port}: {e}")
