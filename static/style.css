@@ -233,7 +233,7 @@ input, select {
 }
 
 .dropdown-content button:hover {
-    background-color: var(--background-primary);
+    background-color: var(--background-tertiary);
 }
 
 
@@ -448,9 +448,9 @@ section .header .add-button {
     gap: 10px;
 }
 
-.playlist-parameters .row {
-    display: flex;
-    gap: 10px;
+.playlist-parameters .control-group button.small.cancel {
+    align-self: flex-end;
+    margin-bottom: 4px;
 }
 
 #clear_pattern {
@@ -507,7 +507,7 @@ section .header .add-button {
 }
 
 .file-list li:hover {
-    background-color: var(--background-primary);
+    background-color: var(--background-tertiary);
 }
 
 .file-list li.selected {

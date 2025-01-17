@@ -31,12 +31,12 @@ pause_condition = threading.Condition()
 
 # Global variables to store device information
 arduino_table_name = None
-arduino_driver_type = None
+arduino_driver_type = 'Unknown'
 
 # Table status
 current_playing_file = None
 execution_progress = None
-firmware_version = None
+firmware_version = 'Unknown'
 current_playing_index = None
 current_playlist = None
 is_clearing = False
@@ -46,9 +46,9 @@ serial_lock = threading.Lock()
 PLAYLISTS_FILE = os.path.join(os.getcwd(), "playlists.json")
 
 MOTOR_TYPE_MAPPING = {
-    "TMC2209": "./arduino_code_TMC2209/arduino_code_TMC2209.ino",
-    "DRV8825": "./arduino_code/arduino_code.ino",
-    "esp32": "./esp32/esp32.ino"
+    "TMC2209": "./firmware/arduino_code_TMC2209/arduino_code_TMC2209.ino",
+    "DRV8825": "./firmware/arduino_code/arduino_code.ino",
+    "esp32": "./firmware/esp32/esp32.ino"
 }
 
 # Ensure the file exists and contains at least an empty JSON object
@@ -109,7 +109,7 @@ def list_serial_ports():
 
 def connect_to_serial(port=None, baudrate=115200):
     """Automatically connect to the first available serial port or a specified port."""
-    global ser, ser_port, arduino_table_name, arduino_driver_type
+    global ser, ser_port, arduino_table_name, arduino_driver_type, firmware_version
 
     try:
         if port is None:
@@ -985,7 +985,8 @@ def get_firmware_info():
     """
     Compare the installed firmware version and motor type with the one in the .ino file.
     """
-    global ser
+    global firmware_version, arduino_driver_type, ser
+
     if ser is None or not ser.is_open:
         return jsonify({"success": False, "error": "Arduino not connected or serial port not open"}), 400
 
@@ -997,12 +998,8 @@ def get_firmware_info():
             ser.write(b"GET_VERSION\n")
             time.sleep(0.5)
 
-            installed_version = 'Unknown'
-            installed_type = 'Unknown'
-            if ser.in_waiting > 0:
-                response = ser.readline().decode().strip()
-                if " | " in response:
-                    installed_version, installed_type = response.split(" | ", 1)
+            installed_version = firmware_version
+            installed_type = arduino_driver_type
 
             # If Arduino provides valid details, proceed with comparison
             if installed_version != 'Unknown' and installed_type != 'Unknown':
@@ -1034,16 +1031,23 @@ def get_firmware_info():
                 "updateAvailable": False
             })
 
-        if request.method == "POST":
+        elif request.method == "POST":
             motor_type = request.json.get("motorType", None)
             if not motor_type or motor_type not in MOTOR_TYPE_MAPPING:
-                return jsonify({"success": False, "error": "Invalid or missing motor type"}), 400
+                return jsonify({
+                    "success": False,
+                    "error": "Invalid or missing motor type"
+                }), 400
 
-            ino_path = MOTOR_TYPE_MAPPING.get(motor_type)
+            # Fetch firmware details for the given motor type
+            ino_path = MOTOR_TYPE_MAPPING[motor_type]
             firmware_details = get_ino_firmware_details(ino_path)
 
-            if not firmware_details or not firmware_details.get("version") or not firmware_details.get("motorType"):
-                return jsonify({"success": False, "error": "Failed to retrieve .ino firmware details"}), 500
+            if not firmware_details:
+                return jsonify({
+                    "success": False,
+                    "error": "Failed to retrieve .ino firmware details"
+                }), 500
 
             return jsonify({
                 "success": True,
@@ -1053,6 +1057,7 @@ def get_firmware_info():
                 "inoType": firmware_details["motorType"],
                 "updateAvailable": True
             })
+
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

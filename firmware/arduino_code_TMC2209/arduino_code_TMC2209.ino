@@ -40,8 +40,8 @@ float currentTheta = 0.0; // Current theta in radians
 float currentRho = 0.0;   // Current rho (0 to 1)
 bool isFirstCoordinates = true;
 float totalRevolutions = 0.0; // Tracks cumulative revolutions
-float maxSpeed = 5000;
-float maxAcceleration = 5000;
+long maxSpeed = 1000;
+float maxAcceleration = 50;
 long interpolationResolution = 0.001;
 float userDefinedSpeed = maxSpeed; // Store user-defined speed
 
@@ -50,7 +50,7 @@ int currentMode = MODE_APP; // Default mode is app mode.
 
 // FIRMWARE VERSION
 const char* firmwareVersion = "1.4.0";
-const char* motorType = "DRV8825";
+const char* motorType = "TMC2209";
 
 void setup()
 {
@@ -73,7 +73,7 @@ void setup()
     // Initialize serial communication
     Serial.begin(115200);
     Serial.println("Table: Dune Weaver");
-    Serial.println("Drivers: DRV8825");
+    Serial.println("Drivers: TMC2209");
     Serial.println("Version: 1.4.0");
     Serial.println("R");
     homing();
@@ -194,14 +194,6 @@ void appMode()
             return;
         }
 
-        if (input == "GET_VERSION")
-        {
-            Serial.print(firmwareVersion);
-            Serial.print(" | ");
-            Serial.println(motorType);
-            return;
-        }
-
         if (input == "RESET_THETA")
         {
             resetTheta(); // Reset currentTheta
@@ -209,13 +201,14 @@ void appMode()
             Serial.println("READY");
             return;
         }
+
         if (input == "HOME")
         {
             homing();
             return;
         }
 
-        // Example: The user calls "SET_SPEED 60" => 60% of maxSpeed
+
         if (input.startsWith("SET_SPEED"))
         {
             // Parse out the speed value from the command string
@@ -296,11 +289,12 @@ void appMode()
                 // Directly move to the first coordinate of the new pattern
                 long initialRotSteps = buffer[0][0] * (rot_total_steps / (2.0 * M_PI));
                 rotStepper.setCurrentPosition(initialRotSteps);
-                inOutStepper.setCurrentPosition(inOutStepper.currentPosition() - totalRevolutions * rot_total_steps / gearRatio);
+                inOutStepper.setCurrentPosition(inOutStepper.currentPosition() + (totalRevolutions * rot_total_steps / gearRatio));
+
                 currentTheta = buffer[0][0];
                 totalRevolutions = 0;
-                isFirstCoordinates = false; // Reset the flag after the first movement
                 movePolar(buffer[0][0], buffer[0][1]);
+                isFirstCoordinates = false; // Reset the flag after the first movement
             }
               else
               {

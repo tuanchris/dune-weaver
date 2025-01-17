@@ -88,15 +88,6 @@ void loop()
             return;
         }
 
-        if (input == "GET_VERSION")
-        {
-            Serial.print(firmwareVersion);
-            Serial.print(" | ");
-            Serial.println(motorType);
-            return;
-        }
-
-
         // Example: The user calls "SET_SPEED 60" => 60% of maxSpeed
         if (input.startsWith("SET_SPEED"))
         {

@@ -131,9 +131,8 @@
                         <label for="end_time">End time</label>
                         <input type="time" id="end_time" min="00:00" max="24:00">
                     </div>
+                    <button id="clear_time" onclick="clearSchedule()" style="display: none" class="small cancel">Clear</button>
                 </div>
-                <button onclick="clearSchedule()" class="cancel">Clear</button>
-
             </div>
         </section>
 
@@ -182,9 +181,9 @@
                         <span id="dropdown_toggle" class="dropdown-toggle" onclick="toggleClearDropdown(event)">▼</span>
                     </button>
                     <div id="clear_dropdown" class="dropdown-content" style="display: none;">
-                        <button onclick="updateClearAction('From Center', 'runClearIn')">Clear From Center</button>
-                        <button onclick="updateClearAction('From Perimeter', 'runClearOut')">Clear From Perimeter</button>
-                        <button onclick="updateClearAction('Sideways', 'runClearSide')">Clear Sideways</button>
+                        <button class="no-bg" onclick="updateClearAction('From Center', 'runClearIn')">Clear From Center</button>
+                        <button class="no-bg" onclick="updateClearAction('From Perimeter', 'runClearOut')">Clear From Perimeter</button>
+                        <button class="no-bg" onclick="updateClearAction('Sideways', 'runClearSide')">Clear Sideways</button>
                     </div>
                 </div>
                 <button onclick="moveToCenter()">Move to Center</button>

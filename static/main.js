@@ -702,11 +702,11 @@ async function fetchFirmwareInfo(motorType = null) {
                 }
             }
         } else {
-            logMessage("Error fetching firmware info.", LOG_TYPE.ERROR);
+            logMessage("Could not fetch firmware info.", LOG_TYPE.WARNING);
             logMessage(data.error, LOG_TYPE.DEBUG);
         }
     } catch (error) {
-        logMessage("Error fetching firmware info.", LOG_TYPE.ERROR);
+        logMessage("Could not fetch firmware info.", LOG_TYPE.WARNING);
         logMessage(error.message, LOG_TYPE.DEBUG);
     } finally {
         // Re-enable the button after fetching
@@ -762,7 +762,9 @@ async function updateFirmware() {
 
             // Display "You're up to date" message if versions match
             const newVersionElement = document.getElementById("new_firmware_version");
-            newVersionElement.textContent = "You're up to date!";
+            const currentVersionElement = document.getElementById("current_firmware_version");
+            currentVersionElement.textContent = newVersionElement.innerHTML
+            newVersionElement.textContent = "You are up to date!";
             const motorSelectionDiv = document.getElementById("motor_selection");
             motorSelectionDiv.style.display = "none";
         } else {
@@ -848,6 +850,9 @@ function openPlaylistEditor(playlistName) {
 function clearSchedule() {
     document.getElementById("start_time").value = "";
     document.getElementById("end_time").value = "";
+    document.getElementById('clear_time').style.display = 'none';
+    setCookie('start_time', null, 7);
+    setCookie('end_time', null, 7);
 }
 
 // Function to run the selected playlist with specified parameters
@@ -1499,6 +1504,12 @@ function saveSettingsToCookies() {
     const clearAction = document.getElementById('clear_action_label').textContent.trim();
     setCookie('clear_action', clearAction, 7);
 
+    // Save start and end times
+    const startTime = document.getElementById('start_time').value;
+    const endTime = document.getElementById('end_time').value;
+    setCookie('start_time', startTime, 7);
+    setCookie('end_time', endTime, 7);
+
     logMessage('Settings saved.');
 }
 
@@ -1550,6 +1561,20 @@ function loadSettingsFromCookies() {
         }
     }
 
+    // Load start and end times
+    const startTime = getCookie('start_time');
+    if (startTime !== null) {
+        document.getElementById('start_time').value = startTime;
+    }
+    const endTime = getCookie('end_time');
+    if (endTime !== null) {
+        document.getElementById('end_time').value = endTime;
+    }
+
+    if (startTime !== null || endTime !== null ) {
+        document.getElementById('clear_time').style.display = 'block';
+    }
+
     logMessage('Settings loaded from cookies.');
 }
 
@@ -1563,6 +1588,8 @@ function attachSettingsSaveListeners() {
     });
     document.getElementById('shuffle_playlist').addEventListener('change', saveSettingsToCookies);
     document.getElementById('pre_execution').addEventListener('change', saveSettingsToCookies);
+    document.getElementById('start_time').addEventListener('change', saveSettingsToCookies);
+    document.getElementById('end_time').addEventListener('change', saveSettingsToCookies);
 }
 
 
@@ -1607,4 +1634,5 @@ document.addEventListener('DOMContentLoaded', () => {
     loadAllPlaylists(); // Load all playlists on page load
     attachSettingsSaveListeners(); // Attach event listeners to save changes
     attachFullScreenListeners();
+    fetchFirmwareInfo();
 });
