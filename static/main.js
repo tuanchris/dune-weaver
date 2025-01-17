@@ -1441,6 +1441,17 @@ function closeStickySection(sectionId) {
     }
 }
 
+// Function to open any sticky section
+function openStickySection(sectionId) {
+    const section = document.getElementById(sectionId);
+    if (section) {
+        // Toggle the 'open' class
+        section.classList.toggle('open');
+    } else {
+        logMessage(`Error: Section with ID "${sectionId}" not found`);
+    }
+}
+
 function attachFullScreenListeners() {
     // Add event listener to all fullscreen buttons
     document.querySelectorAll('.fullscreen-button').forEach(button => {
@@ -1490,15 +1501,18 @@ async function updateCurrentlyPlaying() {
             return;
         }
 
-        if (data.current_playing_file) {
+        if (data.current_playing_file && !data.stop_requested) {
             const { current_playing_file, execution_progress, pause_requested } = data;
 
             // Strip './patterns/' prefix from the file name
             const fileName = current_playing_file.replace('./patterns/', '');
 
+            if (!document.body.classList.contains('playing')) {
+                closeStickySection('pattern-preview-container')
+            }
+
             // Show "Currently Playing" section
-            currentlyPlayingSection.classList.remove('hidden');
-            currentlyPlayingSection.classList.add('visible');
+            document.body.classList.add('playing');
 
             // Update pattern preview only if the file is different
             if (current_playing_file !== lastPreviewedFile) {
@@ -1527,11 +1541,10 @@ async function updateCurrentlyPlaying() {
             const pausePlayButton = document.getElementById('pausePlayCurrent');
             if (pausePlayButton) pausePlayButton.textContent = pause_requested ? '▶' : '⏸';
         } else {
-            logMessage('No file is currently playing.');
-            hideCurrentlyPlaying();
+            document.body.classList.remove('playing');
         }
     } catch (error) {
-        logMessage(`Error updating "Currently Playing" section: ${error.message}`, LOG_TYPE.ERROR);
+        logMessage(`Error updating "Currently Playing" section: ${error.message}`);
     }
 }
 

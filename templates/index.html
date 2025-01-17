@@ -273,34 +273,34 @@
             </div>
             <button id="debug_button" onclick="toggleDebugLog()">🪲</button>
         </section>
-
-        <section id="currently-playing-container" class="hidden sticky">
-            <div class="header">
-                <h2>Currently Playing</h2>
-<!--                <button class="fullscreen-button no-bg">⛶</button>-->
-                <button class="close-button no-bg" onclick="closeStickySection('currently-playing-container')">×</button>
-            </div>
-            <div id="currently-playing-preview">
-                <canvas id="currentlyPlayingCanvas"></canvas>
-            </div>
-            <div id="currently-playing-details">
-                <p id="currently-playing-file">File: </p>
-                <p id="currently-playing-position"></p>
-            </div>
-            <div id="progress-container">
-                <progress id="play_progress" value="0" max="100"></progress>
-                <h3 id="play_progress_text">0%</h3>
-            </div>
-            <div class="play-buttons">
-                <button id="stopCurrent" onclick="stopExecution()" class="cancel">■</button>
-                <button id="pausePlayCurrent" class="cta" onclick="togglePausePlay()">⏸</button>
-            </div>
-        </section>
     </main>
 </div>
 
 <!-- Tab Navigation -->
 <nav class="bottom-nav">
+    <section id="currently-playing-container" class="sticky">
+        <div class="header">
+            <h2>Currently Playing</h2>
+            <button class="open-button no-bg" onclick="openStickySection('currently-playing-container')">^</button>
+<!--            <button class="fullscreen-button no-bg">⛶</button>-->
+<!--            <button class="close-button no-bg" onclick="closeStickySection('currently-playing-container')">×</button>-->
+        </div>
+        <div id="currently-playing-preview">
+            <canvas id="currentlyPlayingCanvas"></canvas>
+        </div>
+        <div id="currently-playing-details">
+            <p id="currently-playing-file"></p>
+            <p id="currently-playing-position"></p>
+        </div>
+        <div class="play-buttons">
+            <button id="stopCurrent" onclick="stopExecution()" class="cancel">■</button>
+            <button id="pausePlayCurrent" class="cta" onclick="togglePausePlay()">⏸</button>
+        </div>
+        <div id="progress-container">
+            <progress id="play_progress" value="0" max="100"></progress>
+            <h3 id="play_progress_text">0%</h3>
+        </div>
+    </section>
     <button class="tab-button" onclick="switchTab('patterns')" id="nav-patterns">Patterns</button>
     <button class="tab-button" onclick="switchTab('playlists')" id="nav-playlists">Playlists</button>
     <button class="tab-button" onclick="switchTab('settings')" id="nav-settings">Device</button>

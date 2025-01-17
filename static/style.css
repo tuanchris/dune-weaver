@@ -375,7 +375,7 @@ section.sticky.hidden {
 section .header {
     position: relative;
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
     margin-bottom: 10px;
     width: 100%;
@@ -386,8 +386,7 @@ section .header h2 {
 }
 
 /* Close Button Styling */
-.close-button,
-.fullscreen-button {
+button.no-bg {
     background: none;
     border: none;
     font-size: 1.5rem;
@@ -575,6 +574,7 @@ section .header .add-button {
 
 .tab-button {
     flex: 1;
+    height: 60px;
     padding: 20px 10px;
     text-align: center;
     font-size: 1rem;
@@ -664,9 +664,74 @@ button#debug_button.active {
 
 
 /* Currently Playing Section Styling */
+body.playing .bottom-nav {
+    height: 200px;
+    align-items: flex-end;
+}
+
+body.playing section.sticky{
+    bottom: 200px;
+}
+
 #currently-playing-container {
     align-items: center;
 }
+
+body:not(.playing) #currently-playing-container {
+    display: none;
+}
+
+#currently-playing-container.open {
+    max-height: none;
+    bottom: 60px;
+}
+
+body.playing #currently-playing-container:not(.open) {
+    height: 140px;
+    overflow:hidden;
+    flex-direction: row;
+    flex-wrap: wrap;
+    bottom: 60px;
+}
+
+body.playing #currently-playing-container:not(.open) .header{
+    justify-content: center;
+}
+
+body.playing #currently-playing-container:not(.open) .header .fullscreen-button,
+body.playing #currently-playing-container:not(.open) .header .close-button,
+body.playing #currently-playing-container:not(.open) .header h2 {
+    display: none;
+}
+
+body.playing #currently-playing-container:not(.open) .header .open-button {
+    display: block;
+}
+
+body.playing #currently-playing-container:not(.open) #currently-playing-preview {
+    max-width:80px;
+}
+
+body.playing #currently-playing-container:not(.open) #currently-playing-details{
+    flex-grow: 1;
+    align-items: flex-start;
+    margin: 0 0 0 20px;
+}
+
+body.playing #currently-playing-container:not(.open) .play-buttons button {
+    width: 50px;
+    height: 50px;
+    font-size: 1.5rem;
+}
+
+body.playing #currently-playing-container:not(.open) #progress-container {
+    width: 100%;
+}
+
+body:not(.playing) #currently-playing-container:not(.open) #play_progress_text {
+    display: none;
+}
+
 
 #currentlyPlayingCanvas {
     width: 100%;
@@ -726,7 +791,7 @@ button#debug_button.active {
 
 .play-buttons {
     display: flex;
-    gap: 30px;
+    gap: 20px;
 }
 
 .play-buttons button {
