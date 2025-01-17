@@ -694,9 +694,6 @@ def get_status():
         "pause_requested": pause_requested,
         "current_playing_file": current_playing_file,
         "execution_progress": execution_progress,
-        "arduino_table_name": arduino_table_name,
-        "arduino_driver_type": arduino_driver_type,
-        "firmware_version": firmware_version,
         "current_playing_index": current_playing_index,
         "current_playlist": current_playlist,
         "is_clearing": is_clearing
@@ -974,7 +971,7 @@ def set_speed():
             return jsonify({"success": False, "error": "Invalid speed value"}), 400
 
         # Send the SET_SPEED command to the Arduino
-        command = f"SET_SPEED {speed}"
+        command = f"SET_SPEEzD {speed}"
         send_command(command)
         return jsonify({"success": True, "speed": speed})
     except Exception as e:

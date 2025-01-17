@@ -50,7 +50,7 @@ function logMessage(message, type = LOG_TYPE.DEBUG) {
     // Add a close button
     const closeButton = document.createElement('button');
     closeButton.textContent = '×';
-    closeButton.className = 'close-button';
+    closeButton.className = 'close-button no-bg';
     closeButton.onclick = () => {
         notification.classList.remove('show');
         setTimeout(() => notification.remove(), 250); // Match transition duration
@@ -244,7 +244,7 @@ async function stopExecution() {
 let isPaused = false;
 
 function togglePausePlay() {
-    const button = document.getElementById("pausePlayButton");
+    const button = document.getElementById("pausePlayCurrent");
 
     if (isPaused) {
         // Resume execution
@@ -321,7 +321,7 @@ async function removeCustomPattern(fileName) {
 }
 
 // Preview a Theta-Rho file
-async function previewPattern(fileName) {
+async function previewPattern(fileName, containerId = 'pattern-preview-container') {
     try {
         logMessage(`Fetching data to preview file: ${fileName}...`);
         const response = await fetch('/preview_thr', {
@@ -333,44 +333,65 @@ async function previewPattern(fileName) {
         const result = await response.json();
         if (result.success) {
             const coordinates = result.coordinates;
-            renderPattern(coordinates);
+
+            // Render the pattern in the specified container
+            const canvasId = containerId === 'currently-playing-container'
+                ? 'currentlyPlayingCanvas'
+                : 'patternPreviewCanvas';
+            renderPattern(coordinates, canvasId);
 
             // Update coordinate display
-            const firstCoord = coordinates[0];
-            const lastCoord = coordinates[coordinates.length - 1];
-            document.getElementById('first_coordinate').textContent = `First Coordinate: θ=${firstCoord[0]}, ρ=${firstCoord[1]}`;
-            document.getElementById('last_coordinate').textContent = `Last Coordinate: θ=${lastCoord[0]}, ρ=${lastCoord[1]}`;
+            const firstCoordElement = document.getElementById('first_coordinate');
+            const lastCoordElement = document.getElementById('last_coordinate');
+
+            if (firstCoordElement) {
+                const firstCoord = coordinates[0];
+                firstCoordElement.textContent = `First Coordinate: θ=${firstCoord[0]}, ρ=${firstCoord[1]}`;
+            } else {
+                logMessage('First coordinate element not found.', LOG_TYPE.WARNING);
+            }
+
+            if (lastCoordElement) {
+                const lastCoord = coordinates[coordinates.length - 1];
+                lastCoordElement.textContent = `Last Coordinate: θ=${lastCoord[0]}, ρ=${lastCoord[1]}`;
+            } else {
+                logMessage('Last coordinate element not found.', LOG_TYPE.WARNING);
+            }
 
             // Show the preview container
-            const previewContainer = document.getElementById('pattern-preview-container');
+            const previewContainer = document.getElementById(containerId);
             if (previewContainer) {
                 previewContainer.classList.remove('hidden');
                 previewContainer.classList.add('visible');
+            } else {
+                logMessage(`Preview container not found: ${containerId}`, LOG_TYPE.ERROR);
             }
-
-            // Close the "Add to Playlist" container if it is open
-            const addToPlaylistContainer = document.getElementById('add-to-playlist-container');
-            if (addToPlaylistContainer && !addToPlaylistContainer.classList.contains('hidden')) {
-                toggleSecondaryButtons('add-to-playlist-container'); // Hide the container
-            }
-
         } else {
             logMessage(`Failed to fetch preview for file: ${fileName}`, LOG_TYPE.WARNING);
         }
     } catch (error) {
-        logMessage(`Error previewing pattern: ${error.message}`, LOG_TYPE.WARNING);
+        logMessage(`Error previewing pattern: ${error.message}`, LOG_TYPE.ERROR);
     }
 }
 
 // Render the pattern on a canvas
-function renderPattern(coordinates) {
-    const canvas = document.getElementById('patternPreviewCanvas');
+function renderPattern(coordinates, canvasId) {
+    const canvas = document.getElementById(canvasId);
     if (!canvas) {
-        logMessage('Error: Canvas not found');
+        logMessage(`Canvas element not found: ${canvasId}`, LOG_TYPE.ERROR);
+        return;
+    }
+
+    if (!(canvas instanceof HTMLCanvasElement)) {
+        logMessage(`Element with ID "${canvasId}" is not a canvas.`, LOG_TYPE.ERROR);
         return;
     }
 
     const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        logMessage(`Could not get 2D context for canvas: ${canvasId}`, LOG_TYPE.ERROR);
+        return;
+    }
 
     // Account for device pixel ratio
     const dpr = window.devicePixelRatio || 1;
@@ -397,7 +418,6 @@ function renderPattern(coordinates) {
         else ctx.lineTo(x, y);
     });
     ctx.stroke();
-    logMessage('Pattern preview rendered.');
 }
 
 
@@ -851,8 +871,8 @@ function clearSchedule() {
     document.getElementById("start_time").value = "";
     document.getElementById("end_time").value = "";
     document.getElementById('clear_time').style.display = 'none';
-    setCookie('start_time', null, 7);
-    setCookie('end_time', null, 7);
+    setCookie('start_time', '', 7);
+    setCookie('end_time', '', 7);
 }
 
 // Function to run the selected playlist with specified parameters
@@ -1457,6 +1477,69 @@ function attachFullScreenListeners() {
     });
 }
 
+let lastPreviewedFile = null; // Track the last previewed file
+
+async function updateCurrentlyPlaying() {
+    try {
+        const response = await fetch('/status');
+        const data = await response.json();
+
+        const currentlyPlayingSection = document.getElementById('currently-playing-container');
+        if (!currentlyPlayingSection) {
+            logMessage('Currently Playing section not found.', LOG_TYPE.ERROR);
+            return;
+        }
+
+        if (data.current_playing_file) {
+            const { current_playing_file, execution_progress, pause_requested } = data;
+
+            // Strip './patterns/' prefix from the file name
+            const fileName = current_playing_file.replace('./patterns/', '');
+
+            // Show "Currently Playing" section
+            currentlyPlayingSection.classList.remove('hidden');
+            currentlyPlayingSection.classList.add('visible');
+
+            // Update pattern preview only if the file is different
+            if (current_playing_file !== lastPreviewedFile) {
+                previewPattern(fileName, 'currently-playing-container');
+                lastPreviewedFile = current_playing_file; // Update the last previewed file
+            }
+
+            // Update the filename display
+            const fileNameDisplay = document.getElementById('currently-playing-file');
+            if (fileNameDisplay) fileNameDisplay.textContent = fileName;
+
+            // Update progress bar
+            const progressBar = document.getElementById('play_progress');
+            const progressText = document.getElementById('play_progress_text');
+            if (execution_progress) {
+                const progressPercentage =
+                    (execution_progress[0] / execution_progress[1]) * 100;
+                progressBar.value = progressPercentage;
+                progressText.textContent = `${Math.round(progressPercentage)}%`;
+            } else {
+                progressBar.value = 0;
+                progressText.textContent = '0%';
+            }
+
+            // Update play/pause button
+            const pausePlayButton = document.getElementById('pausePlayCurrent');
+            if (pausePlayButton) pausePlayButton.textContent = pause_requested ? '▶' : '⏸';
+        } else {
+            logMessage('No file is currently playing.');
+            hideCurrentlyPlaying();
+        }
+    } catch (error) {
+        logMessage(`Error updating "Currently Playing" section: ${error.message}`, LOG_TYPE.ERROR);
+    }
+}
+
+function hideCurrentlyPlaying() {
+    const currentlyPlayingSection = document.getElementById('currently-playing-container');
+    currentlyPlayingSection.classList.add('hidden');
+    currentlyPlayingSection.classList.remove('visible');
+}
 
 // Utility function to manage cookies
 function setCookie(name, value, days) {
@@ -1476,7 +1559,6 @@ function getCookie(name) {
     }
     return null;
 }
-
 
 // Save settings to cookies
 function saveSettingsToCookies() {
@@ -1635,4 +1717,7 @@ document.addEventListener('DOMContentLoaded', () => {
     attachSettingsSaveListeners(); // Attach event listeners to save changes
     attachFullScreenListeners();
     fetchFirmwareInfo();
+
+    // Periodically check for currently playing status
+    setInterval(updateCurrentlyPlaying, 3000);
 });

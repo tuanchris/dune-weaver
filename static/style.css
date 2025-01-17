@@ -62,7 +62,6 @@ header {
     display: flex;
     justify-content: center;
     align-items: center;
-
 }
 
 h1, h2 {
@@ -379,6 +378,7 @@ section .header {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 10px;
+    width: 100%;
 }
 
 section .header h2 {
@@ -636,7 +636,7 @@ button#debug_button.active {
 }
 
 #settings-tab .dropdown {
-    min-width: 50%;
+    min-width: 66.66%;
 }
 
 /* Preview Canvas */
@@ -660,6 +660,88 @@ button#debug_button.active {
 #pattern-preview-container.fullscreen #patternPreviewCanvas {
     width: initial;
     max-width: calc(100vw - 30px);
+}
+
+
+/* Currently Playing Section Styling */
+#currently-playing-container {
+    align-items: center;
+}
+
+#currentlyPlayingCanvas {
+    width: 100%;
+    max-width: 300px;
+    aspect-ratio: 1/1;
+    border: 1px solid var(--border-primary);
+    background: var(--theme-secondary);
+    border-radius: 100%;
+    padding: 20px;
+}
+
+#currently-playing-details {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+#currently-playing-details p {
+    margin: 5px 0;
+    color: var(--text-primary);
+    font-size: 1rem;
+}
+
+#progress-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+#play_progress {
+    width: 100%;
+    height: 8px;
+    appearance: none;
+    background-color: var(--border-primary);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+#play_progress::-webkit-progress-bar {
+    background-color: var(--border-primary);
+}
+
+#play_progress::-webkit-progress-value {
+    background-color: var(--theme-primary);
+    transition: width 0.25s ease;
+}
+
+#play_progress_text {
+    font-size: 0.9rem;
+    margin-left: 10px;
+    color: var(--text-primary);
+}
+
+.play-buttons {
+    display: flex;
+    gap: 30px;
+}
+
+.play-buttons button {
+    width: 75px;
+    height: 75px;
+    aspect-ratio: 1/1;
+    font-size: 3rem;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+}
+
+#pausePlayCurrent {
+    border-radius: 50%;
 }
 
 /* Debug Log */
@@ -848,6 +930,7 @@ input[type="number"]:focus {
     font-size: 2rem;
     top: 0;
     right: 0;
+    position: absolute;
 }
 
 /* Notification Types */

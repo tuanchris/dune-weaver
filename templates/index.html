@@ -173,8 +173,6 @@
             </div>
 
             <div class="action-buttons">
-                <button id="pausePlayButton" onclick="togglePausePlay()" class="cancel">⏸</button> <!-- Default: Pause Icon -->
-                <button onclick="stopExecution()" class="cancel">Stop Current Pattern</button>
                 <div class="dropdown">
                     <button id="clear_button" class="dropdown-button" onclick="executeClearAction()">
                         <span>Clear <span id="clear_action_label">From Center</span></span>
@@ -274,6 +272,29 @@
                 </a>
             </div>
             <button id="debug_button" onclick="toggleDebugLog()">🪲</button>
+        </section>
+
+        <section id="currently-playing-container" class="hidden sticky">
+            <div class="header">
+                <h2>Currently Playing</h2>
+<!--                <button class="fullscreen-button no-bg">⛶</button>-->
+                <button class="close-button no-bg" onclick="closeStickySection('currently-playing-container')">×</button>
+            </div>
+            <div id="currently-playing-preview">
+                <canvas id="currentlyPlayingCanvas"></canvas>
+            </div>
+            <div id="currently-playing-details">
+                <p id="currently-playing-file">File: </p>
+                <p id="currently-playing-position"></p>
+            </div>
+            <div id="progress-container">
+                <progress id="play_progress" value="0" max="100"></progress>
+                <h3 id="play_progress_text">0%</h3>
+            </div>
+            <div class="play-buttons">
+                <button id="stopCurrent" onclick="stopExecution()" class="cancel">■</button>
+                <button id="pausePlayCurrent" class="cta" onclick="togglePausePlay()">⏸</button>
+            </div>
         </section>
     </main>
 </div>
