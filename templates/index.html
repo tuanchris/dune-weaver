@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Dune Weaver Controller</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../static/style.css">
+    <link rel="stylesheet" href="../static/css/style.css">
+    <link rel="stylesheet" href="../static/css/all.min.css">
 </head>
 <body>
 <header>
@@ -17,14 +18,22 @@
         <section class="main">
             <div class="header">
                 <h2>Patterns</h2>
-                <button class="add-button cta" onclick="toggleSecondaryButtons('add-pattern-container')">+</button>
+                <button class="add-button cta" onclick="toggleSecondaryButtons('add-pattern-container')">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
             </div>
             <div id="add-pattern-container" class="add-to-container hidden">
                 <div class="action-buttons">
                     <label for="upload_file">Upload pattern file (.thr):</label>
                     <input type="file" id="upload_file">
-                    <button class="cancel" onclick="toggleSecondaryButtons('add-pattern-container')">Cancel</button>
-                    <button class="cta" onclick="uploadThetaRho()">Upload</button>
+                    <button class="cta" onclick="uploadThetaRho()">
+                        <i class="fa-solid fa-file-arrow-up"></i>
+                        <span>Upload</span>
+                    </button>
+                    <button class="cancel" onclick="toggleSecondaryButtons('add-pattern-container')">
+                        <i class="fa-solid fa-xmark"></i>
+                        <span>Cancel</span>
+                    </button>
                 </div>
             </div>
             <input type="text" id="search_pattern" placeholder="Search files..." oninput="searchPatternFiles()">
@@ -36,7 +45,9 @@
             <div class="header">
                 <h2>Preview</h2>
                 <button class="fullscreen-button no-bg">⛶</button>
-                <button class="close-button no-bg" onclick="closeStickySection('pattern-preview-container')">&times;</button>
+                <button class="close-button no-bg" onclick="closeStickySection('pattern-preview-container')">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
             </div>
             <div id="pattern-preview">
                 <canvas id="patternPreviewCanvas"></canvas>
@@ -56,8 +67,14 @@
                 <h2>Select Playlist</h2>
                 <select id="select-playlist"></select>
                 <div class="action-buttons">
-                    <button onclick="toggleSecondaryButtons('add-to-playlist-container')" class="cancel">Cancel</button>
-                    <button onclick="saveToPlaylist()" class="cta">Save</button>
+                    <button onclick="toggleSecondaryButtons('add-to-playlist-container')" class="cancel">
+                        <i class="fa-solid fa-xmark"></i>
+                        <span>Cancel</span>
+                    </button>
+                    <button onclick="saveToPlaylist()" class="cta">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>Save</span>
+                    </button>
                 </div>
             </div>
         </section>
@@ -68,13 +85,21 @@
         <section>
             <div class="header">
                 <h2>Playlists</h2>
-                <button class="cta add-button" onclick="toggleSecondaryButtons('add-playlist-container')">+</button>
+                <button class="cta add-button" onclick="toggleSecondaryButtons('add-playlist-container')">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
             </div>
             <div id="add-playlist-container" class="add-to-container hidden">
                 <input type="text" id="new_playlist_name" placeholder="Enter new playlist name" />
                 <div class="action-buttons">
-                    <button onclick="confirmAddPlaylist()" class="cta">Save</button>
-                    <button onclick="toggleSecondaryButtons('add-playlist-container')" class="cancel">Cancel</button>
+                    <button onclick="confirmAddPlaylist()" class="cta">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>Save</span>
+                    </button>
+                    <button onclick="toggleSecondaryButtons('add-playlist-container')" class="cancel">
+                        <i class="fa-solid fa-xmark"></i>
+                        <span>Cancel</span>
+                    </button>
                 </div>
             </div>
             <ul id="all_playlists" class="file-list">
@@ -131,7 +156,9 @@
                         <label for="end_time">End time</label>
                         <input type="time" id="end_time" min="00:00" max="24:00">
                     </div>
-                    <button id="clear_time" onclick="clearSchedule()" style="display: none" class="small cancel">Clear</button>
+                    <button id="clear_time" onclick="clearSchedule()" style="display: none" class="small cancel">
+                        <i class="fa-solid fa-delete-left"></i>
+                    </button>
                 </div>
             </div>
         </section>
@@ -140,8 +167,12 @@
         <section id="playlist-editor" class="sticky hidden">
             <div class="header">
                 <h2 id="playlist_title">Playlist: <span id="playlist_name_display"></span></h2>
-                <button class="fullscreen-button no-bg">⛶</button>
-                <button class="close-button no-bg" onclick="closeStickySection('playlist-editor')">&times;</button>
+                <button class="fullscreen-button no-bg">
+                    <i class="fa-solid fa-expand"></i>
+                </button>
+                <button class="close-button no-bg" onclick="closeStickySection('playlist-editor')">
+                    <i class="fa-solid fa-xmark" ></i>
+                </button>
             </div>
             <ul id="playlist_items" class="file-list">
             </ul>
@@ -151,15 +182,27 @@
                 <button onclick="toggleSecondaryButtons('rename-playlist-container')">Rename</button>
                 <button onclick="deleteCurrentPlaylist()" class="cancel">Delete</button>
                 <!-- Save and Cancel buttons -->
-                <button onclick="savePlaylist()" class="save-cancel cta" style="display: none;">Save</button>
-                <button onclick="cancelPlaylistChanges()" class="save-cancel cancel" style="display: none;">Cancel</button>
+                <button onclick="savePlaylist()" class="save-cancel cta" style="display: none;">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    <span>Save</span>
+                </button>
+                <button onclick="cancelPlaylistChanges()" class="save-cancel cancel" style="display: none;">
+                    <i class="fa-solid fa-xmark"></i>
+                    <span>Cancel</span>
+                </button>
             </div>
             <!-- Playlist Rename Section -->
             <div id="rename-playlist-container" class="hidden">
                 <input type="text" id="playlist_name_input" placeholder="Enter new playlist name">
                 <div class="action-buttons">
-                    <button onclick="confirmRenamePlaylist()" class="cta">Save</button>
-                    <button onclick="toggleSecondaryButtons('rename-playlist-container')" class="cancel">Cancel</button>
+                    <button onclick="confirmRenamePlaylist()" class="cta">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>Save</span>
+                    </button>
+                    <button onclick="toggleSecondaryButtons('rename-playlist-container')" class="cancel">
+                        <i class="fa-solid fa-xmark"></i>
+                        <span>Cancel</span>
+                    </button>
                 </div>
             </div>
         </section>
@@ -172,7 +215,7 @@
                 <h2>Device Controls</h2>
             </div>
 
-            <div class="action-buttons">
+            <div class="action-buttons square">
                 <div class="dropdown">
                     <button id="clear_button" class="dropdown-button" onclick="executeClearAction()">
                         <span>Clear <span id="clear_action_label">From Center</span></span>
@@ -184,9 +227,9 @@
                         <button class="no-bg" onclick="updateClearAction('Sideways', 'runClearSide')">Clear Sideways</button>
                     </div>
                 </div>
-                <button onclick="moveToCenter()">Move to Center</button>
-                <button onclick="moveToPerimeter()">Move to Perimeter</button>
-                <button onclick="sendHomeCommand()" class="small warn">Home</button>
+                <button onclick="moveToCenter()"><i class="fa-solid fa-circle-dot"></i><span class="small">Move to Center</span></button>
+                <button onclick="moveToPerimeter()"><i class="fa-solid fa-circle-notch"></i><span class="small">Move to Perimeter</span></button>
+                <button onclick="sendHomeCommand()" class="warn"><i class="fa-solid fa-house"></i><span class="small">Home</span></button>
             </div>
             <h3>Send to Coordinate</h3>
             <div class="control-group">
@@ -199,7 +242,9 @@
                     <input type="number" id="rho_input" placeholder="Rho">
                 </div>
                 <div class="item cta">
-                    <button onclick="sendCoordinate()">Send</button>
+                    <button onclick="sendCoordinate()">
+                        <i class="fa-solid fa-map-pin"></i><span>Send</span>
+                    </button>
                 </div>
             </div>
             <h3>Pre-Execution Action</h3>
@@ -217,7 +262,7 @@
                     <input type="number" id="speed_input" placeholder="1-100" min="1" step="1" max="100">
                 </div>
                 <div class="item cta">
-                    <button class="small-button"  onclick="changeSpeed()">Set Speed</button>
+                    <button class="small-button"  onclick="changeSpeed()"><i class="fa-solid fa-gauge-high"></i><span>Set Speed</span></button>
                 </div>
             </div>
         </section>
@@ -230,11 +275,13 @@
             <div id="serial_ports_container">
                 <label for="serial_ports">Available Ports:</label>
                 <select id="serial_ports"></select>
-                <button onclick="connectSerial()" class="cta">Connect</button>
+                <button onclick="connectSerial()" class="cta"><span class="small">Connect</span></button>
             </div>
             <div id="serial_ports_buttons" class="button-group">
-                <button onclick="disconnectSerial()" class="cancel">Disconnect</button>
-                <button onclick="restartSerial()" class="warn">Restart</button>
+                <button onclick="disconnectSerial()" class="cancel">
+                    <i class="fa-solid fa-power-off"></i><span class="small">Disconnect</span></button>
+                <button onclick="restartSerial()" class="warn">
+                    <i class="fa-solid fa-rotate-left"></i><span class="small">Restart</span></button>
             </div>
         </section>
 
@@ -280,16 +327,13 @@
 <nav class="bottom-nav">
     <section id="currently-playing-container" class="sticky">
         <div class="header">
-            <h2>Currently Playing</h2>
-            <button class="open-button no-bg" onclick="openStickySection('currently-playing-container')">^</button>
-<!--            <button class="fullscreen-button no-bg">⛶</button>-->
-<!--            <button class="close-button no-bg" onclick="closeStickySection('currently-playing-container')">×</button>-->
+<!--            <button class="open-button no-bg" onclick="openStickySection('currently-playing-container')">^</button>-->
         </div>
         <div id="currently-playing-preview">
             <canvas id="currentlyPlayingCanvas"></canvas>
         </div>
         <div id="currently-playing-details">
-            <p id="currently-playing-file"></p>
+            <h2 id="currently-playing-file"></h2>
             <p id="currently-playing-position"></p>
         </div>
         <div class="play-buttons">
@@ -310,6 +354,6 @@
     <!-- Messages will be appended here -->
 </div>
 
-<script src="../static/main.js"></script>
+<script src="../static/js/main.js"></script>
 </body>
 </html>

@@ -566,8 +566,8 @@ async function checkSerialStatus() {
         // Hide Available Ports and show disconnect/restart buttons
         serialPortsContainer.style.display = 'none';
         connectButton.style.display = 'none';
-        disconnectButton.style.display = 'inline-block';
-        restartButton.style.display = 'inline-block';
+        disconnectButton.style.display = 'flex';
+        restartButton.style.display = 'flex';
 
         // Preselect the connected port in the dropdown
         const newOption = document.createElement('option');
@@ -587,7 +587,7 @@ async function checkSerialStatus() {
 
         // Show Available Ports and the connect button
         serialPortsContainer.style.display = 'block';
-        connectButton.style.display = 'inline-block';
+        connectButton.style.display = 'flex';
         disconnectButton.style.display = 'none';
         restartButton.style.display = 'none';
 
@@ -1073,7 +1073,7 @@ function populatePlaylistDropdown() {
 
             logMessage('Playlist dropdown populated, event listener attached, and saved playlist restored.');
         })
-        .catch(error => logMessage(`Error fetching playlists: ${error.message}`, LOG_TYPE.ERROR));
+        .catch(error => logMessage(`Error fetching playlists: ${error.message}`));
 }
 populatePlaylistDropdown().then(() => {
     loadSettingsFromCookies(); // Restore selected playlist after populating the dropdown
@@ -1419,7 +1419,7 @@ function closeStickySection(sectionId) {
         // Reset the fullscreen button text if it exists
         const fullscreenButton = section.querySelector('.fullscreen-button');
         if (fullscreenButton) {
-            fullscreenButton.textContent = '⛶'; // Reset to enter fullscreen icon/text
+            fullscreenButton.textContent = '<i class="fa-solid fa-compress"></i>'; // Reset to enter fullscreen icon/text
         }
 
         logMessage(`Closed section: ${sectionId}`);
@@ -1459,7 +1459,7 @@ function attachFullScreenListeners() {
             const stickySection = this.closest('.sticky'); // Find the closest sticky section
             if (stickySection) {
                 // Close all other sections
-                document.querySelectorAll('.sticky').forEach(section => {
+                document.querySelectorAll('.sticky:not(#currently-playing-container)').forEach(section => {
                     if (section !== stickySection) {
                         section.classList.remove('fullscreen');
                         section.classList.remove('visible');
@@ -1666,7 +1666,7 @@ function loadSettingsFromCookies() {
         document.getElementById('end_time').value = endTime;
     }
 
-    if (startTime !== null || endTime !== null ) {
+    if (startTime && endTime ) {
         document.getElementById('clear_time').style.display = 'block';
     }
 
