@@ -488,7 +488,12 @@ def run_theta_rho():
 
 @app.route('/stop_execution', methods=['POST'])
 def stop_execution():
-    global stop_requested
+    global pause_requested
+    with pause_condition:
+        pause_requested = False
+        pause_condition.notify_all()
+        
+    global stop_requested, current_playing_index, current_playlist, is_clearing, current_playing_file, execution_progress
     stop_requested = True
     current_playing_index = None
     current_playlist = None
