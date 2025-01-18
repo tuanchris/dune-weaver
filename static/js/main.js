@@ -1229,7 +1229,7 @@ function refreshPlaylistUI() {
 
         // Move Up button
         const moveUpBtn = document.createElement('button');
-        moveUpBtn.textContent = '▲'; // Up arrow symbol
+        moveUpBtn.innerHTML = '<i class="fa-solid fa-turn-up"></i>'; // Up arrow symbol
         moveUpBtn.classList.add('move-button');
         moveUpBtn.onclick = () => {
             if (index > 0) {
@@ -1244,7 +1244,7 @@ function refreshPlaylistUI() {
 
         // Move Down button
         const moveDownBtn = document.createElement('button');
-        moveDownBtn.textContent = '▼'; // Down arrow symbol
+        moveDownBtn.innerHTML = '<i class="fa-solid fa-turn-down"></i>'; // Down arrow symbol
         moveDownBtn.classList.add('move-button');
         moveDownBtn.onclick = () => {
             if (index < playlist.length - 1) {
@@ -1259,7 +1259,7 @@ function refreshPlaylistUI() {
 
         // Remove button
         const removeBtn = document.createElement('button');
-        removeBtn.textContent = '✖';
+        removeBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
         removeBtn.classList.add('remove-button');
         removeBtn.onclick = () => {
             playlist.splice(index, 1);
@@ -1278,12 +1278,12 @@ function toggleSaveCancelButtons(show) {
     if (actionButtons) {
         // Show/hide all buttons except Save and Cancel
         actionButtons.querySelectorAll('button:not(.save-cancel)').forEach(button => {
-            button.style.display = show ? 'none' : 'inline-block';
+            button.style.display = show ? 'none' : 'flex';
         });
 
         // Show/hide Save and Cancel buttons
         actionButtons.querySelectorAll('.save-cancel').forEach(button => {
-            button.style.display = show ? 'inline-block' : 'none';
+            button.style.display = show ? 'flex' : 'none';
         });
     } else {
         logMessage('Error: Action buttons container not found.', LOG_TYPE.ERROR);
@@ -1406,7 +1406,7 @@ function closeStickySection(sectionId) {
         // Reset the fullscreen button text if it exists
         const fullscreenButton = section.querySelector('.fullscreen-button');
         if (fullscreenButton) {
-            fullscreenButton.textContent = '<i class="fa-solid fa-compress"></i>'; // Reset to enter fullscreen icon/text
+            fullscreenButton.innerHtml = '<i class="fa-solid fa-compress"></i>'; // Reset to enter fullscreen icon/text
         }
 
         logMessage(`Closed section: ${sectionId}`);
@@ -1455,7 +1455,7 @@ function attachFullScreenListeners() {
                         // Reset the fullscreen button text for other sections
                         const otherFullscreenButton = section.querySelector('.fullscreen-button');
                         if (otherFullscreenButton) {
-                            otherFullscreenButton.textContent = '⛶'; // Enter fullscreen icon/text
+                            otherFullscreenButton.innerHTML = '<i class="fa-solid fa-expand"></i>'; // Enter fullscreen icon/text
                         }
                     }
                 });
@@ -1464,9 +1464,9 @@ function attachFullScreenListeners() {
 
                 // Update button icon or text
                 if (stickySection.classList.contains('fullscreen')) {
-                    this.textContent = '-'; // Exit fullscreen icon/text
+                    this.innerHTML = '<i class="fa-solid fa-compress"></i>'; // Exit fullscreen icon/text
                 } else {
-                    this.textContent = '⛶'; // Enter fullscreen icon/text
+                    this.innerHTML = '<i class="fa-solid fa-expand"></i>'; // Enter fullscreen icon/text
                 }
             } else {
                 console.error('Error: Fullscreen button is not inside a sticky section.');
@@ -1526,7 +1526,7 @@ async function updateCurrentlyPlaying() {
 
             // Update play/pause button
             const pausePlayButton = document.getElementById('pausePlayCurrent');
-            if (pausePlayButton) pausePlayButton.textContent = pause_requested ? '▶' : '⏸';
+            if (pausePlayButton) pausePlayButton.innerHTML = pause_requested ? '<i class="fa-solid fa-play"></i>' : '<i class="fa-solid fa-pause"></i>';
         } else {
             document.body.classList.remove('playing');
         }

@@ -59,9 +59,18 @@
 
             <!-- Action Buttons -->
             <div class="action-buttons">
-                <button onclick="runThetaRho()" class="cta" >Run</button>
-                <button id="toggle-playlist-button" onclick="toggleSecondaryButtons('add-to-playlist-container', populatePlaylistDropdown)">Add to Playlist</button>
-                <button onclick="removeCurrentPattern()" class="cancel remove-button hidden">Delete</button>
+                <button onclick="runThetaRho()" class="cta" >
+                    <i class="fa-solid fa-play"></i>
+                    <span>Play</span>
+                </button>
+                <button id="toggle-playlist-button" onclick="toggleSecondaryButtons('add-to-playlist-container', populatePlaylistDropdown)">
+                    <i class="fa-solid fa-list-ul"></i>
+                    <span class="small">Add to Playlist</span>
+                </button>
+                <button onclick="removeCurrentPattern()" class="cancel remove-button hidden">
+                    <i class="fa-solid fa-trash"></i>
+                    <span class="small">Delete</span>
+                </button>
             </div>
 
             <!-- Add to Playlist Section -->
@@ -180,9 +189,18 @@
             </ul>
             <hr/>
             <div class="action-buttons">
-                <button onclick="runPlaylist()" class="cta">Play</button>
-                <button onclick="toggleSecondaryButtons('rename-playlist-container')">Rename</button>
-                <button onclick="deleteCurrentPlaylist()" class="cancel">Delete</button>
+                <button onclick="runPlaylist()" class="cta">
+                    <i class="fa-solid fa-play"></i>
+                    <span>Play</span>
+                </button>
+                <button onclick="toggleSecondaryButtons('rename-playlist-container')">
+                    <i class="fa-solid fa-pencil"></i>
+                    <span class="small">Rename</span>
+                </button>
+                <button onclick="deleteCurrentPlaylist()" class="cancel">
+                    <i class="fa-solid fa-trash"></i>
+                    <span class="small">Delete</span>
+                </button>
                 <!-- Save and Cancel buttons -->
                 <button onclick="savePlaylist()" class="save-cancel cta" style="display: none;">
                     <i class="fa-solid fa-floppy-disk"></i>
@@ -190,7 +208,7 @@
                 </button>
                 <button onclick="cancelPlaylistChanges()" class="save-cancel cancel" style="display: none;">
                     <i class="fa-solid fa-xmark"></i>
-                    <span>Cancel</span>
+                    <span class="small">Cancel</span>
                 </button>
             </div>
             <!-- Playlist Rename Section -->
@@ -216,7 +234,7 @@
             <div class="header">
                 <h2>Device Controls</h2>
                 <button id="open-settings-button" class="no-bg" onclick="toggleSettings()">
-                    <i class="fa-solid fa-wrench"></i>
+                    <i class="fa-solid fa-gears"></i>
                 </button>
             </div>
             <div class="action-buttons square">
@@ -280,7 +298,7 @@
         <section id="settings-container">
             <div class="header">
                 <h2>Settings</h2>
-                <button class="no-bg" onclick="toggleSettings()">
+                <button class="close-button no-bg" onclick="toggleSettings()">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
