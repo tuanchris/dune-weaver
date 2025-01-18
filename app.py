@@ -1247,4 +1247,4 @@ def update_software():
 if __name__ == '__main__':
     # Auto-connect to serial
     connect_to_serial()
-    app.run(debug=True, host='0.0.0.0', port=8080)
+    app.run(debug=False, host='0.0.0.0', port=8080)
