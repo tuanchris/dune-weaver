@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Moved Roboto font files locally
+- Made notifications clickable with a 3rd optional parameter
 
 ## [1.3.0] Revamped UI
 

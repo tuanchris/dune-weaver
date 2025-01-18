@@ -117,11 +117,6 @@ def check_git_updates():
             ["git", "describe", "--tags", "--abbrev=0"]
         ).strip().decode()
 
-        # Check if there are new commits
-        local_hash = subprocess.check_output(["git", "rev-parse", "HEAD"]).strip()
-        remote_hash = subprocess.check_output(["git", "rev-parse", "origin/main"]).strip()
-        updates_available = local_hash != remote_hash
-
         # Count how many tags the local branch is behind
         tag_behind_count = 0
         if latest_local_tag != latest_remote_tag:
@@ -137,6 +132,10 @@ def check_git_updates():
                     tag_behind_count += 1
                     if tag == latest_remote_tag:
                         break
+
+
+        # Check if there are new commits
+        updates_available = latest_remote_tag != latest_local_tag
 
         return {
             "updates_available": updates_available,
@@ -1248,4 +1247,4 @@ def update_software():
 if __name__ == '__main__':
     # Auto-connect to serial
     connect_to_serial()
-    app.run(debug=False, host='0.0.0.0', port=8080)
+    app.run(debug=True, host='0.0.0.0', port=8080)

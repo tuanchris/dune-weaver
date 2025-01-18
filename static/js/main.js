@@ -14,7 +14,7 @@ const LOG_TYPE = {
 };
 
 // Enhanced logMessage with notification system
-function logMessage(message, type = LOG_TYPE.DEBUG) {
+function logMessage(message, type = LOG_TYPE.DEBUG, clickTargetId = null) {
     const log = document.getElementById('status_log');
     const header = document.querySelector('header');
 
@@ -49,13 +49,26 @@ function logMessage(message, type = LOG_TYPE.DEBUG) {
 
     // Add a close button
     const closeButton = document.createElement('button');
-    closeButton.textContent = '×';
+    closeButton.innerHTML = '<i class="fa-solid fa-xmark"></i>';
     closeButton.className = 'close-button no-bg';
-    closeButton.onclick = () => {
+    closeButton.onclick = (e) => {
+        e.stopPropagation(); // Prevent triggering the clickTarget when the close button is clicked
         notification.classList.remove('show');
         setTimeout(() => notification.remove(), 250); // Match transition duration
     };
     notification.appendChild(closeButton);
+
+    // Attach click event to the notification if a clickTargetId is provided
+    if (clickTargetId) {
+        notification.onclick = () => {
+            const target = document.getElementById(clickTargetId);
+            if (target) {
+                target.click();
+            } else {
+                console.error(`Error: Target with ID "${clickTargetId}" not found`);
+            }
+        };
+    }
 
     // Append the notification to the header
     header.appendChild(notification);
@@ -786,12 +799,17 @@ async function checkForUpdates() {
         const response = await fetch('/check_software_update');
         const data = await response.json();
 
-        data.updates_available = true;
-
         // Handle updates available logic
         if (data.updates_available) {
             const updateButton = document.getElementById('update-software-btn');
+            const updateLinkElement = document.getElementById('update_link');
+            const tagLink = `https://github.com/tuanchris/dune-weaver/releases/tag/${data.latest_remote_tag}`;
+
             updateButton.classList.remove('hidden'); // Show the button
+            logMessage("Software Update Available", LOG_TYPE.INFO, 'open-settings-button')
+
+            updateLinkElement.innerHTML = `<a href="${tagLink}" target="_blank">View Release Notes </a>`;
+            updateLinkElement.classList.remove('hidden'); // Show the link
         }
 
         // Update current and latest version in the UI
@@ -799,7 +817,7 @@ async function checkForUpdates() {
         const latestVersionElem = document.getElementById('latest_git_version');
 
         currentVersionElem.textContent = `Current Version: ${data.latest_local_tag || 'Unknown'}`;
-        latestVersionElem.textContent = (data.latest_remote_tag !== data.latest_local_tag)
+        latestVersionElem.textContent = data.updates_available
             ? `Latest Version: ${data.latest_remote_tag}`
             : 'You are up to date!';
 

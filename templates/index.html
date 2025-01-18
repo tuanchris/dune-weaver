@@ -324,6 +324,23 @@
                 </div>
             </section>
 
+            <section class="software version">
+                <div class="header">
+                    <h2>Software Version</h2>
+                </div>
+                <div id="git_version_info">
+                    <div id="current_git_version">Current Version: Unknown</div>
+                    <div id="latest_git_version">Latest Version: Unknown</div>
+                    <div id="update_link" class="hidden"></div>
+                </div>
+                <div class="button-group">
+                    <button id="update-software-btn" class="hidden" onclick="updateSoftware()">
+                        <i class="fa-solid fa-download"></i>
+                        <span>Update Software</span>
+                    </button>
+                </div>
+            </section>
+
             <section class="firmware version">
                 <div class="header">
                     <h2>Firmware Version</h2>
@@ -345,23 +362,8 @@
                     </div>
                     <button id="check_updates_button" onclick="fetchFirmwareInfo()">Check for Updates</button>
                     <button id="update_firmware_button" class="cta" style="display: none;" onclick="updateFirmware()">
-                        <i class="fa-solid fa-file-import"></i>
+                        <i class="fa-solid fa-file-arrow-up"></i>
                         <span>Update Firmware</span>
-                    </button>
-                </div>
-            </section>
-            <section class="software version">
-                <div class="header">
-                    <h2>Software Version</h2>
-                </div>
-                <div id="git_version_info">
-                    <div id="current_git_version">Current Version: Unknown</div>
-                    <div id="latest_git_version">Latest Version: Unknown</div>
-                </div>
-                <div class="button-group">
-                    <button id="update-software-btn" class="hidden" onclick="updateSoftware()">
-                        <i class="fa-solid fa-wrench"></i>
-                        <span>Update Software</span>
                     </button>
                 </div>
             </section>
@@ -390,16 +392,16 @@
             <canvas id="currentlyPlayingCanvas"></canvas>
         </div>
         <div id="currently-playing-details">
-            <h2 id="currently-playing-file"></h2>
+            <h3 id="currently-playing-file"></h3>
             <p id="currently-playing-position"></p>
-        </div>
-        <div class="play-buttons">
-            <button id="stopCurrent" onclick="stopExecution()" class="cancel">
-                <i class="fa-solid fa-stop"></i>
-            </button>
-            <button id="pausePlayCurrent" class="cta" onclick="togglePausePlay()">
-                <i class="fa-solid fa-pause"></i>
-            </button>
+            <div class="play-buttons">
+                <button id="stopCurrent" onclick="stopExecution()" class="cancel">
+                    <i class="fa-solid fa-stop"></i>
+                </button>
+                <button id="pausePlayCurrent" class="cta" onclick="togglePausePlay()">
+                    <i class="fa-solid fa-pause"></i>
+                </button>
+            </div>
         </div>
         <div id="progress-container">
             <progress id="play_progress" value="0" max="100"></progress>

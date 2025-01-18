@@ -771,12 +771,15 @@ body.playing .bottom-nav {
     color: var(--text-secondary);
 }
 
-#currently-playing-container h2,
+#currently-playing-container h3,
 #currently-playing-container .open-button
 {
     color: var(--text-secondary);
 }
 
+#currently-playing-container h3 {
+    margin: 0;
+}
 
 body:not(.playing) #currently-playing-container {
     display: none;
@@ -813,19 +816,21 @@ body.playing #currently-playing-preview {
 
 body.playing #currently-playing-preview #currentlyPlayingCanvas {
     max-width:80px;
-    padding: 10px;
+    padding: 5px;
 }
 
 body.playing #currently-playing-container:not(.open) .header .fullscreen-button,
 body.playing #currently-playing-container:not(.open) .header .close-button,
-body.playing #currently-playing-container:not(.open) .header h2 {
+body.playing #currently-playing-container:not(.open) .header h3 {
     display: none;
 }
 
 body.playing #currently-playing-container:not(.open) #currently-playing-details{
     flex-grow: 1;
+    flex-basis: 50%;
     align-items: flex-start;
-    margin: 0 0 0 20px;
+    margin: 0 0 0 10px;
+    overflow-y: scroll;
 }
 
 body.playing #currently-playing-container:not(.open) .play-buttons button {
@@ -850,7 +855,7 @@ body.playing #currently-playing-container:not(.open) #play_progress_text {
     border: 1px solid var(--border-primary);
     background: var(--theme-secondary);
     border-radius: 100%;
-    padding: 20px;
+    padding: 10px;
 }
 
 #currently-playing-details {
@@ -1095,7 +1100,7 @@ input[type="number"]:focus {
 
 .notification .close-button {
     color: var(--text-secondary);
-    font-size: 2rem;
+    font-size: 1.5rem;
     top: 0;
     right: 0;
     position: absolute;
