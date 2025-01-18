@@ -180,76 +180,83 @@ input, select {
     border-color: var(--theme-primary-hover);
 }
 
-.dropdown {
-    position: relative;
-    display: flex;
-    flex-grow: 1;
-}
 
-.dropdown-button {
-    border: none;
-    cursor: pointer;
-    display: inline-flex;
+/* Scrollable Selection Styles */
+.scrollable-selection {
+    display: flex;
+    flex-direction: row;
     align-items: center;
-    justify-content: space-between;
+    min-width: 50%;
     position: relative;
+}
+
+.scroll-arrow {
+    border: none;
+    padding: 5px;
     width: 100%;
-    height: 100%;
-    padding: 0;
-}
-
-.dropdown-button > span {
-    padding: 10px;
-}
-
-.dropdown-toggle {
-    margin-left: 10px;
     cursor: pointer;
-    user-select: none;
-    height: 100%;
-    aspect-ratio: 1 / 2;
+    font-size: 1.2rem;
+    transition: background-color 0.3s;
+}
+
+.scroll-arrow:hover {
+    background: var(--theme-primary-hover);
+}
+
+.selection-container {
+    overflow: hidden;
+    height: 50px; /* Adjust based on visible area */
+    width: 100%;
+    position: relative;
+    border: 1px solid var(--border-primary);
+    background: var(--theme-primary);
+    color: var(--text-secondary);
+    border-radius: 5px;
+}
+
+.nav-items {
+    position: absolute;
+    right: 0;
+    top: 0;
     display: flex;
+    height: 100%;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
 }
 
-.dropdown-toggle:hover {
-    background: var(--text-secondary);
-    color: var(--theme-primary);
-    border-radius: 5px;
+.selection-container .nav-items > button {
+    height: 50%;
+    padding: 0;
+    width: 100% !important;
 }
 
-.dropdown-content {
-    position: absolute;
-    width: 100%;
-    top: 100%;
-    color: var(--theme-primary);
+.selection-container .nav-items > button:hover {
     background: var(--text-secondary);
-    min-width: 120px;
-    box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.2);
-    z-index: 1;
-    display: none;
-    border-radius: 5px;
-    padding: 5px;
+    color: var(--theme-primary);
 }
 
-.dropdown-content button.no-bg {
-    width: 100%;
-    color: var(--theme-primary);
-    background: none;
-    border: none;
-    text-align: left;
-    padding: 10px;
+.selection-items {
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.3s ease;
+    padding-right: 30px;
+}
+
+.selection-item {
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
-    aspect-ratio: auto;
-    font-size: 0.9rem;
-    margin: 0;
+    padding: 5px;
+    transition: background-color 0.3s ease;
 }
 
-.dropdown-content button:hover {
-    background-color: var(--background-tertiary);
+.selection-item:hover {
+    background: var(--theme-primary-hover);
+    color: var(--text-secondary);
 }
-
 
 /* Buttons */
 button {
@@ -326,7 +333,7 @@ section.main {
 
 section.debug {
     flex-direction: row;
-    align-items: center;
+    align-items: flex-end;
     justify-content: space-between;
 }
 
@@ -401,6 +408,10 @@ section .header {
 
 section .header h2 {
     flex-grow: 1;
+}
+
+section .header #open-settings-button:hover{
+    color: var(--theme-primary);
 }
 
 /* Close Button Styling */
@@ -617,7 +628,10 @@ section .header .add-button {
     gap: 10px;
     flex-wrap: wrap;
     width: 100%;
-    justify-content: flex-end;
+}
+
+.action-buttons .scrollable-selection {
+    width: calc(50% - 10px);
 }
 
 .action-buttons.square button {
@@ -629,14 +643,8 @@ section .header .add-button {
     align-items: center;
 }
 
-.action-buttons.square .dropdown-content button {
-    width: 100%;
-    aspect-ratio: auto;
-    padding: 10px;
-}
-
 .action-buttons.square button i{
-    font-size: 2rem;
+    font-size: 2.5rem;
 }
 
 button i + span{
@@ -657,13 +665,6 @@ button i + span.small {
 
 .action-buttons button i + span{
     display: block;
-}
-
-.action-buttons button.dropdown-button {
-    aspect-ratio: auto;
-    width: 100%;
-    flex-direction: row;
-    justify-content: space-between;
 }
 
 .action-buttons button.m {
@@ -688,6 +689,7 @@ button#debug_button {
     padding: 0;
     height: 40px;
     background: transparent;
+    color: var(--text-primary);
     font-size: 1.5rem;
     margin-left: 40px;
     flex: 0 0 auto;
@@ -699,9 +701,28 @@ button#debug_button.active {
     box-shadow: inset 0 0 4px var(--border-secondary);
 }
 
-#settings-tab .dropdown {
+#device-tab .dropdown {
     width: 50%;
 }
+
+#settings-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #FFFFFF80;
+    backdrop-filter: blur(10px);
+    z-index: 1000;
+    overflow-y: auto;
+    display: none; /* Hidden by default */
+    flex-direction: column;
+}
+
+#settings-container.open{
+    display: flex;
+}
+
 
 /* Preview Canvas */
 #patternPreviewCanvas {
@@ -1139,6 +1160,7 @@ input[type="number"]:focus {
         grid-template-columns: repeat(3, 1fr);
         gap: 0 16px;
         height: calc(100vh - 60px);
+        padding: 0 15px;
     }
 
     #status_log {

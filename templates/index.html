@@ -44,7 +44,9 @@
         <section id="pattern-preview-container" class="sticky hidden">
             <div class="header">
                 <h2>Preview</h2>
-                <button class="fullscreen-button no-bg">⛶</button>
+                <button class="fullscreen-button no-bg">
+                    <i class="fa-solid fa-expand"></i>
+                </button>
                 <button class="close-button no-bg" onclick="closeStickySection('pattern-preview-container')">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
@@ -213,23 +215,28 @@
         <section class="main">
             <div class="header">
                 <h2>Device Controls</h2>
+                <button id="open-settings-button" class="no-bg" onclick="toggleSettings()">
+                    <i class="fa-solid fa-wrench"></i>
+                </button>
             </div>
-
             <div class="action-buttons square">
-                <div class="dropdown">
-                    <button id="clear_button" class="dropdown-button" onclick="executeClearAction()">
-                        <span>Clear <span id="clear_action_label">From Center</span></span>
-                        <span id="dropdown_toggle" class="dropdown-toggle" onclick="toggleClearDropdown(event)">▼</span>
-                    </button>
-                    <div id="clear_dropdown" class="dropdown-content" style="display: none;">
-                        <button class="no-bg" onclick="updateClearAction('From Center', 'runClearIn')">Clear From Center</button>
-                        <button class="no-bg" onclick="updateClearAction('From Perimeter', 'runClearOut')">Clear From Perimeter</button>
-                        <button class="no-bg" onclick="updateClearAction('Sideways', 'runClearSide')">Clear Sideways</button>
-                    </div>
-                </div>
+                <button onclick="stopExecution()" class="cancel"><i class="fa-solid fa-stop"></i><span class="small">Stop</span></button>
                 <button onclick="moveToCenter()"><i class="fa-solid fa-circle-dot"></i><span class="small">Move to Center</span></button>
                 <button onclick="moveToPerimeter()"><i class="fa-solid fa-circle-notch"></i><span class="small">Move to Perimeter</span></button>
                 <button onclick="sendHomeCommand()" class="warn"><i class="fa-solid fa-house"></i><span class="small">Home</span></button>
+                <div class="scrollable-selection">
+                    <div class="selection-container">
+                        <div id="clear_selection" class="selection-items">
+                            <div id="runClearIn" class="selection-item" onclick="executeClearAction('runClearIn')">Clear From Center</div>
+                            <div id="runClearOut" class="selection-item" onclick="executeClearAction('runClearOut')">Clear From Perimeter</div>
+                            <div id="runClearSide" class="selection-item" onclick="executeClearAction('runClearSide')">Clear Sideways</div>
+                        </div>
+                        <div class="nav-items">
+                            <button class="scroll-arrow up-arrow" onclick="scrollSelection(-1)">▲</button>
+                            <button class="scroll-arrow down-arrow" onclick="scrollSelection(1)">▼</button>
+                        </div>
+                    </div>
+                </div>
             </div>
             <h3>Send to Coordinate</h3>
             <div class="control-group">
@@ -243,7 +250,7 @@
                 </div>
                 <div class="item cta">
                     <button onclick="sendCoordinate()">
-                        <i class="fa-solid fa-map-pin"></i><span>Send</span>
+                        <i class="fa-solid fa-map-pin"></i><span class="small">Send</span>
                     </button>
                 </div>
             </div>
@@ -262,63 +269,82 @@
                     <input type="number" id="speed_input" placeholder="1-100" min="1" step="1" max="100">
                 </div>
                 <div class="item cta">
-                    <button class="small-button"  onclick="changeSpeed()"><i class="fa-solid fa-gauge-high"></i><span>Set Speed</span></button>
+                    <button class="small-button" onclick="changeSpeed()">
+                        <i class="fa-solid fa-gauge-high"></i>
+                        <span class="small">Set Speed</span>
+                    </button>
                 </div>
             </div>
         </section>
 
-        <section>
+        <section id="settings-container">
             <div class="header">
-                <h2>Serial Connection</h2>
+                <h2>Settings</h2>
+                <button class="no-bg" onclick="toggleSettings()">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
             </div>
-            <div id="serial_status_container">Status: <span id="serial_status" class="status"> Not connected</span></div>
-            <div id="serial_ports_container">
-                <label for="serial_ports">Available Ports:</label>
-                <select id="serial_ports"></select>
-                <button onclick="connectSerial()" class="cta"><span class="small">Connect</span></button>
-            </div>
-            <div id="serial_ports_buttons" class="button-group">
-                <button onclick="disconnectSerial()" class="cancel">
-                    <i class="fa-solid fa-power-off"></i><span class="small">Disconnect</span></button>
-                <button onclick="restartSerial()" class="warn">
-                    <i class="fa-solid fa-rotate-left"></i><span class="small">Restart</span></button>
-            </div>
-        </section>
-
-        <section class="version">
-            <div class="header">
-                <h2>Firmware Update</h2>
-            </div>
-            <div id="firmware_info">
-                <div id="motor_type"></div>
-                <div id="current_firmware_version"></div>
-                <div id="new_firmware_version"></div>
-            </div>
-            <div class="button-group">
-                <div id="motor_selection" style="display: none;">
-                    <h3>Select installed motor driver</h3>
-                    <select id="manual_motor_type">
-                        <option value="TMC2209">Arduino TMC2209</option>
-                        <option value="DRV8825">Arduino DRV8825</option>
-                        <option value="esp32">ESP32</option>
-                    </select>
-                    <button id="set_motor_type_button" onclick="setMotorType()">Set Motor Type</button>
+            <section>
+                <div class="header">
+                    <h2>Serial Connection</h2>
                 </div>
-                <button id="check_updates_button" onclick="fetchFirmwareInfo()">Check for Updates</button>
-                <button id="update_firmware_button" class="cta" style="display: none;" onclick="updateFirmware()">Update Firmware</button>
-            </div>
-        </section>
-        <section class="debug">
-            <div id="github">
+                <div id="serial_status_container">Status: <span id="serial_status" class="status"> Not connected</span></div>
+                <div id="serial_ports_container">
+                    <label for="serial_ports">Available Ports:</label>
+                    <select id="serial_ports"></select>
+                    <button onclick="connectSerial()" class="cta">
+                        <i class="fa-solid fa-link"></i>
+                        <span>Connect</span>
+                    </button>
+                </div>
+                <div id="serial_ports_buttons" class="button-group">
+                    <button onclick="disconnectSerial()" class="cancel">
+                        <i class="fa-solid fa-link-slash"></i><span>Disconnect</span></button>
+                    <button onclick="restartSerial()" class="warn">
+                        <i class="fa-solid fa-rotate-left"></i><span>Restart</span></button>
+                </div>
+            </section>
+
+            <section class="version">
+                <div class="header">
+                    <h2>Firmware Update</h2>
+                </div>
+                <div id="firmware_info">
+                    <div id="motor_type"></div>
+                    <div id="current_firmware_version"></div>
+                    <div id="new_firmware_version"></div>
+                </div>
+                <div class="button-group">
+                    <div id="motor_selection" style="display: none;">
+                        <h3>Select installed motor driver</h3>
+                        <select id="manual_motor_type">
+                            <option value="TMC2209">Arduino TMC2209</option>
+                            <option value="DRV8825">Arduino DRV8825</option>
+                            <option value="esp32">ESP32</option>
+                        </select>
+                        <button id="set_motor_type_button" onclick="setMotorType()">Set Motor Type</button>
+                    </div>
+                    <button id="check_updates_button" onclick="fetchFirmwareInfo()">Check for Updates</button>
+                    <button id="update_firmware_button" class="cta" style="display: none;" onclick="updateFirmware()">
+                        <i class="fa-solid fa-file-import"></i>
+                        <span>Update Firmware</span>
+                    </button>
+                </div>
+            </section>
+            <section class="debug main">
+                <div id="github">
                 <span>Help us improve! <a href="https://github.com/tuanchris/dune-weaver/pulls" target="_blank">Submit a Pull Request</a> or <a
                         href="https://github.com/tuanchris/dune-weaver/issues/new"
                         target="_blank">Report a Bug</a>.</span>
-                <a href="https://github.com/tuanchris/dune-weaver/issues" target="_blank">
-                    <img src="https://img.shields.io/github/issues/tuanchris/dune-weaver?style=flat-square"
-                         alt="GitHub Issues">
-                </a>
-            </div>
-            <button id="debug_button" onclick="toggleDebugLog()">🪲</button>
+                    <a href="https://github.com/tuanchris/dune-weaver/issues" target="_blank">
+                        <img src="https://img.shields.io/github/issues/tuanchris/dune-weaver?style=flat-square"
+                             alt="GitHub Issues">
+                    </a>
+                </div>
+                <button id="debug_button" onclick="toggleDebugLog()">
+                    <i class="fa-solid fa-bug"></i>
+                </button>
+            </section>
         </section>
     </main>
 </div>
@@ -337,8 +363,12 @@
             <p id="currently-playing-position"></p>
         </div>
         <div class="play-buttons">
-            <button id="stopCurrent" onclick="stopExecution()" class="cancel">■</button>
-            <button id="pausePlayCurrent" class="cta" onclick="togglePausePlay()">⏸</button>
+            <button id="stopCurrent" onclick="stopExecution()" class="cancel">
+                <i class="fa-solid fa-stop"></i>
+            </button>
+            <button id="pausePlayCurrent" class="cta" onclick="togglePausePlay()">
+                <i class="fa-solid fa-pause"></i>
+            </button>
         </div>
         <div id="progress-container">
             <progress id="play_progress" value="0" max="100"></progress>

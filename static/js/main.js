@@ -253,7 +253,7 @@ function togglePausePlay() {
             .then(data => {
                 if (data.success) {
                     isPaused = false;
-                    button.innerHTML = "⏸"; // Change to pause icon
+                    button.innerHTML = "<i class=\"fa-solid fa-pause\"></i>"; // Change to pause icon
                 }
             })
             .catch(error => console.error("Error resuming execution:", error));
@@ -264,7 +264,7 @@ function togglePausePlay() {
             .then(data => {
                 if (data.success) {
                     isPaused = true;
-                    button.innerHTML = "▶"; // Change to play icon
+                    button.innerHTML = "<i class=\"fa-solid fa-play\"></i>"; // Change to play icon
                 }
             })
             .catch(error => console.error("Error pausing execution:", error));
@@ -489,45 +489,32 @@ async function runClearSide() {
     await runFile('side_wiper.thr');
 }
 
-let currentClearAction = 'runClearIn';
+let scrollPosition = 0;
 
-function toggleClearDropdown(event) {
-    event.stopPropagation(); // Prevent the main button click event
-    const dropdown = document.getElementById('clear_dropdown');
-    dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+function scrollSelection(direction) {
+    const container = document.getElementById('clear_selection');
+    const itemHeight = 50; // Adjust based on CSS height
+    const maxScroll = container.children.length - 1;
+
+    // Update scroll position
+    scrollPosition += direction;
+    scrollPosition = Math.max(0, Math.min(scrollPosition, maxScroll));
+
+    // Update the transform to scroll items
+    container.style.transform = `translateY(-${scrollPosition * itemHeight}px)`;
+    setCookie('clear_action_index', scrollPosition, 365);
 }
 
-function updateClearAction(label, actionFunction) {
-    // Update the button label
-    const clearActionLabel = document.getElementById('clear_action_label');
-    clearActionLabel.textContent = label;
+function executeClearAction(actionFunction) {
+    // Save the new action to a cookie (optional)
+    setCookie('clear_action', actionFunction, 365);
 
-    // Update the current action function
-    currentClearAction = actionFunction;
-
-    // Save the new action to a cookie
-    setCookie('clear_action', label, 7);
-
-    // Close the dropdown
-    const dropdown = document.getElementById('clear_dropdown');
-    dropdown.style.display = 'none';
-}
-
-function executeClearAction() {
-    if (currentClearAction && typeof window[currentClearAction] === 'function') {
-        window[currentClearAction](); // Execute the selected clear action
+    if (actionFunction && typeof window[actionFunction] === 'function') {
+        window[actionFunction](); // Execute the selected clear action
     } else {
         logMessage('No clear action selected or function not found.', LOG_TYPE.ERROR);
     }
 }
-
-// Close the dropdown if clicking outside
-document.addEventListener('click', () => {
-    const dropdown = document.getElementById('clear_dropdown');
-    if (dropdown) dropdown.style.display = 'none';
-});
-// Update the clear button's onclick handler to execute the selected action
-document.getElementById('clear_button').onclick = () => executeClearAction();
 
 async function runFile(fileName) {
     const response = await fetch(`/run_theta_rho_file/${fileName}`, { method: 'POST' });
@@ -871,8 +858,8 @@ function clearSchedule() {
     document.getElementById("start_time").value = "";
     document.getElementById("end_time").value = "";
     document.getElementById('clear_time').style.display = 'none';
-    setCookie('start_time', '', 7);
-    setCookie('end_time', '', 7);
+    setCookie('start_time', '', 365);
+    setCookie('end_time', '', 365);
 }
 
 // Function to run the selected playlist with specified parameters
@@ -1067,7 +1054,7 @@ function populatePlaylistDropdown() {
             // Attach the onchange event listener after populating the dropdown
             select.addEventListener('change', function () {
                 const selectedPlaylist = this.value;
-                setCookie('selected_playlist', selectedPlaylist, 7); // Save to cookie
+                setCookie('selected_playlist', selectedPlaylist, 365); // Save to cookie
                 logMessage(`Selected playlist saved: ${selectedPlaylist}`);
             });
 
@@ -1548,10 +1535,11 @@ async function updateCurrentlyPlaying() {
     }
 }
 
-function hideCurrentlyPlaying() {
-    const currentlyPlayingSection = document.getElementById('currently-playing-container');
-    currentlyPlayingSection.classList.add('hidden');
-    currentlyPlayingSection.classList.remove('visible');
+function toggleSettings() {
+    const settingsContainer = document.getElementById('settings-container');
+    if (settingsContainer) {
+        settingsContainer.classList.toggle('open');
+    }
 }
 
 // Utility function to manage cookies
@@ -1577,33 +1565,29 @@ function getCookie(name) {
 function saveSettingsToCookies() {
     // Save the pause time
     const pauseTime = document.getElementById('pause_time').value;
-    setCookie('pause_time', pauseTime, 7);
+    setCookie('pause_time', pauseTime, 365);
 
     // Save the clear pattern
     const clearPattern = document.getElementById('clear_pattern').value;
-    setCookie('clear_pattern', clearPattern, 7);
+    setCookie('clear_pattern', clearPattern, 365);
 
     // Save the run mode
     const runMode = document.querySelector('input[name="run_mode"]:checked').value;
-    setCookie('run_mode', runMode, 7);
+    setCookie('run_mode', runMode, 365);
 
     // Save shuffle playlist checkbox state
     const shufflePlaylist = document.getElementById('shuffle_playlist').checked;
-    setCookie('shuffle_playlist', shufflePlaylist, 7);
+    setCookie('shuffle_playlist', shufflePlaylist, 365);
 
     // Save pre-execution action
     const preExecution = document.getElementById('pre_execution').value;
-    setCookie('pre_execution', preExecution, 7);
-
-    // Save selected clear action
-    const clearAction = document.getElementById('clear_action_label').textContent.trim();
-    setCookie('clear_action', clearAction, 7);
+    setCookie('pre_execution', preExecution, 365);
 
     // Save start and end times
     const startTime = document.getElementById('start_time').value;
     const endTime = document.getElementById('end_time').value;
-    setCookie('start_time', startTime, 7);
-    setCookie('end_time', endTime, 7);
+    setCookie('start_time', startTime, 365);
+    setCookie('end_time', endTime, 365);
 
     logMessage('Settings saved.');
 }
@@ -1638,22 +1622,6 @@ function loadSettingsFromCookies() {
     const preExecution = getCookie('pre_execution');
     if (preExecution !== null) {
         document.getElementById('pre_execution').value = preExecution;
-    }
-
-    // Load selected clear action
-    const clearAction = getCookie('clear_action');
-    if (clearAction !== null) {
-        const clearLabel = document.getElementById('clear_action_label');
-        clearLabel.textContent = clearAction;
-
-        // Update the corresponding action function
-        if (clearAction === 'From Center') {
-            currentClearAction = 'runClearIn';
-        } else if (clearAction === 'From Perimeter') {
-            currentClearAction = 'runClearOut';
-        } else if (clearAction === 'Sideways') {
-            currentClearAction = 'runClearSide';
-        }
     }
 
     // Load start and end times
@@ -1691,7 +1659,7 @@ function attachSettingsSaveListeners() {
 // Tab switching logic with cookie storage
 function switchTab(tabName) {
     // Store the active tab in a cookie
-    setCookie('activeTab', tabName, 7); // Store for 7 days
+    setCookie('activeTab', tabName, 365); // Store for 7 days
 
     // Deactivate all tab content
     document.querySelectorAll('.tab-content').forEach(tab => {
