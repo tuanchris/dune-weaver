@@ -102,6 +102,59 @@ def get_ino_firmware_details(ino_file_path):
         print(f"Error reading .ino file: {str(e)}")
         return None
 
+def check_git_updates():
+    try:
+        # Fetch the latest updates from the remote repository
+        subprocess.run(["git", "fetch", "--tags", "--force"], check=True)
+
+        # Get the latest tag from the remote
+        latest_remote_tag = subprocess.check_output(
+            ["git", "describe", "--tags", "--abbrev=0", "origin/main"]
+        ).strip().decode()
+
+        # Get the latest tag from the local branch
+        latest_local_tag = subprocess.check_output(
+            ["git", "describe", "--tags", "--abbrev=0"]
+        ).strip().decode()
+
+        # Check if there are new commits
+        local_hash = subprocess.check_output(["git", "rev-parse", "HEAD"]).strip()
+        remote_hash = subprocess.check_output(["git", "rev-parse", "origin/main"]).strip()
+        updates_available = local_hash != remote_hash
+
+        # Count how many tags the local branch is behind
+        tag_behind_count = 0
+        if latest_local_tag != latest_remote_tag:
+            tags = subprocess.check_output(
+                ["git", "tag", "--merged", "origin/main"], text=True
+            ).splitlines()
+
+            found_local = False
+            for tag in tags:
+                if tag == latest_local_tag:
+                    found_local = True
+                elif found_local:
+                    tag_behind_count += 1
+                    if tag == latest_remote_tag:
+                        break
+
+        return {
+            "updates_available": updates_available,
+            "tag_behind_count": tag_behind_count,  # Tags behind
+            "latest_remote_tag": latest_remote_tag,
+            "latest_local_tag": latest_local_tag,
+        }
+    except subprocess.CalledProcessError as e:
+        print(f"Error checking Git updates: {e}")
+        return {
+            "updates_available": False,
+            "tag_behind_count": 0,
+            "latest_remote_tag": None,
+            "latest_local_tag": None,
+        }
+
+
+
 def list_serial_ports():
     """Return a list of available serial ports."""
     ports = serial.tools.list_ports.comports()
@@ -1140,7 +1193,59 @@ def flash_firmware():
                 os.remove(os.path.join(build_dir, file))
             os.rmdir(build_dir)
 
+@app.route('/check_software_update', methods=['GET'])
+def check_updates():
+    update_info = check_git_updates()
+    return jsonify(update_info)
+
+@app.route('/update_software', methods=['POST'])
+def update_software():
+    error_log = []
+
+    def run_command(command, error_message):
+        try:
+            subprocess.run(command, check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"{error_message}: {e}")
+            error_log.append(error_message)
+
+    # Fetch the latest version tag from remote
+    try:
+        subprocess.run(["git", "fetch", "--tags"], check=True)
+        latest_remote_tag = subprocess.check_output(
+            ["git", "describe", "--tags", "--abbrev=0", "origin/main"]
+        ).strip().decode()
+    except subprocess.CalledProcessError as e:
+        error_log.append(f"Failed to fetch tags or get latest remote tag: {e}")
+        return jsonify({
+            "success": False,
+            "error": "Failed to fetch tags or determine the latest version.",
+            "details": error_log
+        }), 500
+
+    # Checkout the latest tag
+    run_command(["git", "checkout", latest_remote_tag, '--force'], f"Failed to checkout version {latest_remote_tag}")
+
+    # Restart Docker containers
+    run_command(["docker", "compose", "up", "-d"], "Failed to restart Docker containers")
+
+    # Check if the update was successful
+    update_status = check_git_updates()
+
+    if (
+        update_status["updates_available"] is False
+        and update_status["latest_local_tag"] == update_status["latest_remote_tag"]
+    ):
+        # Update was successful
+        return jsonify({"success": True})
+    else:
+        # Update failed; include the errors in the response
+        return jsonify({
+            "success": False,
+            "error": "Update incomplete",
+            "details": error_log
+        }), 500
 if __name__ == '__main__':
     # Auto-connect to serial
     connect_to_serial()
-    app.run(debug=True, host='0.0.0.0', port=8080)
+    app.run(debug=False, host='0.0.0.0', port=8080)

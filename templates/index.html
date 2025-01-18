@@ -235,6 +235,7 @@
                 <h2>Device Controls</h2>
                 <button id="open-settings-button" class="no-bg" onclick="toggleSettings()">
                     <i class="fa-solid fa-gears"></i>
+                    <span class="small">Settings</span>
                 </button>
             </div>
             <div class="action-buttons square">
@@ -323,9 +324,9 @@
                 </div>
             </section>
 
-            <section class="version">
+            <section class="firmware version">
                 <div class="header">
-                    <h2>Firmware Update</h2>
+                    <h2>Firmware Version</h2>
                 </div>
                 <div id="firmware_info">
                     <div id="motor_type"></div>
@@ -349,6 +350,21 @@
                     </button>
                 </div>
             </section>
+            <section class="software version">
+                <div class="header">
+                    <h2>Software Version</h2>
+                </div>
+                <div id="git_version_info">
+                    <div id="current_git_version">Current Version: Unknown</div>
+                    <div id="latest_git_version">Latest Version: Unknown</div>
+                </div>
+                <div class="button-group">
+                    <button id="update-software-btn" class="hidden" onclick="updateSoftware()">
+                        <i class="fa-solid fa-wrench"></i>
+                        <span>Update Software</span>
+                    </button>
+                </div>
+            </section>
             <section class="debug main">
                 <div id="github">
                 <span>Help us improve! <a href="https://github.com/tuanchris/dune-weaver/pulls" target="_blank">Submit a Pull Request</a> or <a
@@ -359,9 +375,6 @@
                              alt="GitHub Issues">
                     </a>
                 </div>
-                <button id="debug_button" onclick="toggleDebugLog()">
-                    <i class="fa-solid fa-bug"></i>
-                </button>
             </section>
         </section>
     </main>

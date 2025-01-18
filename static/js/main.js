@@ -671,13 +671,9 @@ async function fetchFirmwareInfo(motorType = null) {
             : { method: "GET" };
 
         const response = await fetch("/get_firmware_info", options);
-        if (!response.ok) {
-            throw new Error(`Server responded with status ${response.status}`);
-        }
-
         const data = await response.json();
         if (data.success) {
-            const { installedVersion, installedType, inoVersion, inoType, updateAvailable } = data;
+            const { installedVersion, installedType, inoVersion, updateAvailable } = data;
 
             // Handle unknown motor type
             if (!installedType || installedType === "Unknown") {
@@ -699,7 +695,7 @@ async function fetchFirmwareInfo(motorType = null) {
                 currentVersionElement.textContent = `Current version: ${installedVersion || "Unknown"}`;
 
                 if (updateAvailable) {
-                    newVersionElement.textContent = `New version: ${inoVersion}`;
+                    newVersionElement.textContent = `Latest version: ${inoVersion}`;
                     updateButtonElement.style.display = "block";
                     checkButton.style.display = "none";
                 } else {
@@ -785,6 +781,59 @@ async function updateFirmware() {
     }
 }
 
+async function checkForUpdates() {
+    try {
+        const response = await fetch('/check_software_update');
+        const data = await response.json();
+
+        data.updates_available = true;
+
+        // Handle updates available logic
+        if (data.updates_available) {
+            const updateButton = document.getElementById('update-software-btn');
+            updateButton.classList.remove('hidden'); // Show the button
+        }
+
+        // Update current and latest version in the UI
+        const currentVersionElem = document.getElementById('current_git_version');
+        const latestVersionElem = document.getElementById('latest_git_version');
+
+        currentVersionElem.textContent = `Current Version: ${data.latest_local_tag || 'Unknown'}`;
+        latestVersionElem.textContent = (data.latest_remote_tag !== data.latest_local_tag)
+            ? `Latest Version: ${data.latest_remote_tag}`
+            : 'You are up to date!';
+
+    } catch (error) {
+        console.error('Error checking for updates:', error);
+    }
+}
+
+async function updateSoftware() {
+    const updateButton = document.getElementById('update-software-btn');
+
+    try {
+        // Disable the button and update the text
+        updateButton.disabled = true;
+        updateButton.querySelector('span').textContent = 'Updating...';
+
+        const response = await fetch('/update_software', { method: 'POST' });
+        const data = await response.json();
+
+        if (data.success) {
+            logMessage('Software updated successfully!', LOG_TYPE.SUCCESS);
+            window.location.reload(); // Reload the page after update
+        } else {
+            logMessage('Failed to update software: ' + data.error, LOG_TYPE.ERROR);
+        }
+    } catch (error) {
+        console.error('Error updating software:', error);
+        logMessage('Failed to update software', LOG_TYPE.ERROR);
+    } finally {
+        // Re-enable the button and reset the text
+        updateButton.disabled = false;
+        updateButton.textContent = 'Update Software'; // Adjust to the original text
+    }
+}
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //  PART A: Loading / listing playlists from the server
@@ -953,10 +1002,6 @@ async function loadPlaylist(playlistName) {
     try {
         logMessage(`Loading playlist: ${playlistName}`);
         const response = await fetch(`/get_playlist?name=${encodeURIComponent(playlistName)}`);
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
-        }
 
         const data = await response.json();
 
@@ -1698,6 +1743,7 @@ document.addEventListener('DOMContentLoaded', () => {
     attachSettingsSaveListeners(); // Attach event listeners to save changes
     attachFullScreenListeners();
     fetchFirmwareInfo();
+    checkForUpdates();
 
     // Periodically check for currently playing status
     setInterval(updateCurrentlyPlaying, 3000);

@@ -195,7 +195,7 @@ input, select {
     padding: 5px;
     width: 100%;
     cursor: pointer;
-    font-size: 1.2rem;
+    font-size: 1rem;
     transition: background-color 0.3s;
 }
 
@@ -212,6 +212,7 @@ input, select {
     background: var(--theme-primary);
     color: var(--text-secondary);
     border-radius: 5px;
+    font-weight: bold;
 }
 
 .nav-items {
@@ -268,7 +269,7 @@ button {
     border-radius: 5px;
     cursor: pointer;
     font-size: 1rem;
-    transition: background 0.3s ease,color 0.3s ease;
+    transition: var(--transition-medium) all;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -372,7 +373,7 @@ section.sticky {
     border-top: 1px solid var(--border-primary);
     box-shadow: var(--shadow-primary);
     transform: translateY(0);
-    transition: 250ms transform, 250ms height;
+    transition: var(--transition-medium) transform, var(--transition-medium) height;
     visibility: visible;
     max-height: 70vh;
     width: 100%;
@@ -530,7 +531,7 @@ section .header .add-button {
     padding: 10px;
     border-bottom: 1px solid var(--border-primary);
     cursor: pointer;
-    transition: background-color 0.3s ease;
+    transition: background-color var(--transition-medium);
 }
 
 .file-list li:hover {
@@ -628,6 +629,7 @@ section .header .add-button {
     gap: 10px;
     flex-wrap: wrap;
     width: 100%;
+    justify-content: space-between;
 }
 
 .action-buttons .scrollable-selection {
@@ -693,7 +695,7 @@ button#debug_button {
     font-size: 1.5rem;
     margin-left: 40px;
     flex: 0 0 auto;
-    transition: 250ms all;
+    transition: var(--transition-medium) all;
 }
 
 button#debug_button:hover,
@@ -723,6 +725,15 @@ button#debug_button.active {
     display: flex;
 }
 
+#open-settings-button {
+    aspect-ratio: auto;
+}
+
+#open-settings-button span {
+    order: -1;
+    margin-right: 5px;
+
+}
 
 /* Preview Canvas */
 #patternPreviewCanvas {
@@ -1076,7 +1087,7 @@ input[type="number"]:focus {
     align-items: center;
     backdrop-filter: blur(2px);
     opacity: 0;
-    transition: opacity 250ms ease-in-out;
+    transition: opacity var(--transition-medium);
 }
 .notification.show {
     opacity: 1; /* Fully visible */
@@ -1215,4 +1226,14 @@ input[type="number"]:focus {
     body.playing #currently-playing-container.open .header {
         display: none;
     }
+
+    #open-settings-button span {
+        opacity: 0;
+        transition: var(--transition-medium) opacity;
+    }
+
+    #open-settings-button:hover span {
+        opacity: 1;
+    }
+
 }
