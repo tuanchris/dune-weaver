@@ -8,6 +8,7 @@ import serial.tools.list_ports
 import math
 import json
 from datetime import datetime
+import subprocess
 
 app = Flask(__name__)
 
@@ -30,12 +31,12 @@ pause_condition = threading.Condition()
 
 # Global variables to store device information
 arduino_table_name = None
-arduino_driver_type = None
+arduino_driver_type = 'Unknown'
 
 # Table status
 current_playing_file = None
 execution_progress = None
-firmware_version = None
+firmware_version = 'Unknown'
 current_playing_index = None
 current_playlist = None
 is_clearing = False
@@ -44,10 +45,114 @@ serial_lock = threading.Lock()
 
 PLAYLISTS_FILE = os.path.join(os.getcwd(), "playlists.json")
 
+MOTOR_TYPE_MAPPING = {
+    "TMC2209": "./firmware/arduino_code_TMC2209/arduino_code_TMC2209.ino",
+    "DRV8825": "./firmware/arduino_code/arduino_code.ino",
+    "esp32": "./firmware/esp32/esp32.ino"
+}
+
 # Ensure the file exists and contains at least an empty JSON object
 if not os.path.exists(PLAYLISTS_FILE):
     with open(PLAYLISTS_FILE, "w") as f:
         json.dump({}, f, indent=2)
+
+def get_ino_firmware_details(ino_file_path):
+    """
+    Extract firmware details, including version and motor type, from the given .ino file.
+
+    Args:
+        ino_file_path (str): Path to the .ino file.
+
+    Returns:
+        dict: Dictionary containing firmware details such as version and motor type, or None if not found.
+    """
+    try:
+        if not ino_file_path:
+            raise ValueError("Invalid path: ino_file_path is None or empty.")
+
+        firmware_details = {"version": None, "motorType": None}
+
+        with open(ino_file_path, "r") as file:
+            for line in file:
+                # Extract firmware version
+                if "firmwareVersion" in line:
+                    start = line.find('"') + 1
+                    end = line.rfind('"')
+                    if start != -1 and end != -1 and start < end:
+                        firmware_details["version"] = line[start:end]
+
+                # Extract motor type
+                if "motorType" in line:
+                    start = line.find('"') + 1
+                    end = line.rfind('"')
+                    if start != -1 and end != -1 and start < end:
+                        firmware_details["motorType"] = line[start:end]
+
+        if not firmware_details["version"]:
+            print(f"Firmware version not found in file: {ino_file_path}")
+        if not firmware_details["motorType"]:
+            print(f"Motor type not found in file: {ino_file_path}")
+
+        return firmware_details if any(firmware_details.values()) else None
+
+    except FileNotFoundError:
+        print(f"File not found: {ino_file_path}")
+        return None
+    except Exception as e:
+        print(f"Error reading .ino file: {str(e)}")
+        return None
+
+def check_git_updates():
+    try:
+        # Fetch the latest updates from the remote repository
+        subprocess.run(["git", "fetch", "--tags", "--force"], check=True)
+
+        # Get the latest tag from the remote
+        latest_remote_tag = subprocess.check_output(
+            ["git", "describe", "--tags", "--abbrev=0", "origin/main"]
+        ).strip().decode()
+
+        # Get the latest tag from the local branch
+        latest_local_tag = subprocess.check_output(
+            ["git", "describe", "--tags", "--abbrev=0"]
+        ).strip().decode()
+
+        # Count how many tags the local branch is behind
+        tag_behind_count = 0
+        if latest_local_tag != latest_remote_tag:
+            tags = subprocess.check_output(
+                ["git", "tag", "--merged", "origin/main"], text=True
+            ).splitlines()
+
+            found_local = False
+            for tag in tags:
+                if tag == latest_local_tag:
+                    found_local = True
+                elif found_local:
+                    tag_behind_count += 1
+                    if tag == latest_remote_tag:
+                        break
+
+
+        # Check if there are new commits
+        updates_available = latest_remote_tag != latest_local_tag
+
+        return {
+            "updates_available": updates_available,
+            "tag_behind_count": tag_behind_count,  # Tags behind
+            "latest_remote_tag": latest_remote_tag,
+            "latest_local_tag": latest_local_tag,
+        }
+    except subprocess.CalledProcessError as e:
+        print(f"Error checking Git updates: {e}")
+        return {
+            "updates_available": False,
+            "tag_behind_count": 0,
+            "latest_remote_tag": None,
+            "latest_local_tag": None,
+        }
+
+
 
 def list_serial_ports():
     """Return a list of available serial ports."""
@@ -56,7 +161,7 @@ def list_serial_ports():
 
 def connect_to_serial(port=None, baudrate=115200):
     """Automatically connect to the first available serial port or a specified port."""
-    global ser, ser_port, arduino_table_name, arduino_driver_type
+    global ser, ser_port, arduino_table_name, arduino_driver_type, firmware_version
 
     try:
         if port is None:
@@ -176,7 +281,7 @@ def send_command(command):
                 if response == "R":
                     print("Command execution completed.")
                     break
-                
+
 def wait_for_start_time(schedule_hours):
     """
     Keep checking every 30 seconds if the time is within the schedule to resume execution.
@@ -194,7 +299,7 @@ def wait_for_start_time(schedule_hours):
             break  # Exit the loop once resumed
         else:
             time.sleep(30)  # Wait for 30 seconds before checking again
-                
+
 # Function to check schedule based on start and end time
 def schedule_checker(schedule_hours):
     """
@@ -221,7 +326,7 @@ def schedule_checker(schedule_hours):
         if not pause_requested:
             print("Pausing execution: Outside schedule.")
         pause_requested = True  # Pause execution
-        
+
         # Start a background thread to periodically check for start time
         threading.Thread(target=wait_for_start_time, args=(schedule_hours,), daemon=True).start()
 
@@ -234,7 +339,7 @@ def run_theta_rho_file(file_path, schedule_hours=None):
 
     coordinates = parse_theta_rho_file(file_path)
     total_coordinates = len(coordinates)
-    
+
     if total_coordinates < 2:
         print("Not enough coordinates for interpolation.")
         current_playing_file = None  # Clear tracking if failed
@@ -248,12 +353,12 @@ def run_theta_rho_file(file_path, schedule_hours=None):
         if stop_requested:
             print("Execution stopped by user after completing the current batch.")
             break
-        
+
         with pause_condition:
             while pause_requested:
                 print("Execution paused...")
                 pause_condition.wait()  # This will block execution until notified
-        
+
         batch = coordinates[i:i + batch_size]
         if i == 0:
             send_coordinate_batch(ser, batch)
@@ -314,9 +419,9 @@ def run_theta_rho_files(
     if shuffle:
         random.shuffle(file_paths)
         print("Playlist shuffled.")
-    
+
     current_playlist = file_paths
-    
+
     while True:
         for idx, path in enumerate(file_paths):
             current_playing_index = idx
@@ -604,6 +709,7 @@ def send_coordinate():
 
         # Send the coordinate to the Arduino
         send_coordinate_batch(ser, [(theta, rho)])
+        reset_theta()
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -621,7 +727,7 @@ def serial_status():
         'connected': ser.is_open if ser else False,
         'port': ser_port  # Include the port name
     })
-    
+
 @app.route('/pause_execution', methods=['POST'])
 def pause_execution():
     """Pause the current execution."""
@@ -638,16 +744,13 @@ def get_status():
         is_clearing = True
     else:
         is_clearing = False
-    
+
     return jsonify({
         "ser_port": ser_port,
         "stop_requested": stop_requested,
         "pause_requested": pause_requested,
         "current_playing_file": current_playing_file,
         "execution_progress": execution_progress,
-        "arduino_table_name": arduino_table_name,
-        "arduino_driver_type": arduino_driver_type,
-        "firmware_version": firmware_version,
         "current_playing_index": current_playing_index,
         "current_playlist": current_playlist,
         "is_clearing": is_clearing
@@ -858,7 +961,7 @@ def run_playlist():
     # Validate shuffle
     if not isinstance(shuffle, bool):
         return jsonify({"success": False, "error": "'shuffle' must be a boolean value"}), 400
-    
+
     schedule_hours = None
     if start_time and end_time:
         try:
@@ -931,7 +1034,205 @@ def set_speed():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/get_firmware_info', methods=['GET', 'POST'])
+def get_firmware_info():
+    """
+    Compare the installed firmware version and motor type with the one in the .ino file.
+    """
+    global firmware_version, arduino_driver_type, ser
+
+    if ser is None or not ser.is_open:
+        return jsonify({"success": False, "error": "Arduino not connected or serial port not open"}), 400
+
+    try:
+        if request.method == "GET":
+            # Attempt to retrieve installed firmware details from the Arduino
+            ser.reset_input_buffer()
+            ser.reset_output_buffer()
+            ser.write(b"GET_VERSION\n")
+            time.sleep(0.5)
+
+            installed_version = firmware_version
+            installed_type = arduino_driver_type
+
+            # If Arduino provides valid details, proceed with comparison
+            if installed_version != 'Unknown' and installed_type != 'Unknown':
+                ino_path = MOTOR_TYPE_MAPPING.get(installed_type)
+                firmware_details = get_ino_firmware_details(ino_path)
+
+                if not firmware_details or not firmware_details.get("version") or not firmware_details.get("motorType"):
+                    return jsonify({"success": False, "error": "Failed to retrieve .ino firmware details"}), 500
+
+                update_available = (
+                    installed_version != firmware_details["version"] or
+                    installed_type != firmware_details["motorType"]
+                )
+
+                return jsonify({
+                    "success": True,
+                    "installedVersion": installed_version,
+                    "installedType": installed_type,
+                    "inoVersion": firmware_details["version"],
+                    "inoType": firmware_details["motorType"],
+                    "updateAvailable": update_available
+                })
+
+            # If Arduino details are unknown, indicate the need for POST
+            return jsonify({
+                "success": True,
+                "installedVersion": installed_version,
+                "installedType": installed_type,
+                "updateAvailable": False
+            })
+
+        elif request.method == "POST":
+            motor_type = request.json.get("motorType", None)
+            if not motor_type or motor_type not in MOTOR_TYPE_MAPPING:
+                return jsonify({
+                    "success": False,
+                    "error": "Invalid or missing motor type"
+                }), 400
+
+            # Fetch firmware details for the given motor type
+            ino_path = MOTOR_TYPE_MAPPING[motor_type]
+            firmware_details = get_ino_firmware_details(ino_path)
+
+            if not firmware_details:
+                return jsonify({
+                    "success": False,
+                    "error": "Failed to retrieve .ino firmware details"
+                }), 500
+
+            return jsonify({
+                "success": True,
+                "installedVersion": 'Unknown',
+                "installedType": motor_type,
+                "inoVersion": firmware_details["version"],
+                "inoType": firmware_details["motorType"],
+                "updateAvailable": True
+            })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/flash_firmware', methods=['POST'])
+def flash_firmware():
+    """
+    Flash the pre-compiled firmware to the connected device (Arduino or ESP32).
+    """
+    global ser_port
+
+    # Ensure the device is connected
+    if ser_port is None or ser is None or not ser.is_open:
+        return jsonify({"success": False, "error": "No device connected or connection lost"}), 400
+
+    try:
+        data = request.json
+        motor_type = data.get("motorType", None)
+
+        # Validate motor type
+        if not motor_type or motor_type not in MOTOR_TYPE_MAPPING:
+            return jsonify({"success": False, "error": "Invalid or missing motor type"}), 400
+
+        # Determine the firmware file
+        ino_file_path = MOTOR_TYPE_MAPPING[motor_type]  # Path to .ino file
+        hex_file_path = f"{ino_file_path}.hex"
+        bin_file_path = f"{ino_file_path}.bin"  # For ESP32 firmware
+
+        # Check the device type
+        if motor_type.lower() == "esp32":
+            if not os.path.exists(bin_file_path):
+                return jsonify({"success": False, "error": f"Firmware binary not found: {bin_file_path}"}), 404
+
+            # Flash ESP32 firmware
+            flash_command = [
+                "esptool.py",
+                "--chip", "esp32",
+                "--port", ser_port,
+                "--baud", "115200",
+                "write_flash", "-z", "0x1000", bin_file_path
+            ]
+        else:
+            if not os.path.exists(hex_file_path):
+                return jsonify({"success": False, "error": f"Hex file not found: {hex_file_path}"}), 404
+
+            # Flash Arduino firmware
+            flash_command = [
+                "avrdude",
+                "-v",
+                "-c", "arduino",
+                "-p", "atmega328p",
+                "-P", ser_port,
+                "-b", "115200",
+                "-D",
+                "-U", f"flash:w:{hex_file_path}:i"
+            ]
+
+        # Execute the flash command
+        flash_process = subprocess.run(flash_command, capture_output=True, text=True)
+        if flash_process.returncode != 0:
+            return jsonify({
+                "success": False,
+                "error": flash_process.stderr
+            }), 500
+
+        return jsonify({"success": True, "message": "Firmware flashed successfully"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/check_software_update', methods=['GET'])
+def check_updates():
+    update_info = check_git_updates()
+    return jsonify(update_info)
+
+@app.route('/update_software', methods=['POST'])
+def update_software():
+    error_log = []
+
+    def run_command(command, error_message):
+        try:
+            subprocess.run(command, check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"{error_message}: {e}")
+            error_log.append(error_message)
+
+    # Fetch the latest version tag from remote
+    try:
+        subprocess.run(["git", "fetch", "--tags"], check=True)
+        latest_remote_tag = subprocess.check_output(
+            ["git", "describe", "--tags", "--abbrev=0", "origin/main"]
+        ).strip().decode()
+    except subprocess.CalledProcessError as e:
+        error_log.append(f"Failed to fetch tags or get latest remote tag: {e}")
+        return jsonify({
+            "success": False,
+            "error": "Failed to fetch tags or determine the latest version.",
+            "details": error_log
+        }), 500
+
+    # Checkout the latest tag
+    run_command(["git", "checkout", latest_remote_tag, '--force'], f"Failed to checkout version {latest_remote_tag}")
+
+    # Restart Docker containers
+    run_command(["docker", "compose", "up", "-d"], "Failed to restart Docker containers")
+
+    # Check if the update was successful
+    update_status = check_git_updates()
+
+    if (
+        update_status["updates_available"] is False
+        and update_status["latest_local_tag"] == update_status["latest_remote_tag"]
+    ):
+        # Update was successful
+        return jsonify({"success": True})
+    else:
+        # Update failed; include the errors in the response
+        return jsonify({
+            "success": False,
+            "error": "Update incomplete",
+            "details": error_log
+        }), 500
 if __name__ == '__main__':
     # Auto-connect to serial
     connect_to_serial()
-    app.run(debug=True, host='0.0.0.0', port=8080)
+    app.run(debug=False, host='0.0.0.0', port=8080)

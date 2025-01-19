@@ -2,3 +2,4 @@ flask
 pyserial
 numpy
 svgpathtools
+esptool

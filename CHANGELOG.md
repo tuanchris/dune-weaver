@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.0] Soft- and Firmware updater
+
+### Added
+
+- Added Play/pause button
+- Added schedule hours to run
+- Added playing progress bar
+- Added Software Updater to make it easier to update the app and get the latest firmware updates for the Arduino
+- Added Firmware updater to make it possible to flash the Firmware from the web app.
+- Included Icons in UI
+
+### Changed
+- Moved Roboto font files locally
+- Made notifications clickable with a 3rd optional parameter
+
 ## [1.3.0] Revamped UI
 
 Massive thanks to Thokoop for helping us redesigning the UI just within a few days! The new design looks gorgeous on both PC and mobile. 
