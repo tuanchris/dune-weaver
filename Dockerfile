@@ -16,19 +16,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install arduino-cli
-RUN wget https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Linux_ARM64.tar.gz && \
-    tar -xvf arduino-cli_latest_Linux_ARM64.tar.gz && \
-    mv arduino-cli /usr/local/bin/ && \
-    chmod +x /usr/local/bin/arduino-cli && \
-    rm arduino-cli_latest_Linux_ARM64.tar.gz
-
-# Initialize arduino-cli and install cores
-RUN arduino-cli config init && \
-    arduino-cli core update-index && \
-    arduino-cli core install arduino:avr && \
-    arduino-cli core install esp32:esp32
-
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 

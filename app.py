@@ -1113,15 +1113,13 @@ def get_firmware_info():
 @app.route('/flash_firmware', methods=['POST'])
 def flash_firmware():
     """
-    Compile and flash the firmware to the connected Arduino.
+    Flash the pre-compiled firmware to the connected device (Arduino or ESP32).
     """
     global ser_port
 
-    # Ensure the Arduino is connected
+    # Ensure the device is connected
     if ser_port is None or ser is None or not ser.is_open:
-        return jsonify({"success": False, "error": "No Arduino connected or connection lost"}), 400
-
-    build_dir = "/tmp/arduino_build"  # Temporary build directory
+        return jsonify({"success": False, "error": "No device connected or connection lost"}), 400
 
     try:
         data = request.json
@@ -1131,50 +1129,41 @@ def flash_firmware():
         if not motor_type or motor_type not in MOTOR_TYPE_MAPPING:
             return jsonify({"success": False, "error": "Invalid or missing motor type"}), 400
 
-        # Get the .ino file path based on the motor type
-        ino_file_path = MOTOR_TYPE_MAPPING[motor_type]
-        ino_file_name = os.path.basename(ino_file_path)
+        # Determine the firmware file
+        ino_file_path = MOTOR_TYPE_MAPPING[motor_type]  # Path to .ino file
+        hex_file_path = f"{ino_file_path}.hex"
+        bin_file_path = f"{ino_file_path}.bin"  # For ESP32 firmware
 
-        # Install required libraries
-        required_libraries = ["AccelStepper"]  # AccelStepper includes MultiStepper
-        for library in required_libraries:
-            library_install_command = ["arduino-cli", "lib", "install", library]
-            install_process = subprocess.run(library_install_command, capture_output=True, text=True)
-            if install_process.returncode != 0:
-                return jsonify({
-                    "success": False,
-                    "error": f"Library installation failed for {library}: {install_process.stderr}"
-                }), 500
+        # Check the device type
+        if motor_type.lower() == "esp32":
+            if not os.path.exists(bin_file_path):
+                return jsonify({"success": False, "error": f"Firmware binary not found: {bin_file_path}"}), 404
 
-        # Step 1: Compile the .ino file to a .hex file
-        compile_command = [
-            "arduino-cli",
-            "compile",
-            "--fqbn", "arduino:avr:uno",  # Use the detected FQBN
-            "--output-dir", build_dir,
-            ino_file_path
-        ]
+            # Flash ESP32 firmware
+            flash_command = [
+                "esptool.py",
+                "--chip", "esp32",
+                "--port", ser_port,
+                "--baud", "115200",
+                "write_flash", "-z", "0x1000", bin_file_path
+            ]
+        else:
+            if not os.path.exists(hex_file_path):
+                return jsonify({"success": False, "error": f"Hex file not found: {hex_file_path}"}), 404
 
-        compile_process = subprocess.run(compile_command, capture_output=True, text=True)
-        if compile_process.returncode != 0:
-            return jsonify({
-                "success": False,
-                "error": compile_process.stderr
-            }), 500
+            # Flash Arduino firmware
+            flash_command = [
+                "avrdude",
+                "-v",
+                "-c", "arduino",
+                "-p", "atmega328p",
+                "-P", ser_port,
+                "-b", "115200",
+                "-D",
+                "-U", f"flash:w:{hex_file_path}:i"
+            ]
 
-        # Step 2: Flash the .hex file to the Arduino
-        hex_file_path = os.path.join(build_dir, ino_file_name+".hex")
-        flash_command = [
-            "avrdude",
-            "-v",
-            "-c", "arduino",  # Programmer type
-            "-p", "atmega328p",  # Microcontroller type
-            "-P", ser_port,  # Use the dynamic serial port
-            "-b", "115200",  # Baud rate
-            "-D",
-            "-U", f"flash:w:{hex_file_path}:i"  # Flash memory write command
-        ]
-
+        # Execute the flash command
         flash_process = subprocess.run(flash_command, capture_output=True, text=True)
         if flash_process.returncode != 0:
             return jsonify({
@@ -1185,12 +1174,6 @@ def flash_firmware():
         return jsonify({"success": True, "message": "Firmware flashed successfully"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-    finally:
-        # Clean up temporary files
-        if os.path.exists(build_dir):
-            for file in os.listdir(build_dir):
-                os.remove(os.path.join(build_dir, file))
-            os.rmdir(build_dir)
 
 @app.route('/check_software_update', methods=['GET'])
 def check_updates():
