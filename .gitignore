@@ -5,3 +5,4 @@ __pycache__/
 .env
 .idea
 playlists.json
+.python-version
