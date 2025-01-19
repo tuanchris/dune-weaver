@@ -4,9 +4,9 @@ import json
 import logging
 
 MOTOR_TYPE_MAPPING = {
-    "TMC2209": "./firmware/arduino_code_TMC2209/arduino_code_TMC2209.ino",
-    "DRV8825": "./firmware/arduino_code/arduino_code.ino",
-    "esp32": "./firmware/esp32/esp32.ino"
+    "TMC2209": "../firmware/arduino_code_TMC2209/arduino_code_TMC2209.ino",
+    "DRV8825": "../firmware/arduino_code/arduino_code.ino",
+    "esp32": "../firmware/esp32/esp32.ino"
 }
 
 logger=logging.getLogger(__name__)
