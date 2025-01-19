@@ -409,7 +409,7 @@ def api_update_software():
     success, message, error_log = update_software()
     if success:
         return jsonify({"success": True})
-        return jsonify({
+    return jsonify({
             "success": False,
         "error": message,
             "details": error_log
