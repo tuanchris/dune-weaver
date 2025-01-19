@@ -1023,7 +1023,7 @@ def set_speed():
             return jsonify({"success": False, "error": "Invalid speed value"}), 400
 
         # Send the SET_SPEED command to the Arduino
-        command = f"SET_SPEEzD {speed}"
+        command = f"SET_SPEED {speed}"
         send_command(command)
         return jsonify({"success": True, "speed": speed})
     except Exception as e:

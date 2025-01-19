@@ -229,7 +229,6 @@ void appMode()
                     inOutStepper.setMaxSpeed(newSpeed);
 
                     Serial.println("SPEED_SET");  
-                    Serial.println("R");
                 }
                 else
                 {
