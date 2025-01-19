@@ -43,6 +43,7 @@ def api_list_ports():
 def api_connect_serial():
     port = request.json.get('port')
     if not port:
+        app.logger.error("No port provided in connect_serial request")
         return jsonify({'error': 'No port provided'}), 400
 
     try:
@@ -58,18 +59,21 @@ def api_disconnect():
         disconnect_serial()
         return jsonify({'success': True})
     except Exception as e:
+        app.logger.error(f"Error disconnecting serial port: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/restart_serial', methods=['POST'])
 def api_restart():
     port = request.json.get('port')
     if not port:
+        app.logger.error("No port provided in restart_serial request")
         return jsonify({'error': 'No port provided'}), 400
 
     try:
         success = restart_serial(port)
         return jsonify({'success': success})
     except Exception as e:
+        app.logger.error(f"Error restarting serial port: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/serial_status', methods=['GET'])
@@ -103,11 +107,12 @@ def api_run_theta_rho():
     pre_execution = request.json.get('pre_execution')
 
     if not file_name:
+        app.logger.error("No file name provided in run_theta_rho request")
         return jsonify({'error': 'No file name provided'}), 400
 
     file_path = os.path.join(THETA_RHO_DIR, file_name)
     if not os.path.exists(file_path):
-        app.logger.error("aaaaaaaaaaaaaaaaaaaaaaaaaa")
+        app.logger.error(f"File not found: {file_path}")
         return jsonify({'error': 'File not found'}), 404
 
     try:
@@ -123,6 +128,7 @@ def api_run_theta_rho():
         ).start()
         return jsonify({'success': True})
     except Exception as e:
+        app.logger.error(f"Error running theta rho file: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/run_theta_rho_file/<file_name>', methods=['POST'])
@@ -139,22 +145,24 @@ def api_run_specific_theta_rho_file(file_name):
 def api_preview_thr():
     file_name = request.json.get('file_name')
     if not file_name:
+        app.logger.error("No file name provided in preview_thr request")
         return jsonify({'error': 'No file name provided'}), 400
     
     # sometimes the frontend sends the complete path, not just the file name
     if file_name.startswith("./patterns"):
-        
         file_name = file_name.split('/')[-1].split('\\')[-1]
     
     file_path = os.path.join(THETA_RHO_DIR, file_name)
         
     if not os.path.exists(file_path):
+        app.logger.error(f"File not found: {file_path}")
         return jsonify({'error': 'File not found'}), 404
 
     try:
         coordinates = parse_theta_rho_file(file_path)
         return jsonify({'success': True, 'coordinates': coordinates})
     except Exception as e:
+        app.logger.error(f"Error parsing theta rho file: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/send_coordinate', methods=['POST'])
@@ -243,6 +251,7 @@ def api_get_playlist():
 def api_create_playlist():
     data = request.get_json()
     if not data or "name" not in data or "files" not in data:
+        app.logger.error("Missing required fields in create_playlist request")
         return jsonify({"success": False, "error": "Playlist 'name' and 'files' are required"}), 400
 
     success = create_playlist(data["name"], data["files"])
@@ -417,16 +426,19 @@ def api_delete_theta_rho_file():
     file_name = data.get('file_name')
 
     if not file_name:
+        app.logger.error("No file name provided in delete_theta_rho_file request")
         return jsonify({"success": False, "error": "No file name provided"}), 400
 
     file_path = os.path.join(THETA_RHO_DIR, file_name)
     if not os.path.exists(file_path):
+        app.logger.error(f"File not found: {file_path}")
         return jsonify({"success": False, "error": "File not found"}), 404
 
     try:
         os.remove(file_path)
         return jsonify({"success": True})
     except Exception as e:
+        app.logger.error(f"Error deleting theta rho file: {str(e)}", exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':

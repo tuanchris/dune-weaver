@@ -1,5 +1,8 @@
 import os
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 PLAYLISTS_FILE = os.path.join(os.getcwd(), "playlists.json")
 

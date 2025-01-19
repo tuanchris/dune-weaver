@@ -5,6 +5,9 @@ import threading
 from datetime import datetime
 import time
 from ..serial.serial_manager import send_coordinate_batch, reset_theta, send_command
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Configuration
 THETA_RHO_DIR = './patterns'
@@ -45,10 +48,13 @@ def parse_theta_rho_file(file_path):
                     theta, rho = map(float, line.split())
                     coordinates.append((theta, rho))
                 except ValueError:
-                    print(f"Skipping invalid line: {line}")
+                    logger.warning(f"Skipping invalid line in {file_path}: {line}")
                     continue
+    except FileNotFoundError:
+        logger.error(f"Theta-rho file not found: {file_path}")
+        return coordinates
     except Exception as e:
-        print(f"Error reading file: {e}")
+        logger.error(f"Error reading theta-rho file {file_path}: {str(e)}", exc_info=True)
         return coordinates
 
     # Normalize coordinates
@@ -113,44 +119,48 @@ def run_theta_rho_file(file_path, schedule_hours=None):
     total_coordinates = len(coordinates)
 
     if total_coordinates < 2:
-        print("Not enough coordinates for interpolation.")
+        logger.error(f"Not enough coordinates for interpolation in file: {file_path}")
         current_playing_file = None
         execution_progress = None
         return
 
-    execution_progress = (0, total_coordinates)
-    batch_size = 10
+    try:
+        execution_progress = (0, total_coordinates)
+        batch_size = 10
 
-    for i in range(0, total_coordinates, batch_size):
-        if stop_requested:
-            print("Execution stopped by user after completing the current batch.")
-            break
-
-        with pause_condition:
-            while pause_requested:
-                print("Execution paused...")
-                pause_condition.wait()
-
-        batch = coordinates[i:i + batch_size]
-        if i == 0:
-            send_coordinate_batch(batch)
-            execution_progress = (i + batch_size, total_coordinates)
-            continue
-
-        while True:
-            schedule_checker(schedule_hours)
-            response = send_command("R")
-            if response == "R":
-                send_coordinate_batch(batch)
-                execution_progress = (i + batch_size, total_coordinates)
+        for i in range(0, total_coordinates, batch_size):
+            if stop_requested:
+                logger.info("Execution stopped by user after completing the current batch.")
                 break
 
-    reset_theta()
-    send_command("FINISHED")
+            with pause_condition:
+                while pause_requested:
+                    logger.info("Execution paused...")
+                    pause_condition.wait()
 
-    current_playing_file = None
-    execution_progress = None
-    print("Pattern execution completed.")
+            batch = coordinates[i:i + batch_size]
+            if i == 0:
+                send_coordinate_batch(batch)
+                execution_progress = (i + batch_size, total_coordinates)
+                continue
+
+            while True:
+                schedule_checker(schedule_hours)
+                response = send_command("R")
+                if response == "R":
+                    send_coordinate_batch(batch)
+                    execution_progress = (i + batch_size, total_coordinates)
+                    break
+
+        reset_theta()
+        send_command("FINISHED")
+
+    except Exception as e:
+        logger.error(f"Error executing theta-rho file {file_path}: {str(e)}", exc_info=True)
+    finally:
+        current_playing_file = None
+        execution_progress = None
+        logger.info("Pattern execution completed.")
 
 def run_theta_rho_files(
     file_paths,
