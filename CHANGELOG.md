@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Added Play/pause button
+- Added schedule hours to run
+- Added playing progress bar
 - Added Software Updater to make it easier to update the app and get the latest firmware updates for the Arduino
 - Added Firmware updater to make it possible to flash the Firmware from the web app.
 - Included Icons in UI
