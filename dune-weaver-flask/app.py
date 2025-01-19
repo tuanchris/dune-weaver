@@ -140,8 +140,14 @@ def api_preview_thr():
     file_name = request.json.get('file_name')
     if not file_name:
         return jsonify({'error': 'No file name provided'}), 400
-
+    
+    # sometimes the frontend sends the complete path, not just the file name
+    if file_name.startswith("./patterns"):
+        
+        file_name = file_name.split('/')[-1].split('\\')[-1]
+    
     file_path = os.path.join(THETA_RHO_DIR, file_name)
+        
     if not os.path.exists(file_path):
         return jsonify({'error': 'File not found'}), 404
 
