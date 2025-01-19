@@ -375,7 +375,7 @@ section.sticky {
     transform: translateY(0);
     transition: var(--transition-medium) transform, var(--transition-medium) height;
     visibility: visible;
-    max-height: 70vh;
+    max-height: 75vh;
     width: 100%;
     z-index: 10;
 }
@@ -463,11 +463,24 @@ section .header .add-button {
     margin-bottom: 20px;
 }
 
-#add-to-playlist-container select,
-#add-to-playlist-container button {
+#add-to-playlist-container {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+#add-to-playlist-container h3{
+    margin: 0 10px 0 0;
+    align-self: center;
+}
+
+#add-to-playlist-container select{
+    width: auto;
+    flex-grow: 1;
+    margin: 0;
+}
+
+#add-to-playlist-container .action-buttons {
     margin-top: 10px;
-    display: block;
-    width: 100%;
 }
 
 .playlist-parameters {
@@ -743,7 +756,7 @@ button#debug_button.active {
     border: 1px solid var(--border-primary);
     background: var(--theme-secondary);
     border-radius: 100%;
-    padding: 30px;
+    padding: 15px;
 }
 
 #pattern-preview {
@@ -810,12 +823,8 @@ body.playing #currently-playing-container .header .open-button {
     margin: 0;
 }
 
-body.playing #currently-playing-preview {
-    padding: 10px;
-}
-
 body.playing #currently-playing-preview #currentlyPlayingCanvas {
-    max-width:80px;
+    max-width:100px;
     padding: 5px;
 }
 
@@ -841,10 +850,6 @@ body.playing #currently-playing-container:not(.open) .play-buttons button {
 
 body.playing #currently-playing-container:not(.open) #progress-container {
     width: 100%;
-}
-
-body.playing #currently-playing-container:not(.open) #play_progress_text {
-    display: none;
 }
 
 
@@ -875,12 +880,12 @@ body.playing #currently-playing-container:not(.open) #play_progress_text {
     align-items: center;
     justify-content: center;
     width: 100%;
-    margin: 5px 0;
     flex-wrap: wrap;
 }
 
 #play_progress {
-    width: 100%;
+    width: auto;
+    flex-grow: 1;
     height: 8px;
     appearance: none;
     background-color: var(--border-primary);
@@ -1093,6 +1098,7 @@ input[type="number"]:focus {
     backdrop-filter: blur(2px);
     opacity: 0;
     transition: opacity var(--transition-medium);
+    cursor: pointer;
 }
 .notification.show {
     opacity: 1; /* Fully visible */
@@ -1226,6 +1232,15 @@ input[type="number"]:focus {
     body.playing #currently-playing-container.open {
         position: absolute;
         bottom: 0;
+    }
+
+    body.playing #currently-playing-container:not(.open) #currently-playing-details {
+        flex-direction: row;
+        align-items: center;
+    }
+
+    #currently-playing-container h3 {
+        flex-grow: 1;
     }
 
     body.playing #currently-playing-container.open .header {

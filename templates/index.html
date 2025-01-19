@@ -75,16 +75,16 @@
 
             <!-- Add to Playlist Section -->
             <div id="add-to-playlist-container" class="hidden">
-                <h2>Select Playlist</h2>
+                <h3>Select Playlist</h3>
                 <select id="select-playlist"></select>
                 <div class="action-buttons">
-                    <button onclick="toggleSecondaryButtons('add-to-playlist-container')" class="cancel">
-                        <i class="fa-solid fa-xmark"></i>
-                        <span>Cancel</span>
-                    </button>
                     <button onclick="saveToPlaylist()" class="cta">
                         <i class="fa-solid fa-floppy-disk"></i>
                         <span>Save</span>
+                    </button>
+                    <button onclick="toggleSecondaryButtons('add-to-playlist-container')" class="cancel">
+                        <i class="fa-solid fa-xmark"></i>
+                        <span class="small">Cancel</span>
                     </button>
                 </div>
             </div>
@@ -334,7 +334,7 @@
                     <div id="update_link" class="hidden"></div>
                 </div>
                 <div class="button-group">
-                    <button id="update-software-btn" class="hidden" onclick="updateSoftware()">
+                    <button id="update-software-btn" class="hidden cta" onclick="updateSoftware()">
                         <i class="fa-solid fa-download"></i>
                         <span>Update Software</span>
                     </button>
@@ -377,6 +377,9 @@
                              alt="GitHub Issues">
                     </a>
                 </div>
+                <button id="debug_button" onclick="toggleDebugLog()">
+                    <i class="fa-solid fa-bug"></i>
+                </button>
             </section>
         </section>
     </main>
@@ -405,7 +408,7 @@
         </div>
         <div id="progress-container">
             <progress id="play_progress" value="0" max="100"></progress>
-            <h3 id="play_progress_text">0%</h3>
+            <div id="play_progress_text">0%</div>
         </div>
     </section>
     <button class="tab-button" onclick="switchTab('patterns')" id="nav-patterns">Patterns</button>

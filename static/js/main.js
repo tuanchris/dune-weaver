@@ -63,9 +63,28 @@ function logMessage(message, type = LOG_TYPE.DEBUG, clickTargetId = null) {
         notification.onclick = () => {
             const target = document.getElementById(clickTargetId);
             if (target) {
-                target.click();
-            } else {
-                console.error(`Error: Target with ID "${clickTargetId}" not found`);
+                // Find the closest <main> parent
+                const parentMain = target.closest('main');
+                if (parentMain) {
+                    // Remove 'active' class from all <main> elements
+                    document.querySelectorAll('main').forEach((main) => {
+                        main.classList.remove('active');
+                    });
+                    // Add 'active' class to the parent <main>
+                    parentMain.classList.add('active');
+                    target.click();
+
+                    // Update tab buttons based on the parent <main> ID
+                    const parentId = parentMain.id; // e.g., "patterns-tab"
+                    const tabId = `nav-${parentId.replace('-tab', '')}`; // e.g., "nav-patterns"
+                    document.querySelectorAll('.tab-button').forEach((button) => {
+                        button.classList.remove('active');
+                    });
+                    const tabButton = document.getElementById(tabId);
+                    if (tabButton) {
+                        tabButton.classList.add('active');
+                    }
+                }
             }
         };
     }
@@ -872,6 +891,15 @@ function displayAllPlaylists(playlists) {
     const ul = document.getElementById('all_playlists');
     ul.innerHTML = ''; // Clear current list
 
+    if (playlists.length === 0) {
+        // Add a placeholder if the list is empty
+        const emptyLi = document.createElement('li');
+        emptyLi.textContent = "You don't have any playlists yet.";
+        emptyLi.classList.add('empty-placeholder'); // Optional: Add a class for styling
+        ul.appendChild(emptyLi);
+        return;
+    }
+
     playlists.forEach(playlistName => {
         const li = document.createElement('li');
         li.textContent = playlistName;
@@ -1101,6 +1129,18 @@ function populatePlaylistDropdown() {
             // Retrieve the saved playlist from the cookie
             const savedPlaylist = getCookie('selected_playlist');
 
+            // Check if there are playlists available
+            if (playlists.length === 0) {
+                // Add a placeholder option if no playlists are available
+                const placeholderOption = document.createElement('option');
+                placeholderOption.value = '';
+                placeholderOption.textContent = 'No playlists available';
+                placeholderOption.disabled = true; // Prevent selection
+                placeholderOption.selected = true; // Set as default
+                select.appendChild(placeholderOption);
+                return;
+            }
+
             playlists.forEach(playlist => {
                 const option = document.createElement('option');
                 option.value = playlist;
@@ -1159,6 +1199,7 @@ async function confirmAddPlaylist() {
 
             // Refresh the playlist list
             loadAllPlaylists();
+            populatePlaylistDropdown();
 
             // Hide the add playlist container
             toggleSecondaryButtons('add-playlist-container');
@@ -1251,6 +1292,7 @@ async function deleteCurrentPlaylist() {
             logMessage(`Playlist "${playlistName}" deleted.`, LOG_TYPE.INFO);
             closeStickySection('playlist-editor');
             loadAllPlaylists();
+            populatePlaylistDropdown();
         } else {
             logMessage(`Failed to delete playlist: ${result.error}`,  LOG_TYPE.ERROR);
         }
