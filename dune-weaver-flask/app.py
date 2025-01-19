@@ -7,7 +7,7 @@ import logging
 from modules.serial.serial_manager import (
     list_serial_ports, connect_to_serial, disconnect_serial, 
     restart_serial, get_serial_status, get_device_info,
-    send_coordinate_batch
+    send_coordinate_batch, send_command
 )
 from modules.firmware.firmware_manager import (
     get_firmware_info, flash_firmware, check_git_updates,
@@ -107,6 +107,7 @@ def api_run_theta_rho():
 
     file_path = os.path.join(THETA_RHO_DIR, file_name)
     if not os.path.exists(file_path):
+        app.logger.error("aaaaaaaaaaaaaaaaaaaaaaaaaa")
         return jsonify({'error': 'File not found'}), 404
 
     try:
@@ -123,6 +124,16 @@ def api_run_theta_rho():
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/run_theta_rho_file/<file_name>', methods=['POST'])
+def api_run_specific_theta_rho_file(file_name):
+    """Run a specific theta-rho file."""
+    file_path = os.path.join(THETA_RHO_DIR, file_name)
+    if not os.path.exists(file_path):
+        return jsonify({'error': 'File not found'}), 404
+
+    threading.Thread(target=run_theta_rho_file, args=(file_path,)).start()
+    return jsonify({'success': True})
 
 @app.route('/preview_thr', methods=['POST'])
 def api_preview_thr():
@@ -152,6 +163,55 @@ def api_send_coordinate():
 
         send_coordinate_batch([(theta, rho)])
         return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/send_home', methods=['POST'])
+def api_send_home():
+    """Send the HOME command to the Arduino."""
+    try:
+        send_command("HOME")
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/move_to_center', methods=['POST'])
+def api_move_to_center():
+    """Move the sand table to the center position."""
+    try:
+        coordinates = [(0, 0)]  # Center position
+        send_coordinate_batch(coordinates)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/move_to_perimeter', methods=['POST'])
+def api_move_to_perimeter():
+    """Move the sand table to the perimeter position."""
+    try:
+        MAX_RHO = 1
+        coordinates = [(0, MAX_RHO)]  # Perimeter position
+        send_coordinate_batch(coordinates)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/set_speed', methods=['POST'])
+def api_set_speed():
+    """Set the speed for the Arduino."""
+    try:
+        data = request.json
+        speed = data.get('speed')
+
+        if speed is None:
+            return jsonify({"success": False, "error": "Speed is required"}), 400
+
+        if not isinstance(speed, (int, float)) or speed <= 0:
+            return jsonify({"success": False, "error": "Invalid speed value"}), 400
+
+        # Send the SET_SPEED command to the Arduino
+        send_command(f"SET_SPEED {speed}")
+        return jsonify({"success": True, "speed": speed})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
