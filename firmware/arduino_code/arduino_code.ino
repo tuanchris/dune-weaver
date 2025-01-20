@@ -113,6 +113,7 @@ void handleModeChange(int newMode) {
         Serial.println("Spirograph Mode Active");
         rotStepper.setMaxSpeed(userDefinedSpeed * 0.5); // Use 50% of user-defined speed
         inOutStepper.setMaxSpeed(userDefinedSpeed * 0.5);
+        isFirstCoordinates = false;
     } else if (newMode == MODE_APP) {
         Serial.println("App Mode Active");
         rotStepper.setMaxSpeed(userDefinedSpeed); // Restore user-defined speed
