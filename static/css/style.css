@@ -771,6 +771,26 @@ button#debug_button.active {
     max-width: calc(100vw - 30px);
 }
 
+.pre-execution {
+    width: 100%;
+    display: flex;
+}
+
+.pre-execution h3 {
+    flex-grow: 1;
+    margin: 0;
+    align-content: center;
+}
+
+.pre-execution .control-group {
+    width: auto;
+    flex-grow: 1;
+    margin: 0;
+}
+
+.pre-execution select {
+    margin: 0;
+}
 
 /* Currently Playing Section Styling */
 body.playing .bottom-nav {

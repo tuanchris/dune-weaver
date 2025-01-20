@@ -56,18 +56,20 @@
                 <div id="first_coordinate"></div>
                 <div id="last_coordinate"></div>
             </div>
-            <h4>Pre-Execution Action</h4>
-            <div class="control-group">
-                <select id="pre_execution" name="pre_execution">
-                    <option value="none" selected>None</option>
-                    <option value="clear_in">Clear From Center</option>
-                    <option value="clear_out">Clear From Perimeter</option>
-                    <option value="clear_sideway">Clear Sideway</option>
-                </select>
-            </div>
 
             <!-- Action Buttons -->
             <div class="action-buttons">
+                <div class="pre-execution">
+                    <h3>Pre-Execution Action</h3>
+                    <div class="control-group">
+                        <select id="pre_execution" name="pre_execution">
+                            <option value="none" selected>None</option>
+                            <option value="clear_in">Clear From Center</option>
+                            <option value="clear_out">Clear From Perimeter</option>
+                            <option value="clear_sideway">Clear Sideway</option>
+                        </select>
+                    </div>
+                </div>
                 <button onclick="runThetaRho()" class="cta" >
                     <i class="fa-solid fa-play"></i>
                     <span>Play</span>
