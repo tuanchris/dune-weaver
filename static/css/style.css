@@ -859,7 +859,7 @@ body.playing #currently-playing-container:not(.open) #currently-playing-details{
     flex-basis: 50%;
     align-items: flex-start;
     margin: 0 0 0 10px;
-    overflow-y: scroll;
+    overflow-y: auto;
 }
 
 body.playing #currently-playing-container:not(.open) .play-buttons button {
