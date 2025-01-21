@@ -267,22 +267,24 @@ def send_coordinate_batch(ser, coordinates):
     """Send a batch of theta-rho pairs to the Arduino."""
     # print("Sending batch:", coordinates)
     batch_str = ";".join(f"{theta:.5f},{rho:.5f}" for theta, rho in coordinates) + ";\n"
-    ser.write(batch_str.encode())
+    with serial_lock:
+        ser.write(batch_str.encode())
 
 def send_command(command):
     """Send a single command to the Arduino."""
-    ser.write(f"{command}\n".encode())
-    print(f"Sent: {command}")
+    with serial_lock:
+        ser.write(f"{command}\n".encode())
+        print(f"Sent: {command}")
 
-    # Wait for "R" acknowledgment from Arduino
-    while True:
-        with serial_lock:
-            if ser.in_waiting > 0:
-                response = ser.readline().decode().strip()
-                print(f"Arduino response: {response}")
-                if response == "R":
-                    print("Command execution completed.")
-                    break
+        # Wait for "R" acknowledgment from Arduino
+        while True:
+            with serial_lock:
+                if ser.in_waiting > 0:
+                    response = ser.readline().decode().strip()
+                    print(f"Arduino response: {response}")
+                    if response == "R":
+                        print("Command execution completed.")
+                        break
 
 def wait_for_start_time(schedule_hours):
     """
@@ -507,21 +509,24 @@ def run_theta_rho_files(
 
     # Reset theta after execution or stopping
     reset_theta()
-    ser.write("FINISHED\n".encode())
+    with serial_lock:
+        ser.write("FINISHED\n".encode())
+        
     print("All requested patterns completed (or stopped).")
 
 def reset_theta():
     """Reset theta on the Arduino."""
-    ser.write("RESET_THETA\n".encode())
-    while True:
-        with serial_lock:
-            if ser.in_waiting > 0:
-                response = ser.readline().decode().strip()
-                print(f"Arduino response: {response}")
-                if response == "THETA_RESET":
-                    print("Theta successfully reset.")
-                    break
-        time.sleep(0.5)  # Small delay to avoid busy waiting
+    with serial_lock:
+        ser.write("RESET_THETA\n".encode())
+        while True:
+            with serial_lock:
+                if ser.in_waiting > 0:
+                    response = ser.readline().decode().strip()
+                    print(f"Arduino response: {response}")
+                    if response == "THETA_RESET":
+                        print("Theta successfully reset.")
+                        break
+            time.sleep(0.5)  # Small delay to avoid busy waiting
 
 # Flask API Endpoints
 @app.route('/')
