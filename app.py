@@ -395,13 +395,22 @@ def run_theta_rho_file(file_path, schedule_hours=None):
     execution_progress = None
     print("Pattern execution completed.")
 
-def get_clear_pattern_file(pattern_name):
+def get_clear_pattern_file(clear_pattern_mode, path=None):
     """Return a .thr file path based on pattern_name."""
-    if pattern_name == "random":
+    print("Clear pattern mode: " + clear_pattern_mode)
+    if clear_pattern_mode == "random":
         # Randomly pick one of the three known patterns
         return random.choice(list(CLEAR_PATTERNS.values()))
-    # If pattern_name is invalid or absent, default to 'clear_from_in'
-    return CLEAR_PATTERNS.get(pattern_name, CLEAR_PATTERNS["clear_from_in"])
+
+    if clear_pattern_mode == 'adaptive':
+        _, first_rho = parse_theta_rho_file(path)[0]
+        if first_rho < 0.5:
+            return CLEAR_PATTERNS['clear_from_out']
+        else:
+            return random.choice([CLEAR_PATTERNS['clear_from_in'], CLEAR_PATTERNS['clear_sideway']])
+        
+    # If clear_pattern_mode is invalid or absent, default to 'clear_from_in'
+    return CLEAR_PATTERNS.get(clear_pattern_mode, CLEAR_PATTERNS["clear_from_in"])
 
 def run_theta_rho_files(
     file_paths,
@@ -417,7 +426,7 @@ def run_theta_rho_files(
     Parameters:
     - file_paths (list): List of file paths to run.
     - pause_time (float): Seconds to pause between patterns.
-    - clear_pattern (str): Specific clear pattern to run ("clear_in", "clear_out", "clear_sideway", or "random").
+    - clear_pattern (str): Specific clear pattern to run ("clear_from_in", "clear_from_out", "clear_sideway", "adaptive", or "random").
     - run_mode (str): "single" for one-time run or "indefinite" for looping.
     - shuffle (bool): Whether to shuffle the playlist before running.
     """
@@ -434,6 +443,7 @@ def run_theta_rho_files(
 
     while True:
         for idx, path in enumerate(file_paths):
+            print("Upcoming pattern: " + path)
             current_playing_index = idx
             schedule_checker(schedule_hours)
             if stop_requested:
@@ -446,7 +456,7 @@ def run_theta_rho_files(
                     return
 
                 # Determine the clear pattern to run
-                clear_file_path = get_clear_pattern_file(clear_pattern)
+                clear_file_path = get_clear_pattern_file(clear_pattern, path)
                 print(f"Running clear pattern: {clear_file_path}")
                 run_theta_rho_file(clear_file_path, schedule_hours)
 
@@ -562,7 +572,7 @@ def upload_theta_rho():
 @app.route('/run_theta_rho', methods=['POST'])
 def run_theta_rho():
     file_name = request.json.get('file_name')
-    pre_execution = request.json.get('pre_execution')  # 'clear_in', 'clear_out', 'clear_sideway', or 'none'
+    pre_execution = request.json.get('pre_execution')
 
     if not file_name:
         return jsonify({'error': 'No file name provided'}), 400
@@ -575,14 +585,8 @@ def run_theta_rho():
         # Build a list of files to run in sequence
         files_to_run = []
 
-        if pre_execution == 'clear_in':
-            files_to_run.append('./patterns/clear_from_in.thr')
-        elif pre_execution == 'clear_out':
-            files_to_run.append('./patterns/clear_from_out.thr')
-        elif pre_execution == 'clear_sideway':
-            files_to_run.append('./patterns/clear_sideway.thr')
-        elif pre_execution == 'none':
-            pass  # No pre-execution action required
+        clear_file_path = get_clear_pattern_file(pre_execution, file_path)
+        files_to_run.append(clear_file_path)
 
         # Finally, add the main file
         files_to_run.append(file_path)
@@ -933,7 +937,7 @@ def run_playlist():
     {
         "playlist_name": "My Playlist",
         "pause_time": 1.0,                # Optional: seconds to pause between patterns
-        "clear_pattern": "random",         # Optional: "clear_in", "clear_out", "clear_sideway", or "random"
+        "clear_pattern": "random",         # Optional: "clear_from_in", "clear_from_out", "clear_sideway", "adaptive" or "random"
         "run_mode": "single",              # 'single' or 'indefinite'
         "shuffle": True                    # true or false
         "start_time": ""
@@ -959,7 +963,7 @@ def run_playlist():
         return jsonify({"success": False, "error": "'pause_time' must be a non-negative number"}), 400
 
     # Validate clear_pattern
-    valid_patterns = ["clear_in", "clear_out", "clear_sideway", "random"]
+    valid_patterns = ["clear_from_in", "clear_from_out", "clear_sideway", "random", "adaptive"]
     if clear_pattern not in valid_patterns:
         clear_pattern = None
 
