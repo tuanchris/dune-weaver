@@ -421,6 +421,8 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
             return CLEAR_PATTERNS['clear_from_out']
         else:
             return random.choice([CLEAR_PATTERNS['clear_from_in'], CLEAR_PATTERNS['clear_sideway']])
+    else:
+        return CLEAR_PATTERNS[clear_pattern_mode]
 
 def run_theta_rho_files(
     file_paths,
