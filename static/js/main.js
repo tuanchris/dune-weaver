@@ -1835,6 +1835,5 @@ document.addEventListener('DOMContentLoaded', () => {
     if (document.hasFocus()) {
         updateInterval = setInterval(updateCurrentlyPlaying, 5000);
     }
-    fetchFirmwareInfo();
     checkForUpdates();
 });
