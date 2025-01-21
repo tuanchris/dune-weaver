@@ -361,8 +361,6 @@ def run_theta_rho_file(file_path, schedule_hours=None):
             for i in range(0, total_coordinates, batch_size):
                 if stop_requested:
                     print("Execution stopped by user after completing the current batch.")
-                    # after stopping we free the stop rquest "lock"
-                    stop_requested= False
                     break
 
                 with pause_condition:
