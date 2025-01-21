@@ -43,7 +43,7 @@ current_playing_index = None
 current_playlist = None
 is_clearing = False
 
-serial_lock = threading.Lock()
+serial_lock = threading.RLock()
 
 PLAYLISTS_FILE = os.path.join(os.getcwd(), "playlists.json")
 
@@ -334,7 +334,7 @@ def schedule_checker(schedule_hours):
 
 def run_theta_rho_file(file_path, schedule_hours=None):
     """Run a theta-rho file by sending data in optimized batches with tqdm ETA tracking."""
-    global stop_requested, current_playing_file, execution_progress
+    global stop_requested, current_playing_file, execution_progress, serial_lock
     stop_requested = False
     current_playing_file = file_path  # Track current playing file
     execution_progress = (0, 0, None)  # Reset progress (ETA starts as None)
@@ -350,29 +350,30 @@ def run_theta_rho_file(file_path, schedule_hours=None):
 
     execution_progress = (0, total_coordinates, None)  # Initialize progress with ETA as None
     batch_size = 10  # Smaller batches may smooth movement further
+    with serial_lock:
+        print(serial_lock)
+        print(type(serial_lock))
+        with tqdm(total=total_coordinates, unit="coords", desc="Executing Pattern", dynamic_ncols=True, disable=None) as pbar:
+            for i in range(0, total_coordinates, batch_size):
+                if stop_requested:
+                    print("Execution stopped by user after completing the current batch.")
+                    break
 
-    with tqdm(total=total_coordinates, unit="coords", desc="Executing Pattern", dynamic_ncols=True, disable=None) as pbar:
-        for i in range(0, total_coordinates, batch_size):
-            if stop_requested:
-                print("Execution stopped by user after completing the current batch.")
-                break
+                with pause_condition:
+                    while pause_requested:
+                        print("Execution paused...")
+                        pause_condition.wait()  # This will block execution until notified
 
-            with pause_condition:
-                while pause_requested:
-                    print("Execution paused...")
-                    pause_condition.wait()  # This will block execution until notified
+                batch = coordinates[i:i + batch_size]
 
-            batch = coordinates[i:i + batch_size]
+                if i == 0:
+                    send_coordinate_batch(ser, batch)
+                    execution_progress = (i + batch_size, total_coordinates, None)  # No ETA yet
+                    pbar.update(batch_size)
+                    continue
 
-            if i == 0:
-                send_coordinate_batch(ser, batch)
-                execution_progress = (i + batch_size, total_coordinates, None)  # No ETA yet
-                pbar.update(batch_size)
-                continue
-
-            while True:
-                schedule_checker(schedule_hours)  # Check if within schedule
-                with serial_lock:
+                while True:
+                    schedule_checker(schedule_hours)  # Check if within schedule
                     if ser.in_waiting > 0:
                         response = ser.readline().decode().strip()
                         if response == "R":
@@ -398,8 +399,8 @@ def run_theta_rho_file(file_path, schedule_hours=None):
                         else:
                             print(f"Arduino response: {response}")
 
-    reset_theta()
-    ser.write("FINISHED\n".encode())
+        reset_theta()
+        ser.write("FINISHED\n".encode())
 
     # Clear tracking variables when done
     current_playing_file = None
