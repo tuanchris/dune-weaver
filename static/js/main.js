@@ -576,7 +576,7 @@ async function checkSerialStatus() {
         statusElement.textContent = `Connected to ${port}`;
         statusElement.classList.add('connected');
         statusElement.classList.remove('not-connected');
-        logMessage(`Reconnected to serial port: ${port}`);
+        logMessage(`Connected to serial port: ${port}`);
 
         // Update header status
         statusHeaderElement.classList.add('connected');
@@ -736,6 +736,7 @@ async function fetchFirmwareInfo(motorType = null) {
                     checkButton.style.display = "none";
                 }
             }
+            restartSerial();
         } else {
             logMessage("Could not fetch firmware info.", LOG_TYPE.WARNING);
             logMessage(data.error, LOG_TYPE.DEBUG);
@@ -1829,7 +1830,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadAllPlaylists(); // Load all playlists on page load
     attachSettingsSaveListeners(); // Attach event listeners to save changes
     attachFullScreenListeners();
-    
+
     // Periodically check for currently playing status
     if (document.hasFocus()) {
         updateInterval = setInterval(updateCurrentlyPlaying, 5000);
