@@ -392,8 +392,9 @@ def run_theta_rho_file(file_path, schedule_hours=None):
                             # Update execution progress with formatted ETA
                             execution_progress = (i + batch_size, total_coordinates, estimated_remaining_time)
                             break
-                        elif response.startswith("IGNORE") and i != 0:  # Retry the previous batch
+                        elif response != "IGNORED: FINISHED" and response.startswith("IGNORE"):  # Retry the previous batch
                             print("Received IGNORE. Resending the previous batch...")
+                            print(response)
                             # Calculate the previous batch indices
                             prev_start = max(0, i - batch_size)  # Ensure we don't go below 0
                             prev_end = i  # End of the previous batch is `i`
