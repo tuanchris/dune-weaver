@@ -3,3 +3,4 @@ pyserial
 numpy
 svgpathtools
 esptool
+tqdm
