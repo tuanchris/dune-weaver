@@ -1582,8 +1582,12 @@ function attachFullScreenListeners() {
 
 let lastPreviewedFile = null; // Track the last previewed file
 
+let updateInterval = null;
+
 async function updateCurrentlyPlaying() {
     try {
+        if (!document.hasFocus()) return; // Stop execution if the page is not visible
+
         const response = await fetch('/status');
         const data = await response.json();
 
@@ -1609,7 +1613,7 @@ async function updateCurrentlyPlaying() {
             // Update pattern preview only if the file is different
             if (current_playing_file !== lastPreviewedFile) {
                 previewPattern(fileName, 'currently-playing-container');
-                lastPreviewedFile = current_playing_file; // Update the last previewed file
+                lastPreviewedFile = current_playing_file;
             }
 
             // Update the filename display
@@ -1620,8 +1624,7 @@ async function updateCurrentlyPlaying() {
             const progressBar = document.getElementById('play_progress');
             const progressText = document.getElementById('play_progress_text');
             if (execution_progress) {
-                const progressPercentage =
-                    (execution_progress[0] / execution_progress[1]) * 100;
+                const progressPercentage = (execution_progress[0] / execution_progress[1]) * 100;
                 progressBar.value = progressPercentage;
                 progressText.textContent = `${Math.round(progressPercentage)}%`;
             } else {
@@ -1637,6 +1640,21 @@ async function updateCurrentlyPlaying() {
         }
     } catch (error) {
         logMessage(`Error updating "Currently Playing" section: ${error.message}`);
+    }
+}
+
+// Function to start or stop updates based on visibility
+function handleVisibilityChange() {
+    if (document.hasFocus()) {
+        // User is active, start updating
+        if (!updateInterval) {
+            updateCurrentlyPlaying(); // Run immediately
+            updateInterval = setInterval(updateCurrentlyPlaying, 5000); // Update every 5s
+        }
+    } else {
+        // User is inactive, stop updating
+        clearInterval(updateInterval);
+        updateInterval = null;
     }
 }
 
@@ -1793,6 +1811,8 @@ function switchTab(tabName) {
     }
 }
 
+document.addEventListener("visibilitychange", handleVisibilityChange);
+
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
     const activeTab = getCookie('activeTab') || 'patterns'; // Default to 'patterns' tab
@@ -1806,5 +1826,7 @@ document.addEventListener('DOMContentLoaded', () => {
     checkForUpdates();
 
     // Periodically check for currently playing status
-    setInterval(updateCurrentlyPlaying, 3000);
+    if (document.hasFocus()) {
+        updateInterval = setInterval(updateCurrentlyPlaying, 5000);
+    }
 });
