@@ -9,6 +9,7 @@ import math
 import json
 from datetime import datetime
 import subprocess
+from tqdm import tqdm
 
 app = Flask(__name__)
 
@@ -331,11 +332,11 @@ def schedule_checker(schedule_hours):
         threading.Thread(target=wait_for_start_time, args=(schedule_hours,), daemon=True).start()
 
 def run_theta_rho_file(file_path, schedule_hours=None):
-    """Run a theta-rho file by sending data in optimized batches."""
+    """Run a theta-rho file by sending data in optimized batches with tqdm ETA tracking."""
     global stop_requested, current_playing_file, execution_progress
     stop_requested = False
     current_playing_file = file_path  # Track current playing file
-    execution_progress = (0, 0)  # Reset progress
+    execution_progress = (0, 0, None)  # Reset progress (ETA starts as None)
 
     coordinates = parse_theta_rho_file(file_path)
     total_coordinates = len(coordinates)
@@ -346,36 +347,45 @@ def run_theta_rho_file(file_path, schedule_hours=None):
         execution_progress = None
         return
 
-    execution_progress = (0, total_coordinates)  # Update total coordinates
+    execution_progress = (0, total_coordinates, None)  # Initialize progress with ETA as None
     batch_size = 10  # Smaller batches may smooth movement further
 
-    for i in range(0, total_coordinates, batch_size):
-        if stop_requested:
-            print("Execution stopped by user after completing the current batch.")
-            break
+    with tqdm(total=total_coordinates, unit="coords", desc="Executing Pattern", dynamic_ncols=True, disable=None) as pbar:
+        for i in range(0, total_coordinates, batch_size):
+            if stop_requested:
+                print("Execution stopped by user after completing the current batch.")
+                break
 
-        with pause_condition:
-            while pause_requested:
-                print("Execution paused...")
-                pause_condition.wait()  # This will block execution until notified
+            with pause_condition:
+                while pause_requested:
+                    print("Execution paused...")
+                    pause_condition.wait()  # This will block execution until notified
 
-        batch = coordinates[i:i + batch_size]
-        if i == 0:
-            send_coordinate_batch(ser, batch)
-            execution_progress = (i + batch_size, total_coordinates)  # Update progress
-            continue
+            batch = coordinates[i:i + batch_size]
 
-        while True:
-            schedule_checker(schedule_hours)  # Check if within schedule
-            with serial_lock:
-                if ser.in_waiting > 0:
-                    response = ser.readline().decode().strip()
-                    if response == "R":
-                        send_coordinate_batch(ser, batch)
-                        execution_progress = (i + batch_size, total_coordinates)  # Update progress
-                        break
-                    else:
-                        print(f"Arduino response: {response}")
+            if i == 0:
+                send_coordinate_batch(ser, batch)
+                execution_progress = (i + batch_size, total_coordinates, None)  # No ETA yet
+                pbar.update(batch_size)
+                continue
+
+            while True:
+                schedule_checker(schedule_hours)  # Check if within schedule
+                with serial_lock:
+                    if ser.in_waiting > 0:
+                        response = ser.readline().decode().strip()
+                        if response == "R":
+                            send_coordinate_batch(ser, batch)
+                            pbar.update(batch_size)  # Update tqdm progress
+
+                            # Use tqdm's built-in ETA tracking
+                            estimated_remaining_time = pbar.format_dict['elapsed'] / (i + batch_size) * (total_coordinates - (i + batch_size))
+
+                            # Update execution progress with formatted ETA
+                            execution_progress = (i + batch_size, total_coordinates, estimated_remaining_time)
+                            break
+                        else:
+                            print(f"Arduino response: {response}")
 
     reset_theta()
     ser.write("FINISHED\n".encode())
@@ -1046,9 +1056,6 @@ def get_firmware_info():
     try:
         if request.method == "GET":
             # Attempt to retrieve installed firmware details from the Arduino
-            ser.reset_input_buffer()
-            ser.reset_output_buffer()
-            ser.write(b"GET_VERSION\n")
             time.sleep(0.5)
 
             installed_version = firmware_version

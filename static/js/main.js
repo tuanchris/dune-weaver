@@ -1626,7 +1626,7 @@ async function updateCurrentlyPlaying() {
             if (execution_progress) {
                 const progressPercentage = (execution_progress[0] / execution_progress[1]) * 100;
                 progressBar.value = progressPercentage;
-                progressText.textContent = `${Math.round(progressPercentage)}%`;
+                progressText.textContent = `${Math.round(progressPercentage)}% (${formatSecondsToHMS(execution_progress[2])})`;
             } else {
                 progressBar.value = 0;
                 progressText.textContent = '0%';
@@ -1641,6 +1641,13 @@ async function updateCurrentlyPlaying() {
     } catch (error) {
         logMessage(`Error updating "Currently Playing" section: ${error.message}`);
     }
+}
+
+function formatSecondsToHMS(seconds) {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
 // Function to start or stop updates based on visibility
@@ -1822,11 +1829,11 @@ document.addEventListener('DOMContentLoaded', () => {
     loadAllPlaylists(); // Load all playlists on page load
     attachSettingsSaveListeners(); // Attach event listeners to save changes
     attachFullScreenListeners();
-    fetchFirmwareInfo();
-    checkForUpdates();
-
+    
     // Periodically check for currently playing status
     if (document.hasFocus()) {
         updateInterval = setInterval(updateCurrentlyPlaying, 5000);
     }
+    fetchFirmwareInfo();
+    checkForUpdates();
 });
