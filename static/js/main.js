@@ -736,7 +736,6 @@ async function fetchFirmwareInfo(motorType = null) {
                     checkButton.style.display = "none";
                 }
             }
-            restartSerial();
         } else {
             logMessage("Could not fetch firmware info.", LOG_TYPE.WARNING);
             logMessage(data.error, LOG_TYPE.DEBUG);
@@ -1836,4 +1835,5 @@ document.addEventListener('DOMContentLoaded', () => {
         updateInterval = setInterval(updateCurrentlyPlaying, 5000);
     }
     checkForUpdates();
+    fetchFirmwareInfo();
 });
