@@ -1,6 +1,4 @@
 flask
 pyserial
-numpy
-svgpathtools
 esptool
 tqdm
