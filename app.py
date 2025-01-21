@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, render_template
+import atexit
 import os
 import serial
 import time
@@ -407,6 +408,8 @@ def run_theta_rho_file(file_path, schedule_hours=None):
 
 def get_clear_pattern_file(clear_pattern_mode, path=None):
     """Return a .thr file path based on pattern_name."""
+    if not clear_pattern_mode or clear_pattern_mode == 'none':
+        return
     print("Clear pattern mode: " + clear_pattern_mode)
     if clear_pattern_mode == "random":
         # Randomly pick one of the three known patterns
@@ -418,9 +421,6 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
             return CLEAR_PATTERNS['clear_from_out']
         else:
             return random.choice([CLEAR_PATTERNS['clear_from_in'], CLEAR_PATTERNS['clear_sideway']])
-        
-    # If clear_pattern_mode is invalid or absent, default to 'clear_from_in'
-    return CLEAR_PATTERNS.get(clear_pattern_mode, CLEAR_PATTERNS["clear_from_in"])
 
 def run_theta_rho_files(
     file_paths,
@@ -595,9 +595,6 @@ def run_theta_rho():
         # Build a list of files to run in sequence
         files_to_run = []
 
-        clear_file_path = get_clear_pattern_file(pre_execution, file_path)
-        files_to_run.append(clear_file_path)
-
         # Finally, add the main file
         files_to_run.append(file_path)
 
@@ -607,7 +604,7 @@ def run_theta_rho():
             args=(files_to_run,),
             kwargs={
                 'pause_time': 0,
-                'clear_pattern': None
+                'clear_pattern': pre_execution
             }
         ).start()
         return jsonify({'success': True})
@@ -615,8 +612,7 @@ def run_theta_rho():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/stop_execution', methods=['POST'])
-def stop_execution():
+def stop_actions():
     global pause_requested
     with pause_condition:
         pause_requested = False
@@ -630,6 +626,9 @@ def stop_execution():
     current_playing_file = None
     execution_progress = None
 
+@app.route('/stop_execution', methods=['POST'])
+def stop_execution():
+    stop_actions()
     return jsonify({'success': True})
 
 @app.route('/send_home', methods=['POST'])
@@ -1252,7 +1251,25 @@ def update_software():
             "error": "Update incomplete",
             "details": error_log
         }), 500
+
+
+def on_exit():
+    """Function to execute on application shutdown."""
+    print("Shutting down the application...")
+    stop_actions()
+    time.sleep(5)
+    print("Execution stopped and resources cleaned up.")
+
+# Register the on_exit function
+atexit.register(on_exit)
+        
+        
 if __name__ == '__main__':
     # Auto-connect to serial
     connect_to_serial()
-    app.run(debug=False, host='0.0.0.0', port=8080)
+    try:
+        app.run(debug=False, host='0.0.0.0', port=8080)
+    except KeyboardInterrupt:
+        print("Keyboard interrupt received. Shutting down.")
+    finally:
+        on_exit()  # Ensure cleanup if app is interrupted
