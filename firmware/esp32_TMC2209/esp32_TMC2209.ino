@@ -17,8 +17,6 @@
 
 #define BUFFER_SIZE 10 // Maximum number of theta-rho pairs in a batch
 
-#define MODE_APP 0
-
 // Create stepper motor objects
 AccelStepper rotStepper(rotInterfaceType, stepPin_rot, dirPin_rot);
 AccelStepper inOutStepper(inOutInterfaceType, stepPin_InOut, dirPin_InOut);
@@ -41,9 +39,6 @@ float maxAcceleration = 1000;
 long interpolationResolution = 1;
 float userDefinedSpeed = maxSpeed; // Store user-defined speed
 
-// Running Mode
-int currentMode = MODE_APP; // Default mode is app mode.
-
 void setup()
 {
     // Set maximum speed and acceleration
@@ -59,6 +54,9 @@ void setup()
 
     // Initialize serial communication
     Serial.begin(115200);
+    Serial.println("Table: Dune Weaver");
+    Serial.println("Drivers: ESP32-TMC2209");
+    Serial.println("Version: 1.4.0");
     Serial.println("R");
     homing();
 }

@@ -50,7 +50,8 @@ PLAYLISTS_FILE = os.path.join(os.getcwd(), "playlists.json")
 MOTOR_TYPE_MAPPING = {
     "TMC2209": "./firmware/arduino_code_TMC2209/arduino_code_TMC2209.ino",
     "DRV8825": "./firmware/arduino_code/arduino_code.ino",
-    "esp32": "./firmware/esp32/esp32.ino"
+    "esp32": "./firmware/esp32/esp32.ino",
+    "esp32_TMC2209": "./firmware/esp32_TMC2209/esp32_TMC2209.ino"
 }
 
 # Ensure the file exists and contains at least an empty JSON object
