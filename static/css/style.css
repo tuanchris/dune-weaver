@@ -344,6 +344,12 @@ section.version {
     flex-wrap: wrap;
 }
 
+section#settings-container > section{
+    padding-left: 0;
+    padding-right: 0;
+}
+
+
 .version .header {
     width: 100%;
 }
