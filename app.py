@@ -1171,7 +1171,7 @@ def flash_firmware():
         bin_file_path = f"{ino_file_path}.bin"  # For ESP32 firmware
 
         # Check the device type
-        if motor_type.lower() == "esp32":
+        if motor_type.lower() in ["esp32", "esp32_tmc2209"]:
             if not os.path.exists(bin_file_path):
                 return jsonify({"success": False, "error": f"Firmware binary not found: {bin_file_path}"}), 404
 
@@ -1243,6 +1243,8 @@ def update_software():
 
     # Checkout the latest tag
     run_command(["git", "checkout", latest_remote_tag, '--force'], f"Failed to checkout version {latest_remote_tag}")
+
+    run_command(["docker", "compose", "pull"], "Failed to fetch Docker containers")
 
     # Restart Docker containers
     run_command(["docker", "compose", "up", "-d"], "Failed to restart Docker containers")
