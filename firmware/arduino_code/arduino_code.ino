@@ -40,13 +40,17 @@ float currentTheta = 0.0; // Current theta in radians
 float currentRho = 0.0;   // Current rho (0 to 1)
 bool isFirstCoordinates = true;
 float totalRevolutions = 0.0; // Tracks cumulative revolutions
-long maxSpeed = 1000;
-float maxAcceleration = 50;
+float maxSpeed = 5000;
+float maxAcceleration = 5000;
 long interpolationResolution = 0.001;
 float userDefinedSpeed = maxSpeed; // Store user-defined speed
 
 // Running Mode
 int currentMode = MODE_APP; // Default mode is app mode.
+
+// FIRMWARE VERSION
+const char* firmwareVersion = "1.4.0";
+const char* motorType = "DRV8825";
 
 void setup()
 {
@@ -72,6 +76,12 @@ void setup()
     homing();
 }
 
+void getVersion()
+{
+    Serial.println("Table: Dune Weaver");
+    Serial.println("Drivers: DRV8825");
+    Serial.println("Version: 1.4.0");
+}
 
 void resetTheta()
 {
@@ -107,6 +117,7 @@ void handleModeChange(int newMode) {
         Serial.println("Spirograph Mode Active");
         rotStepper.setMaxSpeed(userDefinedSpeed * 0.5); // Use 50% of user-defined speed
         inOutStepper.setMaxSpeed(userDefinedSpeed * 0.5);
+        isFirstCoordinates = false;
     } else if (newMode == MODE_APP) {
         Serial.println("App Mode Active");
         rotStepper.setMaxSpeed(userDefinedSpeed); // Restore user-defined speed
@@ -181,12 +192,18 @@ void appMode()
         String input = Serial.readStringUntil('\n');
 
         // Ignore invalid messages
-        if (input != "HOME" && input != "RESET_THETA" && !input.startsWith("SET_SPEED") && !input.endsWith(";"))
+        if (input != "HOME" && input != "RESET_THETA" && input != "GET_VERSION" && !input.startsWith("SET_SPEED") && !input.endsWith(";"))
         {
             Serial.print("IGNORED: ");
             Serial.println(input);
             return;
         }
+
+        if (input == "GET_VERSION")
+        {
+            getVersion();
+        }
+
         if (input == "RESET_THETA")
         {
             resetTheta(); // Reset currentTheta
@@ -200,7 +217,7 @@ void appMode()
             return;
         }
 
-
+        // Example: The user calls "SET_SPEED 60" => 60% of maxSpeed
         if (input.startsWith("SET_SPEED"))
         {
             // Parse out the speed value from the command string
@@ -222,7 +239,6 @@ void appMode()
                     inOutStepper.setMaxSpeed(newSpeed);
 
                     Serial.println("SPEED_SET");  
-                    Serial.println("R");
                 }
                 else
                 {
@@ -281,12 +297,11 @@ void appMode()
                 // Directly move to the first coordinate of the new pattern
                 long initialRotSteps = buffer[0][0] * (rot_total_steps / (2.0 * M_PI));
                 rotStepper.setCurrentPosition(initialRotSteps);
-                inOutStepper.setCurrentPosition(inOutStepper.currentPosition() + (totalRevolutions * rot_total_steps / gearRatio));
-
+                inOutStepper.setCurrentPosition(inOutStepper.currentPosition() - totalRevolutions * rot_total_steps / gearRatio);
                 currentTheta = buffer[0][0];
                 totalRevolutions = 0;
-                movePolar(buffer[0][0], buffer[0][1]);
                 isFirstCoordinates = false; // Reset the flag after the first movement
+                movePolar(buffer[0][0], buffer[0][1]);
             }
               else
               {

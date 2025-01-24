@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, render_template
+import atexit
 import os
 import serial
 import time
@@ -7,6 +8,9 @@ import threading
 import serial.tools.list_ports
 import math
 import json
+from datetime import datetime
+import subprocess
+from tqdm import tqdm
 
 app = Flask(__name__)
 
@@ -24,14 +28,134 @@ os.makedirs(THETA_RHO_DIR, exist_ok=True)
 ser = None
 ser_port = None  # Global variable to store the serial port name
 stop_requested = False
-serial_lock = threading.Lock()
+pause_requested = False
+pause_condition = threading.Condition()
+
+# Global variables to store device information
+arduino_table_name = None
+arduino_driver_type = 'Unknown'
+
+# Table status
+current_playing_file = None
+execution_progress = None
+firmware_version = 'Unknown'
+current_playing_index = None
+current_playlist = None
+is_clearing = False
+
+serial_lock = threading.RLock()
 
 PLAYLISTS_FILE = os.path.join(os.getcwd(), "playlists.json")
+
+MOTOR_TYPE_MAPPING = {
+    "TMC2209": "./firmware/arduino_code_TMC2209/arduino_code_TMC2209.ino",
+    "DRV8825": "./firmware/arduino_code/arduino_code.ino",
+    "esp32": "./firmware/esp32/esp32.ino",
+    "esp32_TMC2209": "./firmware/esp32_TMC2209/esp32_TMC2209.ino"
+}
 
 # Ensure the file exists and contains at least an empty JSON object
 if not os.path.exists(PLAYLISTS_FILE):
     with open(PLAYLISTS_FILE, "w") as f:
         json.dump({}, f, indent=2)
+
+def get_ino_firmware_details(ino_file_path):
+    """
+    Extract firmware details, including version and motor type, from the given .ino file.
+
+    Args:
+        ino_file_path (str): Path to the .ino file.
+
+    Returns:
+        dict: Dictionary containing firmware details such as version and motor type, or None if not found.
+    """
+    try:
+        if not ino_file_path:
+            raise ValueError("Invalid path: ino_file_path is None or empty.")
+
+        firmware_details = {"version": None, "motorType": None}
+
+        with open(ino_file_path, "r") as file:
+            for line in file:
+                # Extract firmware version
+                if "firmwareVersion" in line:
+                    start = line.find('"') + 1
+                    end = line.rfind('"')
+                    if start != -1 and end != -1 and start < end:
+                        firmware_details["version"] = line[start:end]
+
+                # Extract motor type
+                if "motorType" in line:
+                    start = line.find('"') + 1
+                    end = line.rfind('"')
+                    if start != -1 and end != -1 and start < end:
+                        firmware_details["motorType"] = line[start:end]
+
+        if not firmware_details["version"]:
+            print(f"Firmware version not found in file: {ino_file_path}")
+        if not firmware_details["motorType"]:
+            print(f"Motor type not found in file: {ino_file_path}")
+
+        return firmware_details if any(firmware_details.values()) else None
+
+    except FileNotFoundError:
+        print(f"File not found: {ino_file_path}")
+        return None
+    except Exception as e:
+        print(f"Error reading .ino file: {str(e)}")
+        return None
+
+def check_git_updates():
+    try:
+        # Fetch the latest updates from the remote repository
+        subprocess.run(["git", "fetch", "--tags", "--force"], check=True)
+
+        # Get the latest tag from the remote
+        latest_remote_tag = subprocess.check_output(
+            ["git", "describe", "--tags", "--abbrev=0", "origin/main"]
+        ).strip().decode()
+
+        # Get the latest tag from the local branch
+        latest_local_tag = subprocess.check_output(
+            ["git", "describe", "--tags", "--abbrev=0"]
+        ).strip().decode()
+
+        # Count how many tags the local branch is behind
+        tag_behind_count = 0
+        if latest_local_tag != latest_remote_tag:
+            tags = subprocess.check_output(
+                ["git", "tag", "--merged", "origin/main"], text=True
+            ).splitlines()
+
+            found_local = False
+            for tag in tags:
+                if tag == latest_local_tag:
+                    found_local = True
+                elif found_local:
+                    tag_behind_count += 1
+                    if tag == latest_remote_tag:
+                        break
+
+
+        # Check if there are new commits
+        updates_available = latest_remote_tag != latest_local_tag
+
+        return {
+            "updates_available": updates_available,
+            "tag_behind_count": tag_behind_count,  # Tags behind
+            "latest_remote_tag": latest_remote_tag,
+            "latest_local_tag": latest_local_tag,
+        }
+    except subprocess.CalledProcessError as e:
+        print(f"Error checking Git updates: {e}")
+        return {
+            "updates_available": False,
+            "tag_behind_count": 0,
+            "latest_remote_tag": None,
+            "latest_local_tag": None,
+        }
+
+
 
 def list_serial_ports():
     """Return a list of available serial ports."""
@@ -40,7 +164,7 @@ def list_serial_ports():
 
 def connect_to_serial(port=None, baudrate=115200):
     """Automatically connect to the first available serial port or a specified port."""
-    global ser, ser_port
+    global ser, ser_port, arduino_table_name, arduino_driver_type, firmware_version
 
     try:
         if port is None:
@@ -53,10 +177,32 @@ def connect_to_serial(port=None, baudrate=115200):
         with serial_lock:
             if ser and ser.is_open:
                 ser.close()
-            ser = serial.Serial(port, baudrate)
+            ser = serial.Serial(port, baudrate, timeout=2)  # Set timeout to avoid infinite waits
             ser_port = port  # Store the connected port globally
+
         print(f"Connected to serial port: {port}")
         time.sleep(2)  # Allow time for the connection to establish
+
+        # Read initial startup messages from Arduino
+        arduino_table_name = None
+        arduino_driver_type = None
+
+        while ser.in_waiting > 0:
+            line = ser.readline().decode().strip()
+            print(f"Arduino: {line}")  # Print the received message
+
+            # Store the device details based on the expected messages
+            if "Table:" in line:
+                arduino_table_name = line.replace("Table: ", "").strip()
+            elif "Drivers:" in line:
+                arduino_driver_type = line.replace("Drivers: ", "").strip()
+            elif "Version:" in line:
+                firmware_version = line.replace("Version: ", "").strip()
+
+        # Display stored values
+        print(f"Detected Table: {arduino_table_name or 'Unknown'}")
+        print(f"Detected Drivers: {arduino_driver_type or 'Unknown'}")
+
         return True  # Successfully connected
     except serial.SerialException as e:
         print(f"Failed to connect to serial port {port}: {e}")
@@ -122,73 +268,176 @@ def send_coordinate_batch(ser, coordinates):
     """Send a batch of theta-rho pairs to the Arduino."""
     # print("Sending batch:", coordinates)
     batch_str = ";".join(f"{theta:.5f},{rho:.5f}" for theta, rho in coordinates) + ";\n"
-    ser.write(batch_str.encode())
+    with serial_lock:
+        ser.write(batch_str.encode())
 
 def send_command(command):
     """Send a single command to the Arduino."""
-    ser.write(f"{command}\n".encode())
-    print(f"Sent: {command}")
+    with serial_lock:
+        ser.write(f"{command}\n".encode())
+        print(f"Sent: {command}")
 
-    # Wait for "R" acknowledgment from Arduino
-    while True:
-        with serial_lock:
-            if ser.in_waiting > 0:
-                response = ser.readline().decode().strip()
-                print(f"Arduino response: {response}")
-                if response == "R":
-                    print("Command execution completed.")
-                    break
-
-def run_theta_rho_file(file_path):
-    """Run a theta-rho file by sending data in optimized batches."""
-    global stop_requested
-    stop_requested = False
-
-    coordinates = parse_theta_rho_file(file_path)
-    if len(coordinates) < 2:
-        print("Not enough coordinates for interpolation.")
-        return
-
-    # Optimize batch size for smoother execution
-    batch_size = 10  # Smaller batches may smooth movement further
-    for i in range(0, len(coordinates), batch_size):
-        # Check stop_requested flag after sending the batch
-        if stop_requested:
-            print("Execution stopped by user after completing the current batch.")
-            break
-        batch = coordinates[i:i + batch_size]
-        if i == 0:
-            send_coordinate_batch(ser, batch)
-            continue
-        # Wait until Arduino is READY before sending the batch
+        # Wait for "R" acknowledgment from Arduino
         while True:
             with serial_lock:
                 if ser.in_waiting > 0:
                     response = ser.readline().decode().strip()
+                    print(f"Arduino response: {response}")
                     if response == "R":
-                        send_coordinate_batch(ser, batch)
+                        print("Command execution completed.")
                         break
-                    else:
-                        print(f"Arduino response: {response}")
 
-    # Reset theta after execution or stopping
-    reset_theta()
-    ser.write("FINISHED\n".encode())
+def wait_for_start_time(schedule_hours):
+    """
+    Keep checking every 30 seconds if the time is within the schedule to resume execution.
+    """
+    global pause_requested
+    start_time, end_time = schedule_hours
 
-def get_clear_pattern_file(pattern_name):
+    while pause_requested:
+        now = datetime.now().time()
+        if start_time <= now < end_time:
+            print("Resuming execution: Within schedule.")
+            pause_requested = False
+            with pause_condition:
+                pause_condition.notify_all()
+            break  # Exit the loop once resumed
+        else:
+            time.sleep(30)  # Wait for 30 seconds before checking again
+
+# Function to check schedule based on start and end time
+def schedule_checker(schedule_hours):
+    """
+    Pauses/resumes execution based on a given time range.
+
+    Parameters:
+    - schedule_hours (tuple): (start_time, end_time) as `datetime.time` objects.
+    """
+    global pause_requested
+    if not schedule_hours:
+        return  # No scheduling restriction
+
+    start_time, end_time = schedule_hours
+    now = datetime.now().time()  # Get the current time as `datetime.time`
+
+    # Check if we are currently within the scheduled time
+    if start_time <= now < end_time:
+        if pause_requested:
+            print("Starting execution: Within schedule.")
+        pause_requested = False  # Resume execution
+        with pause_condition:
+            pause_condition.notify_all()
+    else:
+        if not pause_requested:
+            print("Pausing execution: Outside schedule.")
+        pause_requested = True  # Pause execution
+
+        # Start a background thread to periodically check for start time
+        threading.Thread(target=wait_for_start_time, args=(schedule_hours,), daemon=True).start()
+
+def run_theta_rho_file(file_path, schedule_hours=None):
+    """Run a theta-rho file by sending data in optimized batches with tqdm ETA tracking."""
+    global stop_requested, current_playing_file, execution_progress
+
+    coordinates = parse_theta_rho_file(file_path)
+    total_coordinates = len(coordinates)
+
+    if total_coordinates < 2:
+        print("Not enough coordinates for interpolation.")
+        current_playing_file = None  # Clear tracking if failed
+        execution_progress = None
+        return
+
+    execution_progress = (0, total_coordinates, None)  # Initialize progress with ETA as None
+    batch_size = 10  # Smaller batches may smooth movement further
+    
+    # before trying to acuire the lock we send the stop command
+    # so then we will just wait for the lock to be released so we can use the serial
+    stop_actions()
+    with serial_lock:
+        current_playing_file = file_path  # Track current playing file
+        execution_progress = (0, 0, None)  # Reset progress (ETA starts as None)
+        stop_requested = False
+        with tqdm(total=total_coordinates, unit="coords", desc=f"Executing Pattern {file_path}", dynamic_ncols=True, disable=None) as pbar:
+            for i in range(0, total_coordinates, batch_size):
+                if stop_requested:
+                    print("Execution stopped by user after completing the current batch.")
+                    break
+
+                with pause_condition:
+                    while pause_requested:
+                        print("Execution paused...")
+                        pause_condition.wait()  # This will block execution until notified
+
+                batch = coordinates[i:i + batch_size]
+
+                if i == 0:
+                    send_coordinate_batch(ser, batch)
+                    execution_progress = (i + batch_size, total_coordinates, None)  # No ETA yet
+                    pbar.update(batch_size)
+                    continue
+
+                while True:
+                    schedule_checker(schedule_hours)  # Check if within schedule
+                    if ser.in_waiting > 0:
+                        response = ser.readline().decode().strip()
+                        if response == "R":
+                            send_coordinate_batch(ser, batch)
+                            pbar.update(batch_size)  # Update tqdm progress
+
+                            # Use tqdm's built-in ETA tracking
+                            estimated_remaining_time = pbar.format_dict['elapsed'] / (i + batch_size) * (total_coordinates - (i + batch_size))
+
+                            # Update execution progress with formatted ETA
+                            execution_progress = (i + batch_size, total_coordinates, estimated_remaining_time)
+                            break
+                        elif response != "IGNORED: FINISHED" and response.startswith("IGNORE"):  # Retry the previous batch
+                            print("Received IGNORE. Resending the previous batch...")
+                            print(response)
+                            # Calculate the previous batch indices
+                            prev_start = max(0, i - batch_size)  # Ensure we don't go below 0
+                            prev_end = i  # End of the previous batch is `i`
+                            previous_batch = coordinates[prev_start:prev_end]
+
+                            # Resend the previous batch
+                            send_coordinate_batch(ser, previous_batch)
+                            break  # Exit the retry loop after resending
+                        else:
+                            print(f"Arduino response: {response}")
+
+        reset_theta()
+        ser.write("FINISHED\n".encode())
+
+    # Clear tracking variables when done
+    current_playing_file = None
+    execution_progress = None
+    print("Pattern execution completed.")
+
+def get_clear_pattern_file(clear_pattern_mode, path=None):
     """Return a .thr file path based on pattern_name."""
-    if pattern_name == "random":
+    if not clear_pattern_mode or clear_pattern_mode == 'none':
+        return
+    print("Clear pattern mode: " + clear_pattern_mode)
+    if clear_pattern_mode == "random":
         # Randomly pick one of the three known patterns
         return random.choice(list(CLEAR_PATTERNS.values()))
-    # If pattern_name is invalid or absent, default to 'clear_from_in'
-    return CLEAR_PATTERNS.get(pattern_name, CLEAR_PATTERNS["clear_from_in"])
+
+    if clear_pattern_mode == 'adaptive':
+        _, first_rho = parse_theta_rho_file(path)[0]
+        if first_rho < 0.5:
+            return CLEAR_PATTERNS['clear_from_out']
+        else:
+            return random.choice([CLEAR_PATTERNS['clear_from_in'], CLEAR_PATTERNS['clear_sideway']])
+    else:
+        return CLEAR_PATTERNS[clear_pattern_mode]
 
 def run_theta_rho_files(
     file_paths,
     pause_time=0,
     clear_pattern=None,
     run_mode="single",
-    shuffle=False
+    shuffle=False,
+    schedule_hours=None
 ):
     """
     Runs multiple .thr files in sequence with options for pausing, clearing, shuffling, and looping.
@@ -196,19 +445,26 @@ def run_theta_rho_files(
     Parameters:
     - file_paths (list): List of file paths to run.
     - pause_time (float): Seconds to pause between patterns.
-    - clear_pattern (str): Specific clear pattern to run ("clear_in", "clear_out", "clear_sideway", or "random").
+    - clear_pattern (str): Specific clear pattern to run ("clear_from_in", "clear_from_out", "clear_sideway", "adaptive", or "random").
     - run_mode (str): "single" for one-time run or "indefinite" for looping.
     - shuffle (bool): Whether to shuffle the playlist before running.
     """
     global stop_requested
+    global current_playlist
+    global current_playing_index
     stop_requested = False  # Reset stop flag at the start
 
     if shuffle:
         random.shuffle(file_paths)
         print("Playlist shuffled.")
 
+    current_playlist = file_paths
+
     while True:
         for idx, path in enumerate(file_paths):
+            print("Upcoming pattern: " + path)
+            current_playing_index = idx
+            schedule_checker(schedule_hours)
             if stop_requested:
                 print("Execution stopped before starting next pattern.")
                 return
@@ -219,14 +475,14 @@ def run_theta_rho_files(
                     return
 
                 # Determine the clear pattern to run
-                clear_file_path = get_clear_pattern_file(clear_pattern)
+                clear_file_path = get_clear_pattern_file(clear_pattern, path)
                 print(f"Running clear pattern: {clear_file_path}")
-                run_theta_rho_file(clear_file_path)
+                run_theta_rho_file(clear_file_path, schedule_hours)
 
             if not stop_requested:
                 # Run the main pattern
                 print(f"Running pattern {idx + 1} of {len(file_paths)}: {path}")
-                run_theta_rho_file(path)
+                run_theta_rho_file(path, schedule_hours)
 
             if idx < len(file_paths) -1:
                 if stop_requested:
@@ -253,21 +509,24 @@ def run_theta_rho_files(
 
     # Reset theta after execution or stopping
     reset_theta()
-    ser.write("FINISHED\n".encode())
+    with serial_lock:
+        ser.write("FINISHED\n".encode())
+        
     print("All requested patterns completed (or stopped).")
 
 def reset_theta():
     """Reset theta on the Arduino."""
-    ser.write("RESET_THETA\n".encode())
-    while True:
-        with serial_lock:
-            if ser.in_waiting > 0:
-                response = ser.readline().decode().strip()
-                print(f"Arduino response: {response}")
-                if response == "THETA_RESET":
-                    print("Theta successfully reset.")
-                    break
-        time.sleep(0.5)  # Small delay to avoid busy waiting
+    with serial_lock:
+        ser.write("RESET_THETA\n".encode())
+        while True:
+            with serial_lock:
+                if ser.in_waiting > 0:
+                    response = ser.readline().decode().strip()
+                    print(f"Arduino response: {response}")
+                    if response == "THETA_RESET":
+                        print("Theta successfully reset.")
+                        break
+            time.sleep(0.5)  # Small delay to avoid busy waiting
 
 # Flask API Endpoints
 @app.route('/')
@@ -335,7 +594,7 @@ def upload_theta_rho():
 @app.route('/run_theta_rho', methods=['POST'])
 def run_theta_rho():
     file_name = request.json.get('file_name')
-    pre_execution = request.json.get('pre_execution')  # 'clear_in', 'clear_out', 'clear_sideway', or 'none'
+    pre_execution = request.json.get('pre_execution')
 
     if not file_name:
         return jsonify({'error': 'No file name provided'}), 400
@@ -348,15 +607,6 @@ def run_theta_rho():
         # Build a list of files to run in sequence
         files_to_run = []
 
-        if pre_execution == 'clear_in':
-            files_to_run.append('./patterns/clear_from_in.thr')
-        elif pre_execution == 'clear_out':
-            files_to_run.append('./patterns/clear_from_out.thr')
-        elif pre_execution == 'clear_sideway':
-            files_to_run.append('./patterns/clear_sideway.thr')
-        elif pre_execution == 'none':
-            pass  # No pre-execution action required
-
         # Finally, add the main file
         files_to_run.append(file_path)
 
@@ -366,7 +616,7 @@ def run_theta_rho():
             args=(files_to_run,),
             kwargs={
                 'pause_time': 0,
-                'clear_pattern': None
+                'clear_pattern': pre_execution
             }
         ).start()
         return jsonify({'success': True})
@@ -374,10 +624,23 @@ def run_theta_rho():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+def stop_actions():
+    global pause_requested
+    with pause_condition:
+        pause_requested = False
+        pause_condition.notify_all()
+        
+    global stop_requested, current_playing_index, current_playlist, is_clearing, current_playing_file, execution_progress
+    stop_requested = True
+    current_playing_index = None
+    current_playlist = None
+    is_clearing = False
+    current_playing_file = None
+    execution_progress = None
+
 @app.route('/stop_execution', methods=['POST'])
 def stop_execution():
-    global stop_requested
-    stop_requested = True
+    stop_actions()
     return jsonify({'success': True})
 
 @app.route('/send_home', methods=['POST'])
@@ -499,9 +762,42 @@ def serial_status():
         'port': ser_port  # Include the port name
     })
 
-if not os.path.exists(PLAYLISTS_FILE):
-    with open(PLAYLISTS_FILE, "w") as f:
-        json.dump({}, f, indent=2)
+@app.route('/pause_execution', methods=['POST'])
+def pause_execution():
+    """Pause the current execution."""
+    global pause_requested
+    with pause_condition:
+        pause_requested = True
+    return jsonify({'success': True, 'message': 'Execution paused'})
+
+@app.route('/status', methods=['GET'])
+def get_status():
+    """Returns the current status of the sand table."""
+    global is_clearing
+    if current_playing_file in CLEAR_PATTERNS.values():
+        is_clearing = True
+    else:
+        is_clearing = False
+
+    return jsonify({
+        "ser_port": ser_port,
+        "stop_requested": stop_requested,
+        "pause_requested": pause_requested,
+        "current_playing_file": current_playing_file,
+        "execution_progress": execution_progress,
+        "current_playing_index": current_playing_index,
+        "current_playlist": current_playlist,
+        "is_clearing": is_clearing
+    })
+
+@app.route('/resume_execution', methods=['POST'])
+def resume_execution():
+    """Resume execution after pausing."""
+    global pause_requested
+    with pause_condition:
+        pause_requested = False
+        pause_condition.notify_all()  # Unblock the waiting thread
+    return jsonify({'success': True, 'message': 'Execution resumed'})
 
 def load_playlists():
     """
@@ -662,9 +958,11 @@ def run_playlist():
     {
         "playlist_name": "My Playlist",
         "pause_time": 1.0,                # Optional: seconds to pause between patterns
-        "clear_pattern": "random",         # Optional: "clear_in", "clear_out", "clear_sideway", or "random"
+        "clear_pattern": "random",         # Optional: "clear_from_in", "clear_from_out", "clear_sideway", "adaptive" or "random"
         "run_mode": "single",              # 'single' or 'indefinite'
         "shuffle": True                    # true or false
+        "start_time": ""
+        "end_time": ""
     }
     """
     data = request.get_json()
@@ -678,13 +976,15 @@ def run_playlist():
     clear_pattern = data.get("clear_pattern", None)
     run_mode = data.get("run_mode", "single")  # Default to 'single' run
     shuffle = data.get("shuffle", False)       # Default to no shuffle
+    start_time = data.get("start_time", None)
+    end_time = data.get("end_time", None)
 
     # Validate pause_time
     if not isinstance(pause_time, (int, float)) or pause_time < 0:
         return jsonify({"success": False, "error": "'pause_time' must be a non-negative number"}), 400
 
     # Validate clear_pattern
-    valid_patterns = ["clear_in", "clear_out", "clear_sideway", "random"]
+    valid_patterns = ["clear_from_in", "clear_from_out", "clear_sideway", "random", "adaptive"]
     if clear_pattern not in valid_patterns:
         clear_pattern = None
 
@@ -695,6 +995,23 @@ def run_playlist():
     # Validate shuffle
     if not isinstance(shuffle, bool):
         return jsonify({"success": False, "error": "'shuffle' must be a boolean value"}), 400
+
+    schedule_hours = None
+    if start_time and end_time:
+        try:
+            # Convert HH:MM to datetime.time objects
+            start_time_obj = datetime.strptime(start_time, "%H:%M").time()
+            end_time_obj = datetime.strptime(end_time, "%H:%M").time()
+
+            # Ensure start_time is before end_time
+            if start_time_obj >= end_time_obj:
+                return jsonify({"success": False, "error": "'start_time' must be earlier than 'end_time'"}), 400
+
+            # Create schedule tuple with full time
+            schedule_hours = (start_time_obj, end_time_obj)
+        except ValueError:
+            return jsonify({"success": False, "error": "Invalid time format. Use HH:MM (e.g., '09:30')"}), 400
+
 
     # Load playlists
     playlists = load_playlists()
@@ -717,7 +1034,8 @@ def run_playlist():
                 'pause_time': pause_time,
                 'clear_pattern': clear_pattern,
                 'run_mode': run_mode,
-                'shuffle': shuffle
+                'shuffle': shuffle,
+                'schedule_hours': schedule_hours
             },
             daemon=True  # Daemonize thread to exit with the main program
         ).start()
@@ -750,7 +1068,222 @@ def set_speed():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/get_firmware_info', methods=['GET', 'POST'])
+def get_firmware_info():
+    """
+    Compare the installed firmware version and motor type with the one in the .ino file.
+    """
+    global firmware_version, arduino_driver_type, ser
+
+    if ser is None or not ser.is_open:
+        return jsonify({"success": False, "error": "Arduino not connected or serial port not open"}), 400
+
+    try:
+        if request.method == "GET":
+            # Attempt to retrieve installed firmware details from the Arduino
+            time.sleep(0.5)
+
+            installed_version = firmware_version
+            installed_type = arduino_driver_type
+
+            # If Arduino provides valid details, proceed with comparison
+            if installed_version != 'Unknown' and installed_type != 'Unknown':
+                ino_path = MOTOR_TYPE_MAPPING.get(installed_type)
+                firmware_details = get_ino_firmware_details(ino_path)
+
+                if not firmware_details or not firmware_details.get("version") or not firmware_details.get("motorType"):
+                    return jsonify({"success": False, "error": "Failed to retrieve .ino firmware details"}), 500
+
+                update_available = (
+                    installed_version != firmware_details["version"] or
+                    installed_type != firmware_details["motorType"]
+                )
+
+                return jsonify({
+                    "success": True,
+                    "installedVersion": installed_version,
+                    "installedType": installed_type,
+                    "inoVersion": firmware_details["version"],
+                    "inoType": firmware_details["motorType"],
+                    "updateAvailable": update_available
+                })
+
+            # If Arduino details are unknown, indicate the need for POST
+            return jsonify({
+                "success": True,
+                "installedVersion": installed_version,
+                "installedType": installed_type,
+                "updateAvailable": False
+            })
+
+        elif request.method == "POST":
+            motor_type = request.json.get("motorType", None)
+            if not motor_type or motor_type not in MOTOR_TYPE_MAPPING:
+                return jsonify({
+                    "success": False,
+                    "error": "Invalid or missing motor type"
+                }), 400
+
+            # Fetch firmware details for the given motor type
+            ino_path = MOTOR_TYPE_MAPPING[motor_type]
+            firmware_details = get_ino_firmware_details(ino_path)
+
+            if not firmware_details:
+                return jsonify({
+                    "success": False,
+                    "error": "Failed to retrieve .ino firmware details"
+                }), 500
+
+            return jsonify({
+                "success": True,
+                "installedVersion": 'Unknown',
+                "installedType": motor_type,
+                "inoVersion": firmware_details["version"],
+                "inoType": firmware_details["motorType"],
+                "updateAvailable": True
+            })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/flash_firmware', methods=['POST'])
+def flash_firmware():
+    """
+    Flash the pre-compiled firmware to the connected device (Arduino or ESP32).
+    """
+    global ser_port
+
+    # Ensure the device is connected
+    if ser_port is None or ser is None or not ser.is_open:
+        return jsonify({"success": False, "error": "No device connected or connection lost"}), 400
+
+    try:
+        data = request.json
+        motor_type = data.get("motorType", None)
+
+        # Validate motor type
+        if not motor_type or motor_type not in MOTOR_TYPE_MAPPING:
+            return jsonify({"success": False, "error": "Invalid or missing motor type"}), 400
+
+        # Determine the firmware file
+        ino_file_path = MOTOR_TYPE_MAPPING[motor_type]  # Path to .ino file
+        hex_file_path = f"{ino_file_path}.hex"
+        bin_file_path = f"{ino_file_path}.bin"  # For ESP32 firmware
+
+        # Check the device type
+        if motor_type.lower() in ["esp32", "esp32_tmc2209"]:
+            if not os.path.exists(bin_file_path):
+                return jsonify({"success": False, "error": f"Firmware binary not found: {bin_file_path}"}), 404
+
+            # Flash ESP32 firmware
+            flash_command = [
+                "esptool.py",
+                "--chip", "esp32",
+                "--port", ser_port,
+                "--baud", "115200",
+                "write_flash", "-z", "0x1000", bin_file_path
+            ]
+        else:
+            if not os.path.exists(hex_file_path):
+                return jsonify({"success": False, "error": f"Hex file not found: {hex_file_path}"}), 404
+
+            # Flash Arduino firmware
+            flash_command = [
+                "avrdude",
+                "-v",
+                "-c", "arduino",
+                "-p", "atmega328p",
+                "-P", ser_port,
+                "-b", "115200",
+                "-D",
+                "-U", f"flash:w:{hex_file_path}:i"
+            ]
+
+        # Execute the flash command
+        flash_process = subprocess.run(flash_command, capture_output=True, text=True)
+        if flash_process.returncode != 0:
+            return jsonify({
+                "success": False,
+                "error": flash_process.stderr
+            }), 500
+
+        return jsonify({"success": True, "message": "Firmware flashed successfully"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/check_software_update', methods=['GET'])
+def check_updates():
+    update_info = check_git_updates()
+    return jsonify(update_info)
+
+@app.route('/update_software', methods=['POST'])
+def update_software():
+    error_log = []
+
+    def run_command(command, error_message):
+        try:
+            subprocess.run(command, check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"{error_message}: {e}")
+            error_log.append(error_message)
+
+    # Fetch the latest version tag from remote
+    try:
+        subprocess.run(["git", "fetch", "--tags"], check=True)
+        latest_remote_tag = subprocess.check_output(
+            ["git", "describe", "--tags", "--abbrev=0", "origin/main"]
+        ).strip().decode()
+    except subprocess.CalledProcessError as e:
+        error_log.append(f"Failed to fetch tags or get latest remote tag: {e}")
+        return jsonify({
+            "success": False,
+            "error": "Failed to fetch tags or determine the latest version.",
+            "details": error_log
+        }), 500
+
+    # Checkout the latest tag
+    run_command(["git", "checkout", latest_remote_tag, '--force'], f"Failed to checkout version {latest_remote_tag}")
+
+    run_command(["docker", "compose", "pull"], "Failed to fetch Docker containers")
+
+    # Restart Docker containers
+    run_command(["docker", "compose", "up", "-d"], "Failed to restart Docker containers")
+
+    # Check if the update was successful
+    update_status = check_git_updates()
+
+    if (
+        update_status["updates_available"] is False
+        and update_status["latest_local_tag"] == update_status["latest_remote_tag"]
+    ):
+        # Update was successful
+        return jsonify({"success": True})
+    else:
+        # Update failed; include the errors in the response
+        return jsonify({
+            "success": False,
+            "error": "Update incomplete",
+            "details": error_log
+        }), 500
+
+
+def on_exit():
+    """Function to execute on application shutdown."""
+    print("Shutting down the application...")
+    stop_actions()
+    time.sleep(5)
+    print("Execution stopped and resources cleaned up.")
+
+# Register the on_exit function
+atexit.register(on_exit)
+        
+        
 if __name__ == '__main__':
     # Auto-connect to serial
     connect_to_serial()
-    app.run(debug=True, host='0.0.0.0', port=8080)
+    try:
+        app.run(debug=False, host='0.0.0.0', port=8080)
+    except KeyboardInterrupt:
+        print("Keyboard interrupt received. Shutting down.")
+    finally:
+        on_exit()  # Ensure cleanup if app is interrupted

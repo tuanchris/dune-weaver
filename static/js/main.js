@@ -14,7 +14,7 @@ const LOG_TYPE = {
 };
 
 // Enhanced logMessage with notification system
-function logMessage(message, type = LOG_TYPE.DEBUG) {
+function logMessage(message, type = LOG_TYPE.DEBUG, clickTargetId = null) {
     const log = document.getElementById('status_log');
     const header = document.querySelector('header');
 
@@ -49,13 +49,45 @@ function logMessage(message, type = LOG_TYPE.DEBUG) {
 
     // Add a close button
     const closeButton = document.createElement('button');
-    closeButton.textContent = '×';
-    closeButton.className = 'close-button';
-    closeButton.onclick = () => {
+    closeButton.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    closeButton.className = 'close-button no-bg';
+    closeButton.onclick = (e) => {
+        e.stopPropagation(); // Prevent triggering the clickTarget when the close button is clicked
         notification.classList.remove('show');
         setTimeout(() => notification.remove(), 250); // Match transition duration
     };
     notification.appendChild(closeButton);
+
+    // Attach click event to the notification if a clickTargetId is provided
+    if (clickTargetId) {
+        notification.onclick = () => {
+            const target = document.getElementById(clickTargetId);
+            if (target) {
+                // Find the closest <main> parent
+                const parentMain = target.closest('main');
+                if (parentMain) {
+                    // Remove 'active' class from all <main> elements
+                    document.querySelectorAll('main').forEach((main) => {
+                        main.classList.remove('active');
+                    });
+                    // Add 'active' class to the parent <main>
+                    parentMain.classList.add('active');
+                    target.click();
+
+                    // Update tab buttons based on the parent <main> ID
+                    const parentId = parentMain.id; // e.g., "patterns-tab"
+                    const tabId = `nav-${parentId.replace('-tab', '')}`; // e.g., "nav-patterns"
+                    document.querySelectorAll('.tab-button').forEach((button) => {
+                        button.classList.remove('active');
+                    });
+                    const tabButton = document.getElementById(tabId);
+                    if (tabButton) {
+                        tabButton.classList.add('active');
+                    }
+                }
+            }
+        };
+    }
 
     // Append the notification to the header
     header.appendChild(notification);
@@ -213,7 +245,7 @@ async function runThetaRho() {
     }
 
     // Get the selected pre-execution action
-    const preExecutionAction = document.querySelector('input[name="pre_execution"]:checked').value;
+    const preExecutionAction = document.getElementById('pre_execution').value;
 
     logMessage(`Running file: ${selectedFile} with pre-execution action: ${preExecutionAction}...`);
     const response = await fetch('/run_theta_rho', {
@@ -238,6 +270,36 @@ async function stopExecution() {
         logMessage('Execution stopped.',LOG_TYPE.SUCCESS);
     } else {
         logMessage('Failed to stop execution.',LOG_TYPE.ERROR);
+    }
+}
+
+let isPaused = false;
+
+function togglePausePlay() {
+    const button = document.getElementById("pausePlayCurrent");
+
+    if (isPaused) {
+        // Resume execution
+        fetch('/resume_execution', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    isPaused = false;
+                    button.innerHTML = "<i class=\"fa-solid fa-pause\"></i>"; // Change to pause icon
+                }
+            })
+            .catch(error => console.error("Error resuming execution:", error));
+    } else {
+        // Pause execution
+        fetch('/pause_execution', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    isPaused = true;
+                    button.innerHTML = "<i class=\"fa-solid fa-play\"></i>"; // Change to play icon
+                }
+            })
+            .catch(error => console.error("Error pausing execution:", error));
     }
 }
 
@@ -291,7 +353,7 @@ async function removeCustomPattern(fileName) {
 }
 
 // Preview a Theta-Rho file
-async function previewPattern(fileName) {
+async function previewPattern(fileName, containerId = 'pattern-preview-container') {
     try {
         logMessage(`Fetching data to preview file: ${fileName}...`);
         const response = await fetch('/preview_thr', {
@@ -303,44 +365,65 @@ async function previewPattern(fileName) {
         const result = await response.json();
         if (result.success) {
             const coordinates = result.coordinates;
-            renderPattern(coordinates);
+
+            // Render the pattern in the specified container
+            const canvasId = containerId === 'currently-playing-container'
+                ? 'currentlyPlayingCanvas'
+                : 'patternPreviewCanvas';
+            renderPattern(coordinates, canvasId);
 
             // Update coordinate display
-            const firstCoord = coordinates[0];
-            const lastCoord = coordinates[coordinates.length - 1];
-            document.getElementById('first_coordinate').textContent = `First Coordinate: θ=${firstCoord[0]}, ρ=${firstCoord[1]}`;
-            document.getElementById('last_coordinate').textContent = `Last Coordinate: θ=${lastCoord[0]}, ρ=${lastCoord[1]}`;
+            const firstCoordElement = document.getElementById('first_coordinate');
+            const lastCoordElement = document.getElementById('last_coordinate');
+
+            if (firstCoordElement) {
+                const firstCoord = coordinates[0];
+                firstCoordElement.textContent = `First Coordinate: θ=${firstCoord[0]}, ρ=${firstCoord[1]}`;
+            } else {
+                logMessage('First coordinate element not found.', LOG_TYPE.WARNING);
+            }
+
+            if (lastCoordElement) {
+                const lastCoord = coordinates[coordinates.length - 1];
+                lastCoordElement.textContent = `Last Coordinate: θ=${lastCoord[0]}, ρ=${lastCoord[1]}`;
+            } else {
+                logMessage('Last coordinate element not found.', LOG_TYPE.WARNING);
+            }
 
             // Show the preview container
-            const previewContainer = document.getElementById('pattern-preview-container');
+            const previewContainer = document.getElementById(containerId);
             if (previewContainer) {
                 previewContainer.classList.remove('hidden');
                 previewContainer.classList.add('visible');
+            } else {
+                logMessage(`Preview container not found: ${containerId}`, LOG_TYPE.ERROR);
             }
-
-            // Close the "Add to Playlist" container if it is open
-            const addToPlaylistContainer = document.getElementById('add-to-playlist-container');
-            if (addToPlaylistContainer && !addToPlaylistContainer.classList.contains('hidden')) {
-                toggleSecondaryButtons('add-to-playlist-container'); // Hide the container
-            }
-
         } else {
             logMessage(`Failed to fetch preview for file: ${fileName}`, LOG_TYPE.WARNING);
         }
     } catch (error) {
-        logMessage(`Error previewing pattern: ${error.message}`, LOG_TYPE.WARNING);
+        logMessage(`Error previewing pattern: ${error.message}`, LOG_TYPE.ERROR);
     }
 }
 
 // Render the pattern on a canvas
-function renderPattern(coordinates) {
-    const canvas = document.getElementById('patternPreviewCanvas');
+function renderPattern(coordinates, canvasId) {
+    const canvas = document.getElementById(canvasId);
     if (!canvas) {
-        logMessage('Error: Canvas not found');
+        logMessage(`Canvas element not found: ${canvasId}`, LOG_TYPE.ERROR);
+        return;
+    }
+
+    if (!(canvas instanceof HTMLCanvasElement)) {
+        logMessage(`Element with ID "${canvasId}" is not a canvas.`, LOG_TYPE.ERROR);
         return;
     }
 
     const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        logMessage(`Could not get 2D context for canvas: ${canvasId}`, LOG_TYPE.ERROR);
+        return;
+    }
 
     // Account for device pixel ratio
     const dpr = window.devicePixelRatio || 1;
@@ -367,7 +450,6 @@ function renderPattern(coordinates) {
         else ctx.lineTo(x, y);
     });
     ctx.stroke();
-    logMessage('Pattern preview rendered.');
 }
 
 
@@ -435,6 +517,37 @@ async function runClearOut() {
     await runFile('clear_from_out.thr');
 }
 
+async function runClearSide() {
+    await runFile('clear_sideway.thr');
+}
+
+let scrollPosition = 0;
+
+function scrollSelection(direction) {
+    const container = document.getElementById('clear_selection');
+    const itemHeight = 50; // Adjust based on CSS height
+    const maxScroll = container.children.length - 1;
+
+    // Update scroll position
+    scrollPosition += direction;
+    scrollPosition = Math.max(0, Math.min(scrollPosition, maxScroll));
+
+    // Update the transform to scroll items
+    container.style.transform = `translateY(-${scrollPosition * itemHeight}px)`;
+    setCookie('clear_action_index', scrollPosition, 365);
+}
+
+function executeClearAction(actionFunction) {
+    // Save the new action to a cookie (optional)
+    setCookie('clear_action', actionFunction, 365);
+
+    if (actionFunction && typeof window[actionFunction] === 'function') {
+        window[actionFunction](); // Execute the selected clear action
+    } else {
+        logMessage('No clear action selected or function not found.', LOG_TYPE.ERROR);
+    }
+}
+
 async function runFile(fileName) {
     const response = await fetch(`/run_theta_rho_file/${fileName}`, { method: 'POST' });
     const result = await response.json();
@@ -452,6 +565,7 @@ async function checkSerialStatus() {
     const statusElement = document.getElementById('serial_status');
     const statusHeaderElement = document.getElementById('serial_status_header');
     const serialPortsContainer = document.getElementById('serial_ports_container');
+    const selectElement = document.getElementById('serial_ports');
 
     const connectButton = document.querySelector('button[onclick="connectSerial()"]');
     const disconnectButton = document.querySelector('button[onclick="disconnectSerial()"]');
@@ -462,7 +576,7 @@ async function checkSerialStatus() {
         statusElement.textContent = `Connected to ${port}`;
         statusElement.classList.add('connected');
         statusElement.classList.remove('not-connected');
-        logMessage(`Reconnected to serial port: ${port}`);
+        logMessage(`Connected to serial port: ${port}`);
 
         // Update header status
         statusHeaderElement.classList.add('connected');
@@ -471,8 +585,15 @@ async function checkSerialStatus() {
         // Hide Available Ports and show disconnect/restart buttons
         serialPortsContainer.style.display = 'none';
         connectButton.style.display = 'none';
-        disconnectButton.style.display = 'inline-block';
-        restartButton.style.display = 'inline-block';
+        disconnectButton.style.display = 'flex';
+        restartButton.style.display = 'flex';
+
+        // Preselect the connected port in the dropdown
+        const newOption = document.createElement('option');
+        newOption.value = port;
+        newOption.textContent = port;
+        selectElement.appendChild(newOption);
+        selectElement.value = port;
     } else {
         statusElement.textContent = 'Not connected';
         statusElement.classList.add('not-connected');
@@ -485,7 +606,7 @@ async function checkSerialStatus() {
 
         // Show Available Ports and the connect button
         serialPortsContainer.style.display = 'block';
-        connectButton.style.display = 'inline-block';
+        connectButton.style.display = 'flex';
         disconnectButton.style.display = 'none';
         restartButton.style.display = 'none';
 
@@ -518,6 +639,7 @@ async function connectSerial() {
     const result = await response.json();
     if (result.success) {
         logMessage(`Connected to serial port: ${port}`, LOG_TYPE.SUCCESS);
+
         // Refresh the status
         await checkSerialStatus();
     } else {
@@ -555,6 +677,200 @@ async function restartSerial() {
     }
 }
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//  Firmware / Software Updater
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+async function fetchFirmwareInfo(motorType = null) {
+    const checkButton = document.getElementById("check_updates_button");
+    const motorTypeElement = document.getElementById("motor_type");
+    const currentVersionElement = document.getElementById("current_firmware_version");
+    const newVersionElement = document.getElementById("new_firmware_version");
+    const motorSelectionDiv = document.getElementById("motor_selection");
+    const updateButtonElement = document.getElementById("update_firmware_button");
+
+    try {
+        // Disable the button while fetching
+        checkButton.disabled = true;
+        checkButton.textContent = "Checking...";
+
+        // Prepare fetch options
+        const options = motorType
+            ? {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ motorType }),
+            }
+            : { method: "GET" };
+
+        const response = await fetch("/get_firmware_info", options);
+        const data = await response.json();
+        if (data.success) {
+            const { installedVersion, installedType, inoVersion, updateAvailable } = data;
+
+            // Handle unknown motor type
+            if (!installedType || installedType === "Unknown") {
+                motorSelectionDiv.style.display = "flex"; // Show the dropdown
+                updateButtonElement.style.display = "none"; // Hide update button
+                checkButton.style.display = "none";
+            } else {
+                // Display motor type
+                motorTypeElement.textContent = `Type: ${installedType || "Unknown"}`;
+                // Pre-select the correct motor type in the dropdown
+                const motorSelect = document.getElementById("manual_motor_type");
+                if (motorSelect) {
+                    Array.from(motorSelect.options).forEach(option => {
+                        option.selected = option.value === installedType;
+                    });
+                }
+
+                // Display firmware versions
+                currentVersionElement.textContent = `Current version: ${installedVersion || "Unknown"}`;
+
+                if (updateAvailable) {
+                    newVersionElement.textContent = `Latest version: ${inoVersion}`;
+                    updateButtonElement.style.display = "block";
+                    checkButton.style.display = "none";
+                } else {
+                    newVersionElement.textContent = "You are up to date!";
+                    updateButtonElement.style.display = "none";
+                    checkButton.style.display = "none";
+                }
+            }
+        } else {
+            logMessage("Could not fetch firmware info.", LOG_TYPE.WARNING);
+            logMessage(data.error, LOG_TYPE.DEBUG);
+        }
+    } catch (error) {
+        logMessage("Could not fetch firmware info.", LOG_TYPE.WARNING);
+        logMessage(error.message, LOG_TYPE.DEBUG);
+    } finally {
+        // Re-enable the button after fetching
+        checkButton.disabled = false;
+        checkButton.textContent = "Check for Updates";
+    }
+}
+
+function setMotorType() {
+    const selectElement = document.getElementById("manual_motor_type");
+    const selectedMotorType = selectElement.value;
+
+    if (!selectedMotorType) {
+        logMessage("Please select a motor type before proceeding.", LOG_TYPE.WARNING);
+        return;
+    }
+
+    const motorSelectionDiv = document.getElementById("motor_selection");
+    motorSelectionDiv.style.display = "none";
+
+    // Call fetchFirmwareInfo with the selected motor type
+    fetchFirmwareInfo(selectedMotorType);
+}
+
+async function updateFirmware() {
+    const button = document.getElementById("update_firmware_button");
+    const motorTypeDropdown = document.getElementById("manual_motor_type");
+    const motorType = motorTypeDropdown ? motorTypeDropdown.value : null;
+
+    if (!motorType) {
+        logMessage("Motor type is not set. Please select a motor type.", LOG_TYPE.WARNING);
+        return;
+    }
+
+    button.disabled = true;
+    button.textContent = "Updating...";
+
+    try {
+        logMessage("Firmware update started...", LOG_TYPE.INFO);
+
+        const response = await fetch("/flash_firmware", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ motorType }),
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            logMessage("Firmware updated successfully!", LOG_TYPE.SUCCESS);
+            // Refresh the firmware info to update current version
+            logMessage("Refreshing firmware info...");
+            await fetchFirmwareInfo();
+
+            // Display "You're up to date" message if versions match
+            const newVersionElement = document.getElementById("new_firmware_version");
+            const currentVersionElement = document.getElementById("current_firmware_version");
+            currentVersionElement.textContent = newVersionElement.innerHTML
+            newVersionElement.textContent = "You are up to date!";
+            const motorSelectionDiv = document.getElementById("motor_selection");
+            motorSelectionDiv.style.display = "none";
+        } else {
+            logMessage(`Firmware update failed: ${data.error}`, LOG_TYPE.ERROR);
+        }
+    } catch (error) {
+        logMessage(`Error during firmware update: ${error.message}`, LOG_TYPE.ERROR);
+    } finally {
+        button.disabled = false; // Re-enable button
+        button.textContent = "Update Firmware";
+    }
+}
+
+async function checkForUpdates() {
+    try {
+        const response = await fetch('/check_software_update');
+        const data = await response.json();
+
+        // Handle updates available logic
+        if (data.updates_available) {
+            const updateButton = document.getElementById('update-software-btn');
+            const updateLinkElement = document.getElementById('update_link');
+            const tagLink = `https://github.com/tuanchris/dune-weaver/releases/tag/${data.latest_remote_tag}`;
+
+            updateButton.classList.remove('hidden'); // Show the button
+            logMessage("Software Update Available", LOG_TYPE.INFO, 'open-settings-button')
+
+            updateLinkElement.innerHTML = `<a href="${tagLink}" target="_blank">View Release Notes </a>`;
+            updateLinkElement.classList.remove('hidden'); // Show the link
+        }
+
+        // Update current and latest version in the UI
+        const currentVersionElem = document.getElementById('current_git_version');
+        const latestVersionElem = document.getElementById('latest_git_version');
+
+        currentVersionElem.textContent = `Current Version: ${data.latest_local_tag || 'Unknown'}`;
+        latestVersionElem.textContent = data.updates_available
+            ? `Latest Version: ${data.latest_remote_tag}`
+            : 'You are up to date!';
+
+    } catch (error) {
+        console.error('Error checking for updates:', error);
+    }
+}
+
+async function updateSoftware() {
+    const updateButton = document.getElementById('update-software-btn');
+
+    try {
+        // Disable the button and update the text
+        updateButton.disabled = true;
+        updateButton.querySelector('span').textContent = 'Updating...';
+
+        const response = await fetch('/update_software', { method: 'POST' });
+        const data = await response.json();
+
+        if (data.success) {
+            logMessage('Software updated successfully!', LOG_TYPE.SUCCESS);
+            window.location.reload(); // Reload the page after update
+        } else {
+            logMessage('Failed to update software: ' + data.error, LOG_TYPE.ERROR);
+        }
+    } catch (error) {
+        console.error('Error updating software:', error);
+        logMessage('Failed to update software', LOG_TYPE.ERROR);
+    } finally {
+        // Re-enable the button and reset the text
+        updateButton.disabled = false;
+        updateButton.textContent = 'Update Software'; // Adjust to the original text
+    }
+}
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //  PART A: Loading / listing playlists from the server
@@ -574,6 +890,15 @@ async function loadAllPlaylists() {
 function displayAllPlaylists(playlists) {
     const ul = document.getElementById('all_playlists');
     ul.innerHTML = ''; // Clear current list
+
+    if (playlists.length === 0) {
+        // Add a placeholder if the list is empty
+        const emptyLi = document.createElement('li');
+        emptyLi.textContent = "You don't have any playlists yet.";
+        emptyLi.classList.add('empty-placeholder'); // Optional: Add a class for styling
+        ul.appendChild(emptyLi);
+        return;
+    }
 
     playlists.forEach(playlistName => {
         const li = document.createElement('li');
@@ -624,6 +949,13 @@ function openPlaylistEditor(playlistName) {
     loadPlaylist(playlistName);
 }
 
+function clearSchedule() {
+    document.getElementById("start_time").value = "";
+    document.getElementById("end_time").value = "";
+    document.getElementById('clear_time').style.display = 'none';
+    setCookie('start_time', '', 365);
+    setCookie('end_time', '', 365);
+}
 
 // Function to run the selected playlist with specified parameters
 async function runPlaylist() {
@@ -638,11 +970,44 @@ async function runPlaylist() {
     const clearPatternSelect = document.getElementById('clear_pattern').value;
     const runMode = document.querySelector('input[name="run_mode"]:checked').value;
     const shuffle = document.getElementById('shuffle_playlist').checked;
+    const startTimeInput = document.getElementById('start_time').value.trim();
+    const endTimeInput = document.getElementById('end_time').value.trim();
 
     const pauseTime = parseFloat(pauseTimeInput);
     if (isNaN(pauseTime) || pauseTime < 0) {
         logMessage("Invalid pause time. Please enter a non-negative number.", LOG_TYPE.WARNING);
         return;
+    }
+
+    // Validate start and end time format and logic
+    let startTime = startTimeInput || null;
+    let endTime = endTimeInput || null;
+
+    // Ensure that if one time is filled, the other must be as well
+    if ((startTime && !endTime) || (!startTime && endTime)) {
+        logMessage("Both start and end times must be provided together or left blank.", LOG_TYPE.WARNING);
+        return;
+    }
+
+    // If both are provided, validate format and ensure start_time < end_time
+    if (startTime && endTime) {
+        try {
+            const startDateTime = new Date(`1970-01-01T${startTime}:00`);
+            const endDateTime = new Date(`1970-01-01T${endTime}:00`);
+
+            if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+                logMessage("Invalid time format. Please use HH:MM format (e.g., 09:30).", LOG_TYPE.WARNING);
+                return;
+            }
+
+            if (startDateTime >= endDateTime) {
+                logMessage("Start time must be earlier than end time.", LOG_TYPE.WARNING);
+                return;
+            }
+        } catch (error) {
+            logMessage("Error parsing start or end time. Ensure correct HH:MM format.", LOG_TYPE.ERROR);
+            return;
+        }
     }
 
     logMessage(`Running playlist: ${playlistName} with pause_time=${pauseTime}, clear_pattern=${clearPatternSelect}, run_mode=${runMode}, shuffle=${shuffle}.`);
@@ -656,7 +1021,9 @@ async function runPlaylist() {
                 pause_time: pauseTime,
                 clear_pattern: clearPatternSelect,
                 run_mode: runMode,
-                shuffle: shuffle
+                shuffle: shuffle,
+                start_time: startTimeInput,
+                end_time: endTimeInput
             })
         });
 
@@ -681,10 +1048,6 @@ async function loadPlaylist(playlistName) {
     try {
         logMessage(`Loading playlist: ${playlistName}`);
         const response = await fetch(`/get_playlist?name=${encodeURIComponent(playlistName)}`);
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
-        }
 
         const data = await response.json();
 
@@ -766,6 +1129,18 @@ function populatePlaylistDropdown() {
             // Retrieve the saved playlist from the cookie
             const savedPlaylist = getCookie('selected_playlist');
 
+            // Check if there are playlists available
+            if (playlists.length === 0) {
+                // Add a placeholder option if no playlists are available
+                const placeholderOption = document.createElement('option');
+                placeholderOption.value = '';
+                placeholderOption.textContent = 'No playlists available';
+                placeholderOption.disabled = true; // Prevent selection
+                placeholderOption.selected = true; // Set as default
+                select.appendChild(placeholderOption);
+                return;
+            }
+
             playlists.forEach(playlist => {
                 const option = document.createElement('option');
                 option.value = playlist;
@@ -782,13 +1157,13 @@ function populatePlaylistDropdown() {
             // Attach the onchange event listener after populating the dropdown
             select.addEventListener('change', function () {
                 const selectedPlaylist = this.value;
-                setCookie('selected_playlist', selectedPlaylist, 7); // Save to cookie
+                setCookie('selected_playlist', selectedPlaylist, 365); // Save to cookie
                 logMessage(`Selected playlist saved: ${selectedPlaylist}`);
             });
 
             logMessage('Playlist dropdown populated, event listener attached, and saved playlist restored.');
         })
-        .catch(error => logMessage(`Error fetching playlists: ${error.message}`, LOG_TYPE.ERROR));
+        .catch(error => logMessage(`Error fetching playlists: ${error.message}`));
 }
 populatePlaylistDropdown().then(() => {
     loadSettingsFromCookies(); // Restore selected playlist after populating the dropdown
@@ -824,6 +1199,7 @@ async function confirmAddPlaylist() {
 
             // Refresh the playlist list
             loadAllPlaylists();
+            populatePlaylistDropdown();
 
             // Hide the add playlist container
             toggleSecondaryButtons('add-playlist-container');
@@ -916,6 +1292,7 @@ async function deleteCurrentPlaylist() {
             logMessage(`Playlist "${playlistName}" deleted.`, LOG_TYPE.INFO);
             closeStickySection('playlist-editor');
             loadAllPlaylists();
+            populatePlaylistDropdown();
         } else {
             logMessage(`Failed to delete playlist: ${result.error}`,  LOG_TYPE.ERROR);
         }
@@ -957,7 +1334,7 @@ function refreshPlaylistUI() {
 
         // Move Up button
         const moveUpBtn = document.createElement('button');
-        moveUpBtn.textContent = '▲'; // Up arrow symbol
+        moveUpBtn.innerHTML = '<i class="fa-solid fa-turn-up"></i>'; // Up arrow symbol
         moveUpBtn.classList.add('move-button');
         moveUpBtn.onclick = () => {
             if (index > 0) {
@@ -972,7 +1349,7 @@ function refreshPlaylistUI() {
 
         // Move Down button
         const moveDownBtn = document.createElement('button');
-        moveDownBtn.textContent = '▼'; // Down arrow symbol
+        moveDownBtn.innerHTML = '<i class="fa-solid fa-turn-down"></i>'; // Down arrow symbol
         moveDownBtn.classList.add('move-button');
         moveDownBtn.onclick = () => {
             if (index < playlist.length - 1) {
@@ -987,7 +1364,7 @@ function refreshPlaylistUI() {
 
         // Remove button
         const removeBtn = document.createElement('button');
-        removeBtn.textContent = '✖';
+        removeBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
         removeBtn.classList.add('remove-button');
         removeBtn.onclick = () => {
             playlist.splice(index, 1);
@@ -1006,12 +1383,12 @@ function toggleSaveCancelButtons(show) {
     if (actionButtons) {
         // Show/hide all buttons except Save and Cancel
         actionButtons.querySelectorAll('button:not(.save-cancel)').forEach(button => {
-            button.style.display = show ? 'none' : 'inline-block';
+            button.style.display = show ? 'none' : 'flex';
         });
 
         // Show/hide Save and Cancel buttons
         actionButtons.querySelectorAll('.save-cancel').forEach(button => {
-            button.style.display = show ? 'inline-block' : 'none';
+            button.style.display = show ? 'flex' : 'none';
         });
     } else {
         logMessage('Error: Action buttons container not found.', LOG_TYPE.ERROR);
@@ -1134,7 +1511,7 @@ function closeStickySection(sectionId) {
         // Reset the fullscreen button text if it exists
         const fullscreenButton = section.querySelector('.fullscreen-button');
         if (fullscreenButton) {
-            fullscreenButton.textContent = '⛶'; // Reset to enter fullscreen icon/text
+            fullscreenButton.innerHtml = '<i class="fa-solid fa-compress"></i>'; // Reset to enter fullscreen icon/text
         }
 
         logMessage(`Closed section: ${sectionId}`);
@@ -1156,19 +1533,45 @@ function closeStickySection(sectionId) {
     }
 }
 
+// Function to open any sticky section
+function openStickySection(sectionId) {
+    const section = document.getElementById(sectionId);
+    if (section) {
+        // Toggle the 'open' class
+        section.classList.toggle('open');
+    } else {
+        logMessage(`Error: Section with ID "${sectionId}" not found`);
+    }
+}
+
 function attachFullScreenListeners() {
     // Add event listener to all fullscreen buttons
     document.querySelectorAll('.fullscreen-button').forEach(button => {
         button.addEventListener('click', function () {
             const stickySection = this.closest('.sticky'); // Find the closest sticky section
             if (stickySection) {
+                // Close all other sections
+                document.querySelectorAll('.sticky:not(#currently-playing-container)').forEach(section => {
+                    if (section !== stickySection) {
+                        section.classList.remove('fullscreen');
+                        section.classList.remove('visible');
+                        section.classList.add('hidden');
+
+                        // Reset the fullscreen button text for other sections
+                        const otherFullscreenButton = section.querySelector('.fullscreen-button');
+                        if (otherFullscreenButton) {
+                            otherFullscreenButton.innerHTML = '<i class="fa-solid fa-expand"></i>'; // Enter fullscreen icon/text
+                        }
+                    }
+                });
+
                 stickySection.classList.toggle('fullscreen'); // Toggle fullscreen class
 
                 // Update button icon or text
                 if (stickySection.classList.contains('fullscreen')) {
-                    this.textContent = '-'; // Exit fullscreen icon/text
+                    this.innerHTML = '<i class="fa-solid fa-compress"></i>'; // Exit fullscreen icon/text
                 } else {
-                    this.textContent = '⛶'; // Enter fullscreen icon/text
+                    this.innerHTML = '<i class="fa-solid fa-expand"></i>'; // Enter fullscreen icon/text
                 }
             } else {
                 console.error('Error: Fullscreen button is not inside a sticky section.');
@@ -1177,6 +1580,97 @@ function attachFullScreenListeners() {
     });
 }
 
+let lastPreviewedFile = null; // Track the last previewed file
+
+let updateInterval = null;
+
+async function updateCurrentlyPlaying() {
+    try {
+        if (!document.hasFocus()) return; // Stop execution if the page is not visible
+
+        const response = await fetch('/status');
+        const data = await response.json();
+
+        const currentlyPlayingSection = document.getElementById('currently-playing-container');
+        if (!currentlyPlayingSection) {
+            logMessage('Currently Playing section not found.', LOG_TYPE.ERROR);
+            return;
+        }
+
+        if (data.current_playing_file && !data.stop_requested) {
+            const { current_playing_file, execution_progress, pause_requested } = data;
+
+            // Strip './patterns/' prefix from the file name
+            const fileName = current_playing_file.replace('./patterns/', '');
+
+            if (!document.body.classList.contains('playing')) {
+                closeStickySection('pattern-preview-container')
+            }
+
+            // Show "Currently Playing" section
+            document.body.classList.add('playing');
+
+            // Update pattern preview only if the file is different
+            if (current_playing_file !== lastPreviewedFile) {
+                previewPattern(fileName, 'currently-playing-container');
+                lastPreviewedFile = current_playing_file;
+            }
+
+            // Update the filename display
+            const fileNameDisplay = document.getElementById('currently-playing-file');
+            if (fileNameDisplay) fileNameDisplay.textContent = fileName;
+
+            // Update progress bar
+            const progressBar = document.getElementById('play_progress');
+            const progressText = document.getElementById('play_progress_text');
+            if (execution_progress) {
+                const progressPercentage = (execution_progress[0] / execution_progress[1]) * 100;
+                progressBar.value = progressPercentage;
+                progressText.textContent = `${Math.round(progressPercentage)}% (${formatSecondsToHMS(execution_progress[2])})`;
+            } else {
+                progressBar.value = 0;
+                progressText.textContent = '0%';
+            }
+
+            // Update play/pause button
+            const pausePlayButton = document.getElementById('pausePlayCurrent');
+            if (pausePlayButton) pausePlayButton.innerHTML = pause_requested ? '<i class="fa-solid fa-play"></i>' : '<i class="fa-solid fa-pause"></i>';
+        } else {
+            document.body.classList.remove('playing');
+        }
+    } catch (error) {
+        logMessage(`Error updating "Currently Playing" section: ${error.message}`);
+    }
+}
+
+function formatSecondsToHMS(seconds) {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+// Function to start or stop updates based on visibility
+function handleVisibilityChange() {
+    if (document.hasFocus()) {
+        // User is active, start updating
+        if (!updateInterval) {
+            updateCurrentlyPlaying(); // Run immediately
+            updateInterval = setInterval(updateCurrentlyPlaying, 5000); // Update every 5s
+        }
+    } else {
+        // User is inactive, stop updating
+        clearInterval(updateInterval);
+        updateInterval = null;
+    }
+}
+
+function toggleSettings() {
+    const settingsContainer = document.getElementById('settings-container');
+    if (settingsContainer) {
+        settingsContainer.classList.toggle('open');
+    }
+}
 
 // Utility function to manage cookies
 function setCookie(name, value, days) {
@@ -1197,28 +1691,33 @@ function getCookie(name) {
     return null;
 }
 
-
 // Save settings to cookies
 function saveSettingsToCookies() {
     // Save the pause time
     const pauseTime = document.getElementById('pause_time').value;
-    setCookie('pause_time', pauseTime, 7);
+    setCookie('pause_time', pauseTime, 365);
 
     // Save the clear pattern
     const clearPattern = document.getElementById('clear_pattern').value;
-    setCookie('clear_pattern', clearPattern, 7);
+    setCookie('clear_pattern', clearPattern, 365);
 
     // Save the run mode
     const runMode = document.querySelector('input[name="run_mode"]:checked').value;
-    setCookie('run_mode', runMode, 7);
+    setCookie('run_mode', runMode, 365);
 
     // Save shuffle playlist checkbox state
     const shufflePlaylist = document.getElementById('shuffle_playlist').checked;
-    setCookie('shuffle_playlist', shufflePlaylist, 7);
+    setCookie('shuffle_playlist', shufflePlaylist, 365);
 
     // Save pre-execution action
-    const preExecution = document.querySelector('input[name="pre_execution"]:checked').value;
-    setCookie('pre_execution', preExecution, 7);
+    const preExecution = document.getElementById('pre_execution').value;
+    setCookie('pre_execution', preExecution, 365);
+
+    // Save start and end times
+    const startTime = document.getElementById('start_time').value;
+    const endTime = document.getElementById('end_time').value;
+    setCookie('start_time', startTime, 365);
+    setCookie('end_time', endTime, 365);
 
     logMessage('Settings saved.');
 }
@@ -1252,16 +1751,21 @@ function loadSettingsFromCookies() {
     // Load the pre-execution action
     const preExecution = getCookie('pre_execution');
     if (preExecution !== null) {
-        document.querySelector(`input[name="pre_execution"][value="${preExecution}"]`).checked = true;
+        document.getElementById('pre_execution').value = preExecution;
     }
 
-    // Load the selected playlist
-    const selectedPlaylist = getCookie('selected_playlist');
-    if (selectedPlaylist !== null) {
-        const playlistDropdown = document.getElementById('select-playlist');
-        if (playlistDropdown && [...playlistDropdown.options].some(option => option.value === selectedPlaylist)) {
-            playlistDropdown.value = selectedPlaylist;
-        }
+    // Load start and end times
+    const startTime = getCookie('start_time');
+    if (startTime !== null) {
+        document.getElementById('start_time').value = startTime;
+    }
+    const endTime = getCookie('end_time');
+    if (endTime !== null) {
+        document.getElementById('end_time').value = endTime;
+    }
+
+    if (startTime && endTime ) {
+        document.getElementById('clear_time').style.display = 'block';
     }
 
     logMessage('Settings loaded from cookies.');
@@ -1276,16 +1780,16 @@ function attachSettingsSaveListeners() {
         input.addEventListener('change', saveSettingsToCookies);
     });
     document.getElementById('shuffle_playlist').addEventListener('change', saveSettingsToCookies);
-    document.querySelectorAll('input[name="pre_execution"]').forEach(input => {
-        input.addEventListener('change', saveSettingsToCookies);
-    });
+    document.getElementById('pre_execution').addEventListener('change', saveSettingsToCookies);
+    document.getElementById('start_time').addEventListener('change', saveSettingsToCookies);
+    document.getElementById('end_time').addEventListener('change', saveSettingsToCookies);
 }
 
 
 // Tab switching logic with cookie storage
 function switchTab(tabName) {
     // Store the active tab in a cookie
-    setCookie('activeTab', tabName, 7); // Store for 7 days
+    setCookie('activeTab', tabName, 365); // Store for 7 days
 
     // Deactivate all tab content
     document.querySelectorAll('.tab-content').forEach(tab => {
@@ -1314,6 +1818,8 @@ function switchTab(tabName) {
     }
 }
 
+document.addEventListener("visibilitychange", handleVisibilityChange);
+
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
     const activeTab = getCookie('activeTab') || 'patterns'; // Default to 'patterns' tab
@@ -1321,7 +1827,13 @@ document.addEventListener('DOMContentLoaded', () => {
     checkSerialStatus(); // Check serial connection status
     loadThetaRhoFiles(); // Load files on page load
     loadAllPlaylists(); // Load all playlists on page load
-    loadSettingsFromCookies(); // Load saved settings
     attachSettingsSaveListeners(); // Attach event listeners to save changes
     attachFullScreenListeners();
+
+    // Periodically check for currently playing status
+    if (document.hasFocus()) {
+        updateInterval = setInterval(updateCurrentlyPlaying, 5000);
+    }
+    checkForUpdates();
+    fetchFirmwareInfo();
 });
