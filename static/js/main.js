@@ -518,7 +518,7 @@ async function runClearOut() {
 }
 
 async function runClearSide() {
-    await runFile('side_wiper.thr');
+    await runFile('clear_sideway.thr');
 }
 
 let scrollPosition = 0;
