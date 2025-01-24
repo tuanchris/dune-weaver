@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Dune Weaver Controller</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../static/style.css">
+    <link rel="stylesheet" href="../static/css/style.css">
+    <link rel="stylesheet" href="../static/css/all.min.css">
 </head>
 <body>
 <header>
@@ -17,14 +18,22 @@
         <section class="main">
             <div class="header">
                 <h2>Patterns</h2>
-                <button class="add-button cta" onclick="toggleSecondaryButtons('add-pattern-container')">+</button>
+                <button class="add-button cta" onclick="toggleSecondaryButtons('add-pattern-container')">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
             </div>
             <div id="add-pattern-container" class="add-to-container hidden">
                 <div class="action-buttons">
                     <label for="upload_file">Upload pattern file (.thr):</label>
                     <input type="file" id="upload_file">
-                    <button class="cancel" onclick="toggleSecondaryButtons('add-pattern-container')">Cancel</button>
-                    <button class="cta" onclick="uploadThetaRho()">Upload</button>
+                    <button class="cta" onclick="uploadThetaRho()">
+                        <i class="fa-solid fa-file-arrow-up"></i>
+                        <span>Upload</span>
+                    </button>
+                    <button class="cancel" onclick="toggleSecondaryButtons('add-pattern-container')">
+                        <i class="fa-solid fa-xmark"></i>
+                        <span>Cancel</span>
+                    </button>
                 </div>
             </div>
             <input type="text" id="search_pattern" placeholder="Search files..." oninput="searchPatternFiles()">
@@ -35,8 +44,12 @@
         <section id="pattern-preview-container" class="sticky hidden">
             <div class="header">
                 <h2>Preview</h2>
-                <button class="fullscreen-button">⛶</button>
-                <button class="close-button" onclick="closeStickySection('pattern-preview-container')">&times;</button>
+                <button class="fullscreen-button no-bg">
+                    <i class="fa-solid fa-expand"></i>
+                </button>
+                <button class="close-button no-bg" onclick="closeStickySection('pattern-preview-container')">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
             </div>
             <div id="pattern-preview">
                 <canvas id="patternPreviewCanvas"></canvas>
@@ -46,18 +59,45 @@
 
             <!-- Action Buttons -->
             <div class="action-buttons">
-                <button onclick="runThetaRho()" class="cta" >Run</button>
-                <button id="toggle-playlist-button" onclick="toggleSecondaryButtons('add-to-playlist-container', populatePlaylistDropdown)">Add to Playlist</button>
-                <button onclick="removeCurrentPattern()" class="cancel remove-button hidden">Delete</button>
+                <div class="pre-execution">
+                    <h3>Pre-Execution Action</h3>
+                    <div class="control-group">
+                        <select id="pre_execution" name="pre_execution">
+                            <option value="none" selected>None</option>
+                            <option value="adaptive">Adaptive</option>
+                            <option value="clear_from_in">Clear From Center</option>
+                            <option value="clear_from_out">Clear From Perimeter</option>
+                            <option value="clear_sideway">Clear Sideway</option>
+                        </select>
+                    </div>
+                </div>
+                <button onclick="runThetaRho()" class="cta" >
+                    <i class="fa-solid fa-play"></i>
+                    <span>Play</span>
+                </button>
+                <button id="toggle-playlist-button" onclick="toggleSecondaryButtons('add-to-playlist-container', populatePlaylistDropdown)">
+                    <i class="fa-solid fa-list-ul"></i>
+                    <span class="small">Add to Playlist</span>
+                </button>
+                <button onclick="removeCurrentPattern()" class="cancel remove-button hidden">
+                    <i class="fa-solid fa-trash"></i>
+                    <span class="small">Delete</span>
+                </button>
             </div>
 
             <!-- Add to Playlist Section -->
             <div id="add-to-playlist-container" class="hidden">
-                <h2>Select Playlist</h2>
+                <h3>Select Playlist</h3>
                 <select id="select-playlist"></select>
                 <div class="action-buttons">
-                    <button onclick="toggleSecondaryButtons('add-to-playlist-container')" class="cancel">Cancel</button>
-                    <button onclick="saveToPlaylist()" class="cta">Save</button>
+                    <button onclick="saveToPlaylist()" class="cta">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>Save</span>
+                    </button>
+                    <button onclick="toggleSecondaryButtons('add-to-playlist-container')" class="cancel">
+                        <i class="fa-solid fa-xmark"></i>
+                        <span class="small">Cancel</span>
+                    </button>
                 </div>
             </div>
         </section>
@@ -68,13 +108,21 @@
         <section>
             <div class="header">
                 <h2>Playlists</h2>
-                <button class="cta add-button" onclick="toggleSecondaryButtons('add-playlist-container')">+</button>
+                <button class="cta add-button" onclick="toggleSecondaryButtons('add-playlist-container')">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
             </div>
             <div id="add-playlist-container" class="add-to-container hidden">
                 <input type="text" id="new_playlist_name" placeholder="Enter new playlist name" />
                 <div class="action-buttons">
-                    <button onclick="confirmAddPlaylist()" class="cta">Save</button>
-                    <button onclick="toggleSecondaryButtons('add-playlist-container')" class="cancel">Cancel</button>
+                    <button onclick="confirmAddPlaylist()" class="cta">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>Save</span>
+                    </button>
+                    <button onclick="toggleSecondaryButtons('add-playlist-container')" class="cancel">
+                        <i class="fa-solid fa-xmark"></i>
+                        <span>Cancel</span>
+                    </button>
                 </div>
             </div>
             <ul id="all_playlists" class="file-list">
@@ -114,12 +162,27 @@
                         <label for="clear_pattern">Clear Pattern:</label>
                         <select id="clear_pattern">
                             <option value="none">None</option>
-                            <option value="clear_in">Clear from In</option>
-                            <option value="clear_out">Clear from Out</option>
-                            <option value="clear_sideway">Clear Sideway</option>
+                            <option value="adaptive">Adaptive</option>
+                            <option value="clear_from_in">Clear From Center</option>
+                            <option value="clear_from_out">Clear From Perimeter</option>
+                            <option value="clear_sideway">Clear Sideways</option>
                             <option value="random">Random</option>
                         </select>
                     </div>
+                </div>
+                <h3>Schedule:</h3>
+                <div class="control-group">
+                    <div class="item column">
+                        <label for="start_time">Start time</label>
+                        <input type="time" id="start_time" min="00:00" max="24:00">
+                    </div>
+                    <div class="item column">
+                        <label for="end_time">End time</label>
+                        <input type="time" id="end_time" min="00:00" max="24:00">
+                    </div>
+                    <button id="clear_time" onclick="clearSchedule()" style="display: none" class="small cancel">
+                        <i class="fa-solid fa-delete-left"></i>
+                    </button>
                 </div>
             </div>
         </section>
@@ -128,26 +191,51 @@
         <section id="playlist-editor" class="sticky hidden">
             <div class="header">
                 <h2 id="playlist_title">Playlist: <span id="playlist_name_display"></span></h2>
-                <button class="fullscreen-button" onclick="toggleFullscreen(this)">⛶</button>
-                <button class="close-button" onclick="closeStickySection('playlist-editor')">&times;</button>
+                <button class="fullscreen-button no-bg">
+                    <i class="fa-solid fa-expand"></i>
+                </button>
+                <button class="close-button no-bg" onclick="closeStickySection('playlist-editor')">
+                    <i class="fa-solid fa-xmark" ></i>
+                </button>
             </div>
             <ul id="playlist_items" class="file-list">
             </ul>
             <hr/>
             <div class="action-buttons">
-                <button onclick="runPlaylist()" class="cta">Play</button>
-                <button onclick="toggleSecondaryButtons('rename-playlist-container')">Rename</button>
-                <button onclick="deleteCurrentPlaylist()" class="cancel">Delete</button>
+                <button onclick="runPlaylist()" class="cta">
+                    <i class="fa-solid fa-play"></i>
+                    <span>Play</span>
+                </button>
+                <button onclick="toggleSecondaryButtons('rename-playlist-container')">
+                    <i class="fa-solid fa-pencil"></i>
+                    <span class="small">Rename</span>
+                </button>
+                <button onclick="deleteCurrentPlaylist()" class="cancel">
+                    <i class="fa-solid fa-trash"></i>
+                    <span class="small">Delete</span>
+                </button>
                 <!-- Save and Cancel buttons -->
-                <button onclick="savePlaylist()" class="save-cancel cta" style="display: none;">Save</button>
-                <button onclick="cancelPlaylistChanges()" class="save-cancel cancel" style="display: none;">Cancel</button>
+                <button onclick="savePlaylist()" class="save-cancel cta" style="display: none;">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    <span>Save</span>
+                </button>
+                <button onclick="cancelPlaylistChanges()" class="save-cancel cancel" style="display: none;">
+                    <i class="fa-solid fa-xmark"></i>
+                    <span class="small">Cancel</span>
+                </button>
             </div>
             <!-- Playlist Rename Section -->
             <div id="rename-playlist-container" class="hidden">
                 <input type="text" id="playlist_name_input" placeholder="Enter new playlist name">
                 <div class="action-buttons">
-                    <button onclick="confirmRenamePlaylist()" class="cta">Save</button>
-                    <button onclick="toggleSecondaryButtons('rename-playlist-container')" class="cancel">Cancel</button>
+                    <button onclick="confirmRenamePlaylist()" class="cta">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>Save</span>
+                    </button>
+                    <button onclick="toggleSecondaryButtons('rename-playlist-container')" class="cancel">
+                        <i class="fa-solid fa-xmark"></i>
+                        <span>Cancel</span>
+                    </button>
                 </div>
             </div>
         </section>
@@ -155,33 +243,32 @@
 
     <!-- Device / Settings Tab -->
     <main class="tab-content" id="settings-tab">
-        <section>
-            <div class="header">
-                <h2>Serial Connection</h2>
-            </div>
-            <div id="serial_status_container">Status: <span id="serial_status" class="status"> Not connected</span></div>
-            <div id="serial_ports_container">
-                <label for="serial_ports">Available Ports:</label>
-                <select id="serial_ports"></select>
-                <button onclick="connectSerial()" class="cta">Connect</button>
-            </div>
-            <div id="serial_ports_buttons" class="button-group">
-                <button onclick="disconnectSerial()" class="cancel">Disconnect</button>
-                <button onclick="restartSerial()" class="warn">Restart</button>
-            </div>
-        </section>
-
         <section class="main">
             <div class="header">
                 <h2>Device Controls</h2>
+                <button id="open-settings-button" class="no-bg" onclick="toggleSettings()">
+                    <i class="fa-solid fa-gears"></i>
+                    <span class="small">Settings</span>
+                </button>
             </div>
-
-            <div class="action-buttons">
-                <button onclick="stopExecution()" class="cancel">Stop Current Pattern</button>
-                <button onclick="runClearIn()">Clear In</button>
-                <button onclick="runClearOut()">Clear Out</button>
-                <button onclick="moveToCenter()">Move to Center</button>
-                <button onclick="moveToPerimeter()">Move to Perimeter</button>
+            <div class="action-buttons square">
+                <button onclick="stopExecution()" class="cancel"><i class="fa-solid fa-stop"></i><span class="small">Stop</span></button>
+                <button onclick="moveToCenter()"><i class="fa-regular fa-circle-dot"></i><span class="small">Move to Center</span></button>
+                <button onclick="moveToPerimeter()"><i class="fa-solid fa-circle-notch"></i><span class="small">Move to Perimeter</span></button>
+                <button onclick="sendHomeCommand()" class="warn"><i class="fa-solid fa-house"></i><span class="small">Home</span></button>
+                <div class="scrollable-selection">
+                    <div class="selection-container">
+                        <div id="clear_selection" class="selection-items">
+                            <div id="runClearIn" class="selection-item" onclick="executeClearAction('runClearIn')">Clear From Center</div>
+                            <div id="runClearOut" class="selection-item" onclick="executeClearAction('runClearOut')">Clear From Perimeter</div>
+                            <div id="runClearSide" class="selection-item" onclick="executeClearAction('runClearSide')">Clear Sideways</div>
+                        </div>
+                        <div class="nav-items">
+                            <button class="scroll-arrow up-arrow" onclick="scrollSelection(-1)">▲</button>
+                            <button class="scroll-arrow down-arrow" onclick="scrollSelection(1)">▼</button>
+                        </div>
+                    </div>
+                </div>
             </div>
             <h3>Send to Coordinate</h3>
             <div class="control-group">
@@ -194,26 +281,10 @@
                     <input type="number" id="rho_input" placeholder="Rho">
                 </div>
                 <div class="item cta">
-                    <button onclick="sendCoordinate()">Send</button>
+                    <button onclick="sendCoordinate()">
+                        <i class="fa-solid fa-map-pin"></i><span class="small">Send</span>
+                    </button>
                 </div>
-            </div>
-            <h3>Pre-Execution Action</h3>
-            <div class="control-group">
-                <label class="custom-input">
-                    <input type="radio" name="pre_execution" value="clear_in" id="clear_in">
-                    <span class="custom-radio"></span>
-                    Clear from In
-                </label>
-                <label class="custom-input">
-                    <input type="radio" name="pre_execution" value="clear_out" id="clear_out">
-                    <span class="custom-radio"></span>
-                    Clear from Out
-                </label>
-                <label class="custom-input">
-                    <input type="radio" name="pre_execution" value="none" id="no_action" checked>
-                    <span class="custom-radio"></span>
-                    None
-                </label>
             </div>
             <div class="control-group">
                 <h3>Speed</h3>
@@ -221,28 +292,130 @@
                     <input type="number" id="speed_input" placeholder="1-100" min="1" step="1" max="100">
                 </div>
                 <div class="item cta">
-                    <button class="small-button"  onclick="changeSpeed()">Set Speed</button>
+                    <button class="small-button" onclick="changeSpeed()">
+                        <i class="fa-solid fa-gauge-high"></i>
+                        <span class="small">Set Speed</span>
+                    </button>
                 </div>
             </div>
         </section>
 
-        <section class="debug">
-            <div id="github">
+        <section id="settings-container">
+            <div class="header">
+                <h2>Settings</h2>
+                <button class="close-button no-bg" onclick="toggleSettings()">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <section>
+                <div class="header">
+                    <h2>Serial Connection</h2>
+                </div>
+                <div id="serial_status_container">Status: <span id="serial_status" class="status"> Not connected</span></div>
+                <div id="serial_ports_container">
+                    <label for="serial_ports">Available Ports:</label>
+                    <select id="serial_ports"></select>
+                    <button onclick="connectSerial()" class="cta">
+                        <i class="fa-solid fa-link"></i>
+                        <span>Connect</span>
+                    </button>
+                </div>
+                <div id="serial_ports_buttons" class="button-group">
+                    <button onclick="disconnectSerial()" class="cancel">
+                        <i class="fa-solid fa-link-slash"></i><span>Disconnect</span></button>
+                    <button onclick="restartSerial()" class="warn">
+                        <i class="fa-solid fa-rotate-left"></i><span>Restart</span></button>
+                </div>
+            </section>
+
+            <section class="software version">
+                <div class="header">
+                    <h2>Software Version</h2>
+                </div>
+                <div id="git_version_info">
+                    <div id="current_git_version">Current Version: Unknown</div>
+                    <div id="latest_git_version">Latest Version: Unknown</div>
+                    <div id="update_link" class="hidden"></div>
+                </div>
+                <div class="button-group">
+                    <button id="update-software-btn" class="hidden cta" onclick="updateSoftware()">
+                        <i class="fa-solid fa-download"></i>
+                        <span>Update Software</span>
+                    </button>
+                </div>
+            </section>
+
+            <section class="firmware version">
+                <div class="header">
+                    <h2>Firmware Version</h2>
+                </div>
+                <div id="firmware_info">
+                    <div id="motor_type"></div>
+                    <div id="current_firmware_version"></div>
+                    <div id="new_firmware_version"></div>
+                </div>
+                <div class="button-group">
+                    <div id="motor_selection" style="display: none;">
+                        <h3>Select installed motor driver: </h3>
+                        <select id="manual_motor_type">
+                            <option value="TMC2209">Arduino TMC2209</option>
+                            <option value="DRV8825">Arduino DRV8825</option>
+                            <option value="esp32">ESP32</option>
+                            <option value="esp32_TMC2209">ESP32 TMC2209</option>
+                        </select>
+                        <button id="set_motor_type_button" onclick="setMotorType()">Set Motor Type</button>
+                    </div>
+                    <button id="check_updates_button" onclick="fetchFirmwareInfo()">Check for Updates</button>
+                    <button id="update_firmware_button" class="cta" style="display: none;" onclick="updateFirmware()">
+                        <i class="fa-solid fa-file-arrow-up"></i>
+                        <span>Update Firmware</span>
+                    </button>
+                </div>
+            </section>
+            <section class="debug main">
+                <div id="github">
                 <span>Help us improve! <a href="https://github.com/tuanchris/dune-weaver/pulls" target="_blank">Submit a Pull Request</a> or <a
                         href="https://github.com/tuanchris/dune-weaver/issues/new"
                         target="_blank">Report a Bug</a>.</span>
-                <a href="https://github.com/tuanchris/dune-weaver/issues" target="_blank">
-                    <img src="https://img.shields.io/github/issues/tuanchris/dune-weaver?style=flat-square"
-                         alt="GitHub Issues">
-                </a>
-            </div>
-            <button id="debug_button" onclick="toggleDebugLog()">🪲</button>
+                    <a href="https://github.com/tuanchris/dune-weaver/issues" target="_blank">
+                        <img src="https://img.shields.io/github/issues/tuanchris/dune-weaver?style=flat-square"
+                             alt="GitHub Issues">
+                    </a>
+                </div>
+                <button id="debug_button" onclick="toggleDebugLog()">
+                    <i class="fa-solid fa-bug"></i>
+                </button>
+            </section>
         </section>
     </main>
 </div>
 
 <!-- Tab Navigation -->
 <nav class="bottom-nav">
+    <section id="currently-playing-container" class="sticky">
+        <div class="header">
+<!--            <button class="open-button no-bg" onclick="openStickySection('currently-playing-container')">^</button>-->
+        </div>
+        <div id="currently-playing-preview">
+            <canvas id="currentlyPlayingCanvas"></canvas>
+        </div>
+        <div id="currently-playing-details">
+            <h3 id="currently-playing-file"></h3>
+            <p id="currently-playing-position"></p>
+            <div class="play-buttons">
+                <button id="stopCurrent" onclick="stopExecution()" class="cancel">
+                    <i class="fa-solid fa-stop"></i>
+                </button>
+                <button id="pausePlayCurrent" class="cta" onclick="togglePausePlay()">
+                    <i class="fa-solid fa-pause"></i>
+                </button>
+            </div>
+        </div>
+        <div id="progress-container">
+            <progress id="play_progress" value="0" max="100"></progress>
+            <div id="play_progress_text">0%</div>
+        </div>
+    </section>
     <button class="tab-button" onclick="switchTab('patterns')" id="nav-patterns">Patterns</button>
     <button class="tab-button" onclick="switchTab('playlists')" id="nav-playlists">Playlists</button>
     <button class="tab-button" onclick="switchTab('settings')" id="nav-settings">Device</button>
@@ -252,6 +425,6 @@
     <!-- Messages will be appended here -->
 </div>
 
-<script src="../static/main.js"></script>
+<script src="../static/js/main.js"></script>
 </body>
 </html>

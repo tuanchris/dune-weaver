@@ -5,23 +5,17 @@
 #define rotInterfaceType AccelStepper::DRIVER
 #define inOutInterfaceType AccelStepper::DRIVER
 
-#define stepPin_rot 2
-#define dirPin_rot 5
-#define stepPin_InOut 3
-#define dirPin_InOut 6
+#define stepPin_rot 22
+#define dirPin_rot 23
+#define stepPin_InOut 18
+#define dirPin_InOut 19
+
 
 #define rot_total_steps 16000.0
 #define inOut_total_steps 5760.0
 #define gearRatio 10
 
 #define BUFFER_SIZE 10 // Maximum number of theta-rho pairs in a batch
-
-#define buttonPin 11 // Z- signal pin on the CNC shield
-#define pot1 A1      // Potentiometer 1, Abort pin on the CNC shield
-#define pot2 A0      // Potentiometer 2, Hold pint on the CNC shield
-
-#define MODE_APP 0
-#define MODE_SPIROGRAPH 1
 
 // Create stepper motor objects
 AccelStepper rotStepper(rotInterfaceType, stepPin_rot, dirPin_rot);
@@ -40,13 +34,10 @@ float currentTheta = 0.0; // Current theta in radians
 float currentRho = 0.0;   // Current rho (0 to 1)
 bool isFirstCoordinates = true;
 float totalRevolutions = 0.0; // Tracks cumulative revolutions
-float maxSpeed = 5000;
-float maxAcceleration = 5000;
-long interpolationResolution = 0.001;
+long maxSpeed = 1000;
+float maxAcceleration = 1000;
+long interpolationResolution = 1;
 float userDefinedSpeed = maxSpeed; // Store user-defined speed
-
-// Running Mode
-int currentMode = MODE_APP; // Default mode is app mode.
 
 void setup()
 {
@@ -61,16 +52,18 @@ void setup()
     multiStepper.addStepper(rotStepper);
     multiStepper.addStepper(inOutStepper);
 
-    // Configure the buttons and potentiometers for Spirograph mode
-    pinMode(buttonPin, INPUT_PULLUP); // Configure button pin with internal pull-up
-    pinMode(A0, INPUT); // Potentiometer 1 input
-    pinMode(A1, INPUT); // Potentiometer 2 input
-
     // Initialize serial communication
     Serial.begin(115200);
     Serial.println("R");
     homing();
 }
+
+void getVersion() {
+    Serial.println("Table: Dune Weaver");
+    Serial.println("Drivers: ESP32-TMC2209");
+    Serial.println("Version: 1.4.0");
+}
+
 
 void resetTheta()
 {
@@ -79,97 +72,7 @@ void resetTheta()
 }
 
 void loop() {
-    updateModeSwitch(); // Check and handle mode switching
-
-    // Call the appropriate mode function based on the current mode
-    if (currentMode == MODE_SPIROGRAPH) {
-        spirographMode();
-    } else if (currentMode == MODE_APP) {
         appMode();
-    }
-}
-
-void updateModeSwitch() {
-    // Read the current state of the latching switch
-    bool currentSwitchState = digitalRead(buttonPin);
-    int newMode = currentSwitchState == LOW ? MODE_SPIROGRAPH : MODE_APP;
-
-    if (newMode != currentMode) {
-        handleModeChange(newMode); // Handle mode-specific transitions
-        currentMode = newMode; // Update the current mode
-    }
-}
-
-void handleModeChange(int newMode) {
-    // Print mode switch information
-    if (newMode == MODE_SPIROGRAPH) {
-        Serial.println("Spirograph Mode Active");
-        rotStepper.setMaxSpeed(userDefinedSpeed * 0.5); // Use 50% of user-defined speed
-        inOutStepper.setMaxSpeed(userDefinedSpeed * 0.5);
-    } else if (newMode == MODE_APP) {
-        Serial.println("App Mode Active");
-        rotStepper.setMaxSpeed(userDefinedSpeed); // Restore user-defined speed
-        inOutStepper.setMaxSpeed(userDefinedSpeed);
-        resetTheta();
-    }
-
-    movePolar(currentTheta, 0); // Move to the center
-}
-
-void spirographMode() {
-    static float currentFrequency = 2.95; // Track the current frequency (default value)
-    static float phaseShift = 0.0;       // Track the phase shift for smooth transitions
-
-    // Read potentiometer for frequency adjustment
-    int pot1Value = analogRead(pot1);
-    float newFrequency = mapFloat(pot1Value, 0, 1023, 0.5, 6); // Map to range
-    newFrequency = round(newFrequency * 10) / 10.0;            // Round to one decimal place
-
-    // Force the value to x.95 or x.10 to have a slight variation each revolution
-    if (fmod(newFrequency, 1.0) >= 0.5) {
-        newFrequency = floor(newFrequency) + 0.95; // Round up to x.95
-    } else {
-        newFrequency = floor(newFrequency) + 0.10; // Round down to x.10
-    }
-
-    // Adjust phase shift if frequency changes
-    if (newFrequency != currentFrequency) {
-        phaseShift += currentTheta * (currentFrequency - newFrequency);
-        currentFrequency = newFrequency; // Update the current frequency
-    }
-
-    // Read variation knob to adjust the minimum rho
-    int pot2Value = analogRead(pot2);
-    float minRho = round(mapFloat(pot2Value, 0, 1023, 0, 0.5) * 20) / 20.0; // Minimum rho in steps of 0.05
-
-    // Calculate amplitude and offset for the sine wave
-    float amplitude = (1.0 - minRho) / 2.0; // Half of the oscillation range
-    float offset = minRho + amplitude;      // Center the wave within the range [minRho, 1]
-
-    // Calculate the next target theta
-    float stepSize = maxSpeed * (2 * M_PI / rot_total_steps) / 10; // Smaller steps for finer control
-    float nextTheta = currentTheta + stepSize;
-
-    // Count total revolutions
-    totalRevolutions = (nextTheta / (2 * M_PI));
-
-    // Calculate rho using the adjusted sine wave with phase shift
-    currentRho = offset + amplitude * cos((currentTheta * currentFrequency) + phaseShift);
-    float nextRho = offset + amplitude * cos((nextTheta * currentFrequency) + phaseShift);
-
-    // Move the steppers to the calculated position
-    movePolar(nextTheta, constrain(nextRho, 0, 1));
-
-    // Update the current theta to the new position
-    currentTheta = nextTheta;
-}
-
-float mapFloat(long x, long inMin, long inMax, float outMin, float outMax) {
-    if (inMax == inMin) {
-        Serial.println("Error: mapFloat division by zero");
-        return outMin; // Return the minimum output value as a fallback
-    }
-    return (float)(x - inMin) * (outMax - outMin) / (float)(inMax - inMin) + outMin;
 }
 
 void appMode()
@@ -180,12 +83,18 @@ void appMode()
         String input = Serial.readStringUntil('\n');
 
         // Ignore invalid messages
-        if (input != "HOME" && input != "RESET_THETA" && !input.startsWith("SET_SPEED") && !input.endsWith(";"))
+        if (input != "HOME" && input != "RESET_THETA" && input != "GET_VERSION" && !input.startsWith("SET_SPEED") && !input.endsWith(";"))
         {
             Serial.print("IGNORED: ");
             Serial.println(input);
             return;
         }
+
+        if (input == "GET_VERSION")
+        {
+            getVersion();
+        }
+
         if (input == "RESET_THETA")
         {
             resetTheta(); // Reset currentTheta
@@ -199,7 +108,7 @@ void appMode()
             return;
         }
 
-        // Example: The user calls "SET_SPEED 60" => 60% of maxSpeed
+
         if (input.startsWith("SET_SPEED"))
         {
             // Parse out the speed value from the command string
@@ -221,7 +130,6 @@ void appMode()
                     inOutStepper.setMaxSpeed(newSpeed);
 
                     Serial.println("SPEED_SET");  
-                    Serial.println("R");
                 }
                 else
                 {
@@ -280,11 +188,12 @@ void appMode()
                 // Directly move to the first coordinate of the new pattern
                 long initialRotSteps = buffer[0][0] * (rot_total_steps / (2.0 * M_PI));
                 rotStepper.setCurrentPosition(initialRotSteps);
-                inOutStepper.setCurrentPosition(inOutStepper.currentPosition() - totalRevolutions * rot_total_steps / gearRatio);
+                inOutStepper.setCurrentPosition(inOutStepper.currentPosition() + (totalRevolutions * rot_total_steps / gearRatio));
+
                 currentTheta = buffer[0][0];
                 totalRevolutions = 0;
-                isFirstCoordinates = false; // Reset the flag after the first movement
                 movePolar(buffer[0][0], buffer[0][1]);
+                isFirstCoordinates = false; // Reset the flag after the first movement
             }
               else
               {

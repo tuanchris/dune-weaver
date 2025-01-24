@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.0] Soft- and Firmware updater
+
+### New Features
+- **Play/Pause Button:** Control execution flow without stopping.
+- **Scheduled Running Hours:** Automate table operation.
+- **Adaptive clear:** Select the appropriate clearing pattenr based on the starting coordinate
+- **Table Info on Serial Connection:** Real-time metadata and status.
+- **Table Status API:** Poll current status remotely.
+- **Firmware Versioning:** Track and fetch firmware details.
+
+### Fixes & Improvements
+- **Quick Fixes:** Stability and performance improvements.
+- **Firmware Updater (#34):** Version tracking, remote flashing, and bug fixes.
+- **UI/UX Enhancements:** Improved "Currently Playing," settings overlay, and styling.
+- **Software Updates:** Enhanced updater, dependency installation via `DockerFile`.
+- **Performance:** Better serial locking, retry logic, and pattern execution handling.
+- **ESP32_TMC2209 Support:** Added firmware flashing.
+
+### Contributors
+- **Thokoop** ([GitHub](https://github.com/Thokoop))
+- **Fabio De Simone** (https://github.com/ProtoxiDe22)
+
 ## [1.3.0] Revamped UI
 
 Massive thanks to Thokoop for helping us redesigning the UI just within a few days! The new design looks gorgeous on both PC and mobile. 
