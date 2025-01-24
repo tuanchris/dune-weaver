@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### New Features
 - **Play/Pause Button:** Control execution flow without stopping.
 - **Scheduled Running Hours:** Automate table operation.
+- **Adaptive clear:** Select the appropriate clearing pattenr based on the starting coordinate
 - **Table Info on Serial Connection:** Real-time metadata and status.
 - **Table Status API:** Poll current status remotely.
 - **Firmware Versioning:** Track and fetch firmware details.

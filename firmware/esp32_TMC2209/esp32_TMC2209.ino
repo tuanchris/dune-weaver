@@ -54,11 +54,14 @@ void setup()
 
     // Initialize serial communication
     Serial.begin(115200);
+    Serial.println("R");
+    homing();
+}
+
+void getVersion() {
     Serial.println("Table: Dune Weaver");
     Serial.println("Drivers: ESP32-TMC2209");
     Serial.println("Version: 1.4.0");
-    Serial.println("R");
-    homing();
 }
 
 
@@ -80,12 +83,18 @@ void appMode()
         String input = Serial.readStringUntil('\n');
 
         // Ignore invalid messages
-        if (input != "HOME" && input != "RESET_THETA" && !input.startsWith("SET_SPEED") && !input.endsWith(";"))
+        if (input != "HOME" && input != "RESET_THETA" && input != "GET_VERSION" && !input.startsWith("SET_SPEED") && !input.endsWith(";"))
         {
             Serial.print("IGNORED: ");
             Serial.println(input);
             return;
         }
+
+        if (input == "GET_VERSION")
+        {
+            getVersion();
+        }
+
         if (input == "RESET_THETA")
         {
             resetTheta(); // Reset currentTheta

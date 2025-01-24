@@ -72,11 +72,15 @@ void setup()
 
     // Initialize serial communication
     Serial.begin(115200);
+    Serial.println("R");
+    homing();
+}
+
+void getVersion()
+{
     Serial.println("Table: Dune Weaver");
     Serial.println("Drivers: DRV8825");
     Serial.println("Version: 1.4.0");
-    Serial.println("R");
-    homing();
 }
 
 void resetTheta()
@@ -193,6 +197,11 @@ void appMode()
             Serial.print("IGNORED: ");
             Serial.println(input);
             return;
+        }
+
+        if (input == "GET_VERSION")
+        {
+            getVersion();
         }
 
         if (input == "RESET_THETA")

@@ -5,15 +5,15 @@
 #define rotInterfaceType AccelStepper::DRIVER
 #define inOutInterfaceType AccelStepper::DRIVER
 
-#define ROT_PIN1 14
-#define ROT_PIN2 12
-#define ROT_PIN3 26
-#define ROT_PIN4 27
+#define ROT_PIN1 27
+#define ROT_PIN2 26
+#define ROT_PIN3 12
+#define ROT_PIN4 14
 
-#define INOUT_PIN1 16
-#define INOUT_PIN2 17
-#define INOUT_PIN3 18
-#define INOUT_PIN4 19
+#define INOUT_PIN1 19
+#define INOUT_PIN2 18
+#define INOUT_PIN3 17
+#define INOUT_PIN4 16
 
 
 #define rot_total_steps 12800
@@ -67,11 +67,15 @@ void setup()
 
     // Initialize serial communication
     Serial.begin(115200);
+    Serial.println("R");
+    homing();
+}
+
+void getVersion()
+{
     Serial.println("Table: Mini Dune Weaver");
     Serial.println("Drivers: ULN2003");
     Serial.println("Version: 1.4.0");
-    Serial.println("R");
-    homing();
 }
 
 void loop()
@@ -86,6 +90,10 @@ void loop()
         {
             Serial.println("IGNORED");
             return;
+        }
+
+        if (input == "GET_VERSION") {
+            getVersion();
         }
 
         // Example: The user calls "SET_SPEED 60" => 60% of maxSpeed
@@ -179,19 +187,28 @@ void loop()
         double startTheta = currentTheta;
         double startRho = currentRho;
 
-        if (isFirstCoordinates) {
-          homing();
-          isFirstCoordinates = false;
-        }
-
         for (int i = 0; i < bufferCount; i++)
         {
  
-            interpolatePath(
-                startTheta, startRho,
-                buffer[i][0], buffer[i][1],
-                subSteps
-            );
+            if (isFirstCoordinates)
+            {
+                // Directly move to the first coordinate of the new pattern
+                long initialRotSteps = buffer[0][0] * (rot_total_steps / (2.0 * M_PI));
+                rotStepper.setCurrentPosition(initialRotSteps);
+                inOutStepper.setCurrentPosition(inOutStepper.currentPosition() + (totalRevolutions * rot_total_steps / gearRatio));
+
+                currentTheta = buffer[0][0];
+                totalRevolutions = 0;
+                movePolar(buffer[0][0], buffer[0][1]);
+                isFirstCoordinates = false; // Reset the flag after the first movement
+            } else
+            {
+                interpolatePath(
+                    startTheta, startRho,
+                    buffer[i][0], buffer[i][1],
+                    subSteps
+                );
+            }
             // Update the starting point for the next segment
             startTheta = buffer[i][0];
             startRho = buffer[i][1];
@@ -231,11 +248,6 @@ void homing()
 
 void movePolar(double theta, double rho)
 {
-    if (rho < 0.0) 
-        rho = 0.0;
-    else if (rho > 1.0) 
-        rho = 1.0;
-
     long rotSteps = lround(theta * (rot_total_steps / (2.0f * M_PI)));
     double revolutions = theta / (2.0 * M_PI);
     long offsetSteps = lround(revolutions * (rot_total_steps / gearRatio));
@@ -243,7 +255,12 @@ void movePolar(double theta, double rho)
     // Now inOutSteps is always derived from the absolute rho, not incrementally
     long inOutSteps = lround(rho * inOut_total_steps);
     
-    inOutSteps -= offsetSteps;
+    totalRevolutions += (theta - currentTheta) / (2.0 * M_PI);
+    
+    if (!isFirstCoordinates)
+    {
+        inOutSteps -= offsetSteps;
+    }
 
     long targetPositions[2] = {rotSteps, inOutSteps};
     multiStepper.moveTo(targetPositions);
