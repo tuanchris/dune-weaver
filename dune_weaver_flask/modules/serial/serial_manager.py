@@ -3,107 +3,105 @@ import serial.tools.list_ports
 import threading
 import time
 
-class SerialManager:
-    def __init__(self):
-        self.ser = None
-        self.ser_port = None
-        self.serial_lock = threading.RLock()
-        self.IGNORE_PORTS = ['/dev/cu.debug-console', '/dev/cu.Bluetooth-Incoming-Port']
-        
-        # Device information
-        self.arduino_table_name = None
-        self.arduino_driver_type = 'Unknown'
-        self.firmware_version = 'Unknown'
+# Global state
+ser = None
+ser_port = None
+serial_lock = threading.RLock()
+IGNORE_PORTS = ['/dev/cu.debug-console', '/dev/cu.Bluetooth-Incoming-Port']
 
-    def list_serial_ports(self):
-        """Return a list of available serial ports."""
-        ports = serial.tools.list_ports.comports()
-        return [port.device for port in ports if port.device not in self.IGNORE_PORTS]
+# Device information
+arduino_table_name = None
+arduino_driver_type = 'Unknown'
+firmware_version = 'Unknown'
 
-    def connect_to_serial(self, port=None, baudrate=115200):
-        """Automatically connect to the first available serial port or a specified port."""
-        try:
-            if port is None:
-                ports = self.list_serial_ports()
-                if not ports:
-                    print("No serial port connected")
-                    return False
-                port = ports[0]  # Auto-select the first available port
+def list_serial_ports():
+    """Return a list of available serial ports."""
+    ports = serial.tools.list_ports.comports()
+    return [port.device for port in ports if port.device not in IGNORE_PORTS]
 
-            with self.serial_lock:
-                if self.ser and self.ser.is_open:
-                    self.ser.close()
-                self.ser = serial.Serial(port, baudrate, timeout=2)
-                self.ser_port = port
+def connect_to_serial(port=None, baudrate=115200):
+    """Automatically connect to the first available serial port or a specified port."""
+    global ser, ser_port, arduino_table_name, arduino_driver_type, firmware_version
+    try:
+        if port is None:
+            ports = list_serial_ports()
+            if not ports:
+                print("No serial port connected")
+                return False
+            port = ports[0]  # Auto-select the first available port
 
-            print(f"Connected to serial port: {port}")
-            time.sleep(2)  # Allow time for the connection to establish
+        with serial_lock:
+            if ser and ser.is_open:
+                ser.close()
+            ser = serial.Serial(port, baudrate, timeout=2)
+            ser_port = port
 
-            # Read initial startup messages from Arduino
-            while self.ser.in_waiting > 0:
-                line = self.ser.readline().decode().strip()
-                print(f"Arduino: {line}")
+        print(f"Connected to serial port: {port}")
+        time.sleep(2)  # Allow time for the connection to establish
 
-                # Store the device details based on the expected messages
-                if "Table:" in line:
-                    self.arduino_table_name = line.replace("Table: ", "").strip()
-                elif "Drivers:" in line:
-                    self.arduino_driver_type = line.replace("Drivers: ", "").strip()
-                elif "Version:" in line:
-                    self.firmware_version = line.replace("Version: ", "").strip()
+        # Read initial startup messages from Arduino
+        while ser.in_waiting > 0:
+            line = ser.readline().decode().strip()
+            print(f"Arduino: {line}")
 
-            print(f"Detected Table: {self.arduino_table_name or 'Unknown'}")
-            print(f"Detected Drivers: {self.arduino_driver_type or 'Unknown'}")
+            # Store the device details based on the expected messages
+            if "Table:" in line:
+                arduino_table_name = line.replace("Table: ", "").strip()
+            elif "Drivers:" in line:
+                arduino_driver_type = line.replace("Drivers: ", "").strip()
+            elif "Version:" in line:
+                firmware_version = line.replace("Version: ", "").strip()
 
-            return True
-        except serial.SerialException as e:
-            print(f"Failed to connect to serial port {port}: {e}")
-            self.ser_port = None
+        print(f"Detected Table: {arduino_table_name or 'Unknown'}")
+        print(f"Detected Drivers: {arduino_driver_type or 'Unknown'}")
 
-        print("Max retries reached. Could not connect to a serial port.")
-        return False
+        return True
+    except serial.SerialException as e:
+        print(f"Failed to connect to serial port {port}: {e}")
+        ser_port = None
 
-    def disconnect_serial(self):
-        """Disconnect the current serial connection."""
-        if self.ser and self.ser.is_open:
-            self.ser.close()
-            self.ser = None
-        self.ser_port = None
+    print("Max retries reached. Could not connect to a serial port.")
+    return False
 
-    def restart_serial(self, port, baudrate=115200):
-        """Restart the serial connection."""
-        self.disconnect_serial()
-        return self.connect_to_serial(port, baudrate)
+def disconnect_serial():
+    """Disconnect the current serial connection."""
+    global ser, ser_port
+    if ser and ser.is_open:
+        ser.close()
+        ser = None
+    ser_port = None
 
-    def send_coordinate_batch(self, coordinates):
-        """Send a batch of theta-rho pairs to the Arduino."""
-        batch_str = ";".join(f"{theta:.5f},{rho:.5f}" for theta, rho in coordinates) + ";\n"
-        with self.serial_lock:
-            self.ser.write(batch_str.encode())
+def restart_serial(port, baudrate=115200):
+    """Restart the serial connection."""
+    disconnect_serial()
+    return connect_to_serial(port, baudrate)
 
-    def send_command(self, command):
-        """Send a single command to the Arduino."""
-        with self.serial_lock:
-            self.ser.write(f"{command}\n".encode())
-            print(f"Sent: {command}")
+def send_coordinate_batch(coordinates):
+    """Send a batch of theta-rho pairs to the Arduino."""
+    batch_str = ";".join(f"{theta:.5f},{rho:.5f}" for theta, rho in coordinates) + ";\n"
+    with serial_lock:
+        ser.write(batch_str.encode())
 
-            # Wait for "R" acknowledgment from Arduino
-            while True:
-                with self.serial_lock:
-                    if self.ser.in_waiting > 0:
-                        response = self.ser.readline().decode().strip()
-                        print(f"Arduino response: {response}")
-                        if response == "R":
-                            print("Command execution completed.")
-                            break
+def send_command(command):
+    """Send a single command to the Arduino."""
+    with serial_lock:
+        ser.write(f"{command}\n".encode())
+        print(f"Sent: {command}")
 
-    def is_connected(self):
-        """Check if serial connection is established and open."""
-        return self.ser is not None and self.ser.is_open
+        # Wait for "R" acknowledgment from Arduino
+        while True:
+            with serial_lock:
+                if ser.in_waiting > 0:
+                    response = ser.readline().decode().strip()
+                    print(f"Arduino response: {response}")
+                    if response == "R":
+                        print("Command execution completed.")
+                        break
 
-    def get_port(self):
-        """Get the current serial port."""
-        return self.ser_port
+def is_connected():
+    """Check if serial connection is established and open."""
+    return ser is not None and ser.is_open
 
-# Create a global instance
-serial_manager = SerialManager()
+def get_port():
+    """Get the current serial port."""
+    return ser_port
