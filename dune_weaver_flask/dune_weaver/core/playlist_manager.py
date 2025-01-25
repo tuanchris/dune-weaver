@@ -1,7 +1,7 @@
 import json
 import os
 import threading
-from ...core.pattern_manager.manager import pattern_manager
+from dune_weaver_flask.dune_weaver.core.pattern_manager import pattern_manager
 
 class PlaylistManager:
     def __init__(self):

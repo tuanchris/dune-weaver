@@ -1,6 +1,6 @@
 import os
 import subprocess
-from ..serial.manager import serial_manager
+from ..serial.serial_manager import serial_manager
 
 class FirmwareManager:
     def __init__(self):
