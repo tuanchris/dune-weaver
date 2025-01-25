@@ -52,11 +52,7 @@ def restart():
 
 @app.route('/list_theta_rho_files', methods=['GET'])
 def list_theta_rho_files():
-    files = []
-    for root, _, filenames in os.walk(pattern_manager.THETA_RHO_DIR):
-        for file in filenames:
-            relative_path = os.path.relpath(os.path.join(root, file), pattern_manager.THETA_RHO_DIR)
-            files.append(relative_path)
+    files = pattern_manager.list_theta_rho_files()
     return jsonify(sorted(files))
 
 @app.route('/upload_theta_rho', methods=['POST'])
