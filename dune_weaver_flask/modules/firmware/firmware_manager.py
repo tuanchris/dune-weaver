@@ -1,6 +1,10 @@
 import os
 import subprocess
+import logging
 from ..serial import serial_manager
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Global state
 MOTOR_TYPE_MAPPING = {
@@ -17,6 +21,7 @@ def get_ino_firmware_details(ino_file_path):
             raise ValueError("Invalid path: ino_file_path is None or empty.")
 
         firmware_details = {"version": None, "motorType": None}
+        logger.debug(f"Reading firmware details from {ino_file_path}")
 
         with open(ino_file_path, "r") as file:
             for line in file:
@@ -33,22 +38,23 @@ def get_ino_firmware_details(ino_file_path):
                         firmware_details["motorType"] = line[start:end]
 
         if not firmware_details["version"]:
-            print(f"Firmware version not found in file: {ino_file_path}")
+            logger.warning(f"Firmware version not found in file: {ino_file_path}")
         if not firmware_details["motorType"]:
-            print(f"Motor type not found in file: {ino_file_path}")
+            logger.warning(f"Motor type not found in file: {ino_file_path}")
 
         return firmware_details if any(firmware_details.values()) else None
 
     except FileNotFoundError:
-        print(f"File not found: {ino_file_path}")
+        logger.error(f"File not found: {ino_file_path}")
         return None
     except Exception as e:
-        print(f"Error reading .ino file: {str(e)}")
+        logger.error(f"Error reading .ino file: {str(e)}")
         return None
 
 def check_git_updates():
     """Check for available Git updates."""
     try:
+        logger.debug("Checking for Git updates")
         subprocess.run(["git", "fetch", "--tags", "--force"], check=True)
         latest_remote_tag = subprocess.check_output(
             ["git", "describe", "--tags", "--abbrev=0", "origin/main"]
@@ -73,6 +79,7 @@ def check_git_updates():
                         break
 
         updates_available = latest_remote_tag != latest_local_tag
+        logger.info(f"Updates available: {updates_available}, {tag_behind_count} versions behind")
 
         return {
             "updates_available": updates_available,
@@ -81,7 +88,7 @@ def check_git_updates():
             "latest_local_tag": latest_local_tag,
         }
     except subprocess.CalledProcessError as e:
-        print(f"Error checking Git updates: {e}")
+        logger.error(f"Error checking Git updates: {e}")
         return {
             "updates_available": False,
             "tag_behind_count": 0,
@@ -92,12 +99,14 @@ def check_git_updates():
 def update_software():
     """Update the software to the latest version."""
     error_log = []
+    logger.info("Starting software update process")
 
     def run_command(command, error_message):
         try:
+            logger.debug(f"Running command: {' '.join(command)}")
             subprocess.run(command, check=True)
         except subprocess.CalledProcessError as e:
-            print(f"{error_message}: {e}")
+            logger.error(f"{error_message}: {e}")
             error_log.append(error_message)
 
     try:
@@ -105,9 +114,12 @@ def update_software():
         latest_remote_tag = subprocess.check_output(
             ["git", "describe", "--tags", "--abbrev=0", "origin/main"]
         ).strip().decode()
+        logger.info(f"Latest remote tag: {latest_remote_tag}")
     except subprocess.CalledProcessError as e:
-        error_log.append(f"Failed to fetch tags or get latest remote tag: {e}")
-        return False, "Failed to fetch tags or determine the latest version.", error_log
+        error_msg = f"Failed to fetch tags or get latest remote tag: {e}"
+        logger.error(error_msg)
+        error_log.append(error_msg)
+        return False, error_msg, error_log
 
     run_command(["git", "checkout", latest_remote_tag, '--force'], f"Failed to checkout version {latest_remote_tag}")
     run_command(["docker", "compose", "pull"], "Failed to fetch Docker containers")
@@ -119,8 +131,10 @@ def update_software():
         update_status["updates_available"] is False
         and update_status["latest_local_tag"] == update_status["latest_remote_tag"]
     ):
+        logger.info("Software update completed successfully")
         return True, None, None
     else:
+        logger.error("Software update incomplete")
         return False, "Update incomplete", error_log
 
 def get_firmware_info(motor_type=None):
@@ -177,18 +191,22 @@ def get_firmware_info(motor_type=None):
 def flash_firmware(motor_type):
     """Flash firmware for the specified motor type."""
     if not motor_type or motor_type not in MOTOR_TYPE_MAPPING:
+        logger.error(f"Invalid or missing motor type: {motor_type}")
         return False, "Invalid or missing motor type"
 
     if not serial_manager.is_connected():
+        logger.error("No device connected or connection lost")
         return False, "No device connected or connection lost"
 
     try:
         ino_file_path = MOTOR_TYPE_MAPPING[motor_type]
         hex_file_path = f"{ino_file_path}.hex"
         bin_file_path = f"{ino_file_path}.bin"
+        logger.info(f"Flashing firmware for motor type: {motor_type}")
 
         if motor_type.lower() in ["esp32", "esp32_tmc2209"]:
             if not os.path.exists(bin_file_path):
+                logger.error(f"Firmware binary not found: {bin_file_path}")
                 return False, f"Firmware binary not found: {bin_file_path}"
 
             flash_command = [
@@ -200,6 +218,7 @@ def flash_firmware(motor_type):
             ]
         else:
             if not os.path.exists(hex_file_path):
+                logger.error(f"Hex file not found: {hex_file_path}")
                 return False, f"Hex file not found: {hex_file_path}"
 
             flash_command = [
@@ -213,10 +232,14 @@ def flash_firmware(motor_type):
                 "-U", f"flash:w:{hex_file_path}:i"
             ]
 
+        logger.debug(f"Running flash command: {' '.join(flash_command)}")
         flash_process = subprocess.run(flash_command, capture_output=True, text=True)
         if flash_process.returncode != 0:
+            logger.error(f"Firmware flash failed: {flash_process.stderr}")
             return False, flash_process.stderr
 
+        logger.info("Firmware flashed successfully")
         return True, "Firmware flashed successfully"
     except Exception as e:
+        logger.error(f"Error during firmware flash: {str(e)}")
         return False, str(e)

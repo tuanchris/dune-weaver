@@ -2,9 +2,13 @@ import os
 import threading
 import time
 import random
+import logging
 from datetime import datetime
 from tqdm import tqdm
 from dune_weaver_flask.modules.serial import serial_manager
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Global state
 THETA_RHO_DIR = './patterns'
@@ -31,12 +35,14 @@ def list_theta_rho_files():
         for file in filenames:
             relative_path = os.path.relpath(os.path.join(root, file), THETA_RHO_DIR)
             files.append(relative_path)
+    logger.debug(f"Found {len(files)} theta-rho files")
     return files
 
 def parse_theta_rho_file(file_path):
     """Parse a theta-rho file and return a list of (theta, rho) pairs."""
     coordinates = []
     try:
+        logger.debug(f"Parsing theta-rho file: {file_path}")
         with open(file_path, 'r') as file:
             for line in file:
                 line = line.strip()
@@ -46,10 +52,10 @@ def parse_theta_rho_file(file_path):
                     theta, rho = map(float, line.split())
                     coordinates.append((theta, rho))
                 except ValueError:
-                    print(f"Skipping invalid line: {line}")
+                    logger.warning(f"Skipping invalid line: {line}")
                     continue
     except Exception as e:
-        print(f"Error reading file: {e}")
+        logger.error(f"Error reading file: {e}")
         return coordinates
 
     # Normalization Step
@@ -57,6 +63,7 @@ def parse_theta_rho_file(file_path):
         first_theta = coordinates[0][0]
         normalized = [(theta - first_theta, rho) for theta, rho in coordinates]
         coordinates = normalized
+        logger.debug(f"Parsed {len(coordinates)} coordinates from {file_path}")
 
     return coordinates
 
@@ -88,13 +95,13 @@ def schedule_checker(schedule_hours):
 
     if start_time <= now < end_time:
         if pause_requested:
-            print("Starting execution: Within schedule.")
+            logger.info("Starting execution: Within schedule")
         pause_requested = False
         with pause_condition:
             pause_condition.notify_all()
     else:
         if not pause_requested:
-            print("Pausing execution: Outside schedule.")
+            logger.info("Pausing execution: Outside schedule")
         pause_requested = True
         threading.Thread(target=wait_for_start_time, args=(schedule_hours,), daemon=True).start()
 
@@ -106,7 +113,7 @@ def wait_for_start_time(schedule_hours):
     while pause_requested:
         now = datetime.now().time()
         if start_time <= now < end_time:
-            print("Resuming execution: Within schedule.")
+            logger.info("Resuming execution: Within schedule")
             pause_requested = False
             with pause_condition:
                 pause_condition.notify_all()
@@ -121,7 +128,7 @@ def run_theta_rho_file(file_path, schedule_hours=None):
     total_coordinates = len(coordinates)
 
     if total_coordinates < 2:
-        print("Not enough coordinates for interpolation.")
+        logger.warning("Not enough coordinates for interpolation")
         current_playing_file = None
         execution_progress = None
         return
@@ -134,15 +141,16 @@ def run_theta_rho_file(file_path, schedule_hours=None):
         current_playing_file = file_path
         execution_progress = (0, 0, None)
         stop_requested = False
+        logger.info(f"Starting pattern execution: {file_path}")
         with tqdm(total=total_coordinates, unit="coords", desc=f"Executing Pattern {file_path}", dynamic_ncols=True, disable=None) as pbar:
             for i in range(0, total_coordinates, batch_size):
                 if stop_requested:
-                    print("Execution stopped by user after completing the current batch.")
+                    logger.info("Execution stopped by user after completing the current batch")
                     break
 
                 with pause_condition:
                     while pause_requested:
-                        print("Execution paused...")
+                        logger.info("Execution paused...")
                         pause_condition.wait()
 
                 batch = coordinates[i:i + batch_size]
@@ -164,22 +172,21 @@ def run_theta_rho_file(file_path, schedule_hours=None):
                             execution_progress = (i + batch_size, total_coordinates, estimated_remaining_time)
                             break
                         elif response != "IGNORED: FINISHED" and response.startswith("IGNORE"):
-                            print("Received IGNORE. Resending the previous batch...")
-                            print(response)
+                            logger.warning(f"Received IGNORE response: {response}")
                             prev_start = max(0, i - batch_size)
                             prev_end = i
                             previous_batch = coordinates[prev_start:prev_end]
                             serial_manager.send_coordinate_batch(previous_batch)
                             break
                         else:
-                            print(f"Arduino response: {response}")
+                            logger.debug(f"Arduino response: {response}")
 
         reset_theta()
         serial_manager.ser.write("FINISHED\n".encode())
 
     current_playing_file = None
     execution_progress = None
-    print("Pattern execution completed.")
+    logger.info("Pattern execution completed")
 
 def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False, schedule_hours=None):
     """Run multiple .thr files in sequence with options."""
@@ -188,70 +195,71 @@ def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="
     
     if shuffle:
         random.shuffle(file_paths)
-        print("Playlist shuffled.")
+        logger.info("Playlist shuffled")
 
     current_playlist = file_paths
 
     while True:
         for idx, path in enumerate(file_paths):
-            print("Upcoming pattern: " + path)
+            logger.info(f"Upcoming pattern: {path}")
             current_playing_index = idx
             schedule_checker(schedule_hours)
             if stop_requested:
-                print("Execution stopped before starting next pattern.")
+                logger.info("Execution stopped before starting next pattern")
                 return
 
             if clear_pattern:
                 if stop_requested:
-                    print("Execution stopped before running the next clear pattern.")
+                    logger.info("Execution stopped before running the next clear pattern")
                     return
 
                 clear_file_path = get_clear_pattern_file(clear_pattern, path)
-                print(f"Running clear pattern: {clear_file_path}")
+                logger.info(f"Running clear pattern: {clear_file_path}")
                 run_theta_rho_file(clear_file_path, schedule_hours)
 
             if not stop_requested:
-                print(f"Running pattern {idx + 1} of {len(file_paths)}: {path}")
+                logger.info(f"Running pattern {idx + 1} of {len(file_paths)}: {path}")
                 run_theta_rho_file(path, schedule_hours)
 
             if idx < len(file_paths) - 1:
                 if stop_requested:
-                    print("Execution stopped before running the next clear pattern.")
+                    logger.info("Execution stopped before running the next clear pattern")
                     return
                 if pause_time > 0:
-                    print(f"Pausing for {pause_time} seconds...")
+                    logger.debug(f"Pausing for {pause_time} seconds")
                     time.sleep(pause_time)
 
         if run_mode == "indefinite":
-            print("Playlist completed. Restarting as per 'indefinite' run mode.")
+            logger.info("Playlist completed. Restarting as per 'indefinite' run mode")
             if pause_time > 0:
-                print(f"Pausing for {pause_time} seconds before restarting...")
+                logger.debug(f"Pausing for {pause_time} seconds before restarting")
                 time.sleep(pause_time)
             if shuffle:
                 random.shuffle(file_paths)
-                print("Playlist reshuffled for the next loop.")
+                logger.info("Playlist reshuffled for the next loop")
             continue
         else:
-            print("Playlist completed.")
+            logger.info("Playlist completed")
             break
 
     reset_theta()
     with serial_manager.serial_lock:
         serial_manager.ser.write("FINISHED\n".encode())
         
-    print("All requested patterns completed (or stopped).")
+    logger.info("All requested patterns completed (or stopped)")
 
 def reset_theta():
     """Reset theta on the Arduino."""
+    logger.debug("Resetting theta on Arduino")
     with serial_manager.serial_lock:
         serial_manager.ser.write("RESET_THETA\n".encode())
         while True:
             with serial_manager.serial_lock:
                 if serial_manager.ser.in_waiting > 0:
                     response = serial_manager.ser.readline().decode().strip()
-                    print(f"Arduino response: {response}")
+                    logger.debug(f"Arduino response: {response}")
                     if response == "THETA_RESET":
-                        print("Theta successfully reset.")
+                        logger.info("Theta successfully reset.")
                         break
             time.sleep(0.5)
 
