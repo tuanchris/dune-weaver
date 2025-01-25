@@ -25,6 +25,14 @@ current_playing_index = None
 current_playlist = None
 is_clearing = False
 
+def list_theta_rho_files():
+    files = []
+    for root, _, filenames in os.walk(THETA_RHO_DIR):
+        for file in filenames:
+            relative_path = os.path.relpath(os.path.join(root, file), THETA_RHO_DIR)
+            files.append(relative_path)
+    return files
+
 def parse_theta_rho_file(file_path):
     """Parse a theta-rho file and return a list of (theta, rho) pairs."""
     coordinates = []
