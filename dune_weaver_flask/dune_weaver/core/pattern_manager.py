@@ -4,7 +4,7 @@ import time
 import random
 from datetime import datetime
 from tqdm import tqdm
-from ...serial.manager import serial_manager
+from dune_weaver_flask.dune_weaver.serial.serial_manager import serial_manager
 
 class PatternManager:
     def __init__(self):

@@ -2,10 +2,10 @@ from flask import Flask, request, jsonify, render_template, send_from_directory
 import atexit
 import os
 from datetime import datetime
-from .dune_weaver.serial.manager import serial_manager
-from .dune_weaver.core.pattern_manager.manager import pattern_manager
-from .dune_weaver.core.playlist_manager.manager import playlist_manager
-from .dune_weaver.firmware.manager import firmware_manager
+from .dune_weaver.serial.serial_manager import serial_manager
+from dune_weaver_flask.dune_weaver.core.pattern_manager import pattern_manager
+from dune_weaver_flask.dune_weaver.core.playlist_manager import playlist_manager
+from .dune_weaver.firmware.firmware_manager import firmware_manager
 
 app = Flask(__name__)
 
