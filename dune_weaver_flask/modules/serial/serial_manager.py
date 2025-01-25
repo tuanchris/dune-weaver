@@ -2,6 +2,10 @@ import serial
 import serial.tools.list_ports
 import threading
 import time
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Global state
 ser = None
@@ -17,7 +21,9 @@ firmware_version = 'Unknown'
 def list_serial_ports():
     """Return a list of available serial ports."""
     ports = serial.tools.list_ports.comports()
-    return [port.device for port in ports if port.device not in IGNORE_PORTS]
+    available_ports = [port.device for port in ports if port.device not in IGNORE_PORTS]
+    logger.debug(f"Available serial ports: {available_ports}")
+    return available_ports
 
 def connect_to_serial(port=None, baudrate=115200):
     """Automatically connect to the first available serial port or a specified port."""
@@ -26,7 +32,7 @@ def connect_to_serial(port=None, baudrate=115200):
         if port is None:
             ports = list_serial_ports()
             if not ports:
-                print("No serial port connected")
+                logger.warning("No serial port connected")
                 return False
             port = ports[0]  # Auto-select the first available port
 
@@ -36,13 +42,13 @@ def connect_to_serial(port=None, baudrate=115200):
             ser = serial.Serial(port, baudrate, timeout=2)
             ser_port = port
 
-        print(f"Connected to serial port: {port}")
+        logger.info(f"Connected to serial port: {port}")
         time.sleep(2)  # Allow time for the connection to establish
 
         # Read initial startup messages from Arduino
         while ser.in_waiting > 0:
             line = ser.readline().decode().strip()
-            print(f"Arduino: {line}")
+            logger.debug(f"Arduino: {line}")
 
             # Store the device details based on the expected messages
             if "Table:" in line:
@@ -52,27 +58,29 @@ def connect_to_serial(port=None, baudrate=115200):
             elif "Version:" in line:
                 firmware_version = line.replace("Version: ", "").strip()
 
-        print(f"Detected Table: {arduino_table_name or 'Unknown'}")
-        print(f"Detected Drivers: {arduino_driver_type or 'Unknown'}")
+        logger.info(f"Detected Table: {arduino_table_name or 'Unknown'}")
+        logger.info(f"Detected Drivers: {arduino_driver_type or 'Unknown'}")
 
         return True
     except serial.SerialException as e:
-        print(f"Failed to connect to serial port {port}: {e}")
+        logger.error(f"Failed to connect to serial port {port}: {e}")
         ser_port = None
 
-    print("Max retries reached. Could not connect to a serial port.")
+    logger.error("Max retries reached. Could not connect to a serial port.")
     return False
 
 def disconnect_serial():
     """Disconnect the current serial connection."""
     global ser, ser_port
     if ser and ser.is_open:
+        logger.info("Disconnecting serial connection")
         ser.close()
         ser = None
     ser_port = None
 
 def restart_serial(port, baudrate=115200):
     """Restart the serial connection."""
+    logger.info(f"Restarting serial connection on port {port}")
     disconnect_serial()
     return connect_to_serial(port, baudrate)
 
@@ -81,21 +89,22 @@ def send_coordinate_batch(coordinates):
     batch_str = ";".join(f"{theta:.5f},{rho:.5f}" for theta, rho in coordinates) + ";\n"
     with serial_lock:
         ser.write(batch_str.encode())
+        logger.debug(f"Sent coordinate batch: {batch_str.strip()}")
 
 def send_command(command):
     """Send a single command to the Arduino."""
     with serial_lock:
         ser.write(f"{command}\n".encode())
-        print(f"Sent: {command}")
+        logger.debug(f"Sent command: {command}")
 
         # Wait for "R" acknowledgment from Arduino
         while True:
             with serial_lock:
                 if ser.in_waiting > 0:
                     response = ser.readline().decode().strip()
-                    print(f"Arduino response: {response}")
+                    logger.debug(f"Arduino response: {response}")
                     if response == "R":
-                        print("Command execution completed.")
+                        logger.debug("Command execution completed")
                         break
 
 def is_connected():
