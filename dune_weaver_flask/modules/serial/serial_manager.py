@@ -91,19 +91,24 @@ def send_coordinate_batch(coordinates):
         ser.write(batch_str.encode())
         logger.debug(f"Sent coordinate batch: {batch_str.strip()}")
 
-def send_command(command):
+def send_command(command, ack=None):
     """Send a single command to the Arduino."""
+    timeout = 10  # Timeout in seconds
+    start_time = time.time()
     with serial_lock:
         ser.write(f"{command}\n".encode())
         logger.debug(f"Sent command: {command}")
 
         # Wait for "R" acknowledgment from Arduino
         while True:
+            if time.time() - start_time > timeout:
+                logger.error(f"Timeout: No acknowledgment received within {timeout} seconds")
+                break  # Exit loop after timeout
             with serial_lock:
                 if ser.in_waiting > 0:
                     response = ser.readline().decode().strip()
                     logger.debug(f"Arduino response: {response}")
-                    if response == "R":
+                    if response == ack:
                         logger.debug("Command execution completed")
                         break
 
