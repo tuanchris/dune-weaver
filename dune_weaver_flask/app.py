@@ -125,7 +125,7 @@ def stop_execution():
 @app.route('/send_home', methods=['POST'])
 def send_home():
     try:
-        serial_manager.send_command("HOME")
+        serial_manager.send_command("HOME", ack="HOMED")
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Failed to send home command: {str(e)}")
@@ -393,7 +393,7 @@ def set_speed():
             logger.warning(f"Invalid speed value received: {speed}")
             return jsonify({"success": False, "error": "Invalid speed value"}), 400
 
-        serial_manager.send_command(f"SET_SPEED {speed}")
+        serial_manager.send_command(f"SET_SPEED {speed}", ack="SPEED_SET")
         return jsonify({"success": True, "speed": speed})
     except Exception as e:
         logger.error(f"Failed to set speed: {str(e)}")
