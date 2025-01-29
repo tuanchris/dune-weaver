@@ -346,6 +346,29 @@ void homing()
 
 void movePolar(float theta, float rho)
 {
+    // Define different scaling factors for rho <= 0.5 and rho > 0.5
+    float speedScalingFactorLow = 0.7;  // Scaling factor for rho <= 0.5
+    float speedScalingFactorHigh = 0.4; // Scaling factor for rho > 0.5
+
+    float speedScalingFactor;
+
+    // Determine which factor to use
+    if (rho <= 0.5) {
+        speedScalingFactor = speedScalingFactorLow;
+    } else {
+        speedScalingFactor = speedScalingFactorHigh;
+    }
+
+    // Scale speed dynamically based on rho
+    long dynamicSpeed = maxSpeed * (1.0 + speedScalingFactor * (1.0 - 2.0 * rho));
+
+    // Ensure the speed is within a valid range
+    dynamicSpeed = constrain(dynamicSpeed, 1, maxSpeed);
+
+    // Set stepper speeds dynamically
+    rotStepper.setMaxSpeed(dynamicSpeed);
+    inOutStepper.setMaxSpeed(dynamicSpeed);
+
     // Convert polar coordinates to motor steps
     long rotSteps = theta * (rot_total_steps / (2.0 * M_PI)); // Steps for rot axis
     long inOutSteps = rho * inOut_total_steps;                // Steps for in-out axis
