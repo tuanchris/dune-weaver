@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 from tqdm import tqdm
 from dune_weaver_flask.modules.serial import serial_manager
+from math import pi
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -28,6 +29,8 @@ execution_progress = None
 current_playing_index = None
 current_playlist = None
 is_clearing = False
+current_theta = current_rho = 0
+speed = 800
 
 def list_theta_rho_files():
     files = []
@@ -71,7 +74,7 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
     """Return a .thr file path based on pattern_name."""
     if not clear_pattern_mode or clear_pattern_mode == 'none':
         return
-    print("Clear pattern mode: " + clear_pattern_mode)
+    logger.info("Clear pattern mode: " + clear_pattern_mode)
     if clear_pattern_mode == "random":
         return random.choice(list(CLEAR_PATTERNS.values()))
 
@@ -120,10 +123,31 @@ def wait_for_start_time(schedule_hours):
             break
         else:
             time.sleep(30)
+            
+def interpolate_path(theta, rho, speed=speed):
+    global current_theta, current_rho
+    delta_theta = current_theta - theta
+    delta_rho = current_rho - rho
+    x = (theta - current_theta)/(2*pi)*100
+    y = (rho-current_rho) * 100
+    offset = x/100 * 27.8260869565
+    y += offset
+    serial_manager.send_grbl_coordinates(x, y, speed)
+    current_theta = theta
+    current_rho = rho
+    
+def reset_theta():
+    logger.info('Resetting Theta')
+    global current_theta
+    current_theta = 0
+
+def set_speed(new_speed):
+    global speed
+    speed = new_speed
 
 def run_theta_rho_file(file_path, schedule_hours=None):
     """Run a theta-rho file by sending data in optimized batches with tqdm ETA tracking."""
-    global current_playing_file, execution_progress, stop_requested
+    global current_playing_file, execution_progress, stop_requested, current_theta, current_rho, speed
     coordinates = parse_theta_rho_file(file_path)
     total_coordinates = len(coordinates)
 
@@ -134,7 +158,6 @@ def run_theta_rho_file(file_path, schedule_hours=None):
         return
 
     execution_progress = (0, total_coordinates, None)
-    batch_size = 10
 
     stop_actions()
     with serial_manager.serial_lock:
@@ -142,47 +165,23 @@ def run_theta_rho_file(file_path, schedule_hours=None):
         execution_progress = (0, 0, None)
         stop_requested = False
         logger.info(f"Starting pattern execution: {file_path}")
-        with tqdm(total=total_coordinates, unit="coords", desc=f"Executing Pattern {file_path}", dynamic_ncols=True, disable=None) as pbar:
-            for i in range(0, total_coordinates, batch_size):
-                if stop_requested:
-                    logger.info("Execution stopped by user after completing the current batch")
-                    break
-
-                with pause_condition:
-                    while pause_requested:
-                        logger.info("Execution paused...")
-                        pause_condition.wait()
-
-                batch = coordinates[i:i + batch_size]
-
-                if i == 0:
-                    serial_manager.send_coordinate_batch(batch)
-                    execution_progress = (i + batch_size, total_coordinates, None)
-                    pbar.update(batch_size)
-                    continue
-
-                while True:
-                    schedule_checker(schedule_hours)
-                    if serial_manager.ser.in_waiting > 0:
-                        response = serial_manager.ser.readline().decode().strip()
-                        if response == "R":
-                            serial_manager.send_coordinate_batch(batch)
-                            pbar.update(batch_size)
-                            estimated_remaining_time = pbar.format_dict['elapsed'] / (i + batch_size) * (total_coordinates - (i + batch_size))
-                            execution_progress = (i + batch_size, total_coordinates, estimated_remaining_time)
-                            break
-                        elif response != "IGNORED: FINISHED" and response.startswith("IGNORE"):
-                            logger.warning(f"Received IGNORE response: {response}")
-                            prev_start = max(0, i - batch_size)
-                            prev_end = i
-                            previous_batch = coordinates[prev_start:prev_end]
-                            serial_manager.send_coordinate_batch(previous_batch)
-                            break
-                        else:
-                            logger.debug(f"Arduino response: {response}")
-
+        logger.info(f"t: {current_theta}, r: {current_rho}")
         reset_theta()
-        serial_manager.ser.write("FINISHED\n".encode())
+        for coordinate in tqdm(coordinates):
+            theta, rho = coordinate
+            if stop_requested:
+                logger.info("Execution stopped by user after completing the current batch")
+                break
+
+            with pause_condition:
+                while pause_requested:
+                    logger.info("Execution paused...")
+                    pause_condition.wait()
+
+            schedule_checker(schedule_hours)
+            interpolate_path(theta, rho, speed)
+
+        serial_manager.check_idle()
 
     current_playing_file = None
     execution_progress = None
@@ -241,27 +240,7 @@ def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="
         else:
             logger.info("Playlist completed")
             break
-
-    reset_theta()
-    with serial_manager.serial_lock:
-        serial_manager.ser.write("FINISHED\n".encode())
-        
     logger.info("All requested patterns completed (or stopped)")
-
-def reset_theta():
-    """Reset theta on the Arduino."""
-    logger.debug("Resetting theta on Arduino")
-    with serial_manager.serial_lock:
-        serial_manager.ser.write("RESET_THETA\n".encode())
-        while True:
-            with serial_manager.serial_lock:
-                if serial_manager.ser.in_waiting > 0:
-                    response = serial_manager.ser.readline().decode().strip()
-                    logger.debug(f"Arduino response: {response}")
-                    if response == "THETA_RESET":
-                        logger.info("Theta successfully reset.")
-                        break
-            time.sleep(0.5)
 
 def stop_actions():
     """Stop all current pattern execution."""

@@ -41,7 +41,7 @@ def connect_to_serial(port=None, baudrate=115200):
                 ser.close()
             ser = serial.Serial(port, baudrate, timeout=2)
             ser_port = port
-
+        home()
         logger.info(f"Connected to serial port: {port}")
         time.sleep(2)  # Allow time for the connection to establish
 
@@ -84,34 +84,6 @@ def restart_serial(port, baudrate=115200):
     disconnect_serial()
     return connect_to_serial(port, baudrate)
 
-def send_coordinate_batch(coordinates):
-    """Send a batch of theta-rho pairs to the Arduino."""
-    batch_str = ";".join(f"{theta:.5f},{rho:.5f}" for theta, rho in coordinates) + ";\n"
-    with serial_lock:
-        ser.write(batch_str.encode())
-        logger.debug(f"Sent coordinate batch: {batch_str.strip()}")
-
-def send_command(command, ack=None):
-    """Send a single command to the Arduino."""
-    timeout = 10  # Timeout in seconds
-    start_time = time.time()
-    with serial_lock:
-        ser.write(f"{command}\n".encode())
-        logger.debug(f"Sent command: {command}")
-
-        # Wait for "R" acknowledgment from Arduino
-        while True:
-            if time.time() - start_time > timeout:
-                logger.error(f"Timeout: No acknowledgment received within {timeout} seconds")
-                break  # Exit loop after timeout
-            with serial_lock:
-                if ser.in_waiting > 0:
-                    response = ser.readline().decode().strip()
-                    logger.debug(f"Arduino response: {response}")
-                    if response == ack:
-                        logger.debug("Command execution completed")
-                        break
-
 def is_connected():
     """Check if serial connection is established and open."""
     return ser is not None and ser.is_open
@@ -119,3 +91,53 @@ def is_connected():
 def get_port():
     """Get the current serial port."""
     return ser_port
+
+
+def send_grbl_coordinates(x, y, speed=600, max_retries=20, retry_interval=0.5):
+    """Send G-code command to FluidNC and retry every 0.5s if no 'ok' is received."""
+    attempt = 0  # Retry counter
+
+    while attempt < max_retries:
+        with serial_lock:
+            gcode = f"$J=G91 G21 X{x} Y{y} F{speed}"
+            ser.write(f"{gcode}\n".encode())
+            ser.flush()
+            logger.debug(f"Sent command (Attempt {attempt+1}/{max_retries}): {gcode}")
+
+            # Wait for response
+            while True:
+                if ser.in_waiting > 0:
+                    response = ser.readline().decode().strip()
+                    logger.debug(f"Response: {response}")
+                    if response.lower() == "ok":
+                        logger.debug("Command execution completed")
+                        return  # Exit function if 'ok' is received
+
+        # Wait before retrying
+        attempt += 1
+        logger.warning(f"Attempt {attempt}: No 'ok' received, retrying in {retry_interval}s...")
+        time.sleep(retry_interval)
+
+    logger.error(f"Failed to receive 'ok' after {max_retries} attempts. Giving up.")
+
+def home():
+    logger.info("Homing")
+    send_grbl_coordinates(0, -110, 1000)
+    current_theta = current_rho = 0
+
+def check_idle():
+    """Continuously check if the machine is in the 'Idle' state."""
+    logger.info("Checking idle")
+    while True:
+        with serial_lock:
+            ser.write('?'.encode())  # Send status query
+            ser.flush()  # Ensure it's sent immediately
+
+            if ser.in_waiting > 0:
+                response = ser.readline().decode().strip()
+                logger.info(f"Response: {response}")
+                if "Idle" in response:
+                    logger.info("Tabble is idle")
+                    return True  # Exit function once 'Idle' is received
+
+        time.sleep(1)  # Wait before retrying

@@ -125,7 +125,7 @@ def stop_execution():
 @app.route('/send_home', methods=['POST'])
 def send_home():
     try:
-        serial_manager.send_command("HOME", ack="HOMED")
+        serial_manager.home()
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Failed to send home command: {str(e)}")
@@ -162,14 +162,15 @@ def delete_theta_rho_file():
 
 @app.route('/move_to_center', methods=['POST'])
 def move_to_center():
+    global current_theta
     try:
         if not serial_manager.is_connected():
             logger.warning("Attempted to move to center without serial connection")
             return jsonify({"success": False, "error": "Serial connection not established"}), 400
 
         logger.info("Moving device to center position")
-        coordinates = [(0, 0)]
-        serial_manager.send_coordinate_batch(coordinates)
+        pattern_manager.reset_theta()
+        pattern_manager.interpolate_path(0, 0)
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Failed to move to center: {str(e)}")
@@ -177,14 +178,13 @@ def move_to_center():
 
 @app.route('/move_to_perimeter', methods=['POST'])
 def move_to_perimeter():
+    global current_theta
     try:
         if not serial_manager.is_connected():
             logger.warning("Attempted to move to perimeter without serial connection")
             return jsonify({"success": False, "error": "Serial connection not established"}), 400
-
-        MAX_RHO = 1
-        coordinates = [(0, MAX_RHO)]
-        serial_manager.send_coordinate_batch(coordinates)
+        pattern_manager.reset_theta()
+        pattern_manager.interpolate_path(0,1)
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Failed to move to perimeter: {str(e)}")
@@ -225,7 +225,7 @@ def send_coordinate():
             return jsonify({"success": False, "error": "Theta and Rho are required"}), 400
 
         logger.debug(f"Sending coordinate: theta={theta}, rho={rho}")
-        serial_manager.send_coordinate_batch([(theta, rho)])
+        pattern_manager.interpolate_path(theta, rho)
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Failed to send coordinate: {str(e)}")
@@ -377,24 +377,19 @@ def run_playlist():
 # Firmware endpoints
 @app.route('/set_speed', methods=['POST'])
 def set_speed():
-    if not serial_manager.is_connected():
-        logger.warning("Attempted to set speed without serial connection")
-        return jsonify({"success": False, "error": "Serial connection not established"}), 400
-
     try:
         data = request.json
-        speed = data.get('speed')
+        new_speed = data.get('speed')
 
-        if speed is None:
+        if new_speed is None:
             logger.warning("Set speed request received without speed value")
             return jsonify({"success": False, "error": "Speed is required"}), 400
 
-        if not isinstance(speed, (int, float)) or speed <= 0:
-            logger.warning(f"Invalid speed value received: {speed}")
+        if not isinstance(new_speed, (int, float)) or new_speed <= 0:
+            logger.warning(f"Invalid speed value received: {new_speed}")
             return jsonify({"success": False, "error": "Invalid speed value"}), 400
-
-        serial_manager.send_command(f"SET_SPEED {speed}", ack="SPEED_SET")
-        return jsonify({"success": True, "speed": speed})
+        pattern_manager.set_speed(new_speed)
+        return jsonify({"success": True, "speed": new_speed})
     except Exception as e:
         logger.error(f"Failed to set speed: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
