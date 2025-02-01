@@ -12,19 +12,10 @@ axes:
   shared_stepper_disable_pin: i2so.0
   x:
     steps_per_mm: 320
-    max_rate_mm_per_min: 10000
-    acceleration_mm_per_sec2: 1500
+    max_rate_mm_per_min: 900
+    acceleration_mm_per_sec2: 1000
     max_travel_mm: 325
     soft_limits: false
-    homing:
-      cycle: 1
-      positive_direction: false
-      mpos_mm: 0
-      feed_mm_per_min: 300
-      seek_mm_per_min: 5000
-      settle_ms: 500
-      seek_scaler: 1.1
-      feed_scaler: 1.1
     motor0:
       limit_neg_pin: gpio.36
       hard_limits: false
@@ -40,19 +31,10 @@ axes:
       limit_all_pin: NO_PIN
   y:
     steps_per_mm: 57.5
-    max_rate_mm_per_min: 12000
-    acceleration_mm_per_sec2: 1500
+    max_rate_mm_per_min: 3000
+    acceleration_mm_per_sec2: 1000
     max_travel_mm: 220
     soft_limits: false
-    homing:
-      cycle: 1
-      positive_direction: false
-      mpos_mm: 0
-      feed_mm_per_min: 300
-      seek_mm_per_min: 5000
-      settle_ms: 500
-      seek_scaler: 1.1
-      feed_scaler: 1.1
     motor0:
       limit_neg_pin: gpio.35
       hard_limits: false
@@ -66,42 +48,10 @@ axes:
         ms3_pin: NO_PIN
       limit_pos_pin: NO_PIN
       limit_all_pin: NO_PIN
-  z:
-    steps_per_mm: 157.75
-    max_rate_mm_per_min: 12000
-    acceleration_mm_per_sec2: 500
-    max_travel_mm: 80
-    soft_limits: true
-    homing:
-      cycle: 0
-      positive_direction: false
-      mpos_mm: 0
-      feed_mm_per_min: 300
-      seek_mm_per_min: 1000
-      settle_ms: 500
-      seek_scaler: 1.1
-      feed_scaler: 1.1
-    motor0:
-      limit_neg_pin: gpio.34
-      hard_limits: false
-      pulloff_mm: 1
-      stepstick:
-        step_pin: i2so.3
-        direction_pin: i2so.4
-        disable_pin: NO_PIN
-        ms1_pin: NO_PIN
-        ms2_pin: NO_PIN
-        ms3_pin: NO_PIN
-      limit_pos_pin: NO_PIN
-      limit_all_pin: NO_PIN
 i2so:
   bck_pin: gpio.16
   data_pin: gpio.21
   ws_pin: gpio.17
-spi:
-  miso_pin: gpio.12
-  mosi_pin: gpio.13
-  sck_pin: gpio.14
 sdcard:
   cs_pin: gpio.15
   card_detect_pin: NO_PIN
@@ -117,23 +67,11 @@ control:
   fault_pin: NO_PIN
   estop_pin: NO_PIN
 macros:
-  macro0: G91
+  macro0: G90
 coolant:
   flood_pin: NO_PIN
   mist_pin: NO_PIN
   delay_ms: 0
-probe:
-  pin: gpio.22
-  check_mode_start: true
-  toolsetter_pin: NO_PIN
-Laser:
-  pwm_hz: 5000
-  output_pin: gpio.32
-  enable_pin: i2so.7
-  disable_with_s0: false
-  s0_with_disable: false
-  tool_num: 0
-  speed_map: 0=0.000% 0=12.500% 1700=100.000%
 user_outputs:
   analog0_pin: NO_PIN
   analog1_pin: NO_PIN
@@ -149,3 +87,7 @@ user_outputs:
   digital3_pin: NO_PIN
 start:
   must_home: false
+spi:
+  miso_pin: gpio.12
+  mosi_pin: gpio.13
+  sck_pin: gpio.14

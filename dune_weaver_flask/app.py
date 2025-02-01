@@ -7,6 +7,8 @@ from .modules.serial import serial_manager
 from dune_weaver_flask.modules.core import pattern_manager
 from dune_weaver_flask.modules.core import playlist_manager
 from .modules.firmware import firmware_manager
+from dune_weaver_flask.modules.core.state import state
+
 
 # Configure logging
 logging.basicConfig(
@@ -388,7 +390,7 @@ def set_speed():
         if not isinstance(new_speed, (int, float)) or new_speed <= 0:
             logger.warning(f"Invalid speed value received: {new_speed}")
             return jsonify({"success": False, "error": "Invalid speed value"}), 400
-        pattern_manager.set_speed(new_speed)
+        state.speed = new_speed
         return jsonify({"success": True, "speed": new_speed})
     except Exception as e:
         logger.error(f"Failed to set speed: {str(e)}")
@@ -457,12 +459,13 @@ def update_software():
 def on_exit():
     """Function to execute on application shutdown."""
     pattern_manager.stop_actions()
-
-# Register the on_exit function
-atexit.register(on_exit)
+    state.save()
 
 def entrypoint():
     logger.info("Starting Dune Weaver application...")
+    
+    # Register the on_exit function
+    atexit.register(on_exit)
     # Auto-connect to serial
     try:
         serial_manager.connect_to_serial()
