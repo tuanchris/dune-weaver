@@ -111,7 +111,7 @@ def send_grbl_coordinates(x, y, speed=600, timeout=2, retry_interval=1):
 
     while True:  # Keep retrying indefinitely until 'ok' is received
         with serial_lock:
-            gcode = f"$J=G91 G21 X{x} Y{y} F{speed}"
+            gcode = f"$J=G91 G21 X{x:.3f} Y{y:.3f} F{speed}"
             ser.write(f"{gcode}\n".encode())
             ser.flush()
             logger.debug(f"Sent command: {gcode}")
