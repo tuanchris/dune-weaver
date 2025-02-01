@@ -169,41 +169,21 @@ def run_theta_rho_file(file_path, schedule_hours=None):
         execution_progress = (0, 0, None)
         stop_requested = False
         logger.info(f"Starting pattern execution: {file_path}")
-        logger.debug(f"t: {current_theta}, r: {current_rho}")
+        logger.info(f"t: {current_theta}, r: {current_rho}")
         reset_theta()
+        for coordinate in tqdm(coordinates):
+            theta, rho = coordinate
+            if stop_requested:
+                logger.info("Execution stopped by user after completing the current batch")
+                break
 
-        sent_index = 0  # Tracks how many coordinates have been sent
+            with pause_condition:
+                while pause_requested:
+                    logger.info("Execution paused...")
+                    pause_condition.wait()
 
-        while sent_index < len(coordinates):
-            # Check buffer
-            buffer_status = serial_manager.check_buffer()
-            if buffer_status:
-                buffer_left = buffer_status["planner_buffer"]
-            else:
-                buffer_left = 0  # Assume empty buffer if no response
-
-            # Calculate how many new coordinates to send
-            if buffer_left > 0:
-                num_to_send = min(buffer_left, len(coordinates) - sent_index)
-                batch = coordinates[sent_index:sent_index + num_to_send]
-
-                for theta, rho in batch:
-                    if stop_requested:
-                        logger.debug("Execution stopped by user.")
-                        break
-
-                    with pause_condition:
-                        while pause_requested:
-                            logger.debug("Execution paused...")
-                            pause_condition.wait()
-
-                    schedule_checker(schedule_hours)
-                    interpolate_path(theta, rho, speed)
-
-                sent_index += num_to_send  # Update sent index
-
-            # Wait before checking buffer again
-            time.sleep(0.1)  # Check buffer every second
+            schedule_checker(schedule_hours)
+            interpolate_path(theta, rho, speed)
 
         serial_manager.check_idle()
 
