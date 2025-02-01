@@ -147,6 +147,8 @@ def set_speed(new_speed):
 
 def run_theta_rho_file(file_path, schedule_hours=None):
     """Run a theta-rho file by sending data in optimized batches with tqdm ETA tracking."""
+    if not file_path:
+        return
     global current_playing_file, execution_progress, stop_requested, current_theta, current_rho, speed
     coordinates = parse_theta_rho_file(file_path)
     total_coordinates = len(coordinates)
@@ -181,9 +183,8 @@ def run_theta_rho_file(file_path, schedule_hours=None):
                 buffer_left = 0  # Assume empty buffer if no response
 
             # Calculate how many new coordinates to send
-            available_slots = BATCH_SIZE - buffer_left
-            if available_slots > 0:
-                num_to_send = min(available_slots, len(coordinates) - sent_index)
+            if buffer_left > 0:
+                num_to_send = min(buffer_left, len(coordinates) - sent_index)
                 batch = coordinates[sent_index:sent_index + num_to_send]
 
                 for theta, rho in batch:
