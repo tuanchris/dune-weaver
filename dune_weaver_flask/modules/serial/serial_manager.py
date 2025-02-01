@@ -25,6 +25,14 @@ def list_serial_ports():
     logger.debug(f"Available serial ports: {available_ports}")
     return available_ports
 
+def startup_gcodes():
+    ser.write(f"Report/Status=2".encode())
+    ser.flush()
+    while True:
+        if ser.in_waiting > 0:
+            response = ser.readline().decode().strip()
+            logger.debug(f"Response: {response}")
+
 def connect_to_serial(port=None, baudrate=115200):
     """Automatically connect to the first available serial port or a specified port."""
     global ser, ser_port, arduino_table_name, arduino_driver_type, firmware_version
@@ -41,6 +49,7 @@ def connect_to_serial(port=None, baudrate=115200):
                 ser.close()
             ser = serial.Serial(port, baudrate, timeout=2)
             ser_port = port
+        # startup_gcodes()
         home()
         logger.info(f"Connected to serial port: {port}")
         time.sleep(2)  # Allow time for the connection to establish
@@ -93,32 +102,32 @@ def get_port():
     return ser_port
 
 
-def send_grbl_coordinates(x, y, speed=600, max_retries=20, retry_interval=0.5):
-    """Send G-code command to FluidNC and retry every 0.5s if no 'ok' is received."""
-    attempt = 0  # Retry counter
+def send_grbl_coordinates(x, y, speed=600, timeout=2, retry_interval=1):
+    """
+    Send a G-code command to FluidNC and wait up to 2s for an 'ok' response.
+    If no 'ok' is received, retry every 1 second until successful.
+    """
+    logger.debug(f"Sending G-code: X{x}, Y{y} at F{speed}")
 
-    while attempt < max_retries:
+    while True:  # Keep retrying indefinitely until 'ok' is received
         with serial_lock:
             gcode = f"$J=G91 G21 X{x} Y{y} F{speed}"
             ser.write(f"{gcode}\n".encode())
             ser.flush()
-            logger.debug(f"Sent command (Attempt {attempt+1}/{max_retries}): {gcode}")
+            logger.debug(f"Sent command: {gcode}")
 
-            # Wait for response
-            while True:
+            start_time = time.time()
+            while time.time() - start_time < timeout:
                 if ser.in_waiting > 0:
                     response = ser.readline().decode().strip()
                     logger.debug(f"Response: {response}")
                     if response.lower() == "ok":
-                        logger.debug("Command execution completed")
-                        return  # Exit function if 'ok' is received
+                        logger.debug("Command execution confirmed.")
+                        return  # Exit function when 'ok' is received
 
-        # Wait before retrying
-        attempt += 1
-        logger.warning(f"Attempt {attempt}: No 'ok' received, retrying in {retry_interval}s...")
-        time.sleep(retry_interval)
-
-    logger.error(f"Failed to receive 'ok' after {max_retries} attempts. Giving up.")
+            logger.warning(f"No 'ok' received for X{x}, Y{y}. Retrying in {retry_interval}s...")
+        
+        time.sleep(retry_interval)  # Wait before retrying
 
 def home():
     logger.info("Homing")
@@ -141,3 +150,30 @@ def check_idle():
                     return True  # Exit function once 'Idle' is received
 
         time.sleep(1)  # Wait before retrying
+        
+def check_buffer():
+    """Check the available planner and serial buffer in FluidNC."""
+    logger.debug("Checking buffer availability")
+
+    with serial_lock:
+        ser.write('?'.encode())  # Send status query
+        ser.flush()  # Ensure it's sent immediately
+
+        if ser.in_waiting > 0:
+            response = ser.readline().decode().strip()
+            logger.debug(f"Response: {response}")
+
+            # Extract buffer values from the response (Format: <Idle|MPos:...|Bf:xx,yy|FS:...>)
+            buffer_info = None
+            if "|Bf:" in response:
+                try:
+                    buffer_section = response.split("|Bf:")[1].split("|")[0]
+                    planner_buffer, serial_buffer = map(int, buffer_section.split(","))
+                    buffer_info = {"planner_buffer": planner_buffer, "serial_buffer": serial_buffer}
+                except ValueError:
+                    logger.warning("Failed to parse buffer info from response")
+
+            logger.debug(f"Buffer Left: {buffer_info}")
+            return buffer_info
+
+    return None  # Return None if no buffer data is available
