@@ -20,6 +20,8 @@ CLEAR_PATTERNS = {
     "clear_sideway":  "./patterns/clear_sideway.thr"
 }
 os.makedirs(THETA_RHO_DIR, exist_ok=True)
+current_playlist = []
+current_playing_index = None
 
 def list_theta_rho_files():
     files = []
@@ -159,7 +161,6 @@ def run_theta_rho_file(file_path, schedule_hours=None):
     state.execution_progress = (0, total_coordinates, None)
 
     stop_actions()
-    BATCH_SIZE = 15  # Max planner buffer size
 
     with serial_manager.serial_lock:
         state.current_playing_file = file_path
@@ -168,19 +169,25 @@ def run_theta_rho_file(file_path, schedule_hours=None):
         logger.info(f"Starting pattern execution: {file_path}")
         logger.info(f"t: {state.current_theta}, r: {state.current_rho}")
         reset_theta()
-        for coordinate in tqdm(coordinates):
-            theta, rho = coordinate
-            if state.stop_requested:
-                logger.info("Execution stopped by user after completing the current batch")
-                break
+        with tqdm(total=total_coordinates, unit="coords", desc=f"Executing Pattern {file_path}", dynamic_ncols=True, disable=None) as pbar:
+            for i, coordinate in enumerate(coordinates):
+                theta, rho = coordinate
+                if state.stop_requested:
+                    logger.info("Execution stopped by user after completing the current batch")
+                    break
 
-            with state.pause_condition:
-                while state.pause_requested:
-                    logger.info("Execution paused...")
-                    state.pause_condition.wait()
+                with state.pause_condition:
+                    while state.pause_requested:
+                        logger.info("Execution paused...")
+                        state.pause_condition.wait()
 
-            schedule_checker(schedule_hours)
-            interpolate_path(theta, rho)
+                schedule_checker(schedule_hours)
+                interpolate_path(theta, rho)
+                
+                if i != 0:
+                    pbar.update(1)
+                    estimated_remaining_time = pbar.format_dict['elapsed'] / i * total_coordinates
+                    state.execution_progress = (i, total_coordinates, estimated_remaining_time)
 
         serial_manager.check_idle()
 
@@ -190,18 +197,20 @@ def run_theta_rho_file(file_path, schedule_hours=None):
 
 def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False, schedule_hours=None):
     """Run multiple .thr files in sequence with options."""
+    global current_playing_index, current_playlist
     state.stop_requested = False
     
     if shuffle:
         random.shuffle(file_paths)
         logger.info("Playlist shuffled")
 
-    state.current_playlist = file_paths
+    current_playlist = file_paths
 
     while True:
         for idx, path in enumerate(file_paths):
             logger.info(f"Upcoming pattern: {path}")
-            state.current_playing_index = idx
+            logger.info(idx)
+            current_playing_index = idx
             schedule_checker(schedule_hours)
             if state.stop_requested:
                 logger.info("Execution stopped before starting next pattern")
@@ -247,8 +256,8 @@ def stop_actions():
     with state.pause_condition:
         state.pause_requested = False
         state.stop_requested = True
-        state.current_playing_index = None
-        state.current_playlist = None
+        current_playing_index = None
+        current_playlist = None
         state.is_clearing = False
         state.current_playing_file = None
         state.execution_progress = None
@@ -264,11 +273,11 @@ def get_status():
 
     return {
         "ser_port": serial_manager.get_port(),
-        "state.stop_requested": state.stop_requested,
-        "state.pause_requested": state.pause_requested,
-        "state.current_playing_file": state.current_playing_file,
-        "state.execution_progress": state.execution_progress,
-        "state.current_playing_index": state.current_playing_index,
-        "state.current_playlist": state.current_playlist,
-        "state.is_clearing": state.is_clearing
+        "stop_requested": state.stop_requested,
+        "pause_requested": state.pause_requested,
+        "current_playing_file": state.current_playing_file,
+        "execution_progress": state.execution_progress,
+        "current_playing_index": current_playing_index,
+        "current_playlist": current_playlist,
+        "is_clearing": state.is_clearing
     }
