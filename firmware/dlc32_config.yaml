@@ -30,7 +30,7 @@ axes:
       limit_pos_pin: NO_PIN
       limit_all_pin: NO_PIN
   y:
-    steps_per_mm: 57.5
+    steps_per_mm: 287.5
     max_rate_mm_per_min: 3000
     acceleration_mm_per_sec2: 1000
     max_travel_mm: 220
