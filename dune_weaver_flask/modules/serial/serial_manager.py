@@ -27,20 +27,6 @@ def list_serial_ports():
     return available_ports
 
 
-def startup_gcodes():
-    while True:
-        with serial_lock:
-            ser.write("Report/Status=2".encode())
-            ser.flush()
-            while ser.in_waiting > 0:
-                response = ser.readline().decode().strip()
-                logger.debug(f"Response: {response}")
-                if "Report" in response:
-                    logger.info(response)
-                    return
-        time.sleep(1)
-
-
 def connect_to_serial(port=None, baudrate=115200):
     """Automatically connect to the first available serial port or a specified port."""
     global ser, ser_port, arduino_table_name, arduino_driver_type, firmware_version
@@ -57,7 +43,6 @@ def connect_to_serial(port=None, baudrate=115200):
                 ser.close()
             ser = serial.Serial(port, baudrate, timeout=2)
             ser_port = port
-        # startup_gcodes()
         machine_x, machine_y = get_machine_position()
         if not machine_x or not machine_y or machine_x != state.machine_x or machine_y != state.machine_y:
             logger.info(f'x, y; {machine_x}, {machine_y}')
@@ -129,7 +114,7 @@ def get_status_response():
             ser.flush()
             while ser.in_waiting > 0:
                 response = ser.readline().decode().strip()
-                if "WPos" in response:
+                if "MPos" in response:
                     logger.info(f"Status response: {response}")
                     return response
         time.sleep(1)
@@ -138,14 +123,14 @@ def get_status_response():
 
 def parse_machine_position(response):
     """
-    Parse the work position (WPos) from a status response.
-    Expected format: "<...|WPos:-994.869,-321.861,0.000|...>"
+    Parse the work position (MPos) from a status response.
+    Expected format: "<...|MPos:-994.869,-321.861,0.000|...>"
     Returns a tuple (work_x, work_y) if found, else None.
     """
-    if "WPos:" not in response:
+    if "MPos:" not in response:
         return None
     try:
-        wpos_section = next((part for part in response.split("|") if part.startswith("WPos:")), None)
+        wpos_section = next((part for part in response.split("|") if part.startswith("MPos:")), None)
         if wpos_section:
             wpos_str = wpos_section.split(":", 1)[1]
             wpos_values = wpos_str.split(",")
@@ -173,7 +158,7 @@ def parse_buffer_info(response):
     return None
 
 
-def send_grbl_coordinates(x, y, speed=600, timeout=2, retry_interval=1):
+def send_grbl_coordinates(x, y, speed=600, timeout=2, relative=False):
     """
     Send a G-code command to FluidNC and wait up to timeout seconds for an 'ok' response.
     If no 'ok' is received, retry every retry_interval seconds until successful.
@@ -181,7 +166,10 @@ def send_grbl_coordinates(x, y, speed=600, timeout=2, retry_interval=1):
     logger.debug(f"Sending G-code: X{x} Y{y} at F{speed}")
     while True:
         with serial_lock:
-            gcode = f"G1 G21 X{x} Y{y} F{speed}"
+            if relative:
+                gcode = f"$J=G91 X{x} Y{y} F{speed}"
+            else:
+                gcode = f"G1 X{x} Y{y} F{speed}"
             ser.write(f"{gcode}\n".encode())
             ser.flush()
             logger.debug(f"Sent command: {gcode}")
@@ -195,14 +183,14 @@ def send_grbl_coordinates(x, y, speed=600, timeout=2, retry_interval=1):
                         logger.debug("Command execution confirmed.")
                         return  # Exit function when 'ok' is received
 
-            logger.warning(f"No 'ok' received for X{x} Y{y}. Retrying in {retry_interval}s...")
+            logger.warning(f"No 'ok' received for X{x} Y{y}. Retrying in 1s...")
 
-        time.sleep(retry_interval)
+        time.sleep(1)
 
 
 def home():
     logger.info(f"Homing with speed {state.speed}")
-    send_grbl_coordinates(0, -110/5, state.speed)
+    send_grbl_coordinates(0, -110/5, state.speed, relative=True)
     state.current_theta = state.current_rho = 0
     update_machine_position()
 
@@ -220,15 +208,30 @@ def check_idle():
             return True  # Exit once 'Idle' is confirmed
         time.sleep(1)
         
-def get_machine_position():
-    response = get_status_response()
-    logger.debug(response)
-    if response:
-        pos = parse_machine_position(response)
-        if pos:
-            machine_x, machine_y = pos
-            logger.debug(f"Machine position: X={machine_x}, Y={machine_y}")
-            return machine_x, machine_y
+def get_machine_position(timeout=3):
+    """
+    Send status queries for up to `timeout` seconds to obtain a valid machine (work) position.
+    Returns a tuple (machine_x, machine_y) if a valid response is received,
+    otherwise returns (None, None) after timeout.
+    """
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        with serial_lock:
+            ser.write('?'.encode())
+            ser.flush()
+            # Check if there is any response available
+            while ser.in_waiting > 0:
+                response = ser.readline().decode().strip()
+                logger.debug(f"Raw status response: {response}")
+                if "MPos" in response:
+                    pos = parse_machine_position(response)
+                    if pos:
+                        machine_x, machine_y = pos
+                        logger.debug(f"Machine position: X={machine_x}, Y={machine_y}")
+                        return machine_x, machine_y
+        # Short sleep before trying again
+        time.sleep(0.1)
+    logger.warning("Timeout reached waiting for machine position")
     return None, None
 
 def update_machine_position():
