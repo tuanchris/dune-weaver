@@ -345,33 +345,6 @@
                 </div>
             </section>
 
-            <section class="firmware version">
-                <div class="header">
-                    <h2>Firmware Version</h2>
-                </div>
-                <div id="firmware_info">
-                    <div id="motor_type"></div>
-                    <div id="current_firmware_version"></div>
-                    <div id="new_firmware_version"></div>
-                </div>
-                <div class="button-group">
-                    <div id="motor_selection" style="display: none;">
-                        <h3>Select installed motor driver: </h3>
-                        <select id="manual_motor_type">
-                            <option value="TMC2209">Arduino TMC2209</option>
-                            <option value="DRV8825">Arduino DRV8825</option>
-                            <option value="esp32">ESP32</option>
-                            <option value="esp32_TMC2209">ESP32 TMC2209</option>
-                        </select>
-                        <button id="set_motor_type_button" onclick="setMotorType()">Set Motor Type</button>
-                    </div>
-                    <button id="check_updates_button" onclick="fetchFirmwareInfo()">Check for Updates</button>
-                    <button id="update_firmware_button" class="cta" style="display: none;" onclick="updateFirmware()">
-                        <i class="fa-solid fa-file-arrow-up"></i>
-                        <span>Update Firmware</span>
-                    </button>
-                </div>
-            </section>
             <section class="debug main">
                 <div id="github">
                 <span>Help us improve! <a href="https://github.com/tuanchris/dune-weaver/pulls" target="_blank">Submit a Pull Request</a> or <a
