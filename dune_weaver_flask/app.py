@@ -396,44 +396,6 @@ def set_speed():
         logger.error(f"Failed to set speed: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/get_firmware_info', methods=['GET', 'POST'])
-def get_firmware_info():
-    if not serial_manager.is_connected():
-        logger.warning("Attempted to get firmware info without serial connection")
-        return jsonify({"success": False, "error": "Arduino not connected or serial port not open"}), 400
-
-    try:
-        if request.method == "POST":
-            motor_type = request.json.get("motorType", None)
-            success, result = firmware_manager.get_firmware_info(motor_type)
-        else:
-            success, result = firmware_manager.get_firmware_info()
-
-        if not success:
-            logger.error(f"Failed to get firmware info: {result}")
-            return jsonify({"success": False, "error": result}), 500
-        return jsonify({"success": True, **result})
-
-    except Exception as e:
-        logger.error(f"Unexpected error while getting firmware info: {str(e)}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-@app.route('/flash_firmware', methods=['POST'])
-def flash_firmware():
-    try:
-        motor_type = request.json.get("motorType", None)
-        logger.info(f"Starting firmware flash for motor type: {motor_type}")
-        success, message = firmware_manager.flash_firmware(motor_type)
-        
-        if not success:
-            logger.error(f"Firmware flash failed: {message}")
-            return jsonify({"success": False, "error": message}), 500
-        
-        logger.info("Firmware flash completed successfully")
-        return jsonify({"success": True, "message": message})
-    except Exception as e:
-        logger.critical(f"Unexpected error during firmware flash: {str(e)}")
-        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/check_software_update', methods=['GET'])
 def check_updates():
