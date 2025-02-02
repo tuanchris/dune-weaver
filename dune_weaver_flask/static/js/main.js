@@ -257,6 +257,7 @@ async function runThetaRho() {
     const result = await response.json();
     if (result.success) {
         logMessage(`Pattern running: ${selectedFile}`, LOG_TYPE.SUCCESS);
+        updateCurrentlyPlaying();
     } else {
         logMessage(`Failed to run file: ${selectedFile}`,LOG_TYPE.ERROR);
     }
@@ -898,6 +899,7 @@ async function runPlaylist() {
 
         if (result.success) {
             logMessage(`Playlist "${playlistName}" is now running.`, LOG_TYPE.SUCCESS);
+            updateCurrentlyPlaying();
         } else {
             logMessage(`Failed to run playlist "${playlistName}": ${result.error}`, LOG_TYPE.ERROR);
         }

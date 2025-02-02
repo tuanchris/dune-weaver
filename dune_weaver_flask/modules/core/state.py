@@ -11,8 +11,6 @@ class AppState:
         self.pause_condition = threading.Condition()
         self.current_playing_file = None
         self.execution_progress = None
-        self.current_playing_index = None
-        self.current_playlist = None
         self.is_clearing = False
         self.current_theta = 0
         self.current_rho = 0
@@ -33,8 +31,6 @@ class AppState:
             "pause_requested": self.pause_requested,
             "current_playing_file": self.current_playing_file,
             "execution_progress": self.execution_progress,
-            "current_playing_index": self.current_playing_index,
-            "current_playlist": self.current_playlist,
             "is_clearing": self.is_clearing,
             "current_theta": self.current_theta,
             "current_rho": self.current_rho,
@@ -49,8 +45,6 @@ class AppState:
         self.pause_requested = data.get("pause_requested", False)
         self.current_playing_file = data.get("current_playing_file")
         self.execution_progress = data.get("execution_progress")
-        self.current_playing_index = data.get("current_playing_index")
-        self.current_playlist = data.get("current_playlist")
         self.is_clearing = data.get("is_clearing", False)
         self.current_theta = data.get("current_theta", 0)
         self.current_rho = data.get("current_rho", 0)
