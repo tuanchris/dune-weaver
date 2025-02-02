@@ -3,9 +3,6 @@ import threading
 import json
 import os
 
-STATE_FILE = "state.json"
-SPEED = 300
-
 class AppState:
     def __init__(self):
         # Execution state variables
@@ -19,11 +16,13 @@ class AppState:
         self.is_clearing = False
         self.current_theta = 0
         self.current_rho = 0
-        self.speed = SPEED
+        self.speed = 350
         
         # Machine position variables
         self.machine_x = 0.0
         self.machine_y = 0.0
+        self.STATE_FILE = "state.json"
+
         
         self.load()
 
@@ -61,21 +60,21 @@ class AppState:
 
     def save(self):
         """Save the current state to a JSON file."""
-        with open(STATE_FILE, "w") as f:
+        with open(self.STATE_FILE, "w") as f:
             json.dump(self.to_dict(), f)
 
     def load(self):
         """Load state from a JSON file. If the file doesn't exist, create it with default values."""
-        if not os.path.exists(STATE_FILE):
+        if not os.path.exists(self.STATE_FILE):
             # File doesn't exist: create one with the current (default) state.
-            self.save(STATE_FILE)
+            self.save()
             return
         try:
-            with open(STATE_FILE, "r") as f:
+            with open(self.STATE_FILE, "r") as f:
                 data = json.load(f)
             self.from_dict(data)
         except Exception as e:
-            print(f"Error loading state from {STATE_FILE}: {e}")
+            print(f"Error loading state from {self.STATE_FILE}: {e}")
 
 # Create a singleton instance that you can import elsewhere:
 state = AppState()
