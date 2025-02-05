@@ -11,7 +11,7 @@ stepping:
 axes:
   shared_stepper_disable_pin: i2so.0
   x:
-    steps_per_mm: 320
+    steps_per_mm: 160
     max_rate_mm_per_min: 900
     acceleration_mm_per_sec2: 1000
     max_travel_mm: 325
