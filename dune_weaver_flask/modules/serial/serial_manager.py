@@ -158,7 +158,7 @@ def parse_buffer_info(response):
     return None
 
 
-def send_grbl_coordinates(x, y, speed=600, timeout=2, relative=False):
+def send_grbl_coordinates(x, y, speed=600, timeout=2, home=False):
     """
     Send a G-code command to FluidNC and wait up to timeout seconds for an 'ok' response.
     If no 'ok' is received, retry every retry_interval seconds until successful.
@@ -166,8 +166,8 @@ def send_grbl_coordinates(x, y, speed=600, timeout=2, relative=False):
     logger.debug(f"Sending G-code: X{x} Y{y} at F{speed}")
     while True:
         with serial_lock:
-            if relative:
-                gcode = f"$J=G91 X{x} Y{y} F{speed}"
+            if home:
+                gcode = f"$J=G91 Y{y} F{speed}"
             else:
                 gcode = f"G1 X{x} Y{y} F{speed}"
             ser.write(f"{gcode}\n".encode())
@@ -190,7 +190,7 @@ def send_grbl_coordinates(x, y, speed=600, timeout=2, relative=False):
 
 def home():
     logger.info(f"Homing with speed {state.speed}")
-    send_grbl_coordinates(0, -110/5, state.speed, relative=True)
+    send_grbl_coordinates(0, -110/5, state.speed, home=True)
     state.current_theta = state.current_rho = 0
     update_machine_position()
 
