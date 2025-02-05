@@ -4,7 +4,7 @@ services:
     image: ghcr.io/tuanchris/dune-weaver:main # Use latest production image
     restart: always
     ports:
-      - "8080:8080" # Map port 8080 of the container to 8080 of the host
+      - "80:8080" # Map port 8080 of the container to 80 of the host
     volumes:
       - ./patterns:/app/patterns # Map host folder to container folder
     devices:
