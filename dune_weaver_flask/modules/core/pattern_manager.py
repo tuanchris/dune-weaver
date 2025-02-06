@@ -117,6 +117,11 @@ def wait_for_start_time(schedule_hours):
             
             
 def interpolate_path(theta, rho):
+    # Adding soft limit to reduce hardware sound
+    if rho < 0.02:
+        rho = 0.02
+    elif rho > 0.97:
+        rho = 0.97
     delta_theta = theta - state.current_theta
     delta_rho = rho - state.current_rho
     x_increment = delta_theta / (2 * pi) * 100
