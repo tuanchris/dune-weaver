@@ -14,7 +14,7 @@ class AppState:
         self.is_clearing = False
         self.current_theta = 0
         self.current_rho = 0
-        self.speed = 350
+        self.speed = 250
         
         # Machine position variables
         self.machine_x = 0.0
@@ -48,7 +48,7 @@ class AppState:
         self.is_clearing = data.get("is_clearing", False)
         self.current_theta = data.get("current_theta", 0)
         self.current_rho = data.get("current_rho", 0)
-        self.speed = data.get("speed", 300)
+        self.speed = data.get("speed", 250)
         self.machine_x = data.get("machine_x", 0.0)
         self.machine_y = data.get("machine_y", 0.0)
 
