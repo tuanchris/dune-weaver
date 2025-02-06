@@ -118,13 +118,16 @@ def wait_for_start_time(schedule_hours):
             
 def interpolate_path(theta, rho):
     # Adding soft limit to reduce hardware sound
-    if rho < 0.02:
-        rho = 0.02
-    elif rho > 0.97:
-        rho = 0.97
+    soft_limit_threshold = 0.01
+    if rho < soft_limit_threshold:
+        rho = soft_limit_threshold
+    elif rho > (1-soft_limit_threshold):
+        rho = (1-soft_limit_threshold)
+    
     delta_theta = theta - state.current_theta
     delta_rho = rho - state.current_rho
-    x_increment = delta_theta / (2 * pi) * 100
+    # x_increment = delta_theta / (2 * pi) * 100
+    x_increment = delta_theta / pi * 100
     y_increment = delta_rho * 100/5
     
     offset = x_increment * (1600/5750/5) # Total angular steps = 16000 / gear ratio = 10 / angular steps = 5750
