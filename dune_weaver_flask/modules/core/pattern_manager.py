@@ -127,10 +127,10 @@ def interpolate_path(theta, rho):
     delta_theta = theta - state.current_theta
     delta_rho = rho - state.current_rho
     # x_increment = delta_theta / (2 * pi) * 100
-    x_increment = delta_theta / pi * 100
+    x_increment = delta_theta / (4 * pi) * 100
     y_increment = delta_rho * 100/5
     
-    offset = x_increment * (1600/5750/5) # Total angular steps = 16000 / gear ratio = 10 / angular steps = 5750
+    offset = x_increment * (3200/5750/5) # Total angular steps = 16000 / gear ratio = 10 / angular steps = 5750
     y_increment += offset
     
     new_x_abs = state.machine_x + x_increment
