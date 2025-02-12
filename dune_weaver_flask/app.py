@@ -14,13 +14,14 @@ from dune_weaver_flask.modules import mqtt
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(name)s:%(lineno)d - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
         # disable file logging for now, to not gobble up resources
         # logging.FileHandler('dune_weaver.log')
     ]
 )
+
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
