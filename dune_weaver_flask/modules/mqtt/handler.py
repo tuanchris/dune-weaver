@@ -98,6 +98,53 @@ class MQTTHandler(BaseMQTTHandler):
         }
         self._publish_discovery("sensor", "running_state", running_config)
 
+        # Stop Button
+        stop_config = {
+            "name": f"Stop pattern execution",
+            "unique_id": f"{self.device_id}_stop",
+            "command_topic": f"{self.device_id}/command/stop",
+            "device": base_device,
+            "icon": "mdi:stop",
+            "entity_category": "config"
+        }
+        self._publish_discovery("button", "stop", stop_config)
+
+        # Pause Button
+        pause_config = {
+            "name": f"Pause pattern execution",
+            "unique_id": f"{self.device_id}_pause",
+            "command_topic": f"{self.device_id}/command/pause",
+            "state_topic": f"{self.device_id}/command/pause/state",
+            "device": base_device,
+            "icon": "mdi:pause",
+            "entity_category": "config",
+            "enabled_by_default": True,
+            "availability": {
+                "topic": f"{self.device_id}/command/pause/available",
+                "payload_available": "true",
+                "payload_not_available": "false"
+            }
+        }
+        self._publish_discovery("button", "pause", pause_config)
+
+        # Play Button
+        play_config = {
+            "name": f"Resume pattern execution",
+            "unique_id": f"{self.device_id}_play",
+            "command_topic": f"{self.device_id}/command/play",
+            "state_topic": f"{self.device_id}/command/play/state",
+            "device": base_device,
+            "icon": "mdi:play",
+            "entity_category": "config",
+            "enabled_by_default": True,
+            "availability": {
+                "topic": f"{self.device_id}/command/play/available",
+                "payload_available": "true",
+                "payload_not_available": "false"
+            }
+        }
+        self._publish_discovery("button", "play", play_config)
+
         # Speed Control
         speed_config = {
             "name": f"{self.device_name} Speed",
@@ -216,7 +263,10 @@ class MQTTHandler(BaseMQTTHandler):
             (self.command_topic, 0),
             (self.pattern_select_topic, 0),
             (self.playlist_select_topic, 0),
-            (self.speed_topic, 0)
+            (self.speed_topic, 0),
+            (f"{self.device_id}/command/stop", 0),
+            (f"{self.device_id}/command/pause", 0),
+            (f"{self.device_id}/command/play", 0)
         ])
         # Publish discovery configurations
         self.setup_ha_discovery()
@@ -239,6 +289,17 @@ class MQTTHandler(BaseMQTTHandler):
             elif msg.topic == self.speed_topic:
                 speed = int(msg.payload.decode())
                 self.callback_registry['set_speed'](speed)
+            elif msg.topic == f"{self.device_id}/command/stop":
+                # Handle stop command
+                self.callback_registry['stop']()
+            elif msg.topic == f"{self.device_id}/command/pause":
+                # Handle pause command - only if in running state
+                if bool(state.current_playing_file) and not state.pause_requested:
+                    self.callback_registry['pause']()
+            elif msg.topic == f"{self.device_id}/command/play":
+                # Handle play command - only if in paused state
+                if bool(state.current_playing_file) and state.pause_requested:
+                    self.callback_registry['resume']()
             else:
                 # Handle other commands
                 payload = json.loads(msg.payload.decode())
@@ -277,6 +338,16 @@ class MQTTHandler(BaseMQTTHandler):
 
                 # Update running state
                 self.client.publish(self.running_state_topic, running_state, retain=True)
+
+                # Update button availability based on state
+                # Pause is available only when running
+                self.client.publish(f"{self.device_id}/command/pause/available", 
+                                 "true" if running_state == "running" else "false", 
+                                 retain=True)
+                # Play is available only when paused
+                self.client.publish(f"{self.device_id}/command/play/available", 
+                                 "true" if running_state == "paused" else "false", 
+                                 retain=True)
 
                 # Update pattern select state
                 if current_file:
