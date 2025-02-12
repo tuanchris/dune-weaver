@@ -190,7 +190,26 @@ def send_grbl_coordinates(x, y, speed=600, timeout=2, home=False):
 
 def home():
     logger.info(f"Homing with speed {state.speed}")
-    send_grbl_coordinates(0, -110/5, state.speed, home=True)
+    
+    # Check config for sensorless homing
+    with serial_lock:
+        ser.flush()
+        ser.write("$config\n".encode())
+        response = ser.readline().decode().strip()
+        logger.debug(f"Config response: {response}")
+                
+    if "sensorless" in response.lower():
+        logger.info("Using sensorless homing")
+        with serial_lock:
+            ser.write("$H\n".encode())
+            ser.write("G1 Y0 F100\n".encode())
+            ser.flush()
+            
+    else:
+        logger.info("Using sensor-based homing")
+        send_grbl_coordinates(0, -110/5, state.speed, home=True)
+    
+    
     state.current_theta = state.current_rho = 0
     update_machine_position()
 
