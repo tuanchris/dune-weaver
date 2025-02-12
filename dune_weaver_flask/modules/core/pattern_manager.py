@@ -146,14 +146,15 @@ def interpolate_path(theta, rho):
     
 def pause_execution():
     logger.info("Pausing pattern execution")
-    pattern_manager.pause_requested = True
+    with state.pause_condition:
+        state.pause_requested = True
     return True
 
 def resume_execution():
     logger.info("Resuming pattern execution")
-    with pattern_manager.pause_condition:
-        pattern_manager.pause_requested = False
-        pattern_manager.pause_condition.notify_all()
+    with state.pause_condition:
+        state.pause_requested = False
+        state.pause_condition.notify_all()
     return True
     
 def reset_theta():
@@ -217,28 +218,34 @@ def run_theta_rho_file(file_path, schedule_hours=None):
 
 def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False, schedule_hours=None):
     """Run multiple .thr files in sequence with options."""
-    global current_playing_index, current_playlist
     state.stop_requested = False
     
     if shuffle:
         random.shuffle(file_paths)
         logger.info("Playlist shuffled")
 
-    current_playlist = file_paths
+    state.current_playlist = file_paths
+    state.playlist_mode = run_mode
 
     while True:
         for idx, path in enumerate(file_paths):
             logger.info(f"Upcoming pattern: {path}")
             logger.info(idx)
-            current_playing_index = idx
+            state.current_playlist_index = idx
             schedule_checker(schedule_hours)
             if state.stop_requested:
                 logger.info("Execution stopped before starting next pattern")
+                state.current_playlist = None
+                state.current_playlist_index = None
+                state.playlist_mode = None
                 return
 
             if clear_pattern:
                 if state.stop_requested:
                     logger.info("Execution stopped before running the next clear pattern")
+                    state.current_playlist = None
+                    state.current_playlist_index = None
+                    state.playlist_mode = None
                     return
 
                 clear_file_path = get_clear_pattern_file(clear_pattern, path)
@@ -268,20 +275,26 @@ def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="
             continue
         else:
             logger.info("Playlist completed")
+            state.current_playlist = None
+            state.current_playlist_index = None
+            state.playlist_mode = None
             break
     logger.info("All requested patterns completed (or stopped)")
 
 def stop_actions():
-    """Stop all current pattern execution."""
+    """Stop all current actions."""
+
     with state.pause_condition:
         state.pause_requested = False
         state.stop_requested = True
-        current_playing_index = None
-        current_playlist = None
-        state.is_clearing = False
         state.current_playing_file = None
+        state.current_playlist = None
+        state.current_playlist_index = None
         state.execution_progress = None
-    serial_manager.update_machine_position()
+        serial_manager.update_machine_position()
+        state.is_clearing = False
+        state.playlist_mode = None
+        state.pause_condition.notify_all()
 
 def get_status():
     """Get the current execution status."""
