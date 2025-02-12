@@ -289,7 +289,7 @@ class MQTTHandler(BaseMQTTHandler):
 
                 # Update playlist select state
                 if state.current_playlist:
-                    current_playlist_name = state.current_playlist[0]
+                    current_playlist_name = state.current_playlist
                     self.client.publish(f"{self.playlist_select_topic}/state", current_playlist_name, retain=True)
                 else:
                     self.client.publish(f"{self.playlist_select_topic}/state", "None", retain=True)
