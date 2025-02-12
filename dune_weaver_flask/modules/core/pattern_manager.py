@@ -144,6 +144,18 @@ def interpolate_path(theta, rho):
     state.machine_x = new_x_abs
     state.machine_y = new_y_abs
     
+def pause_execution():
+    logger.info("Pausing pattern execution")
+    pattern_manager.pause_requested = True
+    return True
+
+def resume_execution():
+    logger.info("Resuming pattern execution")
+    with pattern_manager.pause_condition:
+        pattern_manager.pause_requested = False
+        pattern_manager.pause_condition.notify_all()
+    return True
+    
 def reset_theta():
     logger.info('Resetting Theta')
     state.current_theta = 0
