@@ -274,13 +274,60 @@ class MQTTHandler(BaseMQTTHandler):
         """Publish status updates periodically."""
         while self.running:
             try:
-                # Create status message
+                # Get current state
                 is_running = bool(state.current_playing_file) and not state.stop_requested
+                current_file = state.current_playing_file
+                if current_file and current_file.startswith('./patterns/'):
+                    current_file = current_file[len('./patterns/'):]
+                elif current_file:
+                    current_file = current_file.split("/")[-1].split("\\")[-1]
+
+                # Update running state
+                self.client.publish(self.running_state_topic, 
+                                 "ON" if is_running else "OFF", 
+                                 retain=True)
+
+                # Update current file and pattern select state
+                if current_file:
+                    self.client.publish(self.current_file_topic, current_file, retain=True)
+                    self.client.publish(f"{self.pattern_select_topic}/state", current_file, retain=True)
+                else:
+                    self.client.publish(self.current_file_topic, "None", retain=True)
+                    self.client.publish(f"{self.pattern_select_topic}/state", "None", retain=True)
+
+                # Update speed state
+                self.client.publish(f"{self.speed_topic}/state", state.speed, retain=True)
+
+                # Update playlist state
+                playlist_info = None
+                if state.current_playlist:
+                    playlist_info = {
+                        'current_playlist': state.current_playlist
+                    }
+                
+                self.client.publish(f"{self.device_id}/state/playlist", json.dumps({
+                    "active": bool(playlist_info)
+                }), retain=True)
+
+                # Update playlist select state
+                if playlist_info and playlist_info['current_playlist']:
+                    current_playlist_name = playlist_info['current_playlist'][0]
+                    self.client.publish(f"{self.playlist_select_topic}/state", current_playlist_name, retain=True)
+                else:
+                    self.client.publish(f"{self.playlist_select_topic}/state", "None", retain=True)
+
+                # Update serial state
+                serial_connected = is_connected()
+                serial_port = get_port() if serial_connected else None
+                serial_status = f"connected to {serial_port}" if serial_connected else "disconnected"
+                self.client.publish(self.serial_state_topic, serial_status, retain=True)
+
+                # Create and publish main status message
                 status = {
                     "status": "running" if is_running else "idle",
                     "timestamp": time.time(),
                     "client_id": self.client_id,
-                    "current_file": state.current_playing_file or '',
+                    "current_file": current_file or '',
                     "speed": state.speed,
                     "position": {
                         "theta": state.current_theta,
@@ -289,7 +336,7 @@ class MQTTHandler(BaseMQTTHandler):
                         "y": state.machine_y
                     }
                 }
-                logger.info(f"publishing status: {status}" )
+                logger.info(f"publishing status: {status}, {playlist_info}" )
                 self.client.publish(self.status_topic, json.dumps(status))
                 
                 # Wait for next interval
