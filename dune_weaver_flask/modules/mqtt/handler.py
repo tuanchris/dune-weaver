@@ -194,37 +194,74 @@ class MQTTHandler(BaseMQTTHandler):
         discovery_topic = f"{self.discovery_prefix}/{component}/{self.device_id}/{config_type}/config"
         self.client.publish(discovery_topic, json.dumps(config), retain=True)
 
+    def _publish_running_state(self, running_state=None):
+        """Helper to publish running state and button availability."""
+        if running_state is None:
+            if not self.state.current_playing_file:
+                running_state = "idle"
+            elif self.state.pause_requested:
+                running_state = "paused"
+            else:
+                running_state = "running"
+                
+        self.client.publish(self.running_state_topic, running_state, retain=True)
+        
+        # Update button availability based on state
+        self.client.publish(f"{self.device_id}/command/pause/available", 
+                          "true" if running_state == "running" else "false", 
+                          retain=True)
+        self.client.publish(f"{self.device_id}/command/play/available", 
+                          "true" if running_state == "paused" else "false", 
+                          retain=True)
+                          
+    def _publish_pattern_state(self, current_file=None):
+        """Helper to publish pattern state."""
+        if current_file is None:
+            current_file = self.state.current_playing_file
+            
+        if current_file:
+            if current_file.startswith('./patterns/'):
+                current_file = current_file[len('./patterns/'):]
+            else:
+                current_file = current_file.split("/")[-1].split("\\")[-1]
+            self.client.publish(f"{self.pattern_select_topic}/state", current_file, retain=True)
+        else:
+            self.client.publish(f"{self.pattern_select_topic}/state", "None", retain=True)
+            
+    def _publish_playlist_state(self, playlist=None):
+        """Helper to publish playlist state."""
+        if playlist is None:
+            playlist = self.state.current_playlist
+            
+        if playlist:
+            self.client.publish(f"{self.playlist_select_topic}/state", playlist, retain=True)
+        else:
+            self.client.publish(f"{self.playlist_select_topic}/state", "None", retain=True)
+            
+    def _publish_serial_state(self):
+        """Helper to publish serial state."""
+        serial_connected = is_connected()
+        serial_port = get_port() if serial_connected else None
+        serial_status = f"connected to {serial_port}" if serial_connected else "disconnected"
+        self.client.publish(self.serial_state_topic, serial_status, retain=True)
+
     def update_state(self, current_file=None, is_running=None, playlist=None):
         """Update state in Home Assistant. Only publishes the attributes that are explicitly passed."""
         if not self.is_enabled:
             return
 
         # Update pattern state if current_file is provided
-        if current_file:
-            self.client.publish(f"{self.pattern_select_topic}/state", current_file[len('./patterns/'):], retain=True)
-        elif current_file == "":
-             # if empty string, we unset the topic, otherwise we don't do anything
-            self.client.publish(f"{self.pattern_select_topic}/state", "None", retain=True)
-            
+        if current_file is not None:
+            self._publish_pattern_state(current_file)
+        
         # Update running state and button availability if is_running is provided
         if is_running is not None:
             running_state = "running" if is_running else "paused" if self.state.current_playing_file else "idle"
-            self.client.publish(self.running_state_topic, running_state, retain=True)
-            
-            # Update button availability based on running state
-            self.client.publish(f"{self.device_id}/command/pause/available", 
-                              "true" if running_state == "running" else "false", 
-                              retain=True)
-            self.client.publish(f"{self.device_id}/command/play/available", 
-                              "true" if running_state == "paused" else "false", 
-                              retain=True)
+            self._publish_running_state(running_state)
         
         # Update playlist state if playlist info is provided
-        if playlist:
-            self.client.publish(f"{self.playlist_select_topic}/state", playlist, retain=True)
-        elif playlist == "":
-            # if empty string, we unset the topic, otherwise we don't do anything
-            self.client.publish(f"{self.playlist_select_topic}/state", "None", retain=True)
+        if playlist is not None:
+            self._publish_playlist_state(playlist)
 
     def on_connect(self, client, userdata, flags, rc):
         """Callback when connected to MQTT broker."""
@@ -291,72 +328,20 @@ class MQTTHandler(BaseMQTTHandler):
         """Publish status updates periodically."""
         while self.running:
             try:
-                # Get current state
-                is_running = bool(self.state.current_playing_file)
-                current_file = self.state.current_playing_file
-                if current_file and current_file.startswith('./patterns/'):
-                    current_file = current_file[len('./patterns/'):]
-                elif current_file:
-                    current_file = current_file.split("/")[-1].split("\\")[-1]
-
-                # Determine running state
-                if not is_running:
-                    running_state = "idle"
-                elif self.state.pause_requested:
-                    running_state = "paused"
-                else:
-                    running_state = "running"
-
-                # Update running state
-                self.client.publish(self.running_state_topic, running_state, retain=True)
-
-                # Update button availability based on state
-                # Pause is available only when running
-                self.client.publish(f"{self.device_id}/command/pause/available", 
-                                 "true" if running_state == "running" else "false", 
-                                 retain=True)
-                # Play is available only when paused
-                self.client.publish(f"{self.device_id}/command/play/available", 
-                                 "true" if running_state == "paused" else "false", 
-                                 retain=True)
-
-                # Update pattern select state
-                if current_file:
-                    self.client.publish(f"{self.pattern_select_topic}/state", current_file, retain=True)
-                else:
-                    self.client.publish(f"{self.pattern_select_topic}/state", "None", retain=True)
-
+                # Update all states
+                self._publish_running_state()
+                self._publish_pattern_state()
+                self._publish_playlist_state()
+                self._publish_serial_state()
+                
                 # Update speed state
                 self.client.publish(f"{self.speed_topic}/state", self.state.speed, retain=True)
-
-                # Update playlist select state
-                if self.state.current_playlist:
-                    current_playlist_name = self.state.current_playlist
-                    self.client.publish(f"{self.playlist_select_topic}/state", current_playlist_name, retain=True)
-                else:
-                    self.client.publish(f"{self.playlist_select_topic}/state", "None", retain=True)
-
-                # Update serial state
-                serial_connected = is_connected()
-                serial_port = get_port() if serial_connected else None
-                serial_status = f"connected to {serial_port}" if serial_connected else "disconnected"
-                self.client.publish(self.serial_state_topic, serial_status, retain=True)
-
-                # Create and publish main status message
+                
+                # Publish keepalive status
                 status = {
-                    "status": running_state,
                     "timestamp": time.time(),
-                    "client_id": self.client_id,
-                    "current_file": current_file or '',
-                    "speed": self.state.speed,
-                    "position": {
-                        "theta": self.state.current_theta,
-                        "rho": self.state.current_rho,
-                        "x": self.state.machine_x,
-                        "y": self.state.machine_y
-                    }
+                    "client_id": self.client_id
                 }
-                logger.info(f"publishing status: {status}, {self.state.current_playlist}" )
                 self.client.publish(self.status_topic, json.dumps(status))
                 
                 # Wait for next interval
@@ -373,55 +358,26 @@ class MQTTHandler(BaseMQTTHandler):
         try:
             self.client.connect(self.broker, self.port)
             self.client.loop_start()
+            
             # Start status publishing thread
             self.running = True
             self.status_thread = threading.Thread(target=self.publish_status, daemon=True)
             self.status_thread.start()
             
-            # Get initial states from modules
-            is_running = bool(self.state.current_playing_file)
-            running_state = "idle"
-            if is_running:
-                if self.state.pause_requested:
-                    running_state = "paused"
-                else:
-                    running_state = "running"
-
-            serial_connected = is_connected()
-            serial_port = get_port() if serial_connected else None
-            patterns = list_theta_rho_files()
-            playlists = list_all_playlists()
+            # Get initial pattern and playlist lists
+            self.patterns = list_theta_rho_files()
+            self.playlists = list_all_playlists()
 
             # Wait a bit for MQTT connection to establish
             time.sleep(1)
-
-            # Publish initial state
-            status = {
-                "status": running_state,
-                "timestamp": time.time(),
-                "client_id": self.client_id,
-                "current_file": self.state.current_playing_file or ''
-            }
-            self.client.publish(self.status_topic, json.dumps(status), retain=True)
-            self.client.publish(self.running_state_topic, running_state, retain=True)
             
-            # Format and publish serial state
-            serial_status = f"connected to {serial_port}" if serial_connected else "disconnected"
-            self.client.publish(self.serial_state_topic, serial_status, retain=True)
+            # Publish initial states
+            self._publish_running_state()
+            self._publish_pattern_state()
+            self._publish_playlist_state()
+            self._publish_serial_state()
             
-            # Update and publish pattern list
-            self.patterns = patterns
-            
-            # Update and publish playlist list
-            self.playlists = playlists
-            
-            # Update playlist select state if a playlist is active
-            if self.state.current_playlist:
-                current_playlist_name = self.state.current_playlist[0]
-                self.client.publish(f"{self.playlist_select_topic}/state", current_playlist_name, retain=True)
-            else:
-                self.client.publish(f"{self.playlist_select_topic}/state", "None", retain=True)
-
+            # Setup Home Assistant discovery
             self.setup_ha_discovery()
             
             logger.info("MQTT Handler started successfully")
