@@ -188,7 +188,7 @@ def send_grbl_coordinates(x, y, speed=600, timeout=2, home=False):
         time.sleep(1)
 
 
-def home():
+def home(retry = 0):
     logger.info(f"Homing with speed {state.speed}")
     
     # Check config for sensorless homing
@@ -204,10 +204,22 @@ def home():
             ser.write("$H\n".encode())
             ser.write("G1 Y0 F100\n".encode())
             ser.flush()
-            
-    else:
-        logger.info("Using sensor-based homing")
+    # we check that we actually got a valid response, if not, we try again a couple of times
+    elif "filename" in response.lower():
+        logger.info("Using brute-force homing")
         send_grbl_coordinates(0, -110/5, state.speed, home=True)
+    
+    else:
+        # we wait a bit and cal again increasing retry times
+        # if we are over the third retry, we give up
+        if retry < 3:
+            time.sleep(1)
+            home(retry+1)
+            return
+        else:
+            # after 3 retries we're still not getting a good response
+            # raise an exception
+            raise Exception("Couldn't get a valid response for homing after 3 retries")
     
     
     state.current_theta = state.current_rho = 0
