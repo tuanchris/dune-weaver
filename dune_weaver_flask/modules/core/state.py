@@ -19,9 +19,13 @@ class AppState:
         # Machine position variables
         self.machine_x = 0.0
         self.machine_y = 0.0
-        self.STATE_FILE = "state.json"
-
         
+        # Playlist state variables
+        self.current_playlist = None
+        self.current_playlist_index = None
+        self.playlist_mode = None  # single, loop, etc.
+        
+        self.STATE_FILE = "state.json"
         self.load()
 
     def to_dict(self):
@@ -37,6 +41,9 @@ class AppState:
             "speed": self.speed,
             "machine_x": self.machine_x,
             "machine_y": self.machine_y,
+            "current_playlist": self.current_playlist,
+            "current_playlist_index": self.current_playlist_index,
+            "playlist_mode": self.playlist_mode
         }
 
     def from_dict(self, data):
@@ -51,6 +58,9 @@ class AppState:
         self.speed = data.get("speed", 250)
         self.machine_x = data.get("machine_x", 0.0)
         self.machine_y = data.get("machine_y", 0.0)
+        self.current_playlist = data.get("current_playlist")
+        self.current_playlist_index = data.get("current_playlist_index")
+        self.playlist_mode = data.get("playlist_mode")
 
     def save(self):
         """Save the current state to a JSON file."""
