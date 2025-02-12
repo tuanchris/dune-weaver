@@ -1,5 +1,7 @@
 """Mock MQTT handler implementation."""
+from typing import Dict, Callable
 from .base import BaseMQTTHandler
+from dune_weaver_flask.modules.core.state import state
 
 
 
@@ -21,4 +23,12 @@ class MockMQTTHandler(BaseMQTTHandler):
     @property
     def is_enabled(self) -> bool:
         """Always returns False since this is a mock."""
-        return False 
+        return False
+        
+    def publish_status(self) -> None:
+        """Mock status publisher."""
+        pass
+        
+    def setup_ha_discovery(self) -> None:
+        """Mock discovery setup."""
+        pass 
