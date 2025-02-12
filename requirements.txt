@@ -2,3 +2,5 @@ flask
 pyserial
 esptool
 tqdm
+paho-mqtt
+python-dotenv
