@@ -178,8 +178,9 @@ def run_theta_rho_file(file_path, schedule_hours=None):
         return
 
     state.execution_progress = (0, total_coordinates, None)
-
-    stop_actions()
+    
+    # stop actions without resetting the playlist
+    stop_actions(clear_playlist=False)
 
     with serial_manager.serial_lock:
         state.current_playing_file = file_path
@@ -280,7 +281,7 @@ def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="
             break
     logger.info("All requested patterns completed (or stopped)")
 
-def stop_actions(clear_playlist = False):
+def stop_actions(clear_playlist = True):
     """Stop all current actions."""
     with state.pause_condition:
         state.pause_requested = False
