@@ -195,20 +195,24 @@ def home(retry = 0):
     with serial_lock:
         ser.flush()
         ser.write("$config\n".encode())
-        response = ser.readline().decode().strip()
+        response = ser.readline().decode().strip().lower()
         logger.debug(f"Config response: {response}")
                 
-    if "sensorless" in response.lower():
+    if "sensorless" in response:
         logger.info("Using sensorless homing")
         with serial_lock:
             ser.write("$H\n".encode())
             ser.write("G1 Y0 F100\n".encode())
             ser.flush()
     # we check that we actually got a valid response, if not, we try again a couple of times
-    elif "filename" in response.lower():
+    elif "filename" in response:
         logger.info("Using brute-force homing")
         send_grbl_coordinates(0, -110/5, state.speed, home=True)
-    
+    # error:3 means that the controller is running grbl, which doesn't support $config
+    # we just use brute force homing for grbl
+    elif "error:3" in response:
+        logger.info("Grbl detected, Using brute-force homing")
+        send_grbl_coordinates(0, -110/5, state.speed, home=True)
     else:
         # we wait a bit and cal again increasing retry times
         # if we are over the third retry, we give up
