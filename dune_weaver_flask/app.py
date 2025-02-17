@@ -172,7 +172,7 @@ def move_to_center():
 
         logger.info("Moving device to center position")
         pattern_manager.reset_theta()
-        pattern_manager.interpolate_path(0, 0)
+        pattern_manager.move_polar(0, 0)
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Failed to move to center: {str(e)}")
@@ -186,7 +186,7 @@ def move_to_perimeter():
             logger.warning("Attempted to move to perimeter without serial connection")
             return jsonify({"success": False, "error": "Serial connection not established"}), 400
         pattern_manager.reset_theta()
-        pattern_manager.interpolate_path(0,1)
+        pattern_manager.move_polar(0,1)
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Failed to move to perimeter: {str(e)}")
@@ -227,7 +227,7 @@ def send_coordinate():
             return jsonify({"success": False, "error": "Theta and Rho are required"}), 400
 
         logger.debug(f"Sending coordinate: theta={theta}, rho={rho}")
-        pattern_manager.interpolate_path(theta, rho)
+        pattern_manager.move_polar(theta, rho)
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Failed to send coordinate: {str(e)}")

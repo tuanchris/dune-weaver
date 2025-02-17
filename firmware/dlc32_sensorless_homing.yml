@@ -1,5 +1,5 @@
 board: MKS-DLC32 V2.1
-name: Dune Weaver (UART TMC2209)
+name: Dune Weaver
 meta: By Tuan Nguyen (2025-02-05)
 verbose_errors: true
 kinematics: {}
@@ -35,7 +35,7 @@ axes:
     steps_per_mm: 287.5
     max_rate_mm_per_min: 3000
     acceleration_mm_per_sec2: 1000
-    max_travel_mm: 220
+    max_travel_mm: 10
     soft_limits: false
     motor0:
       limit_neg_pin: gpio.35
@@ -48,7 +48,7 @@ axes:
         addr: 0
         r_sense_ohms: 0.12
         run_amps: 0.8
-        hold_amps: 0.5
+        hold_amps: 0
         homing_amps: 0.8
         microsteps: 8
         stallguard: 30
