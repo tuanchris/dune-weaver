@@ -216,8 +216,9 @@ def run_theta_rho_file(file_path, schedule_hours=None):
                 
                 if i != 0:
                     pbar.update(1)
-                    estimated_remaining_time = pbar.format_dict['elapsed'] / i * total_coordinates
-                    state.execution_progress = (i, total_coordinates, estimated_remaining_time)
+                    estimated_remaining_time = (total_coordinates - i) / pbar.format_dict['rate'] if pbar.format_dict['rate'] and total_coordinates else 0
+                    elapsed_time = pbar.format_dict['elapsed']
+                    state.execution_progress = (i, total_coordinates, estimated_remaining_time, elapsed_time)
 
         serial_manager.check_idle()
 
@@ -239,7 +240,6 @@ def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="
     while True:
         for idx, path in enumerate(file_paths):
             logger.info(f"Upcoming pattern: {path}")
-            logger.info(idx)
             current_playing_index = idx
             schedule_checker(schedule_hours)
             if state.stop_requested:
@@ -264,7 +264,7 @@ def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="
                     logger.info("Execution stopped before running the next clear pattern")
                     return
                 if pause_time > 0:
-                    logger.debug(f"Pausing for {pause_time} seconds")
+                    logger.info(f"Pausing for {pause_time} seconds")
                     time.sleep(pause_time)
 
         if run_mode == "indefinite":
