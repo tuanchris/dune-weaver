@@ -11,6 +11,7 @@ import json
 from datetime import datetime
 import subprocess
 from tqdm import tqdm
+from led_controller import create_led_controller
 
 app = Flask(__name__)
 
@@ -1276,9 +1277,110 @@ def on_exit():
 
 # Register the on_exit function
 atexit.register(on_exit)
-        
-        
+
+# Initialize LED controller
+led_controller = create_led_controller(led_count=47, led_pin=18)  # Настройте количество светодиодов и пин
+
+# LED strip control endpoints
+@app.route('/api/led/color', methods=['POST'])
+def set_led_color():
+    """Set LED strip color."""
+    data = request.get_json()
+    if not data or 'color' not in data:
+        return jsonify({'error': 'No color provided'}), 400
+    
+    try:
+        color = tuple(data['color'])  # Expect [R,G,B]
+        led_controller.set_color(color)
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/led/brightness', methods=['POST'])
+def set_led_brightness():
+    """Set LED strip brightness."""
+    data = request.get_json()
+    if not data or 'brightness' not in data:
+        return jsonify({'error': 'No brightness provided'}), 400
+    
+    try:
+        brightness = int(data['brightness'])  # 0-255
+        led_controller.set_brightness(brightness)
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/led/animation', methods=['POST'])
+def set_led_animation():
+    """Start LED animation."""
+    data = request.get_json()
+    if not data or 'animation' not in data:
+        return jsonify({'error': 'No animation type provided'}), 400
+    
+    try:
+        animation = data['animation']  # 'rainbow', 'wave', 'fade'
+        led_controller.start_animation(animation)
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/led/animation/stop', methods=['POST'])
+def stop_led_animation():
+    """Stop current LED animation."""
+    try:
+        led_controller.stop_current_animation()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/led/speed', methods=['POST'])
+def set_led_speed():
+    """Set LED animation speed."""
+    data = request.get_json()
+    if not data or 'speed' not in data:
+        return jsonify({'error': 'No speed provided'}), 400
+    
+    try:
+        speed = int(data['speed'])  # 1-100
+        led_controller.set_animation_speed(speed)
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/led/status', methods=['GET'])
+def get_led_status():
+    """Get current LED strip status."""
+    try:
+        status = led_controller.get_status()
+        return jsonify(status)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/led/power', methods=['POST'])
+def set_led_power():
+    """Set LED strip power state."""
+    data = request.get_json()
+    if not data or 'state' not in data:
+        return jsonify({'error': 'No power state provided'}), 400
+    
+    try:
+        if data['state']:
+            led_controller.turn_on()
+        else:
+            led_controller.turn_off()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
 if __name__ == '__main__':
+    print("Starting application...")
+    print("Initializing LED controller...")
+    try:
+        led_controller.startup_indication()
+        print("LED startup indication completed")
+    except Exception as e:
+        print(f"Error during LED startup indication: {e}")
+
     # Auto-connect to serial
     connect_to_serial()
     try:
