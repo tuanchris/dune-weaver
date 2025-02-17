@@ -1495,7 +1495,7 @@ async function updateCurrentlyPlaying() {
             if (execution_progress) {
                 const progressPercentage = (execution_progress[0] / execution_progress[1]) * 100;
                 progressBar.value = progressPercentage;
-                progressText.textContent = `${Math.round(progressPercentage)}% (${formatSecondsToHMS(execution_progress[2])})`;
+                progressText.textContent = `${Math.round(progressPercentage)}% (Elapsed: ${formatSecondsToHMS(execution_progress[3])} | Remaining: ${formatSecondsToHMS(execution_progress[2])})`;
             } else {
                 progressBar.value = 0;
                 progressText.textContent = '0%';
