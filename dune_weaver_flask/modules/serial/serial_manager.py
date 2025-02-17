@@ -26,6 +26,42 @@ def list_serial_ports():
     logger.debug(f"Available serial ports: {available_ports}")
     return available_ports
 
+def get_machine_steps():
+    """
+    Send "$$" to the serial port to retrieve machine settings and return values for $100 and $101.
+    Returns two floats: x_steps_per_mm and y_steps_per_mm, or (None, None) if not found.
+    """
+    if not is_connected():
+        logger.error("Serial connection is not established.")
+        return None, None
+
+    while True:
+        with serial_lock:
+            ser.write("$$\n".encode())
+            ser.flush()
+            time.sleep(1)  # Allow time for response
+
+            x_steps_per_mm = None
+            y_steps_per_mm = None
+            gear_ratio = None
+
+            while ser.in_waiting > 0:
+                line = ser.readline().decode().strip()
+                logger.debug(f"Config response: {line}")
+
+                if line.startswith("$100="):
+                    x_steps_per_mm = float(line.split("=")[1])
+                    state.x_steps_per_mm = x_steps_per_mm
+                elif line.startswith("$101="):
+                    y_steps_per_mm = float(line.split("=")[1])
+                    state.y_steps_per_mm = y_steps_per_mm
+                elif line.startswith("$131="):
+                    gear_ratio = float(line.split("=")[1])
+                    state.gear_ratio = gear_ratio
+
+                if x_steps_per_mm is not None and y_steps_per_mm is not None and gear_ratio is not None:
+                    return True
+        
 
 def connect_to_serial(port=None, baudrate=115200):
     """Automatically connect to the first available serial port or a specified port."""
@@ -43,6 +79,14 @@ def connect_to_serial(port=None, baudrate=115200):
                 ser.close()
             ser = serial.Serial(port, baudrate, timeout=2)
             ser_port = port
+
+        try:
+            if get_machine_steps():
+                logger.info(f"x_steps_per_mm: {state.x_steps_per_mm}, y_steps_per_mm: {state.y_steps_per_mm}, gear_ratio: {state.gear_ratio}")
+        except:
+            logger.fatal("Not GRBL firmware")
+            pass 
+            
         machine_x, machine_y = get_machine_position()
         if not machine_x or not machine_y or machine_x != state.machine_x or machine_y != state.machine_y:
             logger.info(f'x, y; {machine_x}, {machine_y}')
@@ -50,24 +94,21 @@ def connect_to_serial(port=None, baudrate=115200):
             home()
         else:
             logger.info('Machine position known, skipping home')
+            logger.info(f'Theta: {state.current_theta}, rho: {state.current_rho}')
+            logger.info(f'State x, y; {state.machine_x}, {state.machine_y}')
+            
         
         logger.info(f"Connected to serial port: {port}")
         time.sleep(2)  # Allow time for the connection to establish
 
-        # Read initial startup messages from Arduino
-        while ser.in_waiting > 0:
-            line = ser.readline().decode().strip()
-            logger.debug(f"Arduino: {line}")
-            if "Table:" in line:
-                arduino_table_name = line.replace("Table: ", "").strip()
-            elif "Drivers:" in line:
-                arduino_driver_type = line.replace("Drivers: ", "").strip()
-            elif "Version:" in line:
-                firmware_version = line.replace("Version: ", "").strip()
-
-        logger.info(f"Detected Table: {arduino_table_name or 'Unknown'}")
-        logger.info(f"Detected Drivers: {arduino_driver_type or 'Unknown'}")
-        return True
+        try:
+            if get_machine_steps(): 
+                logger.info(f"x_steps_per_mm: {state.x_steps_per_mm}, x_steps_per_mm: {state.y_steps_per_mm}, gear_ratio: {state.gear_ratio}")
+                return True
+        except:
+            logger.info("Not GRBL firmware")
+            return False
+        
     except serial.SerialException as e:
         logger.error(f"Failed to connect to serial port {port}: {e}")
         ser_port = None
@@ -115,7 +156,7 @@ def get_status_response():
             while ser.in_waiting > 0:
                 response = ser.readline().decode().strip()
                 if "MPos" in response:
-                    logger.info(f"Status response: {response}")
+                    logger.debug(f"Status response: {response}")
                     return response
         time.sleep(1)
 
@@ -228,7 +269,6 @@ def home(retry = 0):
     
     state.current_theta = state.current_rho = 0
     update_machine_position()
-
 
 def check_idle():
     """

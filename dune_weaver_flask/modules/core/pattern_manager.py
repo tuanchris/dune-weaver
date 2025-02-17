@@ -116,21 +116,43 @@ def wait_for_start_time(schedule_hours):
             time.sleep(30)
             
             
-def interpolate_path(theta, rho):
+def move_polar(theta, rho):
+    """
+    This functions take in a pair of theta rho coordinate, compute the distance to travel based on current theta, rho,
+    and translate the motion to gcode jog command and sent to grbl. 
+    
+    Since having similar steps_per_mm will make x and y axis moves at around the same speed, we have to scale the 
+    x_steps_per_mm and y_steps_per_mm so that they are roughly the same. Here's the range of motion:
+    
+    X axis (angular): 50mm = 1 revolution
+    Y axis (radial): 0 => 20mm = theta 0 (center) => 1 (perimeter)
+    
+    Args:
+        theta (_type_): _description_
+        rho (_type_): _description_
+    """
     # Adding soft limit to reduce hardware sound
-    soft_limit_threshold = 0.01
-    if rho < soft_limit_threshold:
-        rho = soft_limit_threshold
-    elif rho > (1-soft_limit_threshold):
-        rho = (1-soft_limit_threshold)
+    soft_limit_inner = 0.01
+    if rho < soft_limit_inner:
+        rho = soft_limit_inner
+    
+    soft_limit_outter = 0.015
+    if rho > (1-soft_limit_outter):
+        rho = (1-soft_limit_outter)
+    
+    x_scaling_factor = 2
+    y_scaling_factor = 5
     
     delta_theta = theta - state.current_theta
     delta_rho = rho - state.current_rho
-    # x_increment = delta_theta / (2 * pi) * 100
-    x_increment = delta_theta / (4 * pi) * 100
-    y_increment = delta_rho * 100/5
+    x_increment = delta_theta * 100 / (2 * pi * x_scaling_factor) # Scale down x from 100mm to 50mm per revolution
+    y_increment = delta_rho * 100 / y_scaling_factor # Scale down y from 100mm to 20mm from center to perimeter
     
-    offset = x_increment * (3200/5750/5) # Total angular steps = 16000 / gear ratio = 10 / angular steps = 5750
+    x_total_steps = state.x_steps_per_mm * (100/x_scaling_factor)
+    y_total_steps = state.y_steps_per_mm * (100/y_scaling_factor)
+        
+    x_increment / 50 * (x_total_steps)
+    offset = x_increment * (x_total_steps * x_scaling_factor / (state.gear_ratio * y_total_steps * y_scaling_factor))
     y_increment += offset
     
     new_x_abs = state.machine_x + x_increment
@@ -190,7 +212,7 @@ def run_theta_rho_file(file_path, schedule_hours=None):
                         state.pause_condition.wait()
 
                 schedule_checker(schedule_hours)
-                interpolate_path(theta, rho)
+                move_polar(theta, rho)
                 
                 if i != 0:
                     pbar.update(1)

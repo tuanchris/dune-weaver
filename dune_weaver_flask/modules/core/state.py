@@ -19,9 +19,11 @@ class AppState:
         # Machine position variables
         self.machine_x = 0.0
         self.machine_y = 0.0
-        self.STATE_FILE = "state.json"
+        self.x_steps_per_mm = 0.0
+        self.y_steps_per_mm = 0.0
+        self.gear_ratio = 10
 
-        
+        self.STATE_FILE = "state.json"
         self.load()
 
     def to_dict(self):
@@ -37,6 +39,9 @@ class AppState:
             "speed": self.speed,
             "machine_x": self.machine_x,
             "machine_y": self.machine_y,
+            "x_steps_per_mm": self.x_steps_per_mm,
+            "y_steps_per_mm": self.y_steps_per_mm,
+            "gear_ratio": self.gear_ratio
         }
 
     def from_dict(self, data):
@@ -51,11 +56,17 @@ class AppState:
         self.speed = data.get("speed", 250)
         self.machine_x = data.get("machine_x", 0.0)
         self.machine_y = data.get("machine_y", 0.0)
+        self.x_steps_per_mm = data.get("x_steps_per_mm", 0.0)
+        self.y_steps_per_mm = data.get("y_steps_per_mm", 0.0)
+        self.gear_ratio = data.get('gear_ratio', 10)
 
     def save(self):
         """Save the current state to a JSON file."""
-        with open(self.STATE_FILE, "w") as f:
-            json.dump(self.to_dict(), f)
+        try:
+            with open(self.STATE_FILE, "w") as f:
+                json.dump(self.to_dict(), f)
+        except Exception as e:
+            print(f"Error saving state to {self.STATE_FILE}: {e}")
 
     def load(self):
         """Load state from a JSON file. If the file doesn't exist, create it with default values."""
@@ -69,6 +80,17 @@ class AppState:
             self.from_dict(data)
         except Exception as e:
             print(f"Error loading state from {self.STATE_FILE}: {e}")
+
+    def update_steps_per_mm(self, x_steps, y_steps):
+        """Update and save steps per mm values."""
+        self.x_steps_per_mm = x_steps
+        self.y_steps_per_mm = y_steps
+        self.save()
+
+    def reset_state(self):
+        """Reset all state variables to their default values."""
+        self.__init__()  # Reinitialize the state
+        self.save()
 
 # Create a singleton instance that you can import elsewhere:
 state = AppState()
