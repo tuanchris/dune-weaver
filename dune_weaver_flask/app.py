@@ -418,6 +418,7 @@ def update_software():
 
 def on_exit():
     """Function to execute on application shutdown."""
+    logger.info("Shutting down gracefully, please wait for executiong to complete")
     pattern_manager.stop_actions()
     state.save()
     mqtt.cleanup_mqtt()
