@@ -8,18 +8,20 @@ from dune_weaver_flask.modules.core import pattern_manager
 from dune_weaver_flask.modules.core import playlist_manager
 from .modules.firmware import firmware_manager
 from dune_weaver_flask.modules.core.state import state
+from dune_weaver_flask.modules import mqtt
 
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(name)s:%(lineno)d - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
         # disable file logging for now, to not gobble up resources
         # logging.FileHandler('dune_weaver.log')
     ]
 )
+
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
@@ -249,9 +251,8 @@ def serial_status():
 
 @app.route('/pause_execution', methods=['POST'])
 def pause_execution():
-    logger.info("Pausing pattern execution")
-    pattern_manager.pause_requested = True
-    return jsonify({'success': True, 'message': 'Execution paused'})
+    if pattern_manager.pause_execution():
+        return jsonify({'success': True, 'message': 'Execution paused'})
 
 @app.route('/status', methods=['GET'])
 def get_status():
@@ -259,11 +260,8 @@ def get_status():
 
 @app.route('/resume_execution', methods=['POST'])
 def resume_execution():
-    logger.info("Resuming pattern execution")
-    with pattern_manager.pause_condition:
-        pattern_manager.pause_requested = False
-        pattern_manager.pause_condition.notify_all()
-    return jsonify({'success': True, 'message': 'Execution resumed'})
+    if pattern_manager.resume_execution():
+        return jsonify({'success': True, 'message': 'Execution resumed'})
 
 # Playlist endpoints
 @app.route("/list_all_playlists", methods=["GET"])
@@ -422,6 +420,7 @@ def on_exit():
     """Function to execute on application shutdown."""
     pattern_manager.stop_actions()
     state.save()
+    mqtt.cleanup_mqtt()
 
 def entrypoint():
     logger.info("Starting Dune Weaver application...")
@@ -433,6 +432,11 @@ def entrypoint():
         serial_manager.connect_to_serial()
     except Exception as e:
         logger.warning(f"Failed to auto-connect to serial port: {str(e)}")
+        
+    try:
+        mqtt_handler = mqtt.init_mqtt()
+    except Exception as e:
+        logger.warning(f"Failed to initialize MQTT: {str(e)}")
 
     try:
         logger.info("Starting Flask server on port 8080...")

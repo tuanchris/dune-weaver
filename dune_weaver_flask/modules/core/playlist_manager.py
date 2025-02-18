@@ -3,6 +3,7 @@ import os
 import threading
 import logging
 from dune_weaver_flask.modules.core import pattern_manager
+from dune_weaver_flask.modules.core.state import state
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -99,6 +100,7 @@ def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="sing
 
     try:
         logger.info(f"Starting playlist '{playlist_name}' with mode={run_mode}, shuffle={shuffle}")
+        state.current_playlist = playlist_name
         threading.Thread(
             target=pattern_manager.run_theta_rho_files,
             args=(file_paths,),

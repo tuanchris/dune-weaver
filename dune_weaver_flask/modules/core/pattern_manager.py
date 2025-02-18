@@ -20,8 +20,6 @@ CLEAR_PATTERNS = {
     "clear_sideway":  "./patterns/clear_sideway.thr"
 }
 os.makedirs(THETA_RHO_DIR, exist_ok=True)
-current_playlist = []
-current_playing_index = None
 
 def list_theta_rho_files():
     files = []
@@ -166,6 +164,19 @@ def move_polar(theta, rho):
     state.machine_x = new_x_abs
     state.machine_y = new_y_abs
     
+def pause_execution():
+    logger.info("Pausing pattern execution")
+    with state.pause_condition:
+        state.pause_requested = True
+    return True
+
+def resume_execution():
+    logger.info("Resuming pattern execution")
+    with state.pause_condition:
+        state.pause_requested = False
+        state.pause_condition.notify_all()
+    return True
+    
 def reset_theta():
     logger.info('Resetting Theta')
     state.current_theta = 0
@@ -189,8 +200,9 @@ def run_theta_rho_file(file_path, schedule_hours=None):
         return
 
     state.execution_progress = (0, total_coordinates, None)
-
-    stop_actions()
+    
+    # stop actions without resetting the playlist
+    stop_actions(clear_playlist=False)
 
     with serial_manager.serial_lock:
         state.current_playing_file = file_path
@@ -228,27 +240,34 @@ def run_theta_rho_file(file_path, schedule_hours=None):
 
 def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False, schedule_hours=None):
     """Run multiple .thr files in sequence with options."""
-    global current_playing_index, current_playlist
     state.stop_requested = False
+    
+    # Set initial playlist state
+    state.playlist_mode = run_mode
+    state.current_playlist_index = 0
     
     if shuffle:
         random.shuffle(file_paths)
         logger.info("Playlist shuffled")
 
-    current_playlist = file_paths
-
     while True:
         for idx, path in enumerate(file_paths):
             logger.info(f"Upcoming pattern: {path}")
-            current_playing_index = idx
+            state.current_playlist_index = idx
             schedule_checker(schedule_hours)
             if state.stop_requested:
                 logger.info("Execution stopped before starting next pattern")
+                state.current_playlist = None
+                state.current_playlist_index = None
+                state.playlist_mode = None
                 return
 
             if clear_pattern:
                 if state.stop_requested:
                     logger.info("Execution stopped before running the next clear pattern")
+                    state.current_playlist = None
+                    state.current_playlist_index = None
+                    state.playlist_mode = None
                     return
 
                 clear_file_path = get_clear_pattern_file(clear_pattern, path)
@@ -256,6 +275,7 @@ def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="
                 run_theta_rho_file(clear_file_path, schedule_hours)
 
             if not state.stop_requested:
+                
                 logger.info(f"Running pattern {idx + 1} of {len(file_paths)}: {path}")
                 run_theta_rho_file(path, schedule_hours)
 
@@ -278,20 +298,27 @@ def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="
             continue
         else:
             logger.info("Playlist completed")
+            state.current_playlist = None
+            state.current_playlist_index = None
+            state.playlist_mode = None
             break
     logger.info("All requested patterns completed (or stopped)")
 
-def stop_actions():
-    """Stop all current pattern execution."""
+def stop_actions(clear_playlist = True):
+    """Stop all current actions."""
     with state.pause_condition:
         state.pause_requested = False
         state.stop_requested = True
-        current_playing_index = None
-        current_playlist = None
-        state.is_clearing = False
         state.current_playing_file = None
         state.execution_progress = None
-    serial_manager.update_machine_position()
+        state.is_clearing = False
+        if clear_playlist:
+            # Clear playlist state
+            state.current_playlist = None
+            state.current_playlist_index = None
+            state.playlist_mode = None
+        state.pause_condition.notify_all()
+        serial_manager.update_machine_position()
 
 def get_status():
     """Get the current execution status."""
@@ -307,7 +334,7 @@ def get_status():
         "pause_requested": state.pause_requested,
         "current_playing_file": state.current_playing_file,
         "execution_progress": state.execution_progress,
-        "current_playing_index": current_playing_index,
-        "current_playlist": current_playlist,
+        "current_playing_index": state.current_playlist_index,
+        "current_playlist": state.current_playlist,
         "is_clearing": state.is_clearing
     }
