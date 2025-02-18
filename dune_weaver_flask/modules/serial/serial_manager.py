@@ -61,60 +61,92 @@ def get_machine_steps():
 
                 if x_steps_per_mm is not None and y_steps_per_mm is not None and gear_ratio is not None:
                     return True
+                
+def device_init():
+    try:
+        if get_machine_steps():
+            logger.info(f"x_steps_per_mm: {state.x_steps_per_mm}, y_steps_per_mm: {state.y_steps_per_mm}, gear_ratio: {state.gear_ratio}")
+    except:
+        logger.fatal("Not GRBL firmware")
+        pass
+
+    machine_x, machine_y = get_machine_position()
+    if not machine_x or not machine_y or machine_x != state.machine_x or machine_y != state.machine_y:
+        logger.info(f'x, y; {machine_x}, {machine_y}')
+        logger.info(f'State x, y; {state.machine_x}, {state.machine_y}')
+        home()
+    else:
+        logger.info('Machine position known, skipping home')
+        logger.info(f'Theta: {state.current_theta}, rho: {state.current_rho}')
+        logger.info(f'State x, y; {state.machine_x}, {state.machine_y}')
+
+    time.sleep(2)  # Allow time for the connection to establish
+
+    try:
+        if get_machine_steps():
+            logger.info(f"x_steps_per_mm: {state.x_steps_per_mm}, x_steps_per_mm: {state.y_steps_per_mm}, gear_ratio: {state.gear_ratio}")
+            return True
+    except:
+        logger.info("Not GRBL firmware")
+        return False
         
 
 def connect_to_serial(port=None, baudrate=115200):
-    """Automatically connect to the first available serial port or a specified port."""
+    """Automatically connect to the first available serial port or a specified port with a timeout."""
     global ser, ser_port, arduino_table_name, arduino_driver_type, firmware_version
-    try:
-        if port is None:
-            ports = list_serial_ports()
-            if not ports:
-                logger.warning("No serial port connected")
-                return False
-            port = ports[0]  # Auto-select the first available port
+    timeout = 5  # Timeout in seconds
+    start_time = time.time()
 
-        with serial_lock:
-            if ser and ser.is_open:
+    while time.time() - start_time < timeout:
+        try:
+            if port is None:
+                ports = list_serial_ports()
+                if not ports:
+                    logger.warning("No serial port connected")
+                    time.sleep(1) # Wait before retrying
+                    continue  # Retry connecting
+                port = ports[0]  # Auto-select the first available port
+
+            with serial_lock: 
+                if ser and ser.is_open:
+                    ser.close()
+                ser = serial.Serial(port, baudrate, timeout=2) # Timeout for individual serial operations
+                ser_port = port
+            
+            # Check if connection is established by trying a quick command
+            try:
+                ser.write(b"?\r") # Example GRBL command
+                response = ser.readline().decode('utf-8').strip()
+                if response: # Check if we get any response
+                   logger.info(f"Connected to serial port: {port}")
+                   device_init()
+                   break # Exit the loop, connection successful
+                else:
+                    logger.warning("No response from serial port. Retrying...")
+                    ser.close() # Close the port before retrying
+                    time.sleep(1) # Wait before retrying
+                    continue
+            except serial.SerialException as e:
+                logger.warning(f"Serial exception during test command: {e}. Retrying...")
                 ser.close()
-            ser = serial.Serial(port, baudrate, timeout=2)
-            ser_port = port
+                time.sleep(1)
+                continue
+            except Exception as e:
+                logger.exception(f"Unexpected error during connection test: {e}")
+                ser.close()
+                time.sleep(1)
+                continue
 
-        try:
-            if get_machine_steps():
-                logger.info(f"x_steps_per_mm: {state.x_steps_per_mm}, y_steps_per_mm: {state.y_steps_per_mm}, gear_ratio: {state.gear_ratio}")
-        except:
-            logger.fatal("Not GRBL firmware")
-            pass 
-            
-        machine_x, machine_y = get_machine_position()
-        if not machine_x or not machine_y or machine_x != state.machine_x or machine_y != state.machine_y:
-            logger.info(f'x, y; {machine_x}, {machine_y}')
-            logger.info(f'State x, y; {state.machine_x}, {state.machine_y}')
-            home()
-        else:
-            logger.info('Machine position known, skipping home')
-            logger.info(f'Theta: {state.current_theta}, rho: {state.current_rho}')
-            logger.info(f'State x, y; {state.machine_x}, {state.machine_y}')
-            
-        
-        logger.info(f"Connected to serial port: {port}")
-        time.sleep(2)  # Allow time for the connection to establish
 
-        try:
-            if get_machine_steps(): 
-                logger.info(f"x_steps_per_mm: {state.x_steps_per_mm}, x_steps_per_mm: {state.y_steps_per_mm}, gear_ratio: {state.gear_ratio}")
-                return True
-        except:
-            logger.info("Not GRBL firmware")
-            return False
-        
-    except serial.SerialException as e:
-        logger.error(f"Failed to connect to serial port {port}: {e}")
-        ser_port = None
+        except serial.SerialException as e:
+            logger.error(f"Failed to connect to serial port {port}: {e}")
+            ser_port = None
+            time.sleep(1) # Wait before retrying
+            continue  # Retry connecting
 
-    logger.error("Max retries reached. Could not connect to a serial port.")
-    return False
+    else: # If the loop finishes without breaking (timeout)
+        logger.error(f"Timeout reached. Could not connect to a serial port after {timeout} seconds.")
+        return False
 
 
 def disconnect_serial():
@@ -247,12 +279,12 @@ def home(retry = 0):
             ser.flush()
     # we check that we actually got a valid response, if not, we try again a couple of times
     elif "filename" in response:
-        logger.info("Using brute-force homing")
+        logger.info("Using crash homing")
         send_grbl_coordinates(0, -110/5, state.speed, home=True)
     # error:3 means that the controller is running grbl, which doesn't support $config
-    # we just use brute force homing for grbl
+    # we just use crash homing for grbl
     elif "error:3" in response:
-        logger.info("Grbl detected, Using brute-force homing")
+        logger.info("Grbl detected, Using crash homing")
         send_grbl_coordinates(0, -110/5, state.speed, home=True)
     else:
         # we wait a bit and cal again increasing retry times

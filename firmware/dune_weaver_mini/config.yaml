@@ -30,7 +30,7 @@ axes:
     steps_per_mm: 232
     max_rate_mm_per_min: 500
     acceleration_mm_per_sec2: 500
-    max_travel_mm: 6.25
+    max_travel_mm: 12.5
     motor0:
       hard_limits: false
       unipolar:
