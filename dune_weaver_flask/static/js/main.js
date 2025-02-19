@@ -1466,6 +1466,13 @@ async function updateCurrentlyPlaying() {
             return;
         }
 
+        const currentSpeedElem = document.getElementById('current_speed_display');
+        if (data.current_speed !== undefined) {
+            currentSpeedElem.textContent = `Current Speed: ${data.current_speed}`;
+        } else {
+            currentSpeedElem.textContent = 'Current Speed: N/A';
+        }
+
         if (data.current_playing_file && !data.stop_requested) {
             const { current_playing_file, execution_progress, pause_requested } = data;
 
