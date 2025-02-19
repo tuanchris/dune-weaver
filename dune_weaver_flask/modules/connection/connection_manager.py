@@ -125,13 +125,42 @@ def list_serial_ports():
     logger.debug(f"Available serial ports: {available_ports}")
     return available_ports
 
+def device_init():
+    try:
+        if get_machine_steps():
+            logger.info(f"x_steps_per_mm: {state.x_steps_per_mm}, y_steps_per_mm: {state.y_steps_per_mm}, gear_ratio: {state.gear_ratio}")
+    except:
+        logger.fatal("Not GRBL firmware")
+        pass
+
+    machine_x, machine_y = get_machine_position()
+    if not machine_x or not machine_y or machine_x != state.machine_x or machine_y != state.machine_y:
+        logger.info(f'x, y; {machine_x}, {machine_y}')
+        logger.info(f'State x, y; {state.machine_x}, {state.machine_y}')
+        home()
+    else:
+        logger.info('Machine position known, skipping home')
+        logger.info(f'Theta: {state.current_theta}, rho: {state.current_rho}')
+        logger.info(f'State x, y; {state.machine_x}, {state.machine_y}')
+
+    time.sleep(2)  # Allow time for the connection to establish
+
+    try:
+        if get_machine_steps():
+            logger.info(f"x_steps_per_mm: {state.x_steps_per_mm}, x_steps_per_mm: {state.y_steps_per_mm}, gear_ratio: {state.gear_ratio}")
+            return True
+    except:
+        logger.fatal("Not GRBL firmware")
+        return False
+
 def connect_device():
     ports = list_serial_ports()
     if not ports:
         state.conn = WebSocketConnection('ws://fluidnc.local:81')
     else:
         state.conn = SerialConnection(ports[0])
-        
+    if state.conn.is_connected():
+        device_init()
 
 def get_status_response() -> str:
     """
