@@ -62,7 +62,7 @@ def disconnect():
         logger.error(f'Failed to disconnect serial: {str(e)}')
         return jsonify({'error': str(e)}), 500
 
-@app.route('/restart_serial', methods=['POST'])
+@app.route('/restart_connection', methods=['POST'])
 def restart():
     port = request.json.get('port')
     if not port:
@@ -71,7 +71,7 @@ def restart():
 
     try:
         logger.info(f"Restarting serial connection on port {port}")
-        connection_manager.restart_serial(port)
+        connection_manager.restart_connection(port)
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Failed to restart serial on port {port}: {str(e)}")
