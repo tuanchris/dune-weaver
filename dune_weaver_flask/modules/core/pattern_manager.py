@@ -192,7 +192,7 @@ def run_theta_rho_file(file_path, schedule_hours=None):
     # Check if connection is still valid, if not, restart
     if not connection_manager.get_status_response():
         logger.info('Cannot get status response, restarting connection')
-        connection_manager.restart_connection()
+        connection_manager.restart_connection(home=False)
     if not state.conn and not state.conn.is_connected():
         logger.error('Connection not established')
         return
