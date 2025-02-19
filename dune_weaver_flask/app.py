@@ -70,8 +70,8 @@ def restart():
         return jsonify({'error': 'No port provided'}), 400
 
     try:
-        logger.info(f"Restarting serial connection on port {port}")
-        connection_manager.restart_connection(port)
+        logger.info(f"Restarting connection on port {port}")
+        connection_manager.restart_connection()
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Failed to restart serial on port {port}: {str(e)}")
@@ -170,8 +170,8 @@ def move_to_center():
     global current_theta
     try:
         if not state.conn.is_connected():
-            logger.warning("Attempted to move to center without serial connection")
-            return jsonify({"success": False, "error": "Serial connection not established"}), 400
+            logger.warning("Attempted to move to center without connection")
+            return jsonify({"success": False, "error": "Connection not established"}), 400
 
         logger.info("Moving device to center position")
         pattern_manager.reset_theta()
@@ -186,8 +186,8 @@ def move_to_perimeter():
     global current_theta
     try:
         if not state.conn.is_connected():
-            logger.warning("Attempted to move to perimeter without serial connection")
-            return jsonify({"success": False, "error": "Serial connection not established"}), 400
+            logger.warning("Attempted to move to perimeter without connection")
+            return jsonify({"success": False, "error": "Connection not established"}), 400
         pattern_manager.reset_theta()
         pattern_manager.move_polar(0,1)
         return jsonify({"success": True})
@@ -217,8 +217,8 @@ def preview_thr():
 @app.route('/send_coordinate', methods=['POST'])
 def send_coordinate():
     if not state.conn.is_connected():
-        logger.warning("Attempted to send coordinate without serial connection")
-        return jsonify({"success": False, "error": "Serial connection not established"}), 400
+        logger.warning("Attempted to send coordinate without connection")
+        return jsonify({"success": False, "error": "connection not established"}), 400
 
     try:
         data = request.json
@@ -419,7 +419,7 @@ def update_software():
 
 def on_exit():
     """Function to execute on application shutdown."""
-    logger.info("Shutting down gracefully, please wait for executiong to complete")
+    logger.info("Shutting down gracefully, please wait for execution to complete")
     pattern_manager.stop_actions()
     state.save()
     mqtt.cleanup_mqtt()

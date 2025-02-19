@@ -134,13 +134,14 @@ def device_init():
         pass
 
     machine_x, machine_y = get_machine_position()
-    if not machine_x or not machine_y or machine_x != state.machine_x or machine_y != state.machine_y:
+    if machine_x != state.machine_x or machine_y != state.machine_y:
         logger.info(f'x, y; {machine_x}, {machine_y}')
         logger.info(f'State x, y; {state.machine_x}, {state.machine_y}')
         home()
     else:
         logger.info('Machine position known, skipping home')
         logger.info(f'Theta: {state.current_theta}, rho: {state.current_rho}')
+        logger.info(f'x, y; {machine_x}, {machine_y}')
         logger.info(f'State x, y; {state.machine_x}, {state.machine_y}')
 
     time.sleep(2)  # Allow time for the connection to establish
@@ -267,7 +268,7 @@ def get_machine_steps(timeout=10):
     return False
 
 
-def home(retry=0):
+def home():
     """
     Perform homing by checking device configuration and sending the appropriate commands.
     """
@@ -283,16 +284,9 @@ def home(retry=0):
         logger.info("Using sensorless homing")
         state.conn.send("$H\n")
         state.conn.send("G1 Y0 F100\n")
-    elif "filename" in response or "error:3" in response:
-        logger.info("Using crash homing")
-        send_grbl_coordinates(0, -110/5, 300, home=True)
     else:
-        if retry < 3:
-            time.sleep(1)
-            home(retry + 1)
-            return
-        else:
-            raise Exception("Couldn't get a valid response for homing after 3 retries")
+        logger.info("Sensorless homing not supported. Using crash homing")
+        send_grbl_coordinates(0, -110/5, state.speed, home=True)
     state.current_theta = state.current_rho = 0
     update_machine_position()
 
