@@ -55,7 +55,7 @@ def connect():
 @app.route('/disconnect', methods=['POST'])
 def disconnect():
     try:
-        connection_manager.disconnect()
+        state.conn.close()
         logger.info('Successfully disconnected from serial port')
         return jsonify({'success': True})
     except Exception as e:

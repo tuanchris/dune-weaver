@@ -45,6 +45,7 @@ class SerialConnection(BaseConnection):
         self.baudrate = baudrate
         self.timeout = timeout
         self.lock = threading.RLock()
+        logger.info(f'Connecting to Serial port {port}')
         self.ser = serial.Serial(port, baudrate, timeout=timeout)
         state.port = port
         logger.info(f'Connected to Serial port {port}')
@@ -79,7 +80,7 @@ class SerialConnection(BaseConnection):
 ###############################################################################
 
 class WebSocketConnection(BaseConnection):
-    def __init__(self, url: str, timeout: int = 2):
+    def __init__(self, url: str, timeout: int = 5):
         self.url = url
         self.timeout = timeout
         self.lock = threading.RLock()
@@ -87,6 +88,7 @@ class WebSocketConnection(BaseConnection):
         self.connect()
 
     def connect(self):
+        logger.info(f'Connecting to Websocket {self.url}')
         self.ws = websocket.create_connection(self.url, timeout=self.timeout)
         state.port = self.url
         logger.info(f'Connected to Websocket {self.url}')
@@ -125,7 +127,7 @@ def list_serial_ports():
     logger.debug(f"Available serial ports: {available_ports}")
     return available_ports
 
-def device_init():
+def device_init(home=True):
     try:
         if get_machine_steps():
             logger.info(f"x_steps_per_mm: {state.x_steps_per_mm}, y_steps_per_mm: {state.y_steps_per_mm}, gear_ratio: {state.gear_ratio}")
@@ -137,7 +139,8 @@ def device_init():
     if machine_x != state.machine_x or machine_y != state.machine_y:
         logger.info(f'x, y; {machine_x}, {machine_y}')
         logger.info(f'State x, y; {state.machine_x}, {state.machine_y}')
-        home()
+        if home:
+            home()
     else:
         logger.info('Machine position known, skipping home')
         logger.info(f'Theta: {state.current_theta}, rho: {state.current_rho}')
@@ -154,14 +157,14 @@ def device_init():
         logger.fatal("Not GRBL firmware")
         return False
 
-def connect_device():
+def connect_device(home=True):
     ports = list_serial_ports()
     if not ports:
         state.conn = WebSocketConnection('ws://fluidnc.local:81')
     else:
         state.conn = SerialConnection(ports[0])
     if state.conn.is_connected():
-        device_init()
+        device_init(home)
 
 def get_status_response() -> str:
     """
@@ -207,7 +210,7 @@ def send_grbl_coordinates(x, y, speed=600, timeout=2, home=False):
     logger.debug(f"Sending G-code: X{x} Y{y} at F{speed}")
     while True:
         try:
-            gcode = f"$J=G91 Y{y} F{speed}" if home else f"G1 X{x} Y{y} F{speed}"
+            gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 X{x} Y{y} F{speed}"
             state.conn.send(gcode + "\n")
             logger.debug(f"Sent command: {gcode}")
             start_time = time.time()
@@ -218,7 +221,7 @@ def send_grbl_coordinates(x, y, speed=600, timeout=2, home=False):
                     logger.debug("Command execution confirmed.")
                     return
         except Exception as e:
-            logger.debug(f"No 'ok' received for X{x} Y{y}, speed {speed}. Retrying in 1s...")
+            logger.warning(f"No 'ok' received for X{x} Y{y}, speed {speed}. Retrying in 1s...")
         time.sleep(0.1)
         
 
@@ -272,7 +275,6 @@ def home():
     """
     Perform homing by checking device configuration and sending the appropriate commands.
     """
-    logger.info(f"Homing with speed {state.speed}")
     try:
         state.conn.send("$config\n")
         response = state.conn.readline().strip().lower()
@@ -286,9 +288,11 @@ def home():
         state.conn.send("G1 Y0 F100\n")
     else:
         logger.info("Sensorless homing not supported. Using crash homing")
-        send_grbl_coordinates(0, -110/5, state.speed, home=True)
+        logger.info(f"Homing with speed 300")
+        send_grbl_coordinates(0, -22, 300, home=True)
     state.current_theta = state.current_rho = 0
     update_machine_position()
+    state.save()
 
 def check_idle():
     """
@@ -330,7 +334,7 @@ def update_machine_position():
     state.machine_x, state.machine_y = get_machine_position()
     state.save()
 
-def restart_connection():
+def restart_connection(home=False):
     """
     Restart the connection. If a connection exists, close it and attempt to establish a new one.
     It will try to connect via serial first (if available), otherwise it will fall back to websocket.
@@ -351,7 +355,7 @@ def restart_connection():
 
     logger.info("Attempting to restart connection...")
     try:
-        connect_device()  # This will set state.conn appropriately.
+        connect_device(home=False)  # This will set state.conn appropriately.
         if state.conn and state.conn.is_connected():
             logger.info("Connection restarted successfully.")
             return True
