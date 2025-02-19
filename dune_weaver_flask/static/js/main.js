@@ -559,7 +559,7 @@ async function runFile(fileName) {
     }
 }
 
-// Serial Connection Status
+// Connection Status
 async function checkSerialStatus() {
     const response = await fetch('/serial_status');
     const status = await response.json();
@@ -599,7 +599,7 @@ async function checkSerialStatus() {
         statusElement.textContent = 'Not connected';
         statusElement.classList.add('not-connected');
         statusElement.classList.remove('connected');
-        logMessage('No active serial connection.');
+        logMessage('No active connection.');
 
         // Update header status
         statusHeaderElement.classList.add('not-connected');
@@ -670,11 +670,11 @@ async function restartSerial() {
     const result = await response.json();
     if (result.success) {
         document.getElementById('serial_status').textContent = `Restarted connection to ${port}`;
-        logMessage('Serial connection restarted.', LOG_TYPE.SUCCESS);
+        logMessage('Connection restarted.', LOG_TYPE.SUCCESS);
 
         // No need to change visibility for restart
     } else {
-        logMessage(`Error restarting serial connection: ${result.error}`, LOG_TYPE.ERROR);
+        logMessage(`Error restarting Connection: ${result.error}`, LOG_TYPE.ERROR);
     }
 }
 
@@ -1700,7 +1700,7 @@ document.addEventListener("visibilitychange", handleVisibilityChange);
 document.addEventListener('DOMContentLoaded', () => {
     const activeTab = getCookie('activeTab') || 'patterns'; // Default to 'patterns' tab
     switchTab(activeTab); // Load the active tab
-    checkSerialStatus(); // Check serial connection status
+    checkSerialStatus(); // Check connection status
     loadThetaRhoFiles(); // Load files on page load
     loadAllPlaylists(); // Load all playlists on page load
     attachSettingsSaveListeners(); // Attach event listeners to save changes
