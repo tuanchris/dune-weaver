@@ -30,6 +30,8 @@ class AppState:
         
         self.STATE_FILE = "state.json"
         self.mqtt_handler = None  # Will be set by the MQTT handler
+        self.conn = None
+        self.port = None
         self.load()
 
     @property
@@ -100,7 +102,8 @@ class AppState:
             "gear_ratio": self.gear_ratio,
             "current_playlist": self._current_playlist,
             "current_playlist_index": self.current_playlist_index,
-            "playlist_mode": self.playlist_mode
+            "playlist_mode": self.playlist_mode,
+            "port": self.port
         }
 
     def from_dict(self, data):
@@ -121,6 +124,7 @@ class AppState:
         self._current_playlist = data.get("current_playlist")
         self.current_playlist_index = data.get("current_playlist_index")
         self.playlist_mode = data.get("playlist_mode")
+        self.port = data.get("port", None)
 
     def save(self):
         """Save the current state to a JSON file."""

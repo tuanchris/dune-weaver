@@ -3,10 +3,10 @@ import atexit
 import os
 import logging
 from datetime import datetime
-from .modules.serial import serial_manager
+from .modules.connection import connection_manager
 from dune_weaver_flask.modules.core import pattern_manager
 from dune_weaver_flask.modules.core import playlist_manager
-from .modules.firmware import firmware_manager
+from .modules.update import update_manager
 from dune_weaver_flask.modules.core.state import state
 from dune_weaver_flask.modules import mqtt
 
@@ -34,27 +34,28 @@ def index():
 @app.route('/list_serial_ports', methods=['GET'])
 def list_ports():
     logger.debug("Listing available serial ports")
-    return jsonify(serial_manager.list_serial_ports())
+    return jsonify(connection_manager.list_serial_ports())
 
-@app.route('/connect_serial', methods=['POST'])
-def connect_serial():
+@app.route('/connect', methods=['POST'])
+def connect():
     port = request.json.get('port')
     if not port:
-        logger.warning('Serial connection attempt without port specified')
-        return jsonify({'error': 'No port provided'}), 400
+        state.conn = WebSocketConnection('ws://fluidnc.local:81')
+        logger.info(f'Successfully connected to websocket ws://fluidnc.local:81')
+        return jsonify({'success': True})
 
     try:
-        serial_manager.connect_to_serial(port)
+        state.conn = SerialConnection(port)
         logger.info(f'Successfully connected to serial port {port}')
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f'Failed to connect to serial port {port}: {str(e)}')
         return jsonify({'error': str(e)}), 500
 
-@app.route('/disconnect_serial', methods=['POST'])
+@app.route('/disconnect', methods=['POST'])
 def disconnect():
     try:
-        serial_manager.disconnect_serial()
+        connection_manager.disconnect()
         logger.info('Successfully disconnected from serial port')
         return jsonify({'success': True})
     except Exception as e:
@@ -70,7 +71,7 @@ def restart():
 
     try:
         logger.info(f"Restarting serial connection on port {port}")
-        serial_manager.restart_serial(port)
+        connection_manager.restart_serial(port)
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Failed to restart serial on port {port}: {str(e)}")
@@ -129,7 +130,7 @@ def stop_execution():
 @app.route('/send_home', methods=['POST'])
 def send_home():
     try:
-        serial_manager.home()
+        connection_manager.home()
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Failed to send home command: {str(e)}")
@@ -168,7 +169,7 @@ def delete_theta_rho_file():
 def move_to_center():
     global current_theta
     try:
-        if not serial_manager.is_connected():
+        if not state.conn.is_connected():
             logger.warning("Attempted to move to center without serial connection")
             return jsonify({"success": False, "error": "Serial connection not established"}), 400
 
@@ -184,7 +185,7 @@ def move_to_center():
 def move_to_perimeter():
     global current_theta
     try:
-        if not serial_manager.is_connected():
+        if not state.conn.is_connected():
             logger.warning("Attempted to move to perimeter without serial connection")
             return jsonify({"success": False, "error": "Serial connection not established"}), 400
         pattern_manager.reset_theta()
@@ -215,7 +216,7 @@ def preview_thr():
 
 @app.route('/send_coordinate', methods=['POST'])
 def send_coordinate():
-    if not serial_manager.is_connected():
+    if not state.conn.is_connected():
         logger.warning("Attempted to send coordinate without serial connection")
         return jsonify({"success": False, "error": "Serial connection not established"}), 400
 
@@ -241,8 +242,8 @@ def download_file(filename):
 
 @app.route('/serial_status', methods=['GET'])
 def serial_status():
-    connected = serial_manager.is_connected()
-    port = serial_manager.get_port()
+    connected = state.conn.is_connected()
+    port = state.port
     logger.debug(f"Serial status check - connected: {connected}, port: {port}")
     return jsonify({
         'connected': connected,
@@ -397,13 +398,13 @@ def set_speed():
 
 @app.route('/check_software_update', methods=['GET'])
 def check_updates():
-    update_info = firmware_manager.check_git_updates()
+    update_info = update_manager.check_git_updates()
     return jsonify(update_info)
 
 @app.route('/update_software', methods=['POST'])
 def update_software():
     logger.info("Starting software update process")
-    success, error_message, error_log = firmware_manager.update_software()
+    success, error_message, error_log = update_manager.update_software()
     
     if success:
         logger.info("Software update completed successfully")
@@ -430,7 +431,7 @@ def entrypoint():
     atexit.register(on_exit)
     # Auto-connect to serial
     try:
-        serial_manager.connect_to_serial()
+        connection_manager.connect_device()
     except Exception as e:
         logger.warning(f"Failed to auto-connect to serial port: {str(e)}")
         

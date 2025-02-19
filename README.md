@@ -93,7 +93,7 @@ Example:
 
 The project exposes RESTful APIs for various actions. Here are some key endpoints:
  • List Serial Ports: /list_serial_ports (GET)
- • Connect to Serial: /connect_serial (POST)
+ • Connect to Serial: /connect (POST)
  • Upload Pattern: /upload_theta_rho (POST)
  • Run Pattern: /run_theta_rho (POST)
  • Stop Execution: /stop_execution (POST)

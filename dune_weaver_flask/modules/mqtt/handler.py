@@ -11,7 +11,6 @@ from .base import BaseMQTTHandler
 from dune_weaver_flask.modules.core.state import state
 from dune_weaver_flask.modules.core.pattern_manager import list_theta_rho_files
 from dune_weaver_flask.modules.core.playlist_manager import list_all_playlists
-from dune_weaver_flask.modules.serial.serial_manager import is_connected, get_port
 
 logger = logging.getLogger(__name__)
 
@@ -240,8 +239,8 @@ class MQTTHandler(BaseMQTTHandler):
             
     def _publish_serial_state(self):
         """Helper to publish serial state."""
-        serial_connected = is_connected()
-        serial_port = get_port() if serial_connected else None
+        serial_connected = state.conn.is_connected()
+        serial_port = state.port if serial_connected else None
         serial_status = f"connected to {serial_port}" if serial_connected else "disconnected"
         self.client.publish(self.serial_state_topic, serial_status, retain=True)
 
@@ -265,19 +264,32 @@ class MQTTHandler(BaseMQTTHandler):
 
     def on_connect(self, client, userdata, flags, rc):
         """Callback when connected to MQTT broker."""
-        logger.info(f"Connected to MQTT broker with result code {rc}")
-        # Subscribe to command topics
-        client.subscribe([
-            (self.command_topic, 0),
-            (self.pattern_select_topic, 0),
-            (self.playlist_select_topic, 0),
-            (self.speed_topic, 0),
-            (f"{self.device_id}/command/stop", 0),
-            (f"{self.device_id}/command/pause", 0),
-            (f"{self.device_id}/command/play", 0)
-        ])
-        # Publish discovery configurations
-        self.setup_ha_discovery()
+        if rc == 0:
+            logger.info("MQTT Connection Accepted.")
+            # Subscribe to command topics
+            client.subscribe([
+                (self.command_topic, 0),
+                (self.pattern_select_topic, 0),
+                (self.playlist_select_topic, 0),
+                (self.speed_topic, 0),
+                (f"{self.device_id}/command/stop", 0),
+                (f"{self.device_id}/command/pause", 0),
+                (f"{self.device_id}/command/play", 0)
+            ])
+            # Publish discovery configurations
+            self.setup_ha_discovery()
+        elif rc == 1:
+            logger.error("MQTT Connection Refused. Protocol level not supported.")
+        elif rc == 2:
+            logger.error("MQTT Connection Refused. The client-identifier is not allowed by the server.")
+        elif rc == 3:
+            logger.error("MQTT Connection Refused. The MQTT service is not available.")
+        elif rc == 4:
+            logger.error("MQTT Connection Refused. The data in the username or password is malformed.")
+        elif rc == 5:
+            logger.error("MQTT Connection Refused. The client is not authorized to connect.")
+        else:
+            logger.error(f"MQTT Connection Refused. Unknown error code: {rc}")
 
     def on_message(self, client, userdata, msg):
         """Callback when message is received."""

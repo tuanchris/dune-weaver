@@ -7,9 +7,7 @@ from dune_weaver_flask.modules.core.pattern_manager import (
     run_theta_rho_files, list_theta_rho_files
 )
 from dune_weaver_flask.modules.core.playlist_manager import get_playlist, run_playlist
-from dune_weaver_flask.modules.serial.serial_manager import (
-    is_connected, get_port, home
-)
+from dune_weaver_flask.modules.connection.connection_manager import home
 from dune_weaver_flask.modules.core.state import state
 
 def create_mqtt_callbacks() -> Dict[str, Callable]:
@@ -41,8 +39,8 @@ def get_mqtt_state():
     is_running = bool(state.current_playing_file) and not state.stop_requested
     
     # Get serial status
-    serial_connected = is_connected()
-    serial_port = get_port() if serial_connected else None
+    serial_connected = state.conn.is_connected
+    serial_port = state.port if serial_connected else None
     serial_status = f"connected to {serial_port}" if serial_connected else "disconnected"
     
     return {
