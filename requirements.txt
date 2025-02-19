@@ -4,3 +4,4 @@ esptool
 tqdm
 paho-mqtt
 python-dotenv
+websocket-client

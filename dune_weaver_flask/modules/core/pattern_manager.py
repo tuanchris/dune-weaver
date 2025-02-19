@@ -344,5 +344,6 @@ def get_status():
         "execution_progress": state.execution_progress,
         "current_playing_index": state.current_playlist_index,
         "current_playlist": state.current_playlist,
-        "is_clearing": state.is_clearing
+        "is_clearing": state.is_clearing,
+        "current_speed": state.speed
     }
