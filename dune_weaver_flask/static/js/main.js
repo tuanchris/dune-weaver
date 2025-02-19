@@ -632,7 +632,7 @@ async function loadSerialPorts() {
 
 async function connectSerial() {
     const port = document.getElementById('serial_ports').value;
-    const response = await fetch('/connect_serial', {
+    const response = await fetch('/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ port })
@@ -649,7 +649,7 @@ async function connectSerial() {
 }
 
 async function disconnectSerial() {
-    const response = await fetch('/disconnect_serial', { method: 'POST' });
+    const response = await fetch('/disconnect', { method: 'POST' });
     const result = await response.json();
     if (result.success) {
         logMessage('Serial port disconnected.', LOG_TYPE.SUCCESS);

@@ -5,7 +5,7 @@ import random
 import logging
 from datetime import datetime
 from tqdm import tqdm
-from dune_weaver_flask.modules.serial import serial_manager
+from dune_weaver_flask.modules.connection import connection_manager
 from dune_weaver_flask.modules.core.state import state
 from math import pi
 
@@ -87,7 +87,7 @@ def schedule_checker(schedule_hours):
     if start_time <= now < end_time:
         if state.pause_requested:
             logger.info("Starting execution: Within schedule")
-            serial_manager.update_machine_position()
+            connection_manager.update_machine_position()
         state.pause_requested = False
         with state.pause_condition:
             state.pause_condition.notify_all()
@@ -95,7 +95,7 @@ def schedule_checker(schedule_hours):
         if not state.pause_requested:
             logger.info("Pausing execution: Outside schedule")
         state.pause_requested = True
-        serial_manager.update_machine_position()
+        connection_manager.update_machine_position()
         threading.Thread(target=wait_for_start_time, args=(schedule_hours,), daemon=True).start()
 
 def wait_for_start_time(schedule_hours):
@@ -158,7 +158,7 @@ def move_polar(theta, rho):
     
     # dynamic_speed = compute_dynamic_speed(rho, max_speed=state.speed)
     
-    serial_manager.send_grbl_coordinates(round(new_x_abs, 3), round(new_y_abs,3), state.speed)
+    connection_manager.send_grbl_coordinates(round(new_x_abs, 3), round(new_y_abs,3), state.speed)
     state.current_theta = theta
     state.current_rho = rho
     state.machine_x = new_x_abs
@@ -180,7 +180,7 @@ def resume_execution():
 def reset_theta():
     logger.info('Resetting Theta')
     state.current_theta = 0
-    serial_manager.update_machine_position()
+    connection_manager.update_machine_position()
 
 def set_speed(new_speed):
     state.speed = new_speed
@@ -204,35 +204,34 @@ def run_theta_rho_file(file_path, schedule_hours=None):
     # stop actions without resetting the playlist
     stop_actions(clear_playlist=False)
 
-    with serial_manager.serial_lock:
-        state.current_playing_file = file_path
-        state.execution_progress = (0, 0, None)
-        state.stop_requested = False
-        logger.info(f"Starting pattern execution: {file_path}")
-        logger.info(f"t: {state.current_theta}, r: {state.current_rho}")
-        reset_theta()
-        with tqdm(total=total_coordinates, unit="coords", desc=f"Executing Pattern {file_path}", dynamic_ncols=True, disable=None) as pbar:
-            for i, coordinate in enumerate(coordinates):
-                theta, rho = coordinate
-                if state.stop_requested:
-                    logger.info("Execution stopped by user after completing the current batch")
-                    break
+    state.current_playing_file = file_path
+    state.execution_progress = (0, 0, None)
+    state.stop_requested = False
+    logger.info(f"Starting pattern execution: {file_path}")
+    logger.info(f"t: {state.current_theta}, r: {state.current_rho}")
+    reset_theta()
+    with tqdm(total=total_coordinates, unit="coords", desc=f"Executing Pattern {file_path}", dynamic_ncols=True, disable=None) as pbar:
+        for i, coordinate in enumerate(coordinates):
+            theta, rho = coordinate
+            if state.stop_requested:
+                logger.info("Execution stopped by user after completing the current batch")
+                break
 
-                with state.pause_condition:
-                    while state.pause_requested:
-                        logger.info("Execution paused...")
-                        state.pause_condition.wait()
+            with state.pause_condition:
+                while state.pause_requested:
+                    logger.info("Execution paused...")
+                    state.pause_condition.wait()
 
-                schedule_checker(schedule_hours)
-                move_polar(theta, rho)
-                
-                if i != 0:
-                    pbar.update(1)
-                    estimated_remaining_time = (total_coordinates - i) / pbar.format_dict['rate'] if pbar.format_dict['rate'] and total_coordinates else 0
-                    elapsed_time = pbar.format_dict['elapsed']
-                    state.execution_progress = (i, total_coordinates, estimated_remaining_time, elapsed_time)
+            schedule_checker(schedule_hours)
+            move_polar(theta, rho)
+            
+            if i != 0:
+                pbar.update(1)
+                estimated_remaining_time = (total_coordinates - i) / pbar.format_dict['rate'] if pbar.format_dict['rate'] and total_coordinates else 0
+                elapsed_time = pbar.format_dict['elapsed']
+                state.execution_progress = (i, total_coordinates, estimated_remaining_time, elapsed_time)
 
-        serial_manager.check_idle()
+    connection_manager.check_idle()
 
     state.current_playing_file = None
     state.execution_progress = None
@@ -318,7 +317,7 @@ def stop_actions(clear_playlist = True):
             state.current_playlist_index = None
             state.playlist_mode = None
         state.pause_condition.notify_all()
-        serial_manager.update_machine_position()
+        connection_manager.update_machine_position()
 
 def get_status():
     """Get the current execution status."""
@@ -329,7 +328,7 @@ def get_status():
         state.is_clearing = False
 
     return {
-        "ser_port": serial_manager.get_port(),
+        "ser_port": state.port,
         "stop_requested": state.stop_requested,
         "pause_requested": state.pause_requested,
         "current_playing_file": state.current_playing_file,

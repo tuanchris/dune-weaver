@@ -1,7 +1,6 @@
 import os
 import subprocess
 import logging
-from ..serial import serial_manager
 
 # Configure logging
 logger = logging.getLogger(__name__)
