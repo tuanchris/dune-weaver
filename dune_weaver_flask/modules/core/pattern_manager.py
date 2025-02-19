@@ -188,8 +188,17 @@ def set_speed(new_speed):
 
 def run_theta_rho_file(file_path, schedule_hours=None):
     """Run a theta-rho file by sending data in optimized batches with tqdm ETA tracking."""
+    
+    # Check if connection is still valid, if not, restart
+    if not connection_manager.get_status_response():
+        logger.info('Cannot get status response, restarting connection')
+        connection_manager.restart_connection()
+    if not state.conn and not state.conn.is_connected():
+        logger.error('Connection not established')
+        return
     if not file_path:
         return
+    
     coordinates = parse_theta_rho_file(file_path)
     total_coordinates = len(coordinates)
 

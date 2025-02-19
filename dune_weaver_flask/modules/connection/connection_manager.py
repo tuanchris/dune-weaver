@@ -146,6 +146,7 @@ def get_status_response() -> str:
                 return response
         except Exception as e:
             logger.error(f"Error getting status response: {e}")
+            return False
         time.sleep(1)
         
 def parse_machine_position(response: str):
@@ -169,7 +170,7 @@ def parse_machine_position(response: str):
     return None
 
 
-def send_grbl_coordinates(x, y, speed=600, timeout=5, home=False):
+def send_grbl_coordinates(x, y, speed=600, timeout=2, home=False):
     """
     Send a G-code command to FluidNC and wait for an 'ok' response.
     """
@@ -186,10 +187,9 @@ def send_grbl_coordinates(x, y, speed=600, timeout=5, home=False):
                 if response.lower() == "ok":
                     logger.debug("Command execution confirmed.")
                     return
-            logger.warning(f"No 'ok' received for X{x} Y{y}. Retrying in 1s...")
         except Exception as e:
-            logger.error(f"Error sending command: {e}")
-        time.sleep(1)
+            logger.debug(f"No 'ok' received for X{x} Y{y}, speed {speed}. Retrying in 1s...")
+        time.sleep(0.1)
         
 
 def get_machine_steps(timeout=10):
@@ -306,3 +306,35 @@ def get_machine_position(timeout=5):
 def update_machine_position():
     state.machine_x, state.machine_y = get_machine_position()
     state.save()
+
+def restart_connection():
+    """
+    Restart the connection. If a connection exists, close it and attempt to establish a new one.
+    It will try to connect via serial first (if available), otherwise it will fall back to websocket.
+    The new connection is saved to state.conn.
+    
+    Returns:
+        True if the connection was restarted successfully, False otherwise.
+    """
+    try:
+        if state.conn and state.conn.is_connected():
+            logger.info("Closing current connection...")
+            state.conn.close()
+    except Exception as e:
+        logger.error(f"Error while closing connection: {e}")
+
+    # Clear the connection reference.
+    state.conn = None
+
+    logger.info("Attempting to restart connection...")
+    try:
+        connect_device()  # This will set state.conn appropriately.
+        if state.conn and state.conn.is_connected():
+            logger.info("Connection restarted successfully.")
+            return True
+        else:
+            logger.error("Failed to restart connection.")
+            return False
+    except Exception as e:
+        logger.error(f"Error restarting connection: {e}")
+        return False

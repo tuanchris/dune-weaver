@@ -662,7 +662,7 @@ async function disconnectSerial() {
 
 async function restartSerial() {
     const port = document.getElementById('serial_ports').value;
-    const response = await fetch('/restart_serial', {
+    const response = await fetch('/restart_connection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ port })
