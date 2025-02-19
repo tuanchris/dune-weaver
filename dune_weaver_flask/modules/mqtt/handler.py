@@ -295,10 +295,11 @@ class MQTTHandler(BaseMQTTHandler):
         """Callback when message is received."""
         try:
             if msg.topic == self.pattern_select_topic:
+                from dune_weaver_flask.modules.core.pattern_manager import THETA_RHO_DIR
                 # Handle pattern selection
                 pattern_name = msg.payload.decode()
                 if pattern_name in self.patterns:
-                    self.callback_registry['run_pattern'](file_path=f"{pattern_name}")
+                    self.callback_registry['run_pattern'](file_path=f"{THETA_RHO_DIR}/{pattern_name}")
                     self.client.publish(f"{self.pattern_select_topic}/state", pattern_name, retain=True)
             elif msg.topic == self.playlist_select_topic:
                 # Handle playlist selection
