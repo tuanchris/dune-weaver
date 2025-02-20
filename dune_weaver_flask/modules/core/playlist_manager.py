@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 PLAYLISTS_FILE = os.path.join(os.getcwd(), "playlists.json")
 
 # Ensure the file exists and contains at least an empty JSON object
-if not os.path.exists(PLAYLISTS_FILE):
+if not os.path.isfile(PLAYLISTS_FILE):
     logger.info(f"Creating new playlists file at {PLAYLISTS_FILE}")
     with open(PLAYLISTS_FILE, "w") as f:
         json.dump({}, f, indent=2)
