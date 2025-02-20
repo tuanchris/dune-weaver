@@ -32,6 +32,7 @@ class AppState:
         self.mqtt_handler = None  # Will be set by the MQTT handler
         self.conn = None
         self.port = None
+        self.led_controller = None
         self.load()
 
     @property

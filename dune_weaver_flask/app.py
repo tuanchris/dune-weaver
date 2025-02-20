@@ -9,6 +9,7 @@ from dune_weaver_flask.modules.core import playlist_manager
 from .modules.update import update_manager
 from dune_weaver_flask.modules.core.state import state
 from dune_weaver_flask.modules import mqtt
+from dune_weaver_flask.modules.led.led_controller import create_led_controller
 
 
 # Configure logging
@@ -417,6 +418,98 @@ def update_software():
             "details": error_log
         }), 500
 
+
+# LED strip control endpoints
+@app.route('/api/led/color', methods=['POST'])
+def set_led_color():
+    """Set LED strip color."""
+    data = request.get_json()
+    if not data or 'color' not in data:
+        return jsonify({'error': 'No color provided'}), 400
+
+    try:
+        color = tuple(data['color'])  # Expect [R,G,B]
+        state.led_controller.set_color(color)
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/led/brightness', methods=['POST'])
+def set_led_brightness():
+    """Set LED strip brightness."""
+    data = request.get_json()
+    if not data or 'brightness' not in data:
+        return jsonify({'error': 'No brightness provided'}), 400
+
+    try:
+        brightness = int(data['brightness'])  # 0-255
+        state.led_controller.set_brightness(brightness)
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/led/animation', methods=['POST'])
+def set_led_animation():
+    """Start LED animation."""
+    data = request.get_json()
+    if not data or 'animation' not in data:
+        return jsonify({'error': 'No animation type provided'}), 400
+
+    try:
+        animation = data['animation']  # 'rainbow', 'wave', 'fade'
+        state.led_controller.start_animation(animation)
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/led/animation/stop', methods=['POST'])
+def stop_led_animation():
+    """Stop current LED animation."""
+    try:
+        state.led_controller.stop_current_animation()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/led/speed', methods=['POST'])
+def set_led_speed():
+    """Set LED animation speed."""
+    data = request.get_json()
+    if not data or 'speed' not in data:
+        return jsonify({'error': 'No speed provided'}), 400
+
+    try:
+        speed = int(data['speed'])  # 1-100
+        state.led_controller.set_animation_speed(speed)
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/led/status', methods=['GET'])
+def get_led_status():
+    """Get current LED strip status."""
+    try:
+        status = state.led_controller.get_status()
+        return jsonify(status)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/led/power', methods=['POST'])
+def set_led_power():
+    """Set LED strip power state."""
+    data = request.get_json()
+    if not data or 'state' not in data:
+        return jsonify({'error': 'No power state provided'}), 400
+
+    try:
+        if data['state']:
+            state.led_controller.turn_on()
+        else:
+            state.led_controller.turn_off()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
 def on_exit():
     """Function to execute on application shutdown."""
     logger.info("Shutting down gracefully, please wait for execution to complete")
@@ -429,9 +522,17 @@ def entrypoint():
     
     # Register the on_exit function
     atexit.register(on_exit)
+    try:
+        led_controller = create_led_controller(led_count=133, led_pin=18)
+        led_controller.startup_indication()
+        state.led_controller = led_controller
+    except Exception as e:
+        logger.warning(f"Cannot init LED: {e}")
+        
     # Auto-connect to serial
     try:
         connection_manager.connect_device()
+        logger.info("LED startup indication completed")
     except Exception as e:
         logger.warning(f"Failed to auto-connect to serial port: {str(e)}")
         

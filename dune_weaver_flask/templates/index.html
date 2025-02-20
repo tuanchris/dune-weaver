@@ -301,6 +301,46 @@
                     </button>
                 </div>
             </div>
+            <div class="control-group">
+                <h3>LED Strip Control</h3>
+                <div class="item">
+                    <label class="switch">
+                        <input type="checkbox" id="led_power" onchange="setLEDPower(this.checked)">
+                        <span class="slider round"></span>
+                    </label>
+                    <label for="led_power">Power</label>
+                </div>
+            </div>
+            <div class="control-group">
+                <div class="item column">
+                    <label>Color:</label>
+                    <input type="color" id="led_color" onchange="setLEDColor(this.value)">
+                </div>
+                <div class="item column">
+                    <label for="led_brightness">Brightness:</label>
+                    <input type="range" id="led_brightness" min="0" max="255" value="255" onchange="setLEDBrightness(this.value)">
+                </div>
+            </div>
+            <div class="control-group">
+                <div class="item column">
+                    <label for="led_animation">Animation:</label>
+                    <select id="led_animation" onchange="setLEDAnimation(this.value)">
+                        <option value="none">None</option>
+                        <option value="rainbow">Rainbow</option>
+                        <option value="wave">Wave</option>
+                        <option value="fade">Fade</option>
+                    </select>
+                </div>
+                <div class="item column">
+                    <label for="led_speed">Speed:</label>
+                    <input type="range" id="led_speed" min="1" max="100" value="50" onchange="setLEDSpeed(this.value)">
+                </div>
+            </div>
+            <div id="led_status" class="status-info">
+                <span>Mode: <span id="led_mode">Unknown</span></span>
+                <span>Current Animation: <span id="led_current_animation">None</span></span>
+            </div>
+            
         </section>
 
         <section id="settings-container">
@@ -402,5 +442,6 @@
 </div>
 
 <script src="../static/js/main.js"></script>
+<script src="../static/js/led_control.js"></script>
 </body>
 </html>
