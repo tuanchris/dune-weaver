@@ -127,7 +127,7 @@ def list_serial_ports():
     logger.debug(f"Available serial ports: {available_ports}")
     return available_ports
 
-def device_init(home=True):
+def device_init(homing=True):
     try:
         if get_machine_steps():
             logger.info(f"x_steps_per_mm: {state.x_steps_per_mm}, y_steps_per_mm: {state.y_steps_per_mm}, gear_ratio: {state.gear_ratio}")
@@ -139,7 +139,7 @@ def device_init(home=True):
     if machine_x != state.machine_x or machine_y != state.machine_y:
         logger.info(f'x, y; {machine_x}, {machine_y}')
         logger.info(f'State x, y; {state.machine_x}, {state.machine_y}')
-        if home:
+        if homing:
             home()
     else:
         logger.info('Machine position known, skipping home')
@@ -157,14 +157,14 @@ def device_init(home=True):
         logger.fatal("Not GRBL firmware")
         return False
 
-def connect_device(home=True):
+def connect_device(homing=True):
     ports = list_serial_ports()
     if not ports:
         state.conn = WebSocketConnection('ws://fluidnc.local:81')
     else:
         state.conn = SerialConnection(ports[0])
     if state.conn.is_connected():
-        device_init(home)
+        device_init(homing)
 
 def get_status_response() -> str:
     """
@@ -335,7 +335,7 @@ def update_machine_position():
     state.machine_x, state.machine_y = get_machine_position()
     state.save()
 
-def restart_connection(home=False):
+def restart_connection(homing=False):
     """
     Restart the connection. If a connection exists, close it and attempt to establish a new one.
     It will try to connect via serial first (if available), otherwise it will fall back to websocket.
@@ -356,7 +356,7 @@ def restart_connection(home=False):
 
     logger.info("Attempting to restart connection...")
     try:
-        connect_device(home=False)  # This will set state.conn appropriately.
+        connect_device(homing)  # This will set state.conn appropriately.
         if state.conn and state.conn.is_connected():
             logger.info("Connection restarted successfully.")
             return True
