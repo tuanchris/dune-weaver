@@ -40,7 +40,7 @@ def list_ports():
 def connect():
     port = request.json.get('port')
     if not port:
-        state.conn = WebSocketConnection('ws://fluidnc.local:81')
+        state.conn = connection_manager.WebSocketConnection('ws://fluidnc.local:81')
         logger.info(f'Successfully connected to websocket ws://fluidnc.local:81')
         return jsonify({'success': True})
 
