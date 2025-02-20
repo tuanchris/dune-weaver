@@ -45,7 +45,7 @@ def connect():
         return jsonify({'success': True})
 
     try:
-        state.conn = SerialConnection(port)
+        state.conn = connection_manager.SerialConnection(port)
         logger.info(f'Successfully connected to serial port {port}')
         return jsonify({'success': True})
     except Exception as e:
