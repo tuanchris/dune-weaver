@@ -439,6 +439,28 @@ def update_software():
             "error": error_message,
             "details": error_log
         }), 500
+        
+@app.route('/set_wled_ip', methods=['POST'])
+def set_wled_ip():
+    """Save the WLED IP address to state"""
+    data = request.json
+    wled_ip = data.get("wled_ip")
+    
+    # Save to state
+    state.wled_ip = wled_ip
+    state.save()
+    logger.info(f"WLED IP updated: {wled_ip}")
+
+    return jsonify({"success": True, "wled_ip": state.wled_ip})
+
+
+@app.route('/get_wled_ip', methods=['GET'])
+def get_wled_ip():
+    """Retrieve the saved WLED IP address"""
+    if not state.wled_ip:
+        return jsonify({"success": False, "error": "No WLED IP set"}), 404
+
+    return jsonify({"success": True, "wled_ip": state.wled_ip})
 
 def on_exit():
     """Function to execute on application shutdown."""

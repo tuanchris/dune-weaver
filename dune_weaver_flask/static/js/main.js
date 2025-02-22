@@ -1711,50 +1711,100 @@ function updateWledUI() {
 
 }
 
-function saveWledIp() {
+// Save or clear the WLED IP, updating both the browser and backend
+async function saveWledIp() {
     const ipInput = document.getElementById('wled_ip');
     const saveButton = document.querySelector('.wled-settings button.cta');
     const currentIp = localStorage.getItem('wled_ip');
-  
+
     if (currentIp) {
-      // Clear the saved IP if one is already set
-      localStorage.removeItem('wled_ip');
-      ipInput.disabled = false;
-      ipInput.value = '';
-      saveButton.innerHTML = '<i class="fa-solid fa-save"></i><span>Save</span>';
-      logMessage('WLED IP cleared.', LOG_TYPE.INFO);
+        // Clear the saved IP if one is already set
+        localStorage.removeItem('wled_ip');
+        ipInput.disabled = false;
+        ipInput.value = '';
+        saveButton.innerHTML = '<i class="fa-solid fa-save"></i><span>Save</span>';
+        logMessage('WLED IP cleared.', LOG_TYPE.INFO);
+
+        // Also clear the IP on the backend
+        try {
+            const response = await fetch('/set_wled_ip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ wled_ip: null })
+            });
+            const data = await response.json();
+            if (data.success) {
+                logMessage('Backend IP cleared successfully.', LOG_TYPE.INFO);
+            } else {
+                logMessage('Failed to clear backend IP.', LOG_TYPE.ERROR);
+            }
+        } catch (error) {
+            logMessage(`Error clearing backend IP: ${error.message}`, LOG_TYPE.ERROR);
+        }
     } else {
-      // Validate and save the new IP
-      const ip = ipInput.value.trim();
-      if (!validateIp(ip)) {
-        logMessage('Invalid IP address format.', LOG_TYPE.ERROR);
-        return;
-      }
-      localStorage.setItem('wled_ip', ip);
-      ipInput.disabled = true;
-      saveButton.innerHTML = '<i class="fa-solid fa-xmark"></i><span>Clear</span>';
-      logMessage(`WLED IP saved: ${ip}`, LOG_TYPE.SUCCESS);
+        // Validate and save the new IP
+        const ip = ipInput.value.trim();
+        if (!validateIp(ip)) {
+            logMessage('Invalid IP address format.', LOG_TYPE.ERROR);
+            return;
+        }
+        localStorage.setItem('wled_ip', ip);
+        ipInput.disabled = true;
+        saveButton.innerHTML = '<i class="fa-solid fa-xmark"></i><span>Clear</span>';
+        logMessage(`WLED IP saved: ${ip}`, LOG_TYPE.SUCCESS);
+
+        // Also save the IP to the backend
+        try {
+            const response = await fetch('/set_wled_ip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ wled_ip: ip })
+            });
+            const data = await response.json();
+            if (data.success) {
+                logMessage('Backend IP saved successfully.', LOG_TYPE.SUCCESS);
+            } else {
+                logMessage('Failed to save backend IP.', LOG_TYPE.ERROR);
+            }
+        } catch (error) {
+            logMessage(`Error saving backend IP: ${error.message}`, LOG_TYPE.ERROR);
+        }
     }
     
-    updateWledUI(); // Optionally update other parts of your UI
-  }
-  
-  function loadWledIp() {
+    updateWledUI(); // Refresh any UI elements that depend on the IP
+}
+
+// Load the WLED IP from localStorage; if not available, retrieve it from the backend
+async function loadWledIp() {
     const ipInput = document.getElementById('wled_ip');
     const saveButton = document.querySelector('.wled-settings button.cta');
-    const savedIp = localStorage.getItem('wled_ip');
-  
+    let savedIp = localStorage.getItem('wled_ip');
+
+    if (!savedIp) {
+        // Attempt to load from the backend if not found in localStorage
+        try {
+            const response = await fetch('/get_wled_ip');
+            const data = await response.json();
+            if (data.wled_ip) {
+                savedIp = data.wled_ip;
+                localStorage.setItem('wled_ip', savedIp);
+            }
+        } catch (error) {
+            logMessage(`Error fetching WLED IP from backend: ${error.message}`, LOG_TYPE.ERROR);
+        }
+    }
+
     if (savedIp) {
-      ipInput.value = savedIp;
-      ipInput.disabled = true;
-      saveButton.innerHTML = '<i class="fa-solid fa-xmark"></i><span>Clear</span>';
+        ipInput.value = savedIp;
+        ipInput.disabled = true;
+        saveButton.innerHTML = '<i class="fa-solid fa-xmark"></i><span>Clear</span>';
     } else {
-      ipInput.disabled = false;
-      saveButton.innerHTML = '<i class="fa-solid fa-save"></i><span>Save</span>';
+        ipInput.disabled = false;
+        saveButton.innerHTML = '<i class="fa-solid fa-save"></i><span>Save</span>';
     }
     
-    updateWledUI(); // Update any UI segment that depends on the IP
-  }
+    updateWledUI(); // Update any dependent UI segments
+}
 
 function validateIp(ip) {
     const ipRegex = /^(25[0-5]|2[0-4]\d|1\d\d|\d?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|\d?\d)){3}$/;
