@@ -239,7 +239,7 @@ class MQTTHandler(BaseMQTTHandler):
             
     def _publish_serial_state(self):
         """Helper to publish serial state."""
-        serial_connected = state.conn.is_connected()
+        serial_connected = (state.conn.is_connected() if state.conn else False)
         serial_port = state.port if serial_connected else None
         serial_status = f"connected to {serial_port}" if serial_connected else "disconnected"
         self.client.publish(self.serial_state_topic, serial_status, retain=True)

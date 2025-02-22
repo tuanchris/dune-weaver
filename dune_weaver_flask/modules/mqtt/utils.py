@@ -39,7 +39,7 @@ def get_mqtt_state():
     is_running = bool(state.current_playing_file) and not state.stop_requested
     
     # Get serial status
-    serial_connected = state.conn.is_connected
+    serial_connected = (state.conn.is_connected() if state.conn else False)
     serial_port = state.port if serial_connected else None
     serial_status = f"connected to {serial_port}" if serial_connected else "disconnected"
     

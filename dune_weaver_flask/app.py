@@ -114,6 +114,10 @@ def run_theta_rho():
         return jsonify({'error': 'File not found'}), 404
 
     try:
+            
+        if not (state.conn.is_connected() if state.conn else False):
+            logger.warning("Attempted to run a pattern without a connection")
+            return jsonify({"success": False, "error": "Connection not established"}), 400
         files_to_run = [file_path]
         logger.info(f'Running theta-rho file: {file_name} with pre_execution={pre_execution}')
         pattern_manager.run_theta_rho_files(files_to_run, clear_pattern=pre_execution)
@@ -124,12 +128,18 @@ def run_theta_rho():
 
 @app.route('/stop_execution', methods=['POST'])
 def stop_execution():
+    if not (state.conn.is_connected() if state.conn else False):
+        logger.warning("Attempted to stop without a connection")
+        return jsonify({"success": False, "error": "Connection not established"}), 400
     pattern_manager.stop_actions()
     return jsonify({'success': True})
 
 @app.route('/send_home', methods=['POST'])
 def send_home():
     try:
+        if not (state.conn.is_connected() if state.conn else False):
+            logger.warning("Attempted to move to home without a connection")
+            return jsonify({"success": False, "error": "Connection not established"}), 400
         connection_manager.home()
         return jsonify({'success': True})
     except Exception as e:
@@ -141,6 +151,10 @@ def run_specific_theta_rho_file(file_name):
     file_path = os.path.join(pattern_manager.THETA_RHO_DIR, file_name)
     if not os.path.exists(file_path):
         return jsonify({'error': 'File not found'}), 404
+        
+    if not (state.conn.is_connected() if state.conn else False):
+        logger.warning("Attempted to run a pattern without a connection")
+        return jsonify({"success": False, "error": "Connection not established"}), 400
 
     pattern_manager.run_theta_rho_file(file_path)
     return jsonify({'success': True})
@@ -169,8 +183,8 @@ def delete_theta_rho_file():
 def move_to_center():
     global current_theta
     try:
-        if not state.conn.is_connected():
-            logger.warning("Attempted to move to center without connection")
+        if not (state.conn.is_connected() if state.conn else False):
+            logger.warning("Attempted to move to center without a connection")
             return jsonify({"success": False, "error": "Connection not established"}), 400
 
         logger.info("Moving device to center position")
@@ -185,8 +199,8 @@ def move_to_center():
 def move_to_perimeter():
     global current_theta
     try:
-        if not state.conn.is_connected():
-            logger.warning("Attempted to move to perimeter without connection")
+        if not (state.conn.is_connected() if state.conn else False):
+            logger.warning("Attempted to move to perimeter without a connection")
             return jsonify({"success": False, "error": "Connection not established"}), 400
         pattern_manager.reset_theta()
         pattern_manager.move_polar(0,1)
@@ -216,8 +230,8 @@ def preview_thr():
 
 @app.route('/send_coordinate', methods=['POST'])
 def send_coordinate():
-    if not state.conn.is_connected():
-        logger.warning("Attempted to send coordinate without connection")
+    if not (state.conn.is_connected() if state.conn else False):
+        logger.warning("Attempted to send coordinate without a connection")
         return jsonify({"success": False, "error": "connection not established"}), 400
 
     try:
@@ -242,7 +256,7 @@ def download_file(filename):
 
 @app.route('/serial_status', methods=['GET'])
 def serial_status():
-    connected = state.conn.is_connected()
+    connected = state.conn.is_connected() if state.conn else False
     port = state.port
     logger.debug(f"Serial status check - connected: {connected}, port: {port}")
     return jsonify({
@@ -336,6 +350,11 @@ def run_playlist():
         logger.warning("Run playlist request received without playlist name")
         return jsonify({"success": False, "error": "Missing 'playlist_name' field"}), 400
 
+        
+    if not (state.conn.is_connected() if state.conn else False):
+        logger.warning("Attempted to run a playlist without a connection")
+        return jsonify({"success": False, "error": "Connection not established"}), 400
+
     playlist_name = data["playlist_name"]
     pause_time = data.get("pause_time", 0)
     clear_pattern = data.get("clear_pattern", None)
@@ -379,6 +398,10 @@ def run_playlist():
 @app.route('/set_speed', methods=['POST'])
 def set_speed():
     try:
+        if not (state.conn.is_connected() if state.conn else False):
+            logger.warning("Attempted to change speed without a connection")
+            return jsonify({"success": False, "error": "Connection not established"}), 400
+        
         data = request.json
         new_speed = data.get('speed')
 
