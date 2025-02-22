@@ -1693,6 +1693,74 @@ function switchTab(tabName) {
     }
 }
 
+// Update the small UI segment to show the IP or hide it if none
+function updateWledUI() {
+    const wledIp = localStorage.getItem('wled_ip');
+    const wledContainer = document.getElementById('wled-container');
+    const wledFrame = document.getElementById('wled-frame');
+    const wledStatus = document.getElementById('wled-status');
+
+    if (!wledIp) {
+        wledContainer.classList.add('hidden');
+        return;
+    }
+
+    // Show the container and load WLED UI
+    wledContainer.classList.remove('hidden');
+    wledFrame.src = `http://${wledIp}`;
+
+}
+
+function saveWledIp() {
+    const ipInput = document.getElementById('wled_ip');
+    const saveButton = document.querySelector('.wled-settings button.cta');
+    const currentIp = localStorage.getItem('wled_ip');
+  
+    if (currentIp) {
+      // Clear the saved IP if one is already set
+      localStorage.removeItem('wled_ip');
+      ipInput.disabled = false;
+      ipInput.value = '';
+      saveButton.innerHTML = '<i class="fa-solid fa-save"></i><span>Save</span>';
+      logMessage('WLED IP cleared.', LOG_TYPE.INFO);
+    } else {
+      // Validate and save the new IP
+      const ip = ipInput.value.trim();
+      if (!validateIp(ip)) {
+        logMessage('Invalid IP address format.', LOG_TYPE.ERROR);
+        return;
+      }
+      localStorage.setItem('wled_ip', ip);
+      ipInput.disabled = true;
+      saveButton.innerHTML = '<i class="fa-solid fa-xmark"></i><span>Clear</span>';
+      logMessage(`WLED IP saved: ${ip}`, LOG_TYPE.SUCCESS);
+    }
+    
+    updateWledUI(); // Optionally update other parts of your UI
+  }
+  
+  function loadWledIp() {
+    const ipInput = document.getElementById('wled_ip');
+    const saveButton = document.querySelector('.wled-settings button.cta');
+    const savedIp = localStorage.getItem('wled_ip');
+  
+    if (savedIp) {
+      ipInput.value = savedIp;
+      ipInput.disabled = true;
+      saveButton.innerHTML = '<i class="fa-solid fa-xmark"></i><span>Clear</span>';
+    } else {
+      ipInput.disabled = false;
+      saveButton.innerHTML = '<i class="fa-solid fa-save"></i><span>Save</span>';
+    }
+    
+    updateWledUI(); // Update any UI segment that depends on the IP
+  }
+
+function validateIp(ip) {
+    const ipRegex = /^(25[0-5]|2[0-4]\d|1\d\d|\d?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|\d?\d)){3}$/;
+    return ipRegex.test(ip);
+  }
+
 document.addEventListener("visibilitychange", handleVisibilityChange);
 
 // Initialization
@@ -1704,6 +1772,8 @@ document.addEventListener('DOMContentLoaded', () => {
     loadAllPlaylists(); // Load all playlists on page load
     attachSettingsSaveListeners(); // Attach event listeners to save changes
     attachFullScreenListeners();
+    loadWledIp();
+    updateWledUI();
 
     // Periodically check for currently playing status
     if (document.hasFocus()) {

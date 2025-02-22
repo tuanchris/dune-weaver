@@ -161,7 +161,8 @@ def device_init(homing=True):
 def connect_device(homing=True):
     ports = list_serial_ports()
     if not ports:
-        state.conn = WebSocketConnection('ws://fluidnc.local:81')
+        # state.conn = WebSocketConnection('ws://fluidnc.local:81')
+        return
     else:
         state.conn = SerialConnection(ports[0])
     if (state.conn.is_connected() if state.conn else False):
@@ -332,10 +333,12 @@ def get_machine_position(timeout=5):
     logger.warning("Timeout reached waiting for machine position")
     return None, None
 
-def update_machine_position():
-    state.machine_x, state.machine_y = get_machine_position()
-    state.save()
-
+def update_machine_position():     
+    if (state.conn.is_connected() if state.conn else False):
+        logger.info('Saving machine position')
+        state.machine_x, state.machine_y = get_machine_position()
+        state.save()
+    
 def restart_connection(homing=False):
     """
     Restart the connection. If a connection exists, close it and attempt to establish a new one.

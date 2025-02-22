@@ -1108,6 +1108,19 @@ input[type="number"]:focus {
     min-width: 200px;
 }
 
+
+#wled-container {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  #wled-frame {
+    flex: 1 1 auto;
+    width: 100%;
+    border: none;
+  }
+
 /* Notification Styles */
 .notification {
     display: flex;
