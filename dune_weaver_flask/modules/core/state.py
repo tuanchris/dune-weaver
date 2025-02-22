@@ -32,6 +32,7 @@ class AppState:
         self.mqtt_handler = None  # Will be set by the MQTT handler
         self.conn = None
         self.port = None
+        self.wled_ip = None
         self.load()
 
     @property
@@ -103,7 +104,8 @@ class AppState:
             "current_playlist": self._current_playlist,
             "current_playlist_index": self.current_playlist_index,
             "playlist_mode": self.playlist_mode,
-            "port": self.port
+            "port": self.port,
+            "wled_ip": self.wled_ip
         }
 
     def from_dict(self, data):
@@ -125,6 +127,7 @@ class AppState:
         self.current_playlist_index = data.get("current_playlist_index")
         self.playlist_mode = data.get("playlist_mode")
         self.port = data.get("port", None)
+        self.wled_ip = data.get('wled_ip', None)
 
     def save(self):
         """Save the current state to a JSON file."""
