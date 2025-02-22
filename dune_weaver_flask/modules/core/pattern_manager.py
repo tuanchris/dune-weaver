@@ -149,7 +149,6 @@ def move_polar(theta, rho):
     x_total_steps = state.x_steps_per_mm * (100/x_scaling_factor)
     y_total_steps = state.y_steps_per_mm * (100/y_scaling_factor)
         
-    x_increment / 50 * (x_total_steps)
     offset = x_increment * (x_total_steps * x_scaling_factor / (state.gear_ratio * y_total_steps * y_scaling_factor))
     y_increment += offset
     
@@ -193,7 +192,7 @@ def run_theta_rho_file(file_path, schedule_hours=None):
     # if not connection_manager.get_status_response() and isinstance(state.conn, connection_manager.WebSocketConnection):
     #     logger.info('Cannot get status response, restarting connection')
     #     connection_manager.restart_connection(home=False)
-    # if not state.conn and not state.conn.is_connected():
+    # if (state.conn.is_connected() if state.conn else False):
     #     logger.error('Connection not established')
     #     return
     # if not file_path:

@@ -6,6 +6,7 @@ import serial.tools.list_ports
 import websocket
 
 from dune_weaver_flask.modules.core.state import state
+from dune_weaver_flask.modules.core.pattern_manager import move_polar, reset_theta
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +164,7 @@ def connect_device(homing=True):
         state.conn = WebSocketConnection('ws://fluidnc.local:81')
     else:
         state.conn = SerialConnection(ports[0])
-    if state.conn.is_connected():
+    if (state.conn.is_connected() if state.conn else False):
         device_init(homing)
 
 def get_status_response() -> str:
@@ -230,7 +231,7 @@ def get_machine_steps(timeout=10):
     Send "$$" to retrieve machine settings and update state.
     Returns True if the expected configuration is received, or False if it times out.
     """
-    if not state.conn.is_connected():
+    if not (state.conn.is_connected() if state.conn else False):
         logger.error("Connection is not established.")
         return False
 
@@ -290,9 +291,9 @@ def home():
         logger.info("Sensorless homing not supported. Using crash homing")
         logger.info(f"Homing with speed {state.speed}")
         send_grbl_coordinates(0, -22, state.speed, home=True)
+        state.machine_y -= 22
+
     state.current_theta = state.current_rho = 0
-    update_machine_position()
-    state.save()
 
 def check_idle():
     """
@@ -345,7 +346,7 @@ def restart_connection(homing=False):
         True if the connection was restarted successfully, False otherwise.
     """
     try:
-        if state.conn and state.conn.is_connected():
+        if (state.conn.is_connected() if state.conn else False):
             logger.info("Closing current connection...")
             state.conn.close()
     except Exception as e:
@@ -357,7 +358,7 @@ def restart_connection(homing=False):
     logger.info("Attempting to restart connection...")
     try:
         connect_device(homing)  # This will set state.conn appropriately.
-        if state.conn and state.conn.is_connected():
+        if (state.conn.is_connected() if state.conn else False):
             logger.info("Connection restarted successfully.")
             return True
         else:

@@ -261,6 +261,7 @@ async function runThetaRho() {
     } else {
         logMessage(`Failed to run file: ${selectedFile}`,LOG_TYPE.ERROR);
     }
+    updateCurrentlyPlaying();
 }
 
 async function stopExecution() {
@@ -1529,13 +1530,11 @@ function formatSecondsToHMS(seconds) {
 // Function to start or stop updates based on visibility
 function handleVisibilityChange() {
     if (document.hasFocus()) {
-        // User is active, start updating
+        updateCurrentlyPlaying(); // Run immediately
         if (!updateInterval) {
-            updateCurrentlyPlaying(); // Run immediately
-            updateInterval = setInterval(updateCurrentlyPlaying, 5000); // Update every 5s
+            updateInterval = setInterval(updateCurrentlyPlaying, 3000);
         }
     } else {
-        // User is inactive, stop updating
         clearInterval(updateInterval);
         updateInterval = null;
     }
@@ -1708,7 +1707,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Periodically check for currently playing status
     if (document.hasFocus()) {
-        updateInterval = setInterval(updateCurrentlyPlaying, 5000);
+        updateInterval = setInterval(updateCurrentlyPlaying, 3000);
     }
     checkForUpdates();
 });
