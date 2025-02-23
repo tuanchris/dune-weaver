@@ -4,6 +4,7 @@
     --background-secondary-light: #fff;
     --background-tertiary-light: #ddd;
     --background-accent-light: #4e453fbf;
+    --background-translucent-light: #FFFFFF80;
     --text-primary-light: #333;
     --text-secondary-light: #fff;
     --border-primary-light: #ddd;
@@ -14,6 +15,7 @@
     --background-secondary-dark: #1e1e1e;
     --background-tertiary-dark: #2d2d2d;
     --background-accent-dark: #4e453fef;
+    --background-translucent-dark: rgba(18, 18, 18, 0.5);
     --text-primary-dark: #e0e0e0;
     --text-secondary-dark: #cccccc;
     --border-primary-dark: #404040;
@@ -43,6 +45,7 @@
     --background-secondary: var(--background-secondary-light);
     --background-tertiary: var(--background-tertiary-light);
     --background-accent: var(--background-accent-light);
+    --background-translucent: var(--background-translucent-light);
     --text-primary: var(--text-primary-light);
     --text-secondary: var(--text-secondary-light);
     --border-primary: var(--border-primary-light);
@@ -78,6 +81,7 @@
     --background-secondary: var(--background-secondary-dark);
     --background-tertiary: var(--background-tertiary-dark);
     --background-accent: var(--background-accent-dark);
+    --background-translucent: var(--background-translucent-dark);
     --text-primary: var(--text-primary-dark);
     --text-secondary: var(--text-secondary-dark);
     --border-primary: var(--border-primary-dark);
@@ -95,10 +99,7 @@
     --theme-primary-hover: var(--theme-primary-hover-dark);
 }
 
-:root[data-theme="dark"] h3,
-:root[data-theme="dark"] p,
-:root[data-theme="dark"] span,
-:root[data-theme="dark"] label {
+:root[data-theme="dark"] {
     color: var(--text-primary-dark);
 }
 
@@ -438,7 +439,6 @@ section#settings-container > section{
     padding-right: 0;
 }
 
-
 .version .header {
     width: 100%;
 }
@@ -462,7 +462,7 @@ section#settings-container > section{
 
 section.sticky {
     position: fixed;
-    background-color: rgba(255, 255, 255, 0.5);
+    background-color: var(--background-translucent);
     backdrop-filter: blur(10px);
     bottom: 60px;
     border-top: 1px solid var(--border-primary);
@@ -821,7 +821,7 @@ button#debug_button.active {
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: #FFFFFF80;
+    background-color: var(--background-translucent);
     backdrop-filter: blur(10px);
     z-index: 1000;
     overflow-y: auto;
@@ -840,7 +840,14 @@ button#debug_button.active {
 #open-settings-button span {
     order: -1;
     margin-right: 5px;
+}
 
+#theme-toggle .fa-sun:not(:hover) {
+    color: #ffd700;
+}
+
+#theme-toggle .fa-moon:not(:hover) {
+    color: var(--color-info);
 }
 
 /* Preview Canvas */
@@ -1383,7 +1390,6 @@ input[type="number"]:focus {
     #open-settings-button:hover span {
         opacity: 1;
     }
-
 }
 
 /* Add specific styles for dark mode inputs */
@@ -1438,7 +1444,7 @@ input[type="number"]:focus {
 }
 
 /* Update button colors for better visibility in dark mode */
-:root[data-theme="dark"] button.no-bg {
+:root[data-theme="dark"] button.no-bg:not(:hover) {
     color: var(--text-primary-dark);
 }
 
@@ -1464,19 +1470,23 @@ input[type="number"]:focus {
     border-color: var(--theme-primary-hover-dark);
 }
 
-/* Update button hover colors in dark mode */
-:root[data-theme="dark"] button:not(.no-bg):hover {
-    background: var(--theme-primary-hover-dark) !important;
-}
-
 /* Update scroll arrow hover in dark mode */
 :root[data-theme="dark"] .scroll-arrow:hover {
     background: var(--theme-primary-hover-dark);
 }
 
 /* Update tab button hover in dark mode */
+:root[data-theme="dark"] .tab-button {
+    background: var(--color-success);
+    color: var(--text-secondary);
+}
 :root[data-theme="dark"] .tab-button:hover {
-    background: var(--theme-primary-hover-dark);
+    background: var(--color-success);
+}
+
+:root[data-theme="dark"] .tab-button.active {
+    background: var(--background-secondary);
+    color: var(--text-secondary);
 }
 
 /* Override specific button hover states in dark mode */
@@ -1498,11 +1508,3 @@ input[type="number"]:focus {
     color: var(--theme-primary-dark);
 }
 
-/* Add this with your other dark theme styles */
-:root[data-theme="dark"] #theme-toggle .fa-sun {
-    color: #ffd700; /* Bright yellow for sun icon */
-}
-
-:root[data-theme="dark"] #theme-toggle .fa-moon {
-    color: #6A9AD9; /* Keep existing color for moon */
-}
