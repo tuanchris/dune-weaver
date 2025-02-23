@@ -19,9 +19,9 @@ axes:
       hard_limits: false
       unipolar:
         phase0_pin: gpio.14
-        phase1_pin: gpio.12
+        phase1_pin: gpio.27
         phase2_pin: gpio.26
-        phase3_pin: gpio.27
+        phase3_pin: gpio.12
         half_step: false
       limit_neg_pin: NO_PIN
       limit_pos_pin: NO_PIN

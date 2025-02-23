@@ -22,7 +22,7 @@ axes:
       pulloff_mm: 2
       stepstick:
         step_pin: i2so.1
-        direction_pin: i2so.2:low
+        direction_pin: i2so.2
         disable_pin: NO_PIN
         ms1_pin: NO_PIN
         ms2_pin: NO_PIN

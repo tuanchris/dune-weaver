@@ -143,14 +143,14 @@ def move_polar(theta, rho):
     
     delta_theta = theta - state.current_theta
     delta_rho = rho - state.current_rho
-    x_increment = delta_theta * 100 / (2 * pi * x_scaling_factor) # Scale down x from 100mm to 50mm per revolution
-    y_increment = delta_rho * 100 / y_scaling_factor # Scale down y from 100mm to 20mm from center to perimeter
+    x_increment = delta_theta * 100 / (2 * pi * x_scaling_factor)  # Added -1 to reverse direction
+    y_increment = delta_rho * 100 / y_scaling_factor
     
     x_total_steps = state.x_steps_per_mm * (100/x_scaling_factor)
     y_total_steps = state.y_steps_per_mm * (100/y_scaling_factor)
         
     offset = x_increment * (x_total_steps * x_scaling_factor / (state.gear_ratio * y_total_steps * y_scaling_factor))
-    y_increment -= offset
+    y_increment += offset
     
     new_x_abs = state.machine_x + x_increment
     new_y_abs = state.machine_y + y_increment
