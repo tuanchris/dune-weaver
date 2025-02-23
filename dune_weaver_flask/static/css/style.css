@@ -1,36 +1,123 @@
 :root {
-    --background-primary: #f9f9f9;
-    --background-secondary: #fff;
-    --background-tertiary: #ddd;
-    --background-accent: #4e453fbf;
-    --background-info: var(--color-info);
-    --background-success: var(--color-success);
-    --background-warning: var(--color-warning);
-    --background-error: var( --color-error);
+    /* Light theme variables */
+    --background-primary-light: #f9f9f9;
+    --background-secondary-light: #fff;
+    --background-tertiary-light: #ddd;
+    --background-accent-light: #4e453fbf;
+    --text-primary-light: #333;
+    --text-secondary-light: #fff;
+    --border-primary-light: #ddd;
+    --border-secondary-light: grey;
 
+    /* Dark theme variables */
+    --background-primary-dark: #121212;
+    --background-secondary-dark: #1e1e1e;
+    --background-tertiary-dark: #2d2d2d;
+    --background-accent-dark: #4e453fef;
+    --text-primary-dark: #e0e0e0;
+    --text-secondary-dark: #cccccc;
+    --border-primary-dark: #404040;
+    --border-secondary-dark: #666;
+
+    /* Add form-specific colors for dark theme */
+    --input-background-dark: #2d2d2d;
+    --input-text-dark: #e0e0e0;
+    --input-border-dark: #404040;
+    --input-background-light: #ffffff;
+    --input-text-light: #333333;
+    --input-border-light: var(--border-primary-light);
+
+    /* Common theme variables that don't change */
     --theme-primary: #6A9AD9;
     --theme-primary-hover: #A0CCF2;
     --theme-secondary: #C4B4A0;
     --theme-secondary-hover: #4E453F;
-
+    
     --color-info: #6A9AD9CC;
     --color-success: #4CAF50CC;
     --color-warning: #FF9800CC;
     --color-error: #E53935CC;
 
-    --text-primary: #333;
-    --text-secondary: #fff;
+    /* Default to light theme */
+    --background-primary: var(--background-primary-light);
+    --background-secondary: var(--background-secondary-light);
+    --background-tertiary: var(--background-tertiary-light);
+    --background-accent: var(--background-accent-light);
+    --text-primary: var(--text-primary-light);
+    --text-secondary: var(--text-secondary-light);
+    --border-primary: var(--border-primary-light);
+    --border-secondary: var(--border-secondary-light);
 
-    --border-primary: var(--background-tertiary);
-    --border-secondary: grey;
+    --background-info: var(--color-info);
+    --background-success: var(--color-success);
+    --background-warning: var(--color-warning);
+    --background-error: var(--color-error);
+    
     --border-accent: var(--theme-primary);
     --border-hover: var(--theme-primary-hover);
-
+    
     --shadow-primary: 0 0 20px var(--border-secondary);
-
+    
     --transition-fast: 0.1s ease-in-out;
     --transition-medium: 0.250s ease;
     --transition-slow: 1s ease;
+
+    /* Add to default theme variables */
+    --input-background: var(--input-background-light);
+    --input-text: var(--input-text-light);
+    --input-border: var(--input-border-light);
+
+    /* Add dark theme specific colors */
+    --theme-primary-dark: #585858;          /* Main button color in dark mode */
+    --theme-primary-hover-dark: #686868;    /* Button hover color in dark mode */
+}
+
+/* Dark theme class */
+:root[data-theme="dark"] {
+    --background-primary: var(--background-primary-dark);
+    --background-secondary: var(--background-secondary-dark);
+    --background-tertiary: var(--background-tertiary-dark);
+    --background-accent: var(--background-accent-dark);
+    --text-primary: var(--text-primary-dark);
+    --text-secondary: var(--text-secondary-dark);
+    --border-primary: var(--border-primary-dark);
+    --border-secondary: var(--border-secondary-dark);
+    
+    --input-background: var(--input-background-dark);
+    --input-text: var(--input-text-dark);
+    --input-border: var(--input-border-dark);
+
+    /* Update text colors for common elements */
+    --theme-secondary-hover: var(--text-primary-dark);  /* Updates h1, h2 colors */
+
+    /* Override theme colors for dark mode */
+    --theme-primary: var(--theme-primary-dark);
+    --theme-primary-hover: var(--theme-primary-hover-dark);
+}
+
+:root[data-theme="dark"] h3,
+:root[data-theme="dark"] p,
+:root[data-theme="dark"] span,
+:root[data-theme="dark"] label {
+    color: var(--text-primary-dark);
+}
+
+/* Fix selection container text in dark mode */
+:root[data-theme="dark"] .selection-container {
+    color: var(--text-primary-dark);
+    background: var(--theme-primary-dark);
+}
+
+/* Ensure custom inputs have proper contrast */
+:root[data-theme="dark"] .custom-input {
+    color: var(--text-primary-dark);
+}
+
+/* Add smooth transitions for theme switching */
+body * {
+    transition: background-color var(--transition-medium), 
+                color var(--transition-medium), 
+                border-color var(--transition-medium);
 }
 
 @font-face {
@@ -84,14 +171,16 @@ h3 {
 
 
 /* Inputs */
-input, select {
+input, select, textarea {
     display: block;
     width: 100%;
     padding: 10px;
     margin-bottom: 10px;
-    border: 1px solid var(--border-primary);
+    border: 1px solid var(--input-border);
     border-radius: 5px;
     font-size: 1rem;
+    background-color: var(--input-background);
+    color: var(--input-text);
 }
 
 /* Custom Input Wrapper */
@@ -1295,4 +1384,113 @@ input[type="number"]:focus {
         opacity: 1;
     }
 
+}
+
+/* Add specific styles for dark mode inputs */
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] select::placeholder,
+:root[data-theme="dark"] textarea::placeholder {
+    color: #999;
+}
+
+/* Style the file list items in dark mode */
+:root[data-theme="dark"] .file-list {
+    background: var(--background-secondary-dark);
+}
+
+:root[data-theme="dark"] .file-list li {
+    color: var(--text-primary-dark);
+}
+
+:root[data-theme="dark"] .file-list .filename {
+    color: var(--text-primary-dark);
+}
+
+:root[data-theme="dark"] .file-list li:hover {
+    background-color: var(--background-tertiary-dark);
+}
+
+:root[data-theme="dark"] .file-list button {
+    color: var(--text-primary-dark);
+}
+
+/* Update status log colors for dark mode */
+:root[data-theme="dark"] #status_log {
+    background: #000000;
+    border-color: var(--border-primary-dark);
+}
+
+/* Update notification backgrounds for dark mode */
+:root[data-theme="dark"] .notification {
+    background-color: var(--background-secondary-dark);
+}
+
+/* Update button colors for better visibility in dark mode */
+:root[data-theme="dark"] button.no-bg {
+    color: var(--text-primary-dark);
+}
+
+:root[data-theme="dark"] .file-list button:hover:not(:focus) {
+    background: var(--background-tertiary-dark);
+    box-shadow: inset 0 0 4px var(--border-secondary-dark);
+}
+
+/* Update custom checkbox/radio colors in dark mode */
+:root[data-theme="dark"] .custom-checkbox,
+:root[data-theme="dark"] .custom-radio {
+    border-color: var(--theme-primary-dark);
+}
+
+:root[data-theme="dark"] .custom-checkbox::after,
+:root[data-theme="dark"] .custom-radio::after {
+    background-color: var(--theme-primary-dark);
+}
+
+:root[data-theme="dark"] .custom-input input:checked + .custom-checkbox,
+:root[data-theme="dark"] .custom-input input:checked + .custom-radio {
+    background-color: var(--theme-primary-dark);
+    border-color: var(--theme-primary-hover-dark);
+}
+
+/* Update button hover colors in dark mode */
+:root[data-theme="dark"] button:not(.no-bg):hover {
+    background: var(--theme-primary-hover-dark) !important;
+}
+
+/* Update scroll arrow hover in dark mode */
+:root[data-theme="dark"] .scroll-arrow:hover {
+    background: var(--theme-primary-hover-dark);
+}
+
+/* Update tab button hover in dark mode */
+:root[data-theme="dark"] .tab-button:hover {
+    background: var(--theme-primary-hover-dark);
+}
+
+/* Override specific button hover states in dark mode */
+:root[data-theme="dark"] button.cancel:hover {
+    background: var(--color-error) !important;
+}
+
+:root[data-theme="dark"] button.cta:hover {
+    background: var(--color-success) !important;
+}
+
+:root[data-theme="dark"] button.warn:hover {
+    background: var(--color-warning) !important;
+}
+
+/* Update selection container button hover in dark mode */
+:root[data-theme="dark"] .selection-container .nav-items > button:hover {
+    background: var(--text-secondary);
+    color: var(--theme-primary-dark);
+}
+
+/* Add this with your other dark theme styles */
+:root[data-theme="dark"] #theme-toggle .fa-sun {
+    color: #ffd700; /* Bright yellow for sun icon */
+}
+
+:root[data-theme="dark"] #theme-toggle .fa-moon {
+    color: #6A9AD9; /* Keep existing color for moon */
 }

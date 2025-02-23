@@ -942,7 +942,7 @@ async function loadPlaylist(playlistName) {
 //  PART B: Creating or Saving (Overwriting) a Playlist
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Instead of separate create/modify functions, we’ll unify them:
+// Instead of separate create/modify functions, we'll unify them:
 async function savePlaylist() {
     const name =  document.getElementById('playlist_name_display').textContent
     if (!name) {
@@ -1810,6 +1810,27 @@ function validateIp(ip) {
     const ipRegex = /^(25[0-5]|2[0-4]\d|1\d\d|\d?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|\d?\d)){3}$/;
     return ipRegex.test(ip);
   }
+
+// Theme toggle functionality
+const themeToggle = document.getElementById('theme-toggle');
+const themeIcon = themeToggle.querySelector('i');
+
+themeToggle.addEventListener('click', () => {
+    const root = document.documentElement;
+    const currentTheme = root.getAttribute('data-theme');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    
+    root.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+    
+    // Toggle the icon
+    themeIcon.className = newTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+});
+
+// Set initial theme and icon based on saved theme
+const savedTheme = localStorage.getItem('theme') || 'light';
+document.documentElement.setAttribute('data-theme', savedTheme);
+themeIcon.className = savedTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
 
 document.addEventListener("visibilitychange", handleVisibilityChange);
 
