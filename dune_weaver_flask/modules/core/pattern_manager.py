@@ -146,6 +146,9 @@ def move_polar(theta, rho):
     x_increment = delta_theta * 100 / (2 * pi * x_scaling_factor)  # Added -1 to reverse direction
     y_increment = delta_rho * 100 / y_scaling_factor
     
+    if state.gear_ratio == 6.25:
+        x_increment = - x_increment
+    
     x_total_steps = state.x_steps_per_mm * (100/x_scaling_factor)
     y_total_steps = state.y_steps_per_mm * (100/y_scaling_factor)
         
