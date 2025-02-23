@@ -150,7 +150,7 @@ def move_polar(theta, rho):
     y_total_steps = state.y_steps_per_mm * (100/y_scaling_factor)
         
     offset = x_increment * (x_total_steps * x_scaling_factor / (state.gear_ratio * y_total_steps * y_scaling_factor))
-    y_increment += offset
+    y_increment -= offset
     
     new_x_abs = state.machine_x + x_increment
     new_y_abs = state.machine_y + y_increment
