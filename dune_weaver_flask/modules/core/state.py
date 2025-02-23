@@ -27,6 +27,8 @@ class AppState:
         self.x_steps_per_mm = 0.0
         self.y_steps_per_mm = 0.0
         self.gear_ratio = 10
+        # 0 for crash homing, 1 for auto homing
+        self.homing = 0
         
         self.STATE_FILE = "state.json"
         self.mqtt_handler = None  # Will be set by the MQTT handler
@@ -101,6 +103,7 @@ class AppState:
             "x_steps_per_mm": self.x_steps_per_mm,
             "y_steps_per_mm": self.y_steps_per_mm,
             "gear_ratio": self.gear_ratio,
+            "homing": self.homing,
             "current_playlist": self._current_playlist,
             "current_playlist_index": self.current_playlist_index,
             "playlist_mode": self.playlist_mode,
@@ -123,6 +126,7 @@ class AppState:
         self.x_steps_per_mm = data.get("x_steps_per_mm", 0.0)
         self.y_steps_per_mm = data.get("y_steps_per_mm", 0.0)
         self.gear_ratio = data.get('gear_ratio', 10)
+        self.homing = data.get('homing', 0)
         self._current_playlist = data.get("current_playlist")
         self.current_playlist_index = data.get("current_playlist_index")
         self.playlist_mode = data.get("playlist_mode")

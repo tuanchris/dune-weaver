@@ -257,6 +257,11 @@ def get_machine_steps(timeout=10):
                 elif line.startswith("$131="):
                     gear_ratio = float(line.split("=")[1])
                     state.gear_ratio = gear_ratio
+                elif line.startswith("$22="):
+                    # $22 reports if the homing cycle is enabled
+                    # returns 0 if disabled, 1 if enabled
+                    homing = int(line.split('=')[1])
+                    state.homing = homing
             
             # If all parameters are received, exit early
             if x_steps_per_mm is not None and y_steps_per_mm is not None and gear_ratio is not None:
@@ -277,14 +282,7 @@ def home():
     """
     Perform homing by checking device configuration and sending the appropriate commands.
     """
-    try:
-        state.conn.send("$config\n")
-        response = state.conn.readline().strip().lower()
-        logger.debug(f"Config response: {response}")
-    except Exception as e:
-        logger.error(f"Error during homing config: {e}")
-        response = ""
-    if "sensorless" in response:
+    if state.homing:
         logger.info("Using sensorless homing")
         state.conn.send("$H\n")
         state.conn.send("G1 Y0 F100\n")
