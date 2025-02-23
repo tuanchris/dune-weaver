@@ -1422,7 +1422,19 @@ input[type="number"]:focus {
 
 /* Update notification backgrounds for dark mode */
 :root[data-theme="dark"] .notification {
-    background-color: var(--background-secondary-dark);
+    /* Remove this line to keep original colors */
+    /* background-color: var(--background-secondary-dark); */
+}
+
+/* Notification Types - Update opacity for better visibility in dark mode */
+:root[data-theme="dark"] .notification.success { background-color: var(--color-success); }
+:root[data-theme="dark"] .notification.warning { background-color: var(--color-warning); }
+:root[data-theme="dark"] .notification.error { background-color: var(--color-error); }
+:root[data-theme="dark"] .notification.info { background-color: var(--color-info); }
+
+/* Make notification text white for better contrast */
+:root[data-theme="dark"] .notification {
+    color: white;
 }
 
 /* Update button colors for better visibility in dark mode */
