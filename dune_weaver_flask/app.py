@@ -41,11 +41,13 @@ def connect():
     port = request.json.get('port')
     if not port:
         state.conn = connection_manager.WebSocketConnection('ws://fluidnc.local:81')
+        connection_manager.device_init()
         logger.info(f'Successfully connected to websocket ws://fluidnc.local:81')
         return jsonify({'success': True})
 
     try:
         state.conn = connection_manager.SerialConnection(port)
+        connection_manager.device_init()
         logger.info(f'Successfully connected to serial port {port}')
         return jsonify({'success': True})
     except Exception as e:
@@ -487,7 +489,7 @@ def entrypoint():
 
     try:
         logger.info("Starting Flask server on port 8080...")
-        app.run(debug=False, host='0.0.0.0', port=8080)
+        app.run(debug=True, host='0.0.0.0', port=8080)
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received. Shutting down.")
     except Exception as e:
