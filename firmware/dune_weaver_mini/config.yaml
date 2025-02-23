@@ -18,9 +18,9 @@ axes:
     motor0:
       hard_limits: false
       unipolar:
-        phase0_pin: gpio.14
+        phase0_pin: gpio.26
         phase1_pin: gpio.27
-        phase2_pin: gpio.26
+        phase2_pin: gpio.14
         phase3_pin: gpio.12
         half_step: false
       limit_neg_pin: NO_PIN
