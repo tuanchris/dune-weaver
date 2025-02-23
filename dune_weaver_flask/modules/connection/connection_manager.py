@@ -72,6 +72,7 @@ class SerialConnection(BaseConnection):
         return self.ser is not None and self.ser.is_open
 
     def close(self) -> None:
+        update_machine_position()
         with self.lock:
             if self.ser.is_open:
                 self.ser.close()
@@ -117,6 +118,7 @@ class WebSocketConnection(BaseConnection):
         return self.ws is not None
 
     def close(self) -> None:
+        update_machine_position()
         with self.lock:
             if self.ws:
                 self.ws.close()
