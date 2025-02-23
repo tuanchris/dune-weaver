@@ -8,7 +8,7 @@ class AppState:
         # Private variables for properties
         self._current_playing_file = None
         self._pause_requested = False
-        self._speed = 250
+        self._speed = 150
         self._current_playlist = None
         
         # Regular state variables
@@ -120,7 +120,7 @@ class AppState:
         self.is_clearing = data.get("is_clearing", False)
         self.current_theta = data.get("current_theta", 0)
         self.current_rho = data.get("current_rho", 0)
-        self._speed = data.get("speed", 250)
+        self._speed = data.get("speed", 150)
         self.machine_x = data.get("machine_x", 0.0)
         self.machine_y = data.get("machine_y", 0.0)
         self.x_steps_per_mm = data.get("x_steps_per_mm", 0.0)

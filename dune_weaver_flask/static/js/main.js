@@ -366,7 +366,13 @@ async function previewPattern(fileName, containerId = 'pattern-preview-container
 
         const result = await response.json();
         if (result.success) {
-            const coordinates = result.coordinates;
+            // Mirror the theta values in the coordinates
+            const coordinates = result.coordinates.map(coord => [
+                (coord[0] < Math.PI) ? 
+                    Math.PI - coord[0] : // For first half
+                    3 * Math.PI - coord[0], // For second half
+                coord[1]
+            ]);
 
             // Render the pattern in the specified container
             const canvasId = containerId === 'currently-playing-container'
