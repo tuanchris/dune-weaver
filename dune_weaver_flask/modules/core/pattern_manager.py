@@ -138,21 +138,23 @@ def move_polar(theta, rho):
     if rho > (1-soft_limit_outter):
         rho = (1-soft_limit_outter)
     
-    x_scaling_factor = 2
-    y_scaling_factor = 5
+    if state.gear_ratio == 6.25:
+        x_scaling_factor = 2
+        y_scaling_factor = 3.7
+    else:
+        x_scaling_factor = 2
+        y_scaling_factor = 5
     
     delta_theta = theta - state.current_theta
     delta_rho = rho - state.current_rho
     x_increment = delta_theta * 100 / (2 * pi * x_scaling_factor)  # Added -1 to reverse direction
     y_increment = delta_rho * 100 / y_scaling_factor
     
-    if state.gear_ratio == 6.25:
-        x_increment = - x_increment
-    
     x_total_steps = state.x_steps_per_mm * (100/x_scaling_factor)
     y_total_steps = state.y_steps_per_mm * (100/y_scaling_factor)
         
     offset = x_increment * (x_total_steps * x_scaling_factor / (state.gear_ratio * y_total_steps * y_scaling_factor))
+
     y_increment += offset
     
     new_x_abs = state.machine_x + x_increment

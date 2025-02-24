@@ -279,7 +279,6 @@ def get_machine_steps(timeout=10):
     logger.error("Timeout reached waiting for machine steps")
     return False
 
-# TODO: set custom homing speed based on the device
 def home():
     """
     Perform homing by checking device configuration and sending the appropriate commands.
@@ -291,8 +290,12 @@ def home():
     else:
         logger.info("Sensorless homing not supported. Using crash homing")
         logger.info(f"Homing with speed {state.speed}")
-        send_grbl_coordinates(0, -22, state.speed, home=True)
-        state.machine_y -= 22
+        if state.gear_ratio == 6.25:
+            send_grbl_coordinates(0, - 30, state.speed, home=True)
+            state.machine_y -= 30
+        else:
+            send_grbl_coordinates(0, -22, state.speed, home=True)
+            state.machine_y -= 22
 
     state.current_theta = state.current_rho = 0
 
