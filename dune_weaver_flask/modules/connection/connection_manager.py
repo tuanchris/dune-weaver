@@ -162,11 +162,15 @@ def device_init(homing=True):
 
 def connect_device(homing=True):
     ports = list_serial_ports()
-    if not ports:
+
+    if state.port and state.port in ports:
+        state.conn = SerialConnection(state.port)
+    elif ports:
+        state.conn = SerialConnection(ports[0])
+    else:
+        logger.warning("No serial ports found. Falling back to WebSocket.")
         # state.conn = WebSocketConnection('ws://fluidnc.local:81')
         return
-    else:
-        state.conn = SerialConnection(ports[0])
     if (state.conn.is_connected() if state.conn else False):
         device_init(homing)
 
