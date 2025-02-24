@@ -16,8 +16,8 @@
     --background-tertiary-dark: #2d2d2d;
     --background-accent-dark: #4e453fef;
     --background-translucent-dark: rgba(18, 18, 18, 0.5);
-    --text-primary-dark: #e0e0e0;
-    --text-secondary-dark: #cccccc;
+    --text-primary-dark: #eeeeee;
+    --text-secondary-dark: #fff;
     --border-primary-dark: #404040;
     --border-secondary-dark: #666;
 
@@ -34,7 +34,7 @@
     --theme-primary-hover: #A0CCF2;
     --theme-secondary: #C4B4A0;
     --theme-secondary-hover: #4E453F;
-    
+
     --color-info: #6A9AD9CC;
     --color-success: #4CAF50CC;
     --color-warning: #FF9800CC;
@@ -97,6 +97,11 @@
     /* Override theme colors for dark mode */
     --theme-primary: var(--theme-primary-dark);
     --theme-primary-hover: var(--theme-primary-hover-dark);
+
+    --color-info: #6A9AD9;
+    --color-success: #4CAF50;
+    --color-warning: #FF9800;
+    --color-error: #E53935;
 }
 
 :root[data-theme="dark"] {
@@ -116,9 +121,9 @@
 
 /* Add smooth transitions for theme switching */
 body * {
-    transition: background-color var(--transition-medium), 
-                color var(--transition-medium), 
-                border-color var(--transition-medium);
+    transition: background-color var(--transition-fast),
+                color var(--transition-fast),
+                border-color var(--transition-fast);
 }
 
 @font-face {
@@ -632,6 +637,10 @@ section .header .add-button {
     overflow-y: auto;
     background: var(--background-primary);
     flex-grow: 1;
+}
+
+.file-list#playlist_items{
+    margin-bottom: 10px
 }
 
 .file-list li {
@@ -1209,13 +1218,17 @@ input[type="number"]:focus {
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
-  }
-  
-  #wled-frame {
+}
+
+#wled_ip {
+    margin-right: 10px;
+}
+
+#wled-frame {
     flex: 1 1 auto;
     width: 100%;
     border: none;
-  }
+}
 
 /* Notification Styles */
 .notification {
