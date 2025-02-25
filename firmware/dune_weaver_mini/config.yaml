@@ -12,7 +12,7 @@ axes:
   shared_stepper_disable_pin: gpio.13
   x:
     steps_per_mm: 256
-    max_rate_mm_per_min: 300
+    max_rate_mm_per_min: 200
     acceleration_mm_per_sec2: 10
     max_travel_mm: 4000
     motor0:
@@ -28,16 +28,16 @@ axes:
       limit_all_pin: NO_PIN
   y:
     steps_per_mm: 180
-    max_rate_mm_per_min: 300
+    max_rate_mm_per_min: 200
     acceleration_mm_per_sec2: 10
     max_travel_mm: 6.25
     motor0:
       hard_limits: false
       unipolar:
         phase0_pin: gpio.16
-        phase1_pin: gpio.19
+        phase1_pin: gpio.17
         phase2_pin: gpio.18
-        phase3_pin: gpio.17
+        phase3_pin: gpio.19
         half_step: false
       limit_neg_pin: NO_PIN
       limit_pos_pin: NO_PIN
