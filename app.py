@@ -17,6 +17,7 @@ from modules import mqtt
 import signal
 import sys
 import asyncio
+from contextlib import asynccontextmanager
 
 # Configure logging
 logging.basicConfig(
@@ -29,7 +30,30 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Starting Dune Weaver application...")
+    # Register signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    try:
+        connection_manager.connect_device()
+    except Exception as e:
+        logger.warning(f"Failed to auto-connect to serial port: {str(e)}")
+        
+    try:
+        mqtt_handler = mqtt.init_mqtt()
+    except Exception as e:
+        logger.warning(f"Failed to initialize MQTT: {str(e)}")
+
+    yield  # This separates startup from shutdown code
+
+    # Shutdown
+    on_exit()
+
+app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -511,29 +535,12 @@ def signal_handler(signum, frame):
         logger.info("Forcing exit...")
         os._exit(0)  # Force exit regardless of other threads
 
-@app.on_event("startup")
-async def startup_event():
-    logger.info("Starting Dune Weaver application...")
-    # Register signal handlers
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-    
-    try:
-        connection_manager.connect_device()
-    except Exception as e:
-        logger.warning(f"Failed to auto-connect to serial port: {str(e)}")
-        
-    try:
-        mqtt_handler = mqtt.init_mqtt()
-    except Exception as e:
-        logger.warning(f"Failed to initialize MQTT: {str(e)}")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    on_exit()
-
 def entrypoint():
     import uvicorn
     atexit.register(on_exit)
     logger.info("Starting FastAPI server on port 8080...")
     uvicorn.run(app, host="0.0.0.0", port=8080, workers=1)  # Set workers to 1 to avoid multiple signal handlers
+
+
+if __name__ == "__main__":
+    entrypoint()
