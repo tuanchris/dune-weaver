@@ -226,7 +226,14 @@ def run_theta_rho_file(file_path, schedule_hours=None):
     logger.info(f"Starting pattern execution: {file_path}")
     logger.info(f"t: {state.current_theta}, r: {state.current_rho}")
     reset_theta()
-    with tqdm(total=total_coordinates, unit="coords", desc=f"Executing Pattern {file_path}", dynamic_ncols=True, disable=None) as pbar:
+    with tqdm(
+        total=total_coordinates,
+        unit="coords",
+        desc=f"Executing Pattern {file_path}",
+        dynamic_ncols=True,
+        disable=False,  # Force enable the progress bar
+        mininterval=1.0  # Optional: reduce update frequency to prevent flooding
+    ) as pbar:
         for i, coordinate in enumerate(coordinates):
             theta, rho = coordinate
             if state.stop_requested:
