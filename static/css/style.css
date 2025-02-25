@@ -1132,7 +1132,7 @@ body.playing #currently-playing-container:not(.open) #progress-container {
     margin-bottom: 10px;
 }
 
-#serial_status_header::before {
+#connection_status_header::before {
     content: '';
     width: 20px;
     height: 20px;
@@ -1143,11 +1143,11 @@ body.playing #currently-playing-container:not(.open) #progress-container {
     transition: var(--transition-slow) background-color;
 }
 
-#serial_status_header.connected::before {
+#connection_status_header.connected::before {
     background-color: var(--color-success);
 }
 
-#serial_status_header.not-connected::before {
+#connection_status_header.not-connected::before {
     background-color: var(--color-error);
 }
 

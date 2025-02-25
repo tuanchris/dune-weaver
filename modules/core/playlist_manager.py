@@ -85,7 +85,7 @@ def add_to_playlist(playlist_name, pattern):
     logger.info(f"Added pattern '{pattern}' to playlist '{playlist_name}'")
     return True
 
-async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False, schedule_hours=None):
+async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
     """Run a playlist with the given options."""
     if pattern_manager.pattern_lock.locked():
         logger.warning("Cannot start playlist: Another pattern is already running")
@@ -113,7 +113,6 @@ async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode
                 clear_pattern=clear_pattern,
                 run_mode=run_mode,
                 shuffle=shuffle,
-                schedule_hours=schedule_hours
             )
         )
         return True, f"Playlist '{playlist_name}' is now running."

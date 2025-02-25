@@ -582,7 +582,7 @@ async function checkSerialStatus() {
     const response = await fetch('/serial_status');
     const status = await response.json();
     const statusElement = document.getElementById('serial_status');
-    const statusHeaderElement = document.getElementById('serial_status_header');
+    const statusHeaderElement = document.getElementById('connection_status_header');
     const serialPortsContainer = document.getElementById('serial_ports_container');
     const selectElement = document.getElementById('serial_ports');
 

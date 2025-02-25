@@ -414,7 +414,7 @@ async def add_to_playlist(request: AddToPlaylistRequest):
 async def run_playlist_endpoint(request: PlaylistRequest):
     """Run a playlist with specified parameters."""
     try:
-        if not os.path.exists(os.path.join(PLAYLISTS_DIR, f"{request.playlist_name}.json")):
+        if not os.path.exists(playlist_manager.PLAYLISTS_FILE):
             raise HTTPException(status_code=404, detail=f"Playlist '{request.playlist_name}' not found")
 
         # Start the playlist execution
