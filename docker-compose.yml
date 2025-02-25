@@ -1,5 +1,6 @@
 services:
   flask-app:
+    tty: true
     build: . # Uncomment this if you need to build 
     image: ghcr.io/tuanchris/dune-weaver:main # Use latest production image
     restart: always
