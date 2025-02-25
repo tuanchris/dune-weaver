@@ -2,8 +2,9 @@ import json
 import os
 import threading
 import logging
-from dune_weaver_flask.modules.core import pattern_manager
-from dune_weaver_flask.modules.core.state import state
+import asyncio
+from modules.core import pattern_manager
+from modules.core.state import state
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -84,8 +85,12 @@ def add_to_playlist(playlist_name, pattern):
     logger.info(f"Added pattern '{pattern}' to playlist '{playlist_name}'")
     return True
 
-def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False, schedule_hours=None):
+async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False, schedule_hours=None):
     """Run a playlist with the given options."""
+    if pattern_manager.pattern_lock.locked():
+        logger.warning("Cannot start playlist: Another pattern is already running")
+        return False, "Cannot start playlist: Another pattern is already running"
+
     playlists = load_playlists()
     if playlist_name not in playlists:
         logger.error(f"Cannot run non-existent playlist: {playlist_name}")
@@ -101,18 +106,16 @@ def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="sing
     try:
         logger.info(f"Starting playlist '{playlist_name}' with mode={run_mode}, shuffle={shuffle}")
         state.current_playlist = playlist_name
-        threading.Thread(
-            target=pattern_manager.run_theta_rho_files,
-            args=(file_paths,),
-            kwargs={
-                'pause_time': pause_time,
-                'clear_pattern': clear_pattern,
-                'run_mode': run_mode,
-                'shuffle': shuffle,
-                'schedule_hours': schedule_hours
-            },
-            daemon=True
-        ).start()
+        asyncio.create_task(
+            pattern_manager.run_theta_rho_files(
+                file_paths,
+                pause_time=pause_time,
+                clear_pattern=clear_pattern,
+                run_mode=run_mode,
+                shuffle=shuffle,
+                schedule_hours=schedule_hours
+            )
+        )
         return True, f"Playlist '{playlist_name}' is now running."
     except Exception as e:
         logger.error(f"Failed to run playlist '{playlist_name}': {str(e)}")

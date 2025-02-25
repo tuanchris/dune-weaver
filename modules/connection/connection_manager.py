@@ -5,8 +5,8 @@ import serial
 import serial.tools.list_ports
 import websocket
 
-from dune_weaver_flask.modules.core.state import state
-from dune_weaver_flask.modules.core.pattern_manager import move_polar, reset_theta
+from modules.core.state import state
+from modules.core.pattern_manager import move_polar, reset_theta
 
 logger = logging.getLogger(__name__)
 

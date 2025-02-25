@@ -248,18 +248,29 @@ async function runThetaRho() {
     const preExecutionAction = document.getElementById('pre_execution').value;
 
     logMessage(`Running file: ${selectedFile} with pre-execution action: ${preExecutionAction}...`);
-    const response = await fetch('/run_theta_rho', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_name: selectedFile, pre_execution: preExecutionAction })
-    });
+    try {
+        const response = await fetch('/run_theta_rho', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                file_name: selectedFile, 
+                pre_execution: preExecutionAction 
+            })
+        });
 
-    const result = await response.json();
-    if (result.success) {
-        logMessage(`Pattern running: ${selectedFile}`, LOG_TYPE.SUCCESS);
-        updateCurrentlyPlaying();
-    } else {
-        logMessage(`Failed to run file: ${selectedFile}`,LOG_TYPE.ERROR);
+        const result = await response.json();
+        if (response.ok) {
+            logMessage(`Pattern running: ${selectedFile}`, LOG_TYPE.SUCCESS);
+            updateCurrentlyPlaying();
+        } else {
+            if (response.status === 409) {
+                logMessage("Cannot start pattern: Another pattern is already running", LOG_TYPE.WARNING);
+            } else {
+                logMessage(`Failed to run file: ${result.detail || 'Unknown error'}`, LOG_TYPE.ERROR);
+            }
+        }
+    } catch (error) {
+        logMessage(`Error running pattern: ${error.message}`, LOG_TYPE.ERROR);
     }
     updateCurrentlyPlaying();
 }
@@ -835,83 +846,44 @@ function clearSchedule() {
 // Function to run the selected playlist with specified parameters
 async function runPlaylist() {
     const playlistName = document.getElementById('playlist_name_display').textContent;
-
     if (!playlistName) {
-        logMessage("No playlist selected to run.");
+        logMessage('No playlist selected', 'error');
         return;
     }
 
-    const pauseTimeInput = document.getElementById('pause_time').value;
-    const clearPatternSelect = document.getElementById('clear_pattern').value;
+    const pauseTime = parseFloat(document.getElementById('pause_time').value) || 0;
+    const clearPattern = document.getElementById('clear_pattern').value;
     const runMode = document.querySelector('input[name="run_mode"]:checked').value;
     const shuffle = document.getElementById('shuffle_playlist').checked;
-    const startTimeInput = document.getElementById('start_time').value.trim();
-    const endTimeInput = document.getElementById('end_time').value.trim();
-
-    const pauseTime = parseFloat(pauseTimeInput);
-    if (isNaN(pauseTime) || pauseTime < 0) {
-        logMessage("Invalid pause time. Please enter a non-negative number.", LOG_TYPE.WARNING);
-        return;
-    }
-
-    // Validate start and end time format and logic
-    let startTime = startTimeInput || null;
-    let endTime = endTimeInput || null;
-
-    // Ensure that if one time is filled, the other must be as well
-    if ((startTime && !endTime) || (!startTime && endTime)) {
-        logMessage("Both start and end times must be provided together or left blank.", LOG_TYPE.WARNING);
-        return;
-    }
-
-    // If both are provided, validate format and ensure start_time < end_time
-    if (startTime && endTime) {
-        try {
-            const startDateTime = new Date(`1970-01-01T${startTime}:00`);
-            const endDateTime = new Date(`1970-01-01T${endTime}:00`);
-
-            if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
-                logMessage("Invalid time format. Please use HH:MM format (e.g., 09:30).", LOG_TYPE.WARNING);
-                return;
-            }
-
-            if (startDateTime >= endDateTime) {
-                logMessage("Start time must be earlier than end time.", LOG_TYPE.WARNING);
-                return;
-            }
-        } catch (error) {
-            logMessage("Error parsing start or end time. Ensure correct HH:MM format.", LOG_TYPE.ERROR);
-            return;
-        }
-    }
-
-    logMessage(`Running playlist: ${playlistName} with pause_time=${pauseTime}, clear_pattern=${clearPatternSelect}, run_mode=${runMode}, shuffle=${shuffle}.`);
 
     try {
         const response = await fetch('/run_playlist', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+            },
             body: JSON.stringify({
                 playlist_name: playlistName,
                 pause_time: pauseTime,
-                clear_pattern: clearPatternSelect,
+                clear_pattern: clearPattern,
                 run_mode: runMode,
-                shuffle: shuffle,
-                start_time: startTimeInput,
-                end_time: endTimeInput
+                shuffle: shuffle
             })
         });
 
-        const result = await response.json();
-
-        if (result.success) {
-            logMessage(`Playlist "${playlistName}" is now running.`, LOG_TYPE.SUCCESS);
-            updateCurrentlyPlaying();
-        } else {
-            logMessage(`Failed to run playlist "${playlistName}": ${result.error}`, LOG_TYPE.ERROR);
+        if (!response.ok) {
+            if (response.status === 409) {
+                logMessage('Another pattern is already running', 'warning');
+            } else {
+                const errorData = await response.json();
+                logMessage(errorData.detail || 'Failed to run playlist', 'error');
+            }
+            return;
         }
+
+        logMessage(`Started playlist: ${playlistName}`, 'success');
     } catch (error) {
-        logMessage(`Error running playlist "${playlistName}": ${error.message}`, LOG_TYPE.ERROR);
+        logMessage('Error running playlist: ' + error, 'error');
     }
 }
 
@@ -1458,8 +1430,6 @@ function attachFullScreenListeners() {
 
 let lastPreviewedFile = null; // Track the last previewed file
 
-let updateInterval = null;
-
 async function updateCurrentlyPlaying() {
     try {
         if (!document.hasFocus()) return; // Stop execution if the page is not visible
@@ -1537,12 +1507,6 @@ function formatSecondsToHMS(seconds) {
 function handleVisibilityChange() {
     if (document.hasFocus()) {
         updateCurrentlyPlaying(); // Run immediately
-        if (!updateInterval) {
-            updateInterval = setInterval(updateCurrentlyPlaying, 3000);
-        }
-    } else {
-        clearInterval(updateInterval);
-        updateInterval = null;
     }
 }
 
@@ -1574,79 +1538,37 @@ function getCookie(name) {
 
 // Save settings to cookies
 function saveSettingsToCookies() {
-    // Save the pause time
     const pauseTime = document.getElementById('pause_time').value;
-    setCookie('pause_time', pauseTime, 365);
-
-    // Save the clear pattern
     const clearPattern = document.getElementById('clear_pattern').value;
-    setCookie('clear_pattern', clearPattern, 365);
-
-    // Save the run mode
     const runMode = document.querySelector('input[name="run_mode"]:checked').value;
+    const shuffle = document.getElementById('shuffle_playlist').checked;
+
+    setCookie('pause_time', pauseTime, 365);
+    setCookie('clear_pattern', clearPattern, 365);
     setCookie('run_mode', runMode, 365);
-
-    // Save shuffle playlist checkbox state
-    const shufflePlaylist = document.getElementById('shuffle_playlist').checked;
-    setCookie('shuffle_playlist', shufflePlaylist, 365);
-
-    // Save pre-execution action
-    const preExecution = document.getElementById('pre_execution').value;
-    setCookie('pre_execution', preExecution, 365);
-
-    // Save start and end times
-    const startTime = document.getElementById('start_time').value;
-    const endTime = document.getElementById('end_time').value;
-    setCookie('start_time', startTime, 365);
-    setCookie('end_time', endTime, 365);
-
-    logMessage('Settings saved.');
+    setCookie('shuffle', shuffle, 365);
 }
 
 // Load settings from cookies
 function loadSettingsFromCookies() {
-    // Load the pause time
     const pauseTime = getCookie('pause_time');
-    if (pauseTime !== null) {
+    if (pauseTime !== '') {
         document.getElementById('pause_time').value = pauseTime;
     }
 
-    // Load the clear pattern
     const clearPattern = getCookie('clear_pattern');
-    if (clearPattern !== null) {
+    if (clearPattern !== '') {
         document.getElementById('clear_pattern').value = clearPattern;
     }
 
-    // Load the run mode
     const runMode = getCookie('run_mode');
-    if (runMode !== null) {
+    if (runMode !== '') {
         document.querySelector(`input[name="run_mode"][value="${runMode}"]`).checked = true;
     }
 
-    // Load the shuffle playlist checkbox state
-    const shufflePlaylist = getCookie('shuffle_playlist');
-    if (shufflePlaylist !== null) {
-        document.getElementById('shuffle_playlist').checked = shufflePlaylist === 'true';
-    }
-
-    // Load the pre-execution action
-    const preExecution = getCookie('pre_execution');
-    if (preExecution !== null) {
-        document.getElementById('pre_execution').value = preExecution;
-    }
-
-    // Load start and end times
-    const startTime = getCookie('start_time');
-    if (startTime !== null) {
-        document.getElementById('start_time').value = startTime;
-    }
-    const endTime = getCookie('end_time');
-    if (endTime !== null) {
-        document.getElementById('end_time').value = endTime;
-    }
-
-    if (startTime && endTime ) {
-        document.getElementById('clear_time').style.display = 'block';
+    const shuffle = getCookie('shuffle');
+    if (shuffle !== '') {
+        document.getElementById('shuffle_playlist').checked = shuffle === 'true';
     }
 
     logMessage('Settings loaded from cookies.');
@@ -1655,15 +1577,12 @@ function loadSettingsFromCookies() {
 // Call this function to save settings when a value is changed
 function attachSettingsSaveListeners() {
     // Add event listeners to inputs
-    document.getElementById('pause_time').addEventListener('input', saveSettingsToCookies);
+    document.getElementById('pause_time').addEventListener('change', saveSettingsToCookies);
     document.getElementById('clear_pattern').addEventListener('change', saveSettingsToCookies);
     document.querySelectorAll('input[name="run_mode"]').forEach(input => {
         input.addEventListener('change', saveSettingsToCookies);
     });
     document.getElementById('shuffle_playlist').addEventListener('change', saveSettingsToCookies);
-    document.getElementById('pre_execution').addEventListener('change', saveSettingsToCookies);
-    document.getElementById('start_time').addEventListener('change', saveSettingsToCookies);
-    document.getElementById('end_time').addEventListener('change', saveSettingsToCookies);
 }
 
 
@@ -1840,7 +1759,42 @@ themeIcon.className = savedTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
 
 document.addEventListener("visibilitychange", handleVisibilityChange);
 
-// Initialization
+// Add WebSocket connection for status updates
+let statusSocket = null;
+
+function connectStatusWebSocket() {
+    // Close existing connection if any
+    if (statusSocket) {
+        statusSocket.close();
+    }
+
+    // Create WebSocket connection
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    statusSocket = new WebSocket(`${protocol}//${window.location.host}/ws/status`);
+
+    statusSocket.onopen = () => {
+        console.log('Status WebSocket connected');
+        // Request initial status
+        statusSocket.send('get_status');
+    };
+
+    statusSocket.onmessage = (event) => {
+        const status = JSON.parse(event.data);
+        updateCurrentlyPlayingUI(status);
+    };
+
+    statusSocket.onclose = () => {
+        console.log('Status WebSocket disconnected. Reconnecting in 5 seconds...');
+        setTimeout(connectStatusWebSocket, 5000);
+    };
+
+    statusSocket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        statusSocket.close();
+    };
+}
+
+// Replace the polling mechanism with WebSocket
 document.addEventListener('DOMContentLoaded', () => {
     const activeTab = getCookie('activeTab') || 'patterns'; // Default to 'patterns' tab
     switchTab(activeTab); // Load the active tab
@@ -1852,9 +1806,63 @@ document.addEventListener('DOMContentLoaded', () => {
     loadWledIp();
     updateWledUI();
 
-    // Periodically check for currently playing status
-    if (document.hasFocus()) {
-        updateInterval = setInterval(updateCurrentlyPlaying, 3000);
-    }
+    // Initialize WebSocket connection for status updates
+    connectStatusWebSocket();
+
+    // Handle visibility change
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && statusSocket && statusSocket.readyState !== WebSocket.OPEN) {
+            connectStatusWebSocket();
+        }
+    });
+
     checkForUpdates();
 });
+
+// Update the updateCurrentlyPlayingUI function to handle WebSocket updates
+function updateCurrentlyPlayingUI(status) {
+    const currentlyPlayingContainer = document.getElementById('currently-playing-container');
+    const currentlyPlayingFile = document.getElementById('currently-playing-file');
+    const progressBar = document.getElementById('play_progress');
+    const progressText = document.getElementById('play_progress_text');
+    const pausePlayButton = document.getElementById('pausePlayCurrent');
+
+    if (!currentlyPlayingContainer || !currentlyPlayingFile || !progressBar || !progressText) return;
+
+    if (status.current_file) {
+        // Show the container and update file name
+        document.body.classList.add('playing');
+        currentlyPlayingFile.textContent = status.current_file.replace('./patterns/', '');
+        
+        // Update progress information if available
+        if (status.progress) {
+            const progress = status.progress;
+            const percentage = progress.percentage.toFixed(1);
+            const remainingTime = progress.remaining_time ? formatSecondsToHMS(progress.remaining_time) : 'calculating...';
+            const elapsedTime = formatSecondsToHMS(progress.elapsed_time);
+            
+            progressBar.value = percentage;
+            progressText.textContent = `${percentage}% (Elapsed: ${elapsedTime} | Remaining: ${remainingTime})`;
+        } else {
+            progressBar.value = 0;
+            progressText.textContent = '0%';
+        }
+
+        // Update pause/play button
+        if (pausePlayButton) {
+            pausePlayButton.innerHTML = status.is_paused ? 
+                '<i class="fa-solid fa-play"></i>' : 
+                '<i class="fa-solid fa-pause"></i>';
+        }
+    } else {
+        // Hide the container when no file is playing
+        document.body.classList.remove('playing');
+        progressBar.value = 0;
+        progressText.textContent = '0%';
+    }
+
+    // Update other UI elements based on status
+    if (typeof updatePlaylistUI === 'function') {
+        updatePlaylistUI(status);
+    }
+}

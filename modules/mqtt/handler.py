@@ -8,9 +8,9 @@ import paho.mqtt.client as mqtt
 import logging
 
 from .base import BaseMQTTHandler
-from dune_weaver_flask.modules.core.state import state
-from dune_weaver_flask.modules.core.pattern_manager import list_theta_rho_files
-from dune_weaver_flask.modules.core.playlist_manager import list_all_playlists
+from modules.core.state import state
+from modules.core.pattern_manager import list_theta_rho_files
+from modules.core.playlist_manager import list_all_playlists
 
 logger = logging.getLogger(__name__)
 
@@ -295,7 +295,7 @@ class MQTTHandler(BaseMQTTHandler):
         """Callback when message is received."""
         try:
             if msg.topic == self.pattern_select_topic:
-                from dune_weaver_flask.modules.core.pattern_manager import THETA_RHO_DIR
+                from modules.core.pattern_manager import THETA_RHO_DIR
                 # Handle pattern selection
                 pattern_name = msg.payload.decode()
                 if pattern_name in self.patterns:

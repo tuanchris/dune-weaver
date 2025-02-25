@@ -1,7 +1,7 @@
 """Mock MQTT handler implementation."""
 from typing import Dict, Callable
 from .base import BaseMQTTHandler
-from dune_weaver_flask.modules.core.state import state
+from modules.core.state import state
 
 
 

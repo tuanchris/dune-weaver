@@ -1,14 +1,14 @@
 """MQTT utilities and callback management."""
 import os
 from typing import Dict, Callable
-from dune_weaver_flask.modules.core.pattern_manager import (
+from modules.core.pattern_manager import (
     run_theta_rho_file, stop_actions, pause_execution,
     resume_execution, THETA_RHO_DIR,
     run_theta_rho_files, list_theta_rho_files
 )
-from dune_weaver_flask.modules.core.playlist_manager import get_playlist, run_playlist
-from dune_weaver_flask.modules.connection.connection_manager import home
-from dune_weaver_flask.modules.core.state import state
+from modules.core.playlist_manager import get_playlist, run_playlist
+from modules.connection.connection_manager import home
+from modules.core.state import state
 
 def create_mqtt_callbacks() -> Dict[str, Callable]:
     """Create and return the MQTT callback registry."""
