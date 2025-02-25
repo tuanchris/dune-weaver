@@ -345,6 +345,7 @@ def update_machine_position():
         logger.info('Saving machine position')
         state.machine_x, state.machine_y = get_machine_position()
         state.save()
+        logger.info(f'Machine position: {state.machine_x}, {state.machine_y}')
     
 def restart_connection(homing=False):
     """

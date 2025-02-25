@@ -92,17 +92,21 @@ active_status_connections = set()
 
 @app.websocket("/ws/status")
 async def websocket_status_endpoint(websocket: WebSocket):
+    client = websocket.client
+    logger.info(f"New WebSocket connection request from {client.host}:{client.port}")
+    
     await websocket.accept()
     active_status_connections.add(websocket)
+    
     try:
         while True:
-            # Keep the connection alive and handle any incoming messages
-            data = await websocket.receive_text()
-            if data == "get_status":
-                status = pattern_manager.get_status()
-                await websocket.send_json(status)
+            # Send status updates every second
+            status = pattern_manager.get_status()
+            await websocket.send_json(status)
+            await asyncio.sleep(1)  # Wait for 1 second before sending next update
     except WebSocketDisconnect:
         active_status_connections.remove(websocket)
+        logger.info(f"Client disconnected: {client.host}:{client.port}")
 
 async def broadcast_status_update(status: dict):
     """Broadcast status update to all connected clients."""
@@ -110,8 +114,10 @@ async def broadcast_status_update(status: dict):
     for websocket in active_status_connections:
         try:
             await websocket.send_json(status)
+            logger.debug(f"Status broadcast to client {websocket.client.host}:{websocket.client.port}")
         except WebSocketDisconnect:
             disconnected.add(websocket)
+            logger.debug(f"Client disconnected during broadcast: {websocket.client.host}:{websocket.client.port}")
     
     # Clean up disconnected clients
     active_status_connections.difference_update(disconnected)
