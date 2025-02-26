@@ -1,0 +1,360 @@
+#  Created by Sandify
+#  https://sandify.org
+#  Version: 0.2.4
+#
+#  Machine type: Polar
+#    Max radius (mm): 250
+#    Start point: center
+#    End point: perimeter
+#  Content type: shape
+#  Layer:
+#    Shape: Point
+#    Name: squares
+#    Visible: true
+#    X offset: 0
+#    Y offset: 0
+#    Rotate (degrees): 68
+#    Reverse path: false
+#    Fine tuning:
+#      Connect to next layer: line
+#      Draw portion of path (%): 100
+#      Backtrack at end (%): 0
+#      Rotate starting point (%): 0
+#  Layer:
+#    Shape: Point
+#    Name: point
+#    Visible: true
+#    X offset: 25
+#    Y offset: -25
+#    Rotate (degrees): 0
+#    Reverse path: false
+#    Fine tuning:
+#      Connect to next layer: line
+#      Draw portion of path (%): 100
+#      Backtrack at end (%): 0
+#      Rotate starting point (%): 0
+#  Layer:
+#    Shape: Point
+#    Name: point
+#    Visible: true
+#    X offset: 0
+#    Y offset: -50
+#    Rotate (degrees): 0
+#    Reverse path: false
+#    Fine tuning:
+#      Connect to next layer: line
+#      Draw portion of path (%): 100
+#      Backtrack at end (%): 0
+#      Rotate starting point (%): 0
+#  Layer:
+#    Shape: Point
+#    Name: point
+#    Visible: true
+#    X offset: 25
+#    Y offset: -75
+#    Rotate (degrees): 0
+#    Reverse path: false
+#    Fine tuning:
+#      Connect to next layer: line
+#      Draw portion of path (%): 100
+#      Backtrack at end (%): 0
+#      Rotate starting point (%): 0
+#  Layer:
+#    Shape: Point
+#    Name: point
+#    Visible: true
+#    X offset: 0
+#    Y offset: -100
+#    Rotate (degrees): 0
+#    Reverse path: false
+#    Fine tuning:
+#      Connect to next layer: line
+#      Draw portion of path (%): 100
+#      Backtrack at end (%): 0
+#      Rotate starting point (%): 0
+#  Layer:
+#    Shape: Point
+#    Name: point
+#    Visible: true
+#    X offset: 25
+#    Y offset: -125
+#    Rotate (degrees): 0
+#    Reverse path: false
+#    Fine tuning:
+#      Connect to next layer: line
+#      Draw portion of path (%): 100
+#      Backtrack at end (%): 0
+#      Rotate starting point (%): 0
+#  Layer:
+#    Shape: Point
+#    Name: point
+#    Visible: true
+#    X offset: 0
+#    Y offset: -150
+#    Rotate (degrees): 0
+#    Reverse path: false
+#    Fine tuning:
+#      Connect to next layer: line
+#      Draw portion of path (%): 100
+#      Backtrack at end (%): 0
+#      Rotate starting point (%): 0
+#  Layer:
+#    Shape: Point
+#    Name: point
+#    Visible: true
+#    X offset: 25
+#    Y offset: -175
+#    Rotate (degrees): 0
+#    Reverse path: false
+#    Fine tuning:
+#      Connect to next layer: line
+#      Draw portion of path (%): 100
+#      Backtrack at end (%): 0
+#      Rotate starting point (%): 0
+#  Layer:
+#    Shape: Point
+#    Name: point
+#    Visible: true
+#    X offset: 0
+#    Y offset: -200
+#    Rotate (degrees): 0
+#    Reverse path: false
+#    Fine tuning:
+#      Connect to next layer: line
+#      Draw portion of path (%): 100
+#      Backtrack at end (%): 0
+#      Rotate starting point (%): 0
+#  Layer:
+#    Shape: Point
+#    Name: point
+#    Visible: true
+#    X offset: 25
+#    Y offset: -225
+#    Rotate (degrees): 0
+#    Reverse path: false
+#    Fine tuning:
+#      Connect to next layer: line
+#      Draw portion of path (%): 100
+#      Backtrack at end (%): 0
+#      Rotate starting point (%): 0
+#  Layer:
+#    Shape: Point
+#    Name: point
+#    Visible: true
+#    X offset: 0
+#    Y offset: -250
+#    Rotate (degrees): 0
+#    Reverse path: false
+#    Fine tuning:
+#      Connect to next layer: line
+#      Draw portion of path (%): 100
+#      Backtrack at end (%): 0
+#      Rotate starting point (%): 0
+#  Reverse export path: false
+#
+# File name: 'zigzag-01-connector'
+#
+
+0.00000 0.00000
+1.18658 0.00480
+1.95671 0.01071
+2.14053 0.01829
+2.21558 0.02612
+2.25589 0.03403
+2.28098 0.04197
+2.29807 0.04994
+2.31046 0.05791
+2.31985 0.06589
+2.32721 0.07387
+2.33313 0.08186
+2.33800 0.08985
+2.34208 0.09784
+2.34554 0.10583
+2.34851 0.11382
+2.35110 0.12182
+2.35336 0.12981
+2.35536 0.13781
+2.35619 0.14142
+2.33579 0.13862
+2.39344 0.13885
+2.45071 0.13953
+2.50725 0.14067
+2.56270 0.14224
+2.61677 0.14425
+2.66922 0.14666
+2.71983 0.14946
+2.76846 0.15264
+2.81501 0.15615
+2.85941 0.15999
+2.90165 0.16414
+2.94174 0.16855
+2.97973 0.17323
+3.01568 0.17814
+3.04965 0.18327
+3.08174 0.18860
+3.11203 0.19412
+3.14063 0.19980
+3.14159 0.20000
+3.14159 0.19600
+3.11412 0.20184
+3.08821 0.20783
+3.06376 0.21395
+3.04069 0.22019
+3.01890 0.22654
+2.99831 0.23299
+2.97883 0.23953
+2.96040 0.24616
+2.94294 0.25287
+2.92639 0.25966
+2.91068 0.26651
+2.89577 0.27342
+2.88159 0.28039
+2.86811 0.28742
+2.85526 0.29449
+2.84303 0.30161
+2.83136 0.30877
+2.82022 0.31598
+2.81984 0.31623
+2.81579 0.31244
+2.83825 0.31620
+2.86016 0.32013
+2.88153 0.32420
+2.90236 0.32842
+2.92266 0.33278
+2.94242 0.33727
+2.96166 0.34189
+2.98037 0.34663
+2.99858 0.35149
+3.01628 0.35646
+3.03349 0.36154
+3.05022 0.36673
+3.06648 0.37202
+3.08228 0.37740
+3.09763 0.38287
+3.11254 0.38843
+3.12703 0.39408
+3.14111 0.39980
+3.14159 0.40000
+3.14159 0.39600
+3.12779 0.40180
+3.11439 0.40768
+3.10137 0.41363
+3.08872 0.41965
+3.07643 0.42574
+3.06448 0.43188
+3.05288 0.43809
+3.04160 0.44435
+3.03063 0.45067
+3.01997 0.45704
+3.00961 0.46346
+2.99952 0.46993
+2.98972 0.47645
+2.98018 0.48301
+2.97089 0.48962
+2.96185 0.49626
+2.95306 0.50295
+2.94449 0.50967
+2.94420 0.50990
+2.94265 0.50598
+2.95552 0.51058
+2.96817 0.51526
+2.98059 0.52003
+2.99278 0.52487
+3.00474 0.52979
+3.01648 0.53478
+3.02801 0.53985
+3.03932 0.54498
+3.05041 0.55019
+3.06130 0.55546
+3.07198 0.56079
+3.08246 0.56619
+3.09274 0.57165
+3.10282 0.57717
+3.11271 0.58274
+3.12242 0.58837
+3.13193 0.59406
+3.14127 0.59980
+3.14159 0.60000
+3.14159 0.59600
+3.13238 0.60179
+3.12334 0.60763
+3.11448 0.61353
+3.10578 0.61946
+3.09725 0.62545
+3.08888 0.63148
+3.08067 0.63755
+3.07262 0.64366
+3.06472 0.64982
+3.05697 0.65601
+3.04936 0.66225
+3.04190 0.66852
+3.03457 0.67483
+3.02738 0.68117
+3.02033 0.68755
+3.01340 0.69396
+3.00660 0.70041
+2.99992 0.70688
+2.99970 0.70711
+2.99889 0.70315
+3.00780 0.70809
+3.01659 0.71310
+3.02525 0.71816
+3.03379 0.72327
+3.04221 0.72843
+3.05051 0.73364
+3.05869 0.73890
+3.06676 0.74422
+3.07471 0.74958
+3.08255 0.75498
+3.09028 0.76043
+3.09789 0.76593
+3.10540 0.77147
+3.11280 0.77706
+3.12009 0.78268
+3.12728 0.78835
+3.13437 0.79405
+3.14135 0.79980
+3.14159 0.80000
+3.14159 0.79600
+3.13468 0.80179
+3.12786 0.80761
+3.12114 0.81347
+3.11452 0.81937
+3.10799 0.82530
+3.10156 0.83127
+3.09522 0.83727
+3.08897 0.84330
+3.08280 0.84937
+3.07673 0.85547
+3.07074 0.86159
+3.06484 0.86775
+3.05902 0.87394
+3.05328 0.88016
+3.04762 0.88641
+3.04205 0.89269
+3.03655 0.89899
+3.03112 0.90532
+3.03094 0.90554
+3.03045 0.90156
+3.03723 0.90670
+3.04394 0.91188
+3.05057 0.91710
+3.05712 0.92236
+3.06360 0.92765
+3.07001 0.93299
+3.07634 0.93836
+3.08260 0.94377
+3.08879 0.94922
+3.09491 0.95471
+3.10096 0.96023
+3.10694 0.96578
+3.11285 0.97137
+3.11869 0.97699
+3.12447 0.98264
+3.13018 0.98833
+3.13582 0.99405
+3.14140 0.99980
+3.14159 1.00000
+3.14159 0.99600
+3.14159 1.00000
+
