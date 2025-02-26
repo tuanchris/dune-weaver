@@ -92,34 +92,44 @@ active_status_connections = set()
 
 @app.websocket("/ws/status")
 async def websocket_status_endpoint(websocket: WebSocket):
-    client = websocket.client
-    logger.info(f"New WebSocket connection request from {client.host}:{client.port}")
-    
     await websocket.accept()
     active_status_connections.add(websocket)
-    
     try:
         while True:
-            # Send status updates every second
             status = pattern_manager.get_status()
-            await websocket.send_json(status)
-            await asyncio.sleep(1)  # Wait for 1 second before sending next update
+            try:
+                await websocket.send_json({
+                    "type": "status_update",
+                    "data": status
+                })
+            except RuntimeError as e:
+                if "close message has been sent" in str(e):
+                    break
+                raise
+            await asyncio.sleep(1)
     except WebSocketDisconnect:
-        active_status_connections.remove(websocket)
-        logger.info(f"Client disconnected: {client.host}:{client.port}")
+        pass
+    finally:
+        active_status_connections.discard(websocket)
+        try:
+            await websocket.close()
+        except RuntimeError:
+            pass
 
 async def broadcast_status_update(status: dict):
     """Broadcast status update to all connected clients."""
     disconnected = set()
     for websocket in active_status_connections:
         try:
-            await websocket.send_json(status)
-            logger.debug(f"Status broadcast to client {websocket.client.host}:{websocket.client.port}")
+            await websocket.send_json({
+                "type": "status_update",
+                "data": status
+            })
         except WebSocketDisconnect:
             disconnected.add(websocket)
-            logger.debug(f"Client disconnected during broadcast: {websocket.client.host}:{websocket.client.port}")
+        except RuntimeError:
+            disconnected.add(websocket)
     
-    # Clean up disconnected clients
     active_status_connections.difference_update(disconnected)
 
 # FastAPI routes
@@ -222,10 +232,12 @@ async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTa
             
         files_to_run = [file_path]
         logger.info(f'Running theta-rho file: {request.file_name} with pre_execution={request.pre_execution}')
+        
+        # Pass arguments in the correct order
         background_tasks.add_task(
             pattern_manager.run_theta_rho_files,
-            files_to_run,
-            clear_pattern=request.pre_execution if request.pre_execution != "none" else None
+            files_to_run,  # First positional argument
+            clear_pattern=request.pre_execution if request.pre_execution != "none" else None  # Named argument
         )
         return {"success": True}
     except Exception as e:
@@ -369,12 +381,6 @@ async def pause_execution():
     if pattern_manager.pause_execution():
         return {"success": True, "message": "Execution paused"}
     raise HTTPException(status_code=500, detail="Failed to pause execution")
-
-@app.get("/status")
-async def get_status():
-    status = pattern_manager.get_status()
-    await broadcast_status_update(status)
-    return status
 
 @app.post("/resume_execution")
 async def resume_execution():

@@ -260,8 +260,15 @@ async function runThetaRho() {
 
         const result = await response.json();
         if (response.ok) {
+            // Show the currently playing UI immediately
+            document.body.classList.add('playing');
+            const currentlyPlayingFile = document.getElementById('currently-playing-file');
+            if (currentlyPlayingFile) {
+                currentlyPlayingFile.textContent = selectedFile.replace('./patterns/', '');
+            }
+            // Show initial preview
+            previewPattern(selectedFile.replace('./patterns/', ''), 'currently-playing-container');
             logMessage(`Pattern running: ${selectedFile}`, LOG_TYPE.SUCCESS);
-            updateCurrentlyPlaying();
         } else {
             if (response.status === 409) {
                 logMessage("Cannot start pattern: Another pattern is already running", LOG_TYPE.WARNING);
@@ -272,7 +279,6 @@ async function runThetaRho() {
     } catch (error) {
         logMessage(`Error running pattern: ${error.message}`, LOG_TYPE.ERROR);
     }
-    updateCurrentlyPlaying();
 }
 
 async function stopExecution() {
@@ -1430,71 +1436,7 @@ function attachFullScreenListeners() {
 
 let lastPreviewedFile = null; // Track the last previewed file
 
-async function updateCurrentlyPlaying() {
-    try {
-        if (!document.hasFocus()) return; // Stop execution if the page is not visible
 
-        const response = await fetch('/status');
-        const data = await response.json();
-
-        const currentlyPlayingSection = document.getElementById('currently-playing-container');
-        if (!currentlyPlayingSection) {
-            logMessage('Currently Playing section not found.', LOG_TYPE.ERROR);
-            return;
-        }
-
-        const currentSpeedElem = document.getElementById('current_speed_display');
-        if (data.current_speed !== undefined) {
-            currentSpeedElem.textContent = `Current Speed: ${data.current_speed}`;
-        } else {
-            currentSpeedElem.textContent = 'Current Speed: N/A';
-        }
-
-        if (data.current_playing_file && !data.stop_requested) {
-            const { current_playing_file, execution_progress, pause_requested } = data;
-
-            // Strip './patterns/' prefix from the file name
-            const fileName = current_playing_file.replace('./patterns/', '');
-
-            if (!document.body.classList.contains('playing')) {
-                closeStickySection('pattern-preview-container')
-            }
-
-            // Show "Currently Playing" section
-            document.body.classList.add('playing');
-
-            // Update pattern preview only if the file is different
-            if (current_playing_file !== lastPreviewedFile) {
-                previewPattern(fileName, 'currently-playing-container');
-                lastPreviewedFile = current_playing_file;
-            }
-
-            // Update the filename display
-            const fileNameDisplay = document.getElementById('currently-playing-file');
-            if (fileNameDisplay) fileNameDisplay.textContent = fileName;
-
-            // Update progress bar
-            const progressBar = document.getElementById('play_progress');
-            const progressText = document.getElementById('play_progress_text');
-            if (execution_progress) {
-                const progressPercentage = (execution_progress[0] / execution_progress[1]) * 100;
-                progressBar.value = progressPercentage;
-                progressText.textContent = `${Math.round(progressPercentage)}% (Elapsed: ${formatSecondsToHMS(execution_progress[3])} | Remaining: ${formatSecondsToHMS(execution_progress[2])})`;
-            } else {
-                progressBar.value = 0;
-                progressText.textContent = '0%';
-            }
-
-            // Update play/pause button
-            const pausePlayButton = document.getElementById('pausePlayCurrent');
-            if (pausePlayButton) pausePlayButton.innerHTML = pause_requested ? '<i class="fa-solid fa-play"></i>' : '<i class="fa-solid fa-pause"></i>';
-        } else {
-            document.body.classList.remove('playing');
-        }
-    } catch (error) {
-        logMessage(`Error updating "Currently Playing" section: ${error.message}`);
-    }
-}
 
 function formatSecondsToHMS(seconds) {
     const hrs = Math.floor(seconds / 3600);
@@ -1504,12 +1446,6 @@ function formatSecondsToHMS(seconds) {
 }
 
 // Function to start or stop updates based on visibility
-function handleVisibilityChange() {
-    if (document.hasFocus()) {
-        updateCurrentlyPlaying(); // Run immediately
-    }
-}
-
 function toggleSettings() {
     const settingsContainer = document.getElementById('settings-container');
     if (settingsContainer) {
@@ -1757,10 +1693,12 @@ const savedTheme = localStorage.getItem('theme') || 'light';
 document.documentElement.setAttribute('data-theme', savedTheme);
 themeIcon.className = savedTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
 
-document.addEventListener("visibilitychange", handleVisibilityChange);
 
 // Add WebSocket connection for status updates
 let statusSocket = null;
+
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
 
 function connectStatusWebSocket() {
     // Close existing connection if any
@@ -1774,18 +1712,44 @@ function connectStatusWebSocket() {
 
     statusSocket.onopen = () => {
         console.log('Status WebSocket connected');
+        reconnectAttempts = 0; // Reset reconnect attempts on successful connection
         // Request initial status
         statusSocket.send('get_status');
+        
+        // Request status updates periodically
+        setInterval(() => {
+            if (statusSocket.readyState === WebSocket.OPEN) {
+                statusSocket.send('get_status');
+            }
+        }, 1000); // Request update every second
     };
 
+    // Add debouncing for UI updates
+    let updateTimeout;
     statusSocket.onmessage = (event) => {
-        const status = JSON.parse(event.data);
-        updateCurrentlyPlayingUI(status);
+        try {
+            const status = JSON.parse(event.data);
+            console.log('Received status update:', status);
+            clearTimeout(updateTimeout);
+            updateTimeout = setTimeout(() => {
+                console.log('Updating UI with status:', status);
+                updateCurrentlyPlayingUI(status);
+            }, 100); // Debounce updates to 100ms
+        } catch (error) {
+            console.error('Error processing status update:', error);
+        }
     };
 
     statusSocket.onclose = () => {
-        console.log('Status WebSocket disconnected. Reconnecting in 5 seconds...');
-        setTimeout(connectStatusWebSocket, 5000);
+        console.log('Status WebSocket disconnected.');
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttempts++;
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000); // Exponential backoff, max 30 seconds
+            console.log(`Attempting to reconnect in ${delay/1000} seconds... (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+            setTimeout(connectStatusWebSocket, delay);
+        } else {
+            console.error('Max reconnection attempts reached. Please refresh the page.');
+        }
     };
 
     statusSocket.onerror = (error) => {
@@ -1819,7 +1783,14 @@ document.addEventListener('DOMContentLoaded', () => {
     checkForUpdates();
 });
 
+// Track the last time we had a file playing
+let lastPlayingTime = 0;
+const HIDE_DELAY = 5000; // 1 second delay before hiding
+
 // Update the updateCurrentlyPlayingUI function to handle WebSocket updates
+// Track the last played file to detect when a new pattern starts
+let lastPlayedFile = null;
+
 function updateCurrentlyPlayingUI(status) {
     const currentlyPlayingContainer = document.getElementById('currently-playing-container');
     const currentlyPlayingFile = document.getElementById('currently-playing-file');
@@ -1829,16 +1800,31 @@ function updateCurrentlyPlayingUI(status) {
 
     if (!currentlyPlayingContainer || !currentlyPlayingFile || !progressBar || !progressText) return;
 
+    const now = Date.now();
+    
     if (status.current_file) {
+        // Update last playing time
+        lastPlayingTime = now;
+        
         // Show the container and update file name
         document.body.classList.add('playing');
-        currentlyPlayingFile.textContent = status.current_file.replace('./patterns/', '');
+        const fileName = status.current_file.replace('./patterns/', '');
+        currentlyPlayingFile.textContent = fileName;
+        
+        // Only update preview when a new pattern starts playing
+        if (lastPlayedFile !== status.current_file) {
+            lastPlayedFile = status.current_file;
+            // Remove the ./patterns/ prefix since previewPattern will add it
+            const cleanFileName = status.current_file.replace('./patterns/', '');
+            // Use the existing preview_thr endpoint
+            previewPattern(cleanFileName, 'currently-playing-container');
+        }
         
         // Update progress information if available
         if (status.progress) {
             const progress = status.progress;
             const percentage = progress.percentage.toFixed(1);
-            const remainingTime = progress.remaining_time ? formatSecondsToHMS(progress.remaining_time) : 'calculating...';
+            const remainingTime = progress.remaining_time === null ? 'calculating...' : formatSecondsToHMS(progress.remaining_time);
             const elapsedTime = formatSecondsToHMS(progress.elapsed_time);
             
             progressBar.value = percentage;
@@ -1854,8 +1840,8 @@ function updateCurrentlyPlayingUI(status) {
                 '<i class="fa-solid fa-play"></i>' : 
                 '<i class="fa-solid fa-pause"></i>';
         }
-    } else {
-        // Hide the container when no file is playing
+    } else if (now - lastPlayingTime > HIDE_DELAY) {
+        // Only hide the container if we haven't had a playing file for more than HIDE_DELAY
         document.body.classList.remove('playing');
         progressBar.value = 0;
         progressText.textContent = '0%';

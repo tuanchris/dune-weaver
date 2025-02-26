@@ -155,15 +155,21 @@ async def run_theta_rho_file(file_path):
 
                 move_polar(theta, rho)
                 
-                if i != 0:
-                    pbar.update(1)
-                    elapsed_time = time.time() - start_time
-                    estimated_remaining_time = (total_coordinates - i) / pbar.format_dict['rate'] if pbar.format_dict['rate'] and total_coordinates else 0
-                    state.execution_progress = (i, total_coordinates, estimated_remaining_time, elapsed_time)
+                # Update progress for all coordinates including the first one
+                pbar.update(1)
+                elapsed_time = time.time() - start_time
+                estimated_remaining_time = (total_coordinates - (i + 1)) / pbar.format_dict['rate'] if pbar.format_dict['rate'] and total_coordinates else 0
+                state.execution_progress = (i + 1, total_coordinates, estimated_remaining_time, elapsed_time)
                 
                 # Add a small delay to allow other async operations
                 await asyncio.sleep(0.001)
 
+        # Update progress one last time to show 100%
+        elapsed_time = time.time() - start_time
+        state.execution_progress = (total_coordinates, total_coordinates, 0, elapsed_time)
+        # Give WebSocket a chance to send the final update
+        await asyncio.sleep(0.1)
+        
         connection_manager.check_idle()
         state.current_playing_file = None
         state.execution_progress = None

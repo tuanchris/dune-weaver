@@ -1022,8 +1022,16 @@ body.playing #currently-playing-container:not(.open) #progress-container {
     background-color: var(--border-primary);
     border-radius: 4px;
     overflow: hidden;
+    margin-right: 20px !important;  /* Add forced margin to ensure spacing */
 }
 
+#play_progress_text {
+    font-size: 0.9rem;
+    min-width: 45px;  /* Ensure consistent spacing for different percentages */
+    flex-shrink: 0;   /* Prevent text from shrinking */
+}
+
+/* Progress Bar Styles */
 #play_progress::-webkit-progress-bar {
     background-color: var(--border-primary);
 }
@@ -1033,9 +1041,22 @@ body.playing #currently-playing-container:not(.open) #progress-container {
     transition: width 0.25s ease;
 }
 
-#play_progress_text {
-    font-size: 0.9rem;
-    margin-left: 10px;
+/* Add dark mode specific styles */
+:root[data-theme="dark"] #play_progress {
+    background-color: var(--background-tertiary-dark);
+}
+
+:root[data-theme="dark"] #play_progress::-webkit-progress-bar {
+    background-color: var(--background-tertiary-dark);
+}
+
+:root[data-theme="dark"] #play_progress::-webkit-progress-value {
+    background-color: var(--color-success);  /* Using success color for better visibility */
+}
+
+/* Progress text color in dark mode */
+:root[data-theme="dark"] #play_progress_text {
+    color: var(--text-secondary-dark);
 }
 
 .play-buttons {
