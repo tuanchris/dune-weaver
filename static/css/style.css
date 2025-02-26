@@ -910,9 +910,16 @@ body.playing .bottom-nav {
 }
 
 #currently-playing-container {
+    display: none; /* Hide by default */
     align-items: center;
     background: var(--background-accent);
     color: var(--text-secondary);
+    transition: all var(--transition-medium);
+    position: fixed;
+    bottom: 60px;
+    left: 0;
+    right: 0;
+    z-index: 1000;
 }
 
 #currently-playing-container h3,
@@ -921,12 +928,29 @@ body.playing .bottom-nav {
     color: var(--text-secondary);
 }
 
+#currently-playing-container .file-info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    margin-right: auto;
+}
+
 #currently-playing-container h3 {
     margin: 0;
 }
 
+#currently-playing-container h4 {
+    margin: 0;
+    color: var(--text-secondary);
+    opacity: 0.7;
+    text-align: left;
+    font-size: 0.9em;
+    font-weight: normal;
+}
+
 body:not(.playing) #currently-playing-container {
     display: none;
+    opacity: 0;
 }
 
 #currently-playing-container.open {
@@ -935,11 +959,13 @@ body:not(.playing) #currently-playing-container {
 }
 
 body.playing #currently-playing-container:not(.open) {
+    display: flex;
     height: 140px;
-    overflow:hidden;
+    overflow: hidden;
     flex-direction: row;
     flex-wrap: wrap;
     bottom: 60px;
+    opacity: 1;
 }
 
 body.playing #currently-playing-container .header{
@@ -968,9 +994,16 @@ body.playing #currently-playing-container:not(.open) .header h3 {
 body.playing #currently-playing-container:not(.open) #currently-playing-details{
     flex-grow: 1;
     flex-basis: 50%;
+    display: flex;
+    flex-direction: column;
     align-items: flex-start;
     margin: 0 0 0 10px;
     overflow-y: auto;
+}
+
+body.playing #currently-playing-container:not(.open) #currently-playing-details .play-buttons {
+    margin-top: 10px;
+    align-self: flex-start;
 }
 
 body.playing #currently-playing-container:not(.open) .play-buttons button {

@@ -348,8 +348,19 @@ def get_status():
         "current_file": state.current_playing_file,
         "is_paused": state.pause_requested,
         "is_running": bool(state.current_playing_file and not state.stop_requested),
-        "progress": None
+        "progress": None,
+        "playlist": None
     }
+    
+    # Add playlist information if available
+    if state.current_playlist and state.current_playlist_index is not None:
+        next_index = state.current_playlist_index + 1
+        status["playlist"] = {
+            "current_index": state.current_playlist_index,
+            "total_files": len(state.current_playlist),
+            "mode": state.playlist_mode,
+            "next_file": state.current_playlist[next_index] if next_index < len(state.current_playlist) else (state.current_playlist[0] if state.playlist_mode == "loop" else None)
+        }
     
     if state.execution_progress:
         current, total, remaining_time, elapsed_time = state.execution_progress
@@ -374,14 +385,18 @@ async def broadcast_progress():
         status = get_status()
         disconnected = set()
         
-        for websocket in active_status_connections:
+        # Create a copy of the set for iteration
+        active_connections = active_status_connections.copy()
+        
+        for websocket in active_connections:
             try:
                 await websocket.send_json(status)
             except Exception:
                 disconnected.add(websocket)
         
         # Clean up disconnected clients
-        active_status_connections.difference_update(disconnected)
+        if disconnected:
+            active_status_connections.difference_update(disconnected)
         
         # Wait before next update
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1)

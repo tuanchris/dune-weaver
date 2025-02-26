@@ -1696,14 +1696,17 @@ themeIcon.className = savedTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
 
 // Add WebSocket connection for status updates
 let statusSocket = null;
-
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
+let statusUpdateInterval = null;
 
 function connectStatusWebSocket() {
-    // Close existing connection if any
+    // Close existing connection and clear interval if any
     if (statusSocket) {
         statusSocket.close();
+    }
+    if (statusUpdateInterval) {
+        clearInterval(statusUpdateInterval);
     }
 
     // Create WebSocket connection
@@ -1713,39 +1716,42 @@ function connectStatusWebSocket() {
     statusSocket.onopen = () => {
         console.log('Status WebSocket connected');
         reconnectAttempts = 0; // Reset reconnect attempts on successful connection
-        // Request initial status
-        statusSocket.send('get_status');
         
-        // Request status updates periodically
-        setInterval(() => {
-            if (statusSocket.readyState === WebSocket.OPEN) {
+        // Immediately request initial status
+        if (statusSocket.readyState === WebSocket.OPEN) {
+            console.log('Requesting initial status...');
+            statusSocket.send('get_status');
+        }
+        
+        // Set up periodic status updates
+        statusUpdateInterval = setInterval(() => {
+            if (statusSocket && statusSocket.readyState === WebSocket.OPEN) {
                 statusSocket.send('get_status');
             }
-        }, 1000); // Request update every second
+        }, 1000);
     };
 
-    // Add debouncing for UI updates
-    let updateTimeout;
     statusSocket.onmessage = (event) => {
         try {
-            const status = JSON.parse(event.data);
-            console.log('Received status update:', status);
-            clearTimeout(updateTimeout);
-            updateTimeout = setTimeout(() => {
-                console.log('Updating UI with status:', status);
-                updateCurrentlyPlayingUI(status);
-            }, 100); // Debounce updates to 100ms
+            console.log('Status data received:', event.data);
+            const message = JSON.parse(event.data);
+            if (message.type === 'status_update' && message.data) {
+                updateCurrentlyPlayingUI(message.data);
+            }
         } catch (error) {
             console.error('Error processing status update:', error);
+            console.error('Raw data that caused error:', event.data);
         }
     };
 
     statusSocket.onclose = () => {
-        console.log('Status WebSocket disconnected.');
+        console.log('Status WebSocket disconnected');
+        clearInterval(statusUpdateInterval);
+        
         if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
             reconnectAttempts++;
-            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000); // Exponential backoff, max 30 seconds
-            console.log(`Attempting to reconnect in ${delay/1000} seconds... (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+            console.log(`Reconnecting in ${delay/1000}s (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
             setTimeout(connectStatusWebSocket, delay);
         } else {
             console.error('Max reconnection attempts reached. Please refresh the page.');
@@ -1792,62 +1798,84 @@ const HIDE_DELAY = 5000; // 1 second delay before hiding
 let lastPlayedFile = null;
 
 function updateCurrentlyPlayingUI(status) {
-    const currentlyPlayingContainer = document.getElementById('currently-playing-container');
-    const currentlyPlayingFile = document.getElementById('currently-playing-file');
+    console.log('Updating UI with status:', status);
+
+    // Get all required DOM elements once
+    const container = document.getElementById('currently-playing-container');
+    const fileNameElement = document.getElementById('currently-playing-file');
     const progressBar = document.getElementById('play_progress');
     const progressText = document.getElementById('play_progress_text');
     const pausePlayButton = document.getElementById('pausePlayCurrent');
 
-    if (!currentlyPlayingContainer || !currentlyPlayingFile || !progressBar || !progressText) return;
+    // Check if all required elements exist
+    if (!container || !fileNameElement || !progressBar || !progressText) {
+        console.log('Required DOM elements not found:', {
+            container: !!container,
+            fileNameElement: !!fileNameElement,
+            progressBar: !!progressBar,
+            progressText: !!progressText
+        });
+        setTimeout(() => updateCurrentlyPlayingUI(status), 100);
+        return;
+    }
 
-    const now = Date.now();
-    
-    if (status.current_file) {
-        // Update last playing time
-        lastPlayingTime = now;
-        
-        // Show the container and update file name
+    // Update container visibility based on status
+    if (status.current_file && status.is_running) {
+        console.log('Pattern is running, showing container');
         document.body.classList.add('playing');
-        const fileName = status.current_file.replace('./patterns/', '');
-        currentlyPlayingFile.textContent = fileName;
-        
-        // Only update preview when a new pattern starts playing
-        if (lastPlayedFile !== status.current_file) {
-            lastPlayedFile = status.current_file;
-            // Remove the ./patterns/ prefix since previewPattern will add it
-            const cleanFileName = status.current_file.replace('./patterns/', '');
-            // Use the existing preview_thr endpoint
-            previewPattern(cleanFileName, 'currently-playing-container');
-        }
-        
-        // Update progress information if available
-        if (status.progress) {
-            const progress = status.progress;
-            const percentage = progress.percentage.toFixed(1);
-            const remainingTime = progress.remaining_time === null ? 'calculating...' : formatSecondsToHMS(progress.remaining_time);
-            const elapsedTime = formatSecondsToHMS(progress.elapsed_time);
-            
-            progressBar.value = percentage;
-            progressText.textContent = `${percentage}% (Elapsed: ${elapsedTime} | Remaining: ${remainingTime})`;
-        } else {
-            progressBar.value = 0;
-            progressText.textContent = '0%';
-        }
-
-        // Update pause/play button
-        if (pausePlayButton) {
-            pausePlayButton.innerHTML = status.is_paused ? 
-                '<i class="fa-solid fa-play"></i>' : 
-                '<i class="fa-solid fa-pause"></i>';
-        }
-    } else if (now - lastPlayingTime > HIDE_DELAY) {
-        // Only hide the container if we haven't had a playing file for more than HIDE_DELAY
+        container.style.display = 'flex';
+    } else {
+        console.log('No pattern running, hiding container');
         document.body.classList.remove('playing');
+        container.style.display = 'none';
+        return;
+    }
+
+    // Update file name display
+    const fileName = status.current_file.replace('./patterns/', '');
+    fileNameElement.textContent = fileName;
+
+    // Update next file display
+    const nextFileElement = document.getElementById('next-file');
+    if (nextFileElement) {
+        if (status.playlist && status.playlist.next_file) {
+            const nextFileName = status.playlist.next_file.replace('./patterns/', '');
+            nextFileElement.textContent = `(Next: ${nextFileName})`;
+            nextFileElement.style.display = 'block';
+        } else {
+            nextFileElement.style.display = 'none';
+        }
+    }
+
+    // Update pattern preview if it's a new pattern
+    if (lastPlayedFile !== status.current_file) {
+        lastPlayedFile = status.current_file;
+        const cleanFileName = status.current_file.replace('./patterns/', '');
+        previewPattern(cleanFileName, 'currently-playing-container');
+    }
+
+    // Update progress information
+    if (status.progress) {
+        const { percentage, remaining_time, elapsed_time } = status.progress;
+        const formattedPercentage = percentage.toFixed(1);
+        const remainingText = remaining_time === null ? 'calculating...' : formatSecondsToHMS(remaining_time);
+        const elapsedText = formatSecondsToHMS(elapsed_time);
+
+        progressBar.value = formattedPercentage;
+        progressText.textContent = `${formattedPercentage}% (Elapsed: ${elapsedText} | Remaining: ${remainingText})`;
+    } else {
         progressBar.value = 0;
         progressText.textContent = '0%';
     }
 
-    // Update other UI elements based on status
+    // Update pause/play button if it exists
+    if (pausePlayButton) {
+        pausePlayButton.innerHTML = status.is_paused ? 
+            '<i class="fa-solid fa-play"></i>' : 
+            '<i class="fa-solid fa-pause"></i>';
+    }
+
+    // Update playlist UI if the function exists
     if (typeof updatePlaylistUI === 'function') {
         updatePlaylistUI(status);
     }
