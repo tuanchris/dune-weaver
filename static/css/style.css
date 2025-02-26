@@ -640,7 +640,8 @@ section .header .add-button {
 }
 
 .file-list#playlist_items{
-    margin-bottom: 10px
+    margin-bottom: 10px;
+    max-height: 20vh;
 }
 
 .file-list li {
@@ -916,7 +917,7 @@ body.playing .bottom-nav {
     color: var(--text-secondary);
     transition: all var(--transition-medium);
     position: fixed;
-    bottom: 60px;
+    bottom: 0;
     left: 0;
     right: 0;
     z-index: 1000;
@@ -955,7 +956,7 @@ body:not(.playing) #currently-playing-container {
 
 #currently-playing-container.open {
     max-height: none;
-    bottom: 60px;
+    bottom: 0;
 }
 
 body.playing #currently-playing-container:not(.open) {
@@ -964,7 +965,7 @@ body.playing #currently-playing-container:not(.open) {
     overflow: hidden;
     flex-direction: row;
     flex-wrap: wrap;
-    bottom: 60px;
+    bottom: 0;
     opacity: 1;
 }
 
