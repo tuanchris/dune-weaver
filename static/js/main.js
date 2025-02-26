@@ -1716,19 +1716,6 @@ function connectStatusWebSocket() {
     statusSocket.onopen = () => {
         console.log('Status WebSocket connected');
         reconnectAttempts = 0; // Reset reconnect attempts on successful connection
-        
-        // Immediately request initial status
-        if (statusSocket.readyState === WebSocket.OPEN) {
-            console.log('Requesting initial status...');
-            statusSocket.send('get_status');
-        }
-        
-        // Set up periodic status updates
-        statusUpdateInterval = setInterval(() => {
-            if (statusSocket && statusSocket.readyState === WebSocket.OPEN) {
-                statusSocket.send('get_status');
-            }
-        }, 1000);
     };
 
     statusSocket.onmessage = (event) => {
@@ -1760,7 +1747,6 @@ function connectStatusWebSocket() {
 
     statusSocket.onerror = (error) => {
         console.error('WebSocket error:', error);
-        statusSocket.close();
     };
 }
 
@@ -1806,6 +1792,7 @@ function updateCurrentlyPlayingUI(status) {
     const progressBar = document.getElementById('play_progress');
     const progressText = document.getElementById('play_progress_text');
     const pausePlayButton = document.getElementById('pausePlayCurrent');
+    const speedDisplay = document.getElementById('current_speed_display'); // Add this line
 
     // Check if all required elements exist
     if (!container || !fileNameElement || !progressBar || !progressText) {
@@ -1845,6 +1832,11 @@ function updateCurrentlyPlayingUI(status) {
         } else {
             nextFileElement.style.display = 'none';
         }
+    }
+
+    // Update speed display if it exists
+    if (speedDisplay && status.speed) { // Add this block
+        speedDisplay.textContent = `Current Speed: ${status.speed}`;
     }
 
     // Update pattern preview if it's a new pattern

@@ -349,7 +349,8 @@ def get_status():
         "is_paused": state.pause_requested,
         "is_running": bool(state.current_playing_file and not state.stop_requested),
         "progress": None,
-        "playlist": None
+        "playlist": None,
+        "speed": state.speed
     }
     
     # Add playlist information if available
