@@ -40,6 +40,8 @@
     --color-warning: #FF9800CC;
     --color-error: #E53935CC;
 
+    --color-success-dark: #4CAF50CC;
+
     /* Default to light theme */
     --background-primary: var(--background-primary-light);
     --background-secondary: var(--background-secondary-light);
@@ -1563,7 +1565,7 @@ input[type="number"]:focus {
 }
 
 :root[data-theme="dark"] button.cta:hover {
-    background: var(--color-success) !important;
+    background: var(--color-success-dark) !important;
 }
 
 :root[data-theme="dark"] button.warn:hover {
@@ -1576,3 +1578,7 @@ input[type="number"]:focus {
     color: var(--theme-primary-dark);
 }
 
+:root[data-theme="dark"] .header #open-settings-button:hover {
+    background: var(--color-success-dark);
+    color: var(--text-primary-dark);
+}

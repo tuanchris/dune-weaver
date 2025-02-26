@@ -238,8 +238,8 @@
             </div>
             <div class="action-buttons square">
                 <button onclick="stopExecution()" class="cancel"><i class="fa-solid fa-stop"></i><span class="small">Stop</span></button>
-                <button onclick="moveToCenter()"><i class="fa-regular fa-circle-dot"></i><span class="small">Move to Center</span></button>
-                <button onclick="moveToPerimeter()"><i class="fa-solid fa-circle-notch"></i><span class="small">Move to Perimeter</span></button>
+                <button onclick="moveToCenter()" class="cta"><i class="fa-regular fa-circle-dot"></i><span class="small">Move to Center</span></button>
+                <button onclick="moveToPerimeter()" class="cta"><i class="fa-solid fa-circle-notch"></i><span class="small">Move to Perimeter</span></button>
                 <button onclick="sendHomeCommand()" class="warn"><i class="fa-solid fa-house"></i><span class="small">Home</span></button>
                 <div class="scrollable-selection">
                     <div class="selection-container">
@@ -266,7 +266,7 @@
                     <input type="number" id="rho_input" placeholder="Rho">
                 </div>
                 <div class="item cta">
-                    <button onclick="sendCoordinate()">
+                    <button onclick="sendCoordinate()" class="cta">
                         <i class="fa-solid fa-map-pin"></i><span class="small">Send</span>
                     </button>
                 </div>
@@ -280,7 +280,7 @@
                     <input type="number" id="speed_input" placeholder="1-100" min="1" step="1" max="100">
                 </div>
                 <div class="item cta">
-                    <button class="small-button" onclick="changeSpeed()">
+                    <button class="small-button cta" onclick="changeSpeed()">
                         <i class="fa-solid fa-gauge-high"></i>
                         <span class="small">Set Speed</span>
                     </button>
