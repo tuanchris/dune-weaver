@@ -67,6 +67,7 @@ class CoordinateRequest(BaseModel):
 
 class PlaylistRequest(BaseModel):
     playlist_name: str
+    files: List[str] = []
     pause_time: float = 0
     clear_pattern: Optional[str] = None
     run_mode: str = "single"
@@ -86,6 +87,9 @@ class SpeedRequest(BaseModel):
 
 class WLEDRequest(BaseModel):
     wled_ip: Optional[str] = None
+
+class DeletePlaylistRequest(BaseModel):
+    playlist_name: str
 
 # Store active WebSocket connections
 active_status_connections = set()
@@ -422,17 +426,17 @@ async def modify_playlist(request: PlaylistRequest):
     }
 
 @app.delete("/delete_playlist")
-async def delete_playlist(request: DeleteFileRequest):
-    success = playlist_manager.delete_playlist(request.file_name)
+async def delete_playlist(request: DeletePlaylistRequest):
+    success = playlist_manager.delete_playlist(request.playlist_name)
     if not success:
         raise HTTPException(
             status_code=404,
-            detail=f"Playlist '{request.file_name}' not found"
+            detail=f"Playlist '{request.playlist_name}' not found"
         )
 
     return {
         "success": True,
-        "message": f"Playlist '{request.file_name}' deleted"
+        "message": f"Playlist '{request.playlist_name}' deleted"
     }
 
 class AddToPlaylistRequest(BaseModel):

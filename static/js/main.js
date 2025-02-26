@@ -947,7 +947,7 @@ async function savePlaylist() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                name: name,
+                playlist_name: name,
                 files: playlist
             })
         });
@@ -1039,7 +1039,7 @@ async function confirmAddPlaylist() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                name: playlistName,
+                playlist_name: playlistName,
                 files: [] // New playlist starts empty
             })
         });
@@ -1087,7 +1087,7 @@ async function confirmRenamePlaylist() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                name: newName,
+                playlist_name: newName,
                 files: playlist // Ensure `playlist` contains the current list of files
             })
         });
@@ -1100,7 +1100,7 @@ async function confirmRenamePlaylist() {
             const deleteResponse = await fetch('/delete_playlist', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: currentName })
+                body: JSON.stringify({ playlist_name: currentName })
             });
 
             const deleteResult = await deleteResponse.json();
@@ -1138,7 +1138,7 @@ async function deleteCurrentPlaylist() {
         const response = await fetch('/delete_playlist', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: playlistName })
+            body: JSON.stringify({ playlist_name: playlistName })
         });
 
         const result = await response.json();
