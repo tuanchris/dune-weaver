@@ -1925,8 +1925,6 @@ function updateCurrentlyPlayingUI(status) {
         // Hide the preview container when a pattern is playing
         const previewContainer = document.getElementById('pattern-preview-container');
         if (previewContainer) {
-            previewContainer.classList.add('hidden');
-            previewContainer.classList.remove('visible');
             // Clear any selected file highlights
             document.querySelectorAll('#theta_rho_files .file-item').forEach(item => {
                 item.classList.remove('selected');
