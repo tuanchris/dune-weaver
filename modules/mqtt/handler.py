@@ -487,11 +487,32 @@ class MQTTHandler(BaseMQTTHandler):
         if not self.is_enabled:
             return
 
+        # First stop the running flag to prevent new iterations
         self.running = False
-        if self.status_thread:
-            self.status_thread.join(timeout=1)
-        self.client.loop_stop()
-        self.client.disconnect()
+        
+        # Clean up status thread
+        local_status_thread = self.status_thread  # Keep a local reference
+        if local_status_thread and local_status_thread.is_alive():
+            try:
+                local_status_thread.join(timeout=5)
+                if local_status_thread.is_alive():
+                    logger.warning("MQTT status thread did not terminate cleanly")
+            except Exception as e:
+                logger.error(f"Error joining status thread: {e}")
+        self.status_thread = None
+            
+        # Clean up MQTT client
+        try:
+            if hasattr(self, 'client'):
+                self.client.loop_stop()
+                self.client.disconnect()
+        except Exception as e:
+            logger.error(f"Error disconnecting MQTT client: {e}")
+        
+        # Clean up main loop reference
+        self.main_loop = None
+        
+        logger.info("MQTT handler stopped")
 
     @property
     def is_enabled(self) -> bool:

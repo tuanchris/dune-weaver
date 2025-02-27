@@ -51,7 +51,7 @@ async def lifespan(app: FastAPI):
     yield  # This separates startup from shutdown code
 
     # Shutdown
-    on_exit()
+    await on_exit()
 
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
@@ -237,11 +237,16 @@ async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTa
         files_to_run = [file_path]
         logger.info(f'Running theta-rho file: {request.file_name} with pre_execution={request.pre_execution}')
         
-        # Pass arguments in the correct order
+        # Only include clear_pattern if it's not "none"
+        kwargs = {}
+        if request.pre_execution != "none":
+            kwargs['clear_pattern'] = request.pre_execution
+        
+        # Pass arguments properly
         background_tasks.add_task(
             pattern_manager.run_theta_rho_files,
             files_to_run,  # First positional argument
-            clear_pattern=request.pre_execution if request.pre_execution != "none" else None  # Named argument
+            **kwargs  # Spread keyword arguments
         )
         return {"success": True}
     except Exception as e:
@@ -524,27 +529,48 @@ async def get_wled_ip():
         raise HTTPException(status_code=404, detail="No WLED IP set")
     return {"success": True, "wled_ip": state.wled_ip}
 
-def on_exit():
+async def on_exit():
     """Function to execute on application shutdown."""
     logger.info("Shutting down gracefully, please wait for execution to complete")
+    
+    # Stop any running patterns and save state
     pattern_manager.stop_actions()
     state.save()
+    
+    # Clean up pattern manager resources
+    await pattern_manager.cleanup_pattern_manager()
+    
+    # Clean up MQTT resources
     mqtt.cleanup_mqtt()
+    
+    # Clean up state resources
+    state.cleanup()
+    
+    logger.info("Cleanup completed")
 
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully but forcefully."""
     logger.info("Received shutdown signal, cleaning up...")
     try:
-        # Set a short timeout for cleanup operations
-        import threading
-        cleanup_thread = threading.Thread(target=lambda: [
-            pattern_manager.stop_actions(),
-            state.save(),
-            mqtt.cleanup_mqtt()
-        ])
-        cleanup_thread.daemon = True  # Make thread daemonic so it won't block exit
-        cleanup_thread.start()
-        cleanup_thread.join(timeout=10.0)  # Wait up to 2 seconds for cleanup
+        # Run cleanup operations synchronously to ensure completion
+        pattern_manager.stop_actions()
+        state.save()
+        
+        # Create an event loop for async cleanup
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Run async cleanup operations
+        loop.run_until_complete(pattern_manager.cleanup_pattern_manager())
+        
+        # Clean up MQTT and state
+        mqtt.cleanup_mqtt()
+        state.cleanup()
+        
+        # Close the event loop
+        loop.close()
+        
+        logger.info("Cleanup completed")
     except Exception as e:
         logger.error(f"Error during cleanup: {str(e)}")
     finally:

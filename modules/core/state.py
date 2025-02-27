@@ -2,6 +2,9 @@
 import threading
 import json
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 class AppState:
     def __init__(self):
@@ -210,6 +213,37 @@ class AppState:
         """Reset all state variables to their default values."""
         self.__init__()  # Reinitialize the state
         self.save()
+
+    def cleanup(self):
+        """Clean up AppState resources."""
+        try:
+            # Notify all waiting threads and clean up the condition
+            if self.pause_condition:
+                try:
+                    with self.pause_condition:
+                        self.pause_condition.notify_all()
+                    # Release the underlying lock resources
+                    self.pause_condition._lock._release_save()
+                    self.pause_condition._lock = None
+                except Exception as e:
+                    logger.error(f"Error cleaning up pause condition: {e}")
+                finally:
+                    self.pause_condition = None
+            
+            # Clean up other resources
+            if self.conn:
+                try:
+                    self.conn.close()
+                except Exception as e:
+                    logger.error(f"Error closing connection: {e}")
+                finally:
+                    self.conn = None
+                    
+            self.mqtt_handler = None
+            logger.info("AppState resources cleaned up")
+        except Exception as e:
+            logger.error(f"Error during AppState cleanup: {e}")
+            raise
 
 # Create a singleton instance that you can import elsewhere:
 state = AppState()

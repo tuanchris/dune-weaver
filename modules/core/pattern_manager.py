@@ -33,6 +33,78 @@ pattern_lock = asyncio.Lock()
 # Progress update task
 progress_update_task = None
 
+async def cleanup_pattern_manager():
+    """Clean up pattern manager resources."""
+    global progress_update_task, pattern_lock, pause_event
+    
+    try:
+        # Cancel progress update task if running
+        if progress_update_task and not progress_update_task.done():
+            progress_update_task.cancel()
+            try:
+                # Use shield to prevent cancellation of the cleanup itself
+                await asyncio.shield(progress_update_task)
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.error(f"Error cancelling progress update task: {e}")
+            finally:
+                progress_update_task = None
+
+        # Clean up pattern lock
+        if pattern_lock:
+            try:
+                if pattern_lock.locked():
+                    # Release the lock directly instead of manipulating internal state
+                    pattern_lock._locked = False
+                    for waiter in pattern_lock._waiters:
+                        if not waiter.done():
+                            waiter.set_result(True)
+            except Exception as e:
+                logger.error(f"Error cleaning up pattern lock: {e}")
+            pattern_lock = None
+
+        # Clean up pause event
+        if pause_event:
+            try:
+                # Set the event and wake up any waiters
+                pause_event.set()
+                for waiter in pause_event._waiters:
+                    if not waiter.done():
+                        waiter.set()
+            except Exception as e:
+                logger.error(f"Error cleaning up pause event: {e}")
+            pause_event = None
+
+        # Clean up pause condition from state
+        if state.pause_condition:
+            try:
+                with state.pause_condition:
+                    # Wake up all waiting threads
+                    state.pause_condition.notify_all()
+                # Create a new condition to ensure clean state
+                state.pause_condition = threading.Condition()
+            except Exception as e:
+                logger.error(f"Error cleaning up pause condition: {e}")
+
+        # Clear all state variables
+        state.current_playing_file = None
+        state.execution_progress = None
+        state.current_playlist = None
+        state.current_playlist_index = None
+        state.playlist_mode = None
+        state.pause_requested = False
+        state.stop_requested = True
+        state.is_clearing = False
+        
+        # Reset machine state
+        connection_manager.update_machine_position()
+        
+        logger.info("Pattern manager resources cleaned up")
+    except Exception as e:
+        logger.error(f"Error during pattern manager cleanup: {e}")
+        raise
+
 def list_theta_rho_files():
     files = []
     for root, _, filenames in os.walk(THETA_RHO_DIR):
@@ -100,24 +172,26 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
             return random.choice(list(CLEAR_PATTERNS.values()))
         return CLEAR_PATTERNS[clear_pattern_mode]
 
-async def run_theta_rho_file(file_path):
+async def run_theta_rho_file(file_path, is_playlist=False):
     """Run a theta-rho file by sending data in optimized batches with tqdm ETA tracking."""
     if pattern_lock.locked():
         logger.warning("Another pattern is already running. Cannot start a new one.")
         return
 
     async with pattern_lock:  # This ensures only one pattern can run at a time
-        # Start progress update task
+        # Start progress update task only if not part of a playlist
         global progress_update_task
-        progress_update_task = asyncio.create_task(broadcast_progress())
+        if not is_playlist and not progress_update_task:
+            progress_update_task = asyncio.create_task(broadcast_progress())
         
         coordinates = parse_theta_rho_file(file_path)
         total_coordinates = len(coordinates)
 
         if total_coordinates < 2:
             logger.warning("Not enough coordinates for interpolation")
-            state.current_playing_file = None
-            state.execution_progress = None
+            if not is_playlist:
+                state.current_playing_file = None
+                state.execution_progress = None
             return
 
         state.execution_progress = (0, total_coordinates, None, 0)
@@ -171,17 +245,23 @@ async def run_theta_rho_file(file_path):
         await asyncio.sleep(0.1)
         
         connection_manager.check_idle()
-        state.current_playing_file = None
-        state.execution_progress = None
-        logger.info("Pattern execution completed")
         
-        # Cancel progress update task
-        if progress_update_task:
+        # Only clear state if not part of a playlist
+        if not is_playlist:
+            state.current_playing_file = None
+            state.execution_progress = None
+            logger.info("Pattern execution completed and state cleared")
+        else:
+            logger.info("Pattern execution completed, maintaining state for playlist")
+        
+        # Only cancel progress update task if not part of a playlist
+        if not is_playlist and progress_update_task:
             progress_update_task.cancel()
             try:
                 await progress_update_task
             except asyncio.CancelledError:
                 pass
+            progress_update_task = None
 
 async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
     """Run multiple .thr files in sequence with options."""
@@ -190,6 +270,12 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
     # Set initial playlist state
     state.playlist_mode = run_mode
     state.current_playlist_index = 0
+    state.current_playlist = file_paths
+    
+    # Start progress update task for the playlist
+    global progress_update_task
+    if not progress_update_task:
+        progress_update_task = asyncio.create_task(broadcast_progress())
     
     if shuffle:
         random.shuffle(file_paths)
@@ -205,18 +291,21 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                     logger.info("Execution stopped before starting next pattern")
                     return
 
-                if clear_pattern:
+                if clear_pattern and clear_pattern != 'none':
                     if state.stop_requested:
                         logger.info("Execution stopped before running the next clear pattern")
                         return
 
                     clear_file_path = get_clear_pattern_file(clear_pattern, path)
-                    logger.info(f"Running clear pattern: {clear_file_path}")
-                    await run_theta_rho_file(clear_file_path)
+                    if clear_file_path:  # Only run clear pattern if we got a valid file path
+                        logger.info(f"Running clear pattern: {clear_file_path}")
+                        await run_theta_rho_file(clear_file_path, is_playlist=True)
+                    else:
+                        logger.info("Skipping clear pattern - no valid clear pattern file")
 
                 if not state.stop_requested:
                     logger.info(f"Running pattern {idx + 1} of {len(file_paths)}: {path}")
-                    await run_theta_rho_file(path)
+                    await run_theta_rho_file(path, is_playlist=True)
 
                 if idx < len(file_paths) - 1:
                     if state.stop_requested:
@@ -239,27 +328,49 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                 logger.info("Playlist completed")
                 break
     finally:
+        # Clean up progress update task at the end of the playlist
+        if progress_update_task:
+            progress_update_task.cancel()
+            try:
+                await progress_update_task
+            except asyncio.CancelledError:
+                pass
+            progress_update_task = None
+            
+        # Clear all state variables
+        state.current_playing_file = None
+        state.execution_progress = None
         state.current_playlist = None
         state.current_playlist_index = None
         state.playlist_mode = None
-        logger.info("All requested patterns completed (or stopped)")
+        logger.info("All requested patterns completed (or stopped) and state cleared")
 
 def stop_actions(clear_playlist = True):
     """Stop all current actions."""
-    with state.pause_condition:
-        state.pause_requested = False
-        state.stop_requested = True
-        state.current_playing_file = None
-        state.execution_progress = None
-        state.is_clearing = False
-        
-        if clear_playlist:
-            # Clear playlist state
-            state.current_playlist = None
-            state.current_playlist_index = None
-            state.playlist_mode = None
+    try:
+        with state.pause_condition:
+            state.pause_requested = False
+            state.stop_requested = True
+            state.current_playing_file = None
+            state.execution_progress = None
+            state.is_clearing = False
             
-        state.pause_condition.notify_all()
+            if clear_playlist:
+                # Clear playlist state
+                state.current_playlist = None
+                state.current_playlist_index = None
+                state.playlist_mode = None
+                
+                # Cancel progress update task if we're clearing the playlist
+                global progress_update_task
+                if progress_update_task and not progress_update_task.done():
+                    progress_update_task.cancel()
+                
+            state.pause_condition.notify_all()
+            connection_manager.update_machine_position()
+    except Exception as e:
+        logger.error(f"Error during stop_actions: {e}")
+        # Ensure we still update machine position even if there's an error
         connection_manager.update_machine_position()
 
 def move_polar(theta, rho):
@@ -379,10 +490,7 @@ async def broadcast_progress():
     """Background task to broadcast progress updates."""
     from app import active_status_connections
     while True:
-        if not pattern_lock.locked():
-            # No pattern running, stop the task
-            break
-            
+        # Send status updates regardless of pattern_lock state
         status = get_status()
         disconnected = set()
         
@@ -392,12 +500,20 @@ async def broadcast_progress():
         for websocket in active_connections:
             try:
                 await websocket.send_json(status)
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Failed to send status update: {e}")
                 disconnected.add(websocket)
         
         # Clean up disconnected clients
         if disconnected:
             active_status_connections.difference_update(disconnected)
+            
+        # Check if we should stop broadcasting
+        if not state.current_playlist:
+            # If no playlist, only stop if no pattern is being executed
+            if not pattern_lock.locked():
+                logger.info("No playlist or pattern running, stopping broadcast")
+                break
         
         # Wait before next update
         await asyncio.sleep(1)
