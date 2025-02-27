@@ -106,6 +106,7 @@ async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode
     try:
         logger.info(f"Starting playlist '{playlist_name}' with mode={run_mode}, shuffle={shuffle}")
         state.current_playlist = file_paths
+        state.current_playlist_name = playlist_name
         asyncio.create_task(
             pattern_manager.run_theta_rho_files(
                 file_paths,
