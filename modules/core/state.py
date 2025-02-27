@@ -20,7 +20,7 @@ class AppState:
         self.current_theta = 0
         self.current_rho = 0
         self.current_playlist_index = 0
-        self.playlist_mode = None
+        self.playlist_mode = "loop"
         
         # Machine position variables
         self.machine_x = 0.0
@@ -36,6 +36,9 @@ class AppState:
         self.conn = None
         self.port = None
         self.wled_ip = None
+        self._playlist_mode = "loop"
+        self._pause_time = 0
+        self._clear_pattern = "none"
         self.load()
 
     @property
@@ -85,8 +88,10 @@ class AppState:
         # force an empty string (and not None) if we need to unset
         if value == None:
             value = ""
+            # Also clear the playlist name when playlist is cleared
+            self._current_playlist_name = None
         if self.mqtt_handler:
-            self.mqtt_handler.update_state(playlist=value)
+            self.mqtt_handler.update_state(playlist=value, playlist_name=None)
 
     @property
     def current_playlist_name(self):
@@ -97,6 +102,30 @@ class AppState:
         self._current_playlist_name = value
         if self.mqtt_handler:
             self.mqtt_handler.update_state(playlist_name=value)
+
+    @property
+    def playlist_mode(self):
+        return self._playlist_mode
+
+    @playlist_mode.setter
+    def playlist_mode(self, value):
+        self._playlist_mode = value
+
+    @property
+    def pause_time(self):
+        return self._pause_time
+
+    @pause_time.setter
+    def pause_time(self, value):
+        self._pause_time = value
+
+    @property
+    def clear_pattern(self):
+        return self._clear_pattern
+
+    @clear_pattern.setter
+    def clear_pattern(self, value):
+        self._clear_pattern = value
 
     def to_dict(self):
         """Return a dictionary representation of the state."""
@@ -118,7 +147,9 @@ class AppState:
             "current_playlist": self._current_playlist,
             "current_playlist_name": self._current_playlist_name,
             "current_playlist_index": self.current_playlist_index,
-            "playlist_mode": self.playlist_mode,
+            "playlist_mode": self._playlist_mode,
+            "pause_time": self._pause_time,
+            "clear_pattern": self._clear_pattern,
             "port": self.port,
             "wled_ip": self.wled_ip
         }
@@ -142,7 +173,9 @@ class AppState:
         self._current_playlist = data.get("current_playlist")
         self._current_playlist_name = data.get("current_playlist_name")
         self.current_playlist_index = data.get("current_playlist_index")
-        self.playlist_mode = data.get("playlist_mode")
+        self._playlist_mode = data.get("playlist_mode", "loop")
+        self._pause_time = data.get("pause_time", 0)
+        self._clear_pattern = data.get("clear_pattern", "none")
         self.port = data.get("port", None)
         self.wled_ip = data.get('wled_ip', None)
 
