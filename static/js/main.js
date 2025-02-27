@@ -403,14 +403,14 @@ async function previewPattern(fileName, containerId = 'pattern-preview-container
 
             if (firstCoordElement) {
                 const firstCoord = coordinates[0];
-                firstCoordElement.textContent = `First Coordinate: θ=${firstCoord[0]}, ρ=${firstCoord[1]}`;
+                firstCoordElement.textContent = `First Coordinate: θ=${firstCoord[0].toFixed(2)}, ρ=${firstCoord[1].toFixed(2)}`;
             } else {
                 logMessage('First coordinate element not found.', LOG_TYPE.WARNING);
             }
 
             if (lastCoordElement) {
                 const lastCoord = coordinates[coordinates.length - 1];
-                lastCoordElement.textContent = `Last Coordinate: θ=${lastCoord[0]}, ρ=${lastCoord[1]}`;
+                lastCoordElement.textContent = `Last Coordinate: θ=${lastCoord[0].toFixed(2)}, ρ=${lastCoord[1].toFixed(2)}`;
             } else {
                 logMessage('Last coordinate element not found.', LOG_TYPE.WARNING);
             }
@@ -888,6 +888,8 @@ async function runPlaylist() {
         }
 
         logMessage(`Started playlist: ${playlistName}`, 'success');
+        // Close the playlist editor container after successfully starting the playlist
+        closeStickySection('playlist-editor');
     } catch (error) {
         logMessage('Error running playlist: ' + error, 'error');
     }
@@ -1811,11 +1813,21 @@ function updateCurrentlyPlayingUI(status) {
         console.log('Pattern is running, showing container');
         document.body.classList.add('playing');
         container.style.display = 'flex';
+        
+        // Hide the preview container when a pattern is playing
+        const previewContainer = document.getElementById('pattern-preview-container');
+        if (previewContainer) {
+            previewContainer.classList.add('hidden');
+            previewContainer.classList.remove('visible');
+            // Clear any selected file highlights
+            document.querySelectorAll('#theta_rho_files .file-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+        }
     } else {
         console.log('No pattern running, hiding container');
         document.body.classList.remove('playing');
         container.style.display = 'none';
-        return;
     }
 
     // Update file name display

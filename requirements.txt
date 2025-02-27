@@ -1,6 +1,4 @@
-flask>=2.0.1
 pyserial>=3.5
-esptool>=4.1
 tqdm>=4.65.0
 paho-mqtt>=1.6.1
 python-dotenv>=1.0.0

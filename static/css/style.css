@@ -864,7 +864,7 @@ button#debug_button.active {
 
 /* Preview Canvas */
 #patternPreviewCanvas {
-    height: 15vw;
+    width: 100%;
     max-width: 300px;
     aspect-ratio: 1/1;
     border: 1px solid var(--border-primary);
@@ -913,16 +913,9 @@ body.playing .bottom-nav {
 }
 
 #currently-playing-container {
-    display: none; /* Hide by default */
     align-items: center;
     background: var(--background-accent);
     color: var(--text-secondary);
-    transition: all var(--transition-medium);
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 1000;
 }
 
 #currently-playing-container h3,
@@ -931,44 +924,25 @@ body.playing .bottom-nav {
     color: var(--text-secondary);
 }
 
-#currently-playing-container .file-info {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    margin-right: auto;
-}
-
 #currently-playing-container h3 {
     margin: 0;
 }
 
-#currently-playing-container h4 {
-    margin: 0;
-    color: var(--text-secondary);
-    opacity: 0.7;
-    text-align: left;
-    font-size: 0.9em;
-    font-weight: normal;
-}
-
 body:not(.playing) #currently-playing-container {
     display: none;
-    opacity: 0;
 }
 
 #currently-playing-container.open {
     max-height: none;
-    bottom: 0;
+    bottom: 60px;
 }
 
 body.playing #currently-playing-container:not(.open) {
-    display: flex;
     height: 140px;
-    overflow: hidden;
+    overflow:hidden;
     flex-direction: row;
     flex-wrap: wrap;
-    bottom: 0;
-    opacity: 1;
+    bottom: 60px;
 }
 
 body.playing #currently-playing-container .header{
@@ -997,22 +971,15 @@ body.playing #currently-playing-container:not(.open) .header h3 {
 body.playing #currently-playing-container:not(.open) #currently-playing-details{
     flex-grow: 1;
     flex-basis: 50%;
-    display: flex;
-    flex-direction: column;
     align-items: flex-start;
     margin: 0 0 0 10px;
     overflow-y: auto;
 }
 
-body.playing #currently-playing-container:not(.open) #currently-playing-details .play-buttons {
-    margin-top: 10px;
-    align-self: flex-start;
-}
-
 body.playing #currently-playing-container:not(.open) .play-buttons button {
     width: 50px;
     height: 50px;
-    font-size: 1.5rem;
+    font-size: 1.5rem;/* Center within flex container */
 }
 
 body.playing #currently-playing-container:not(.open) #progress-container {
@@ -1041,6 +1008,15 @@ body.playing #currently-playing-container:not(.open) #progress-container {
     margin: 5px 0;
     font-size: 1rem;
 }
+
+#currently-playing-file,
+#next-file {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
+}
+
 
 #progress-container {
     display: flex;
@@ -1098,6 +1074,8 @@ body.playing #currently-playing-container:not(.open) #progress-container {
 .play-buttons {
     display: flex;
     gap: 20px;
+    justify-content: flex-end;
+    width: 100%;
 }
 
 .play-buttons button {
@@ -1113,6 +1091,33 @@ body.playing #currently-playing-container:not(.open) #progress-container {
 
 #pausePlayCurrent {
     border-radius: 50%;
+}
+
+body.playing #currently-playing-container.open {
+    position: absolute;
+    bottom: 0;
+}
+
+body.playing #currently-playing-container:not(.open) #currently-playing-details {
+    flex-direction: row;
+    align-items: center;
+}
+
+#currently-playing-container h3 {
+    flex-grow: 1;
+}
+
+body.playing #currently-playing-container.open .header {
+    display: none;
+}
+
+#open-settings-button span {
+    opacity: 0;
+    transition: var(--transition-medium) opacity;
+}
+
+#open-settings-button:hover span {
+    opacity: 1;
 }
 
 /* Debug Log */
@@ -1356,28 +1361,6 @@ input[type="number"]:focus {
         display: none;
     }
 
-    button.cancel {
-        background: var(--color-error);
-    }
-
-    button.cta {
-        background: var(--color-success);
-    }
-
-    button.warn {
-        background: var(--color-warning);
-    }
-
-    button.cancel:hover,
-    button.warn:hover,
-    button.cta:hover {
-        background: var(--theme-primary);
-    }
-
-    body.playing section.sticky{
-        bottom: 200px;
-    }
-
 }
 
 /* On larger screens, display all tabs in a 3-column grid */
@@ -1434,32 +1417,6 @@ input[type="number"]:focus {
         display: none;
     }
 
-    body.playing #currently-playing-container.open {
-        position: absolute;
-        bottom: 0;
-    }
-
-    body.playing #currently-playing-container:not(.open) #currently-playing-details {
-        flex-direction: row;
-        align-items: center;
-    }
-
-    #currently-playing-container h3 {
-        flex-grow: 1;
-    }
-
-    body.playing #currently-playing-container.open .header {
-        display: none;
-    }
-
-    #open-settings-button span {
-        opacity: 0;
-        transition: var(--transition-medium) opacity;
-    }
-
-    #open-settings-button:hover span {
-        opacity: 1;
-    }
 }
 
 /* Add specific styles for dark mode inputs */
