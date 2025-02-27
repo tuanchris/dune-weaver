@@ -260,6 +260,9 @@ async function runThetaRho() {
 
         const result = await response.json();
         if (response.ok) {
+            // Connect WebSocket when starting a pattern
+            connectStatusWebSocket();
+            
             // Show the currently playing UI immediately
             document.body.classList.add('playing');
             const currentlyPlayingFile = document.getElementById('currently-playing-file');
@@ -535,15 +538,96 @@ async function sendHomeCommand() {
 }
 
 async function runClearIn() {
-    await runFile('clear_from_in.thr');
+    logMessage('Running clear from center pattern...', LOG_TYPE.INFO);
+    try {
+        const response = await fetch('/run_theta_rho', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                file_name: 'clear_from_in.thr',
+                pre_execution: 'none'
+            })
+        });
+        
+        if (!response.ok) {
+            if (response.status === 409) {
+                logMessage('Cannot start pattern: Another pattern is already running', LOG_TYPE.WARNING);
+                return;
+            }
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (result.success) {
+            logMessage('Clear from center pattern started', LOG_TYPE.SUCCESS);
+        } else {
+            logMessage('Failed to run clear pattern', LOG_TYPE.ERROR);
+        }
+    } catch (error) {
+        logMessage(`Error running clear pattern: ${error}`, LOG_TYPE.ERROR);
+    }
 }
 
 async function runClearOut() {
-    await runFile('clear_from_out.thr');
+    logMessage('Running clear from perimeter pattern...', LOG_TYPE.INFO);
+    try {
+        const response = await fetch('/run_theta_rho', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                file_name: 'clear_from_out.thr',
+                pre_execution: 'none'
+            })
+        });
+        
+        if (!response.ok) {
+            if (response.status === 409) {
+                logMessage('Cannot start pattern: Another pattern is already running', LOG_TYPE.WARNING);
+                return;
+            }
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (result.success) {
+            logMessage('Clear from perimeter pattern started', LOG_TYPE.SUCCESS);
+        } else {
+            logMessage('Failed to run clear pattern', LOG_TYPE.ERROR);
+        }
+    } catch (error) {
+        logMessage(`Error running clear pattern: ${error}`, LOG_TYPE.ERROR);
+    }
 }
 
 async function runClearSide() {
-    await runFile('clear_sideway.thr');
+    logMessage('Running clear sideways pattern...', LOG_TYPE.INFO);
+    try {
+        const response = await fetch('/run_theta_rho', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                file_name: 'clear_sideway.thr',
+                pre_execution: 'none'
+            })
+        });
+        
+        if (!response.ok) {
+            if (response.status === 409) {
+                logMessage('Cannot start pattern: Another pattern is already running', LOG_TYPE.WARNING);
+                return;
+            }
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (result.success) {
+            logMessage('Clear sideways pattern started', LOG_TYPE.SUCCESS);
+        } else {
+            logMessage('Failed to run clear pattern', LOG_TYPE.ERROR);
+        }
+    } catch (error) {
+        logMessage(`Error running clear pattern: ${error}`, LOG_TYPE.ERROR);
+    }
 }
 
 let scrollPosition = 0;
@@ -887,6 +971,9 @@ async function runPlaylist() {
             return;
         }
 
+        // Connect WebSocket when starting a playlist
+        connectStatusWebSocket();
+        
         logMessage(`Started playlist: ${playlistName}`, 'success');
         // Close the playlist editor container after successfully starting the playlist
         closeStickySection('playlist-editor');
@@ -1701,8 +1788,15 @@ let statusSocket = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 let statusUpdateInterval = null;
+let wsConnected = false;
 
 function connectStatusWebSocket() {
+    // Don't create a new connection if one already exists
+    if (wsConnected) {
+        console.log('WebSocket already connected');
+        return;
+    }
+
     // Close existing connection and clear interval if any
     if (statusSocket) {
         statusSocket.close();
@@ -1717,15 +1811,21 @@ function connectStatusWebSocket() {
 
     statusSocket.onopen = () => {
         console.log('Status WebSocket connected');
+        wsConnected = true;
         reconnectAttempts = 0; // Reset reconnect attempts on successful connection
     };
 
     statusSocket.onmessage = (event) => {
         try {
-            console.log('Status data received:', event.data);
             const message = JSON.parse(event.data);
             if (message.type === 'status_update' && message.data) {
                 updateCurrentlyPlayingUI(message.data);
+                
+                // Disconnect WebSocket if no pattern is running
+                if (!message.data.is_running) {
+                    console.log('No pattern running, disconnecting WebSocket');
+                    disconnectStatusWebSocket();
+                }
             }
         } catch (error) {
             console.error('Error processing status update:', error);
@@ -1735,21 +1835,30 @@ function connectStatusWebSocket() {
 
     statusSocket.onclose = () => {
         console.log('Status WebSocket disconnected');
+        wsConnected = false;
         clearInterval(statusUpdateInterval);
         
-        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        // Only attempt to reconnect if we're supposed to be connected
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS && document.body.classList.contains('playing')) {
             reconnectAttempts++;
             const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
             console.log(`Reconnecting in ${delay/1000}s (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
             setTimeout(connectStatusWebSocket, delay);
-        } else {
-            console.error('Max reconnection attempts reached. Please refresh the page.');
         }
     };
 
     statusSocket.onerror = (error) => {
         console.error('WebSocket error:', error);
     };
+}
+
+function disconnectStatusWebSocket() {
+    if (statusSocket && wsConnected) {
+        wsConnected = false;
+        statusSocket.close();
+        statusSocket = null;
+        reconnectAttempts = 0;
+    }
 }
 
 // Replace the polling mechanism with WebSocket
@@ -1794,7 +1903,7 @@ function updateCurrentlyPlayingUI(status) {
     const progressBar = document.getElementById('play_progress');
     const progressText = document.getElementById('play_progress_text');
     const pausePlayButton = document.getElementById('pausePlayCurrent');
-    const speedDisplay = document.getElementById('current_speed_display'); // Add this line
+    const speedDisplay = document.getElementById('current_speed_display');
 
     // Check if all required elements exist
     if (!container || !fileNameElement || !progressBar || !progressText) {
@@ -1810,7 +1919,6 @@ function updateCurrentlyPlayingUI(status) {
 
     // Update container visibility based on status
     if (status.current_file && status.is_running) {
-        console.log('Pattern is running, showing container');
         document.body.classList.add('playing');
         container.style.display = 'flex';
         
@@ -1825,14 +1933,17 @@ function updateCurrentlyPlayingUI(status) {
             });
         }
     } else {
-        console.log('No pattern running, hiding container');
         document.body.classList.remove('playing');
         container.style.display = 'none';
     }
 
     // Update file name display
-    const fileName = status.current_file.replace('./patterns/', '');
-    fileNameElement.textContent = fileName;
+    if (status.current_file) {
+        const fileName = status.current_file.replace('./patterns/', '');
+        fileNameElement.textContent = fileName;
+    } else {
+        fileNameElement.textContent = 'No pattern playing';
+    }
 
     // Update next file display
     const nextFileElement = document.getElementById('next-file');
@@ -1847,12 +1958,12 @@ function updateCurrentlyPlayingUI(status) {
     }
 
     // Update speed display if it exists
-    if (speedDisplay && status.speed) { // Add this block
+    if (speedDisplay && status.speed) {
         speedDisplay.textContent = `Current Speed: ${status.speed}`;
     }
 
     // Update pattern preview if it's a new pattern
-    if (lastPlayedFile !== status.current_file) {
+    if (status.current_file && lastPlayedFile !== status.current_file) {
         lastPlayedFile = status.current_file;
         const cleanFileName = status.current_file.replace('./patterns/', '');
         previewPattern(cleanFileName, 'currently-playing-container');

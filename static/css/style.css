@@ -31,7 +31,7 @@
 
     /* Common theme variables that don't change */
     --theme-primary: #6A9AD9;
-    --theme-primary-hover: #A0CCF2;
+    --theme-primary-hover: #6a9ad9ca;
     --theme-secondary: #C4B4A0;
     --theme-secondary-hover: #4E453F;
 
@@ -385,7 +385,7 @@ button.cancel:hover {
 }
 
 button.cta:hover {
-    background: var(--color-success);
+    background: var(--theme-primary-hover);
 }
 
 button.warn:hover {
