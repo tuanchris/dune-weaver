@@ -529,6 +529,12 @@ async def get_wled_ip():
         raise HTTPException(status_code=404, detail="No WLED IP set")
     return {"success": True, "wled_ip": state.wled_ip}
 
+@app.post("/skip_pattern")
+async def skip_pattern():
+    if not state.current_playlist:
+        raise HTTPException(status_code=400, detail="No playlist is currently running")
+    state.skip_requested = True
+    return {"success": True}
 
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully but forcefully."""

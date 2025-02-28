@@ -1992,4 +1992,40 @@ function updateCurrentlyPlayingUI(status) {
     if (typeof updatePlaylistUI === 'function') {
         updatePlaylistUI(status);
     }
+
+    // Update skip button visibility based on playlist status
+    updateSkipButtonVisibility(status);
+}
+
+// Add these functions to handle the skip button
+
+function updateSkipButtonVisibility(status) {
+    const skipButton = document.getElementById('skipCurrent');
+    if (skipButton) {
+        // Check if a playlist is playing using the correct status properties
+        console.log('status', status);
+        const isPlaylistPlaying = status && status.playlist && status.playlist.next_file;
+        if (isPlaylistPlaying) {
+            skipButton.classList.remove('hidden');
+        } else {
+            skipButton.classList.add('hidden');
+        }
+    }
+}
+
+async function skipPattern() {
+    try {
+        const response = await fetch('/skip_pattern', {
+            method: 'POST',
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            logMessage('Skipping to next pattern', LOG_TYPE.INFO);
+        } else {
+            logMessage(data.message, LOG_TYPE.ERROR);
+        }
+    } catch (error) {
+        logMessage('Error skipping pattern', 'error');
+    }
 }

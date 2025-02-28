@@ -40,6 +40,7 @@ class AppState:
         self.port = None
         self.wled_ip = None
         self.led_controller = None
+        self.skip_requested = False
         self._playlist_mode = "loop"
         self._pause_time = 0
         self._clear_pattern = "none"

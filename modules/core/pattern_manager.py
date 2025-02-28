@@ -140,7 +140,7 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
     """Return a .thr file path based on pattern_name."""
     if not clear_pattern_mode or clear_pattern_mode == 'none':
         return
-    logger.info("Clear pattern mode: " + clear_pattern_mode)
+    logger.debug("Clear pattern mode: " + clear_pattern_mode)
     if clear_pattern_mode == "random":
         return random.choice(list(CLEAR_PATTERNS.values()))
 
@@ -217,6 +217,13 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                     if state.led_controller:
                         effect_idle(state.led_controller)
                     break
+                
+                if state.skip_requested:
+                    logger.info("Skipping pattern...")
+                    connection_manager.check_idle()
+                    if state.led_controller:
+                        effect_idle(state.led_controller)
+                    break
 
                 # Wait for resume if paused
                 if state.pause_requested:
@@ -264,8 +271,6 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                 pass
             progress_update_task = None
             
-        if state.led_controller:
-            effect_idle(state.led_controller)
 
 async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
     """Run multiple .thr files in sequence with options."""
@@ -274,65 +279,83 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
     # Set initial playlist state
     state.playlist_mode = run_mode
     state.current_playlist_index = 0
-    state.current_playlist = file_paths
-    
     # Start progress update task for the playlist
     global progress_update_task
     if not progress_update_task:
         progress_update_task = asyncio.create_task(broadcast_progress())
     
+    
+    if shuffle:
+        random.shuffle(file_paths)
+        logger.info("Playlist shuffled")
+
+
     if shuffle:
         random.shuffle(file_paths)
         logger.info("Playlist shuffled")
 
     try:
         while True:
-            for idx, path in enumerate(file_paths):
-                logger.info(f"Upcoming pattern: {path}")
-                state.current_playlist_index = idx
+            # Construct the complete pattern sequence
+            pattern_sequence = []
+            for path in file_paths:
+                # Add clear pattern if specified
+                if clear_pattern and clear_pattern != 'none':
+                    clear_file_path = get_clear_pattern_file(clear_pattern, path)
+                    if clear_file_path:
+                        pattern_sequence.append(clear_file_path)
+                
+                # Add main pattern
+                pattern_sequence.append(path)
 
+            # Shuffle if requested
+            if shuffle:
+                # Get pairs of patterns (clear + main) to keep them together
+                pairs = [pattern_sequence[i:i+2] for i in range(0, len(pattern_sequence), 2)]
+                random.shuffle(pairs)
+                # Flatten the pairs back into a single list
+                pattern_sequence = [pattern for pair in pairs for pattern in pair]
+                logger.info("Playlist shuffled")
+
+            # Set the playlist to the first pattern
+            state.current_playlist = pattern_sequence
+            # Execute the pattern sequence
+            for idx, file_path in enumerate(pattern_sequence):
+                state.current_playlist_index = idx
                 if state.stop_requested:
-                    logger.info("Execution stopped before starting next pattern")
+                    logger.info("Execution stopped")
                     return
 
-                if clear_pattern and clear_pattern != 'none':
-                    if state.stop_requested:
-                        logger.info("Execution stopped before running the next clear pattern")
-                        return
+                # Update state for main patterns only
+                logger.info(f"Running pattern {file_path}")
+                
+                # Execute the pattern
+                await run_theta_rho_file(file_path, is_playlist=True)
 
-                    clear_file_path = get_clear_pattern_file(clear_pattern, path)
-                    if clear_file_path:  # Only run clear pattern if we got a valid file path
-                        logger.info(f"Running clear pattern: {clear_file_path}")
-                        await run_theta_rho_file(clear_file_path, is_playlist=True)
-                    else:
-                        logger.info("Skipping clear pattern - no valid clear pattern file")
-
-                if not state.stop_requested:
-                    logger.info(f"Running pattern {idx + 1} of {len(file_paths)}: {path}")
-                    await run_theta_rho_file(path, is_playlist=True)
-
-                if idx < len(file_paths) - 1:
-                    if state.stop_requested:
-                        logger.info("Execution stopped before running the next clear pattern")
-                        return
-                    if pause_time > 0:
-                        logger.info(f"Pausing for {pause_time} seconds")
-                        await asyncio.sleep(pause_time)
+                # Handle pause between patterns
+                if idx < len(pattern_sequence) - 1 and not state.stop_requested and pause_time > 0 and not state.skip_requested:
+                    logger.info(f"Pausing for {pause_time} seconds")
+                    pause_start = time.time()
+                    while time.time() - pause_start < pause_time:
+                        if state.skip_requested:
+                            logger.info("Pause interrupted by stop/skip request")
+                            break
+                        await asyncio.sleep(1)  # Check every 100ms
+                    
+                state.skip_requested = False
 
             if run_mode == "indefinite":
                 logger.info("Playlist completed. Restarting as per 'indefinite' run mode")
                 if pause_time > 0:
                     logger.debug(f"Pausing for {pause_time} seconds before restarting")
                     await asyncio.sleep(pause_time)
-                if shuffle:
-                    random.shuffle(file_paths)
-                    logger.info("Playlist reshuffled for the next loop")
                 continue
             else:
                 logger.info("Playlist completed")
                 break
+
     finally:
-        # Clean up progress update task at the end of the playlist
+        # Clean up progress update task
         if progress_update_task:
             progress_update_task.cancel()
             try:
@@ -347,6 +370,10 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
         state.current_playlist = None
         state.current_playlist_index = None
         state.playlist_mode = None
+        
+        if state.led_controller:
+            effect_idle(state.led_controller)
+        
         logger.info("All requested patterns completed (or stopped) and state cleared")
 
 def stop_actions(clear_playlist = True):
@@ -475,7 +502,7 @@ def get_status():
             "current_index": state.current_playlist_index,
             "total_files": len(state.current_playlist),
             "mode": state.playlist_mode,
-            "next_file": state.current_playlist[next_index] if next_index < len(state.current_playlist) else (state.current_playlist[0] if state.playlist_mode == "loop" else None)
+            "next_file": state.current_playlist[next_index] if next_index < len(state.current_playlist) else None
         }
     
     if state.execution_progress:

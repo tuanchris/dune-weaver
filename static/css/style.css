@@ -957,10 +957,6 @@ body.playing #currently-playing-container .header .open-button {
     margin: 0;
 }
 
-body.playing #currently-playing-preview #currentlyPlayingCanvas {
-    max-width:100px;
-    padding: 5px;
-}
 
 body.playing #currently-playing-container:not(.open) .header .fullscreen-button,
 body.playing #currently-playing-container:not(.open) .header .close-button,
@@ -988,8 +984,7 @@ body.playing #currently-playing-container:not(.open) #progress-container {
 
 
 #currentlyPlayingCanvas {
-    width: 100%;
-    max-width: 300px;
+    width: 100px;
     aspect-ratio: 1/1;
     border: 1px solid var(--border-primary);
     background: var(--theme-secondary);

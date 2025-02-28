@@ -328,7 +328,7 @@ def check_idle():
             update_machine_position()
             return True
         time.sleep(1)
-
+        
 
 def get_machine_position(timeout=5):
     """
