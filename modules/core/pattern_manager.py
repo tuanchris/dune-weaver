@@ -17,11 +17,6 @@ logger = logging.getLogger(__name__)
 
 # Global state
 THETA_RHO_DIR = './patterns'
-CLEAR_PATTERNS = {
-    "clear_from_in":  "./patterns/clear_from_in.thr",
-    "clear_from_out": "./patterns/clear_from_out.thr",
-    "clear_sideway":  "./patterns/clear_sideway.thr"
-}
 os.makedirs(THETA_RHO_DIR, exist_ok=True)
 
 # Create an asyncio Event for pause/resume
@@ -137,33 +132,56 @@ def parse_theta_rho_file(file_path):
     return coordinates
 
 def get_clear_pattern_file(clear_pattern_mode, path=None):
-    """Return a .thr file path based on pattern_name."""
+    """Return a .thr file path based on pattern_name and table type."""
     if not clear_pattern_mode or clear_pattern_mode == 'none':
         return
-    logger.debug("Clear pattern mode: " + clear_pattern_mode)
+    
+    # Define patterns for each table type
+    clear_patterns = {
+        'dune_weaver': {
+            'clear_from_out': './patterns/clear_from_out.thr',
+            'clear_from_in': './patterns/clear_from_in.thr',
+            'clear_sideway': './patterns/clear_sideway.thr'
+        },
+        'dune_weaver_mini': {
+            'clear_from_out': './patterns/clear_from_out_mini.thr',
+            'clear_from_in': './patterns/clear_from_in_mini.thr',
+            'clear_sideway': './patterns/clear_sideway_mini.thr'
+        },
+        'dune_weaver_pro': {
+            'clear_from_out': './patterns/clear_from_out_pro.thr',
+            'clear_from_in': './patterns/clear_from_in_pro.thr',
+            'clear_sideway': './patterns/clear_sideway_pro.thr'
+        }
+    }
+    
+    # Get patterns for current table type, fallback to standard patterns if type not found
+    table_patterns = clear_patterns.get(state.table_type, clear_patterns['dune_weaver'])
+    
+    logger.debug(f"Clear pattern mode: {clear_pattern_mode} for table type: {state.table_type}")
+    
     if clear_pattern_mode == "random":
-        return random.choice(list(CLEAR_PATTERNS.values()))
+        return random.choice(list(table_patterns.values()))
 
     if clear_pattern_mode == 'adaptive':
         if not path:
             logger.warning("No path provided for adaptive clear pattern")
-            return random.choice(list(CLEAR_PATTERNS.values()))
+            return random.choice(list(table_patterns.values()))
             
         coordinates = parse_theta_rho_file(path)
         if not coordinates:
             logger.warning("No valid coordinates found in file for adaptive clear pattern")
-            return random.choice(list(CLEAR_PATTERNS.values()))
+            return random.choice(list(table_patterns.values()))
             
         first_rho = coordinates[0][1]
         if first_rho < 0.5:
-            return CLEAR_PATTERNS['clear_from_out']
+            return table_patterns['clear_from_out']
         else:
-            return random.choice([CLEAR_PATTERNS['clear_from_in'], CLEAR_PATTERNS['clear_sideway']])
+            return random.choice([table_patterns['clear_from_in'], table_patterns['clear_sideway']])
     else:
-        if clear_pattern_mode not in CLEAR_PATTERNS:
-            logger.warning(f"Invalid clear pattern mode: {clear_pattern_mode}")
-            return random.choice(list(CLEAR_PATTERNS.values()))
-        return CLEAR_PATTERNS[clear_pattern_mode]
+        if clear_pattern_mode not in table_patterns:
+            return False
+        return table_patterns[clear_pattern_mode]
 
 async def run_theta_rho_file(file_path, is_playlist=False):
     """Run a theta-rho file by sending data in optimized batches with tqdm ETA tracking."""
@@ -428,7 +446,7 @@ def move_polar(theta, rho):
     if rho > (1-soft_limit_outter):
         rho = (1-soft_limit_outter)
     
-    if state.gear_ratio == 6.25:
+    if state.table_type == 'dune_weaver_mini':
         x_scaling_factor = 2
         y_scaling_factor = 3.7
     else:
@@ -445,7 +463,7 @@ def move_polar(theta, rho):
         
     offset = x_increment * (x_total_steps * x_scaling_factor / (state.gear_ratio * y_total_steps * y_scaling_factor))
 
-    if state.gear_ratio == 6.25:
+    if state.table_type == 'dune_weaver_mini':
         y_increment -= offset
     else:
         y_increment += offset

@@ -282,6 +282,16 @@ def get_machine_steps(timeout=10):
             
             # If all parameters are received, exit early
             if x_steps_per_mm is not None and y_steps_per_mm is not None and gear_ratio is not None:
+                if y_steps_per_mm == 180:
+                    state.table_type = 'dune_weaver_mini'
+                elif y_steps_per_mm == 320:
+                    state.table_type = 'dune_weaver_pro'
+                elif y_steps_per_mm == 287:
+                    state.table_type = 'dune_weaver'
+                else:
+                    state.table_type = None
+                    logger.warning(f"Unknown table type. Check connection_manager.py")
+                logger.info(f"Machine type: {state.table_type}")
                 return True
 
         except Exception as e:

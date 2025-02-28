@@ -217,8 +217,14 @@ async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTa
     if not request.file_name:
         logger.warning('Run theta-rho request received without file name')
         raise HTTPException(status_code=400, detail="No file name provided")
-
-    file_path = os.path.join(pattern_manager.THETA_RHO_DIR, request.file_name)
+    
+    file_path = None
+    if 'clear' in request.file_name:
+        logger.info(f'Clear pattern file: {request.file_name.split(".")[0]}')
+        file_path = pattern_manager.get_clear_pattern_file(request.file_name.split('.')[0])
+        logger.info(f'Clear pattern file: {file_path}')
+    if not file_path:
+        file_path = os.path.join(pattern_manager.THETA_RHO_DIR, request.file_name)
     if not os.path.exists(file_path):
         logger.error(f'Theta-rho file not found: {file_path}')
         raise HTTPException(status_code=404, detail="File not found")

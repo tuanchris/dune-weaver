@@ -559,6 +559,8 @@ async function runClearIn() {
         
         const result = await response.json();
         if (result.success) {
+            connectStatusWebSocket();
+            document.body.classList.add('playing');
             logMessage('Clear from center pattern started', LOG_TYPE.SUCCESS);
         } else {
             logMessage('Failed to run clear pattern', LOG_TYPE.ERROR);
@@ -590,6 +592,8 @@ async function runClearOut() {
         
         const result = await response.json();
         if (result.success) {
+            connectStatusWebSocket();
+            document.body.classList.add('playing');
             logMessage('Clear from perimeter pattern started', LOG_TYPE.SUCCESS);
         } else {
             logMessage('Failed to run clear pattern', LOG_TYPE.ERROR);
@@ -621,6 +625,8 @@ async function runClearSide() {
         
         const result = await response.json();
         if (result.success) {
+            connectStatusWebSocket();
+            document.body.classList.add('playing');
             logMessage('Clear sideways pattern started', LOG_TYPE.SUCCESS);
         } else {
             logMessage('Failed to run clear pattern', LOG_TYPE.ERROR);
