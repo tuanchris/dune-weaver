@@ -1437,7 +1437,7 @@ async function changeSpeed() {
 
     const result = await response.json();
     if (result.success) {
-        document.getElementById('speed_status').textContent = `Current Speed: ${speed}`;
+        document.getElementById('current_speed_display').textContent = `Current Speed: ${speed}`;
         logMessage(`Speed set to: ${speed}`, LOG_TYPE.SUCCESS);
     } else {
         logMessage(`Failed to set speed: ${result.error}`, LOG_TYPE.ERROR);

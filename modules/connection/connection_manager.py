@@ -77,7 +77,6 @@ class SerialConnection(BaseConnection):
             if self.ser.is_open:
                 self.ser.close()
         # Release the lock resources
-        self.lock._release_save()
         self.lock = None
 
 ###############################################################################
@@ -126,7 +125,6 @@ class WebSocketConnection(BaseConnection):
             if self.ws:
                 self.ws.close()
         # Release the lock resources
-        self.lock._release_save()
         self.lock = None
                 
 def list_serial_ports():
