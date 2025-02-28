@@ -10,3 +10,4 @@ jinja2>=3.1.2
 aiofiles>=23.1.0
 python-multipart>=0.0.6
 websockets>=11.0.3  # Required for FastAPI WebSocket support
+requests>=2.31.0

@@ -18,7 +18,7 @@ import signal
 import sys
 import asyncio
 from contextlib import asynccontextmanager
-
+from modules.led.led_controller import LEDController, effect_idle
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -50,8 +50,6 @@ async def lifespan(app: FastAPI):
 
     yield  # This separates startup from shutdown code
 
-    # Shutdown
-    await on_exit()
 
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
@@ -519,6 +517,8 @@ async def update_software():
 @app.post("/set_wled_ip")
 async def set_wled_ip(request: WLEDRequest):
     state.wled_ip = request.wled_ip
+    state.led_controller = LEDController(request.wled_ip)
+    effect_idle(state.led_controller)
     state.save()
     logger.info(f"WLED IP updated: {request.wled_ip}")
     return {"success": True, "wled_ip": state.wled_ip}
@@ -529,57 +529,26 @@ async def get_wled_ip():
         raise HTTPException(status_code=404, detail="No WLED IP set")
     return {"success": True, "wled_ip": state.wled_ip}
 
-async def on_exit():
-    """Function to execute on application shutdown."""
-    logger.info("Shutting down gracefully, please wait for execution to complete")
-    
-    # Stop any running patterns and save state
-    pattern_manager.stop_actions()
-    state.save()
-    
-    # Clean up pattern manager resources
-    await pattern_manager.cleanup_pattern_manager()
-    
-    # Clean up MQTT resources
-    mqtt.cleanup_mqtt()
-    
-    # Clean up state resources
-    state.cleanup()
-    
-    logger.info("Cleanup completed")
 
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully but forcefully."""
     logger.info("Received shutdown signal, cleaning up...")
     try:
+        if state.led_controller:
+            state.led_controller.set_power(0)
         # Run cleanup operations synchronously to ensure completion
         pattern_manager.stop_actions()
         state.save()
-        
-        # Create an event loop for async cleanup
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        # Run async cleanup operations
-        loop.run_until_complete(pattern_manager.cleanup_pattern_manager())
-        
-        # Clean up MQTT and state
-        mqtt.cleanup_mqtt()
-        state.cleanup()
-        
-        # Close the event loop
-        loop.close()
         
         logger.info("Cleanup completed")
     except Exception as e:
         logger.error(f"Error during cleanup: {str(e)}")
     finally:
-        logger.info("Forcing exit...")
+        logger.info("Exiting application...")
         os._exit(0)  # Force exit regardless of other threads
 
 def entrypoint():
     import uvicorn
-    atexit.register(on_exit)
     logger.info("Starting FastAPI server on port 8080...")
     uvicorn.run(app, host="0.0.0.0", port=8080, workers=1)  # Set workers to 1 to avoid multiple signal handlers
 

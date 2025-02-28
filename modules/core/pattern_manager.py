@@ -10,6 +10,7 @@ from modules.core.state import state
 from math import pi
 import asyncio
 import json
+from modules.led.led_controller import effect_playing, effect_idle
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -34,76 +35,68 @@ pattern_lock = asyncio.Lock()
 progress_update_task = None
 
 async def cleanup_pattern_manager():
-    """Clean up pattern manager resources."""
+    """Clean up pattern manager resources"""
     global progress_update_task, pattern_lock, pause_event
     
     try:
         # Cancel progress update task if running
         if progress_update_task and not progress_update_task.done():
-            progress_update_task.cancel()
             try:
-                # Use shield to prevent cancellation of the cleanup itself
-                await asyncio.shield(progress_update_task)
-            except asyncio.CancelledError:
-                pass
+                progress_update_task.cancel()
+                # Wait for task to actually cancel
+                try:
+                    await progress_update_task
+                except asyncio.CancelledError:
+                    pass
             except Exception as e:
                 logger.error(f"Error cancelling progress update task: {e}")
-            finally:
-                progress_update_task = None
-
+        
         # Clean up pattern lock
         if pattern_lock:
             try:
                 if pattern_lock.locked():
-                    # Release the lock directly instead of manipulating internal state
-                    pattern_lock._locked = False
-                    for waiter in pattern_lock._waiters:
-                        if not waiter.done():
-                            waiter.set_result(True)
+                    pattern_lock.release()
+                pattern_lock = None
             except Exception as e:
                 logger.error(f"Error cleaning up pattern lock: {e}")
-            pattern_lock = None
-
+        
         # Clean up pause event
         if pause_event:
             try:
-                # Set the event and wake up any waiters
-                pause_event.set()
-                for waiter in pause_event._waiters:
-                    if not waiter.done():
-                        waiter.set()
+                pause_event.set()  # Wake up any waiting tasks
+                pause_event = None
             except Exception as e:
                 logger.error(f"Error cleaning up pause event: {e}")
-            pause_event = None
-
+        
         # Clean up pause condition from state
         if state.pause_condition:
             try:
                 with state.pause_condition:
-                    # Wake up all waiting threads
                     state.pause_condition.notify_all()
-                # Create a new condition to ensure clean state
                 state.pause_condition = threading.Condition()
             except Exception as e:
                 logger.error(f"Error cleaning up pause condition: {e}")
 
         # Clear all state variables
         state.current_playing_file = None
-        state.execution_progress = None
-        state.current_playlist = None
-        state.current_playlist_index = None
-        state.playlist_mode = None
+        state.execution_progress = 0
+        state.is_running = False
         state.pause_requested = False
         state.stop_requested = True
         state.is_clearing = False
         
-        # Reset machine state
-        connection_manager.update_machine_position()
+        # Reset machine position
+        await connection_manager.update_machine_position()
         
         logger.info("Pattern manager resources cleaned up")
+        
     except Exception as e:
         logger.error(f"Error during pattern manager cleanup: {e}")
-        raise
+    finally:
+        # Ensure we always reset these
+        progress_update_task = None
+        pattern_lock = None
+        pause_event = None
 
 def list_theta_rho_files():
     files = []
@@ -206,7 +199,9 @@ async def run_theta_rho_file(file_path, is_playlist=False):
         reset_theta()
         
         start_time = time.time()
-        
+        if state.led_controller:
+            effect_playing(state.led_controller)
+            
         with tqdm(
             total=total_coordinates,
             unit="coords",
@@ -219,13 +214,19 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                 theta, rho = coordinate
                 if state.stop_requested:
                     logger.info("Execution stopped by user")
+                    if state.led_controller:
+                        effect_idle(state.led_controller)
                     break
 
                 # Wait for resume if paused
                 if state.pause_requested:
                     logger.info("Execution paused...")
+                    if state.led_controller:
+                        effect_idle(state.led_controller)
                     await pause_event.wait()
                     logger.info("Execution resumed...")
+                    if state.led_controller:
+                        effect_playing(state.led_controller)
 
                 move_polar(theta, rho)
                 
@@ -262,6 +263,9 @@ async def run_theta_rho_file(file_path, is_playlist=False):
             except asyncio.CancelledError:
                 pass
             progress_update_task = None
+            
+        if state.led_controller:
+            effect_idle(state.led_controller)
 
 async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
     """Run multiple .thr files in sequence with options."""
