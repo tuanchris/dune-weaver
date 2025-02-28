@@ -30,7 +30,6 @@ class LEDController:
             response.raise_for_status()
             current_state = response.json()
             
-            preset_id = current_state.get('ps', -1)
             # If WLED is off and we're trying to set something, turn it on first
             if not current_state.get('on', False) and state_params and 'on' not in state_params:
                 # Turn on power first
@@ -40,9 +39,12 @@ class LEDController:
             if state_params:
                 response = requests.post(f"{url}/state", json=state_params, timeout=2)
                 response.raise_for_status()
-                # Only update current_state if we got a non-empty response
-                if response.text:
-                    current_state = response.json()
+                response = requests.get(f"{url}/state", timeout=2)
+                response.raise_for_status()
+                current_state = response.json()
+                
+            preset_id = current_state.get('ps', -1)
+            playlist_id = current_state.get('pl', -1)
 
             # Use True as default since WLED is typically on when responding
             is_on = current_state.get('on', True)
@@ -51,6 +53,7 @@ class LEDController:
                 "connected": True,
                 "is_on": is_on,
                 "preset_id": preset_id,
+                "playlist_id": playlist_id,
                 "brightness": current_state.get('bri', 0),
                 "message": "WLED is ON" if is_on else "WLED is OFF"
             }
@@ -204,15 +207,11 @@ class LEDController:
         preset_id = int(preset_id)
         # Send the command and get response
         response = self._send_command({"ps": preset_id})
-        # if response.get('preset_id', -1) != preset_id:
-        #     return False
-        # else:
-        #     return True
-
-
+        logger.debug(response)
+        return response
 
 def effect_loading(led_controller: LEDController):
-    res = led_controller.set_effect(47, hex='#ffa000', hex2='#000000', speed=150, intensity=150)
+    res = led_controller.set_effect(47, hex='#ffa000', hex2='#000000', palette=0, speed=150, intensity=150)
     if res.get('is_on', False):
         return True
     else:
@@ -221,11 +220,6 @@ def effect_loading(led_controller: LEDController):
 def effect_idle(led_controller: LEDController):
     led_controller.set_preset(1)
 
-    # res = led_controller.set_effect(0, hex='#ffe0a0', brightness=255)
-    # if res.get('is_on', False):
-    #     return True
-    # else:
-    #     return False
 
 def effect_connected(led_controller: LEDController):
     res = led_controller.set_effect(0, hex='#08ff00', brightness=100)
@@ -242,9 +236,3 @@ def effect_connected(led_controller: LEDController):
 
 def effect_playing(led_controller: LEDController):
     led_controller.set_preset(2)
-    # res = led_controller.set_effect(9, speed=40, intensity=125, brightness=255)
-    # if res.get('is_on', False):
-    #     return True
-    # else:
-    #     return False
-        
