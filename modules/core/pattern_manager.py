@@ -438,13 +438,13 @@ def move_polar(theta, rho):
         rho (_type_): _description_
     """
     # Adding soft limit to reduce hardware sound
-    soft_limit_inner = 0.01
-    if rho < soft_limit_inner:
-        rho = soft_limit_inner
+    # soft_limit_inner = 0.01
+    # if rho < soft_limit_inner:
+    #     rho = soft_limit_inner
     
-    soft_limit_outter = 0.015
-    if rho > (1-soft_limit_outter):
-        rho = (1-soft_limit_outter)
+    # soft_limit_outter = 0.015
+    # if rho > (1-soft_limit_outter):
+    #     rho = (1-soft_limit_outter)
     
     if state.table_type == 'dune_weaver_mini':
         x_scaling_factor = 2
