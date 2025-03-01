@@ -156,13 +156,6 @@ def device_init(homing=True):
 
     time.sleep(2)  # Allow time for the connection to establish
 
-    try:
-        if get_machine_steps():
-            logger.info(f"x_steps_per_mm: {state.x_steps_per_mm}, x_steps_per_mm: {state.y_steps_per_mm}, gear_ratio: {state.gear_ratio}")
-            return True
-    except:
-        logger.fatal("Not GRBL firmware")
-        return False
 
 def connect_device(homing=True):
     if state.wled_ip:
@@ -313,13 +306,16 @@ def home():
         state.conn.send("$H\n")
         state.conn.send("G1 Y0 F100\n")
     else:
+        homing_speed = 400
+        if state.table_type == 'dune_weaver_mini':
+            homing_speed = 120
         logger.info("Sensorless homing not supported. Using crash homing")
-        logger.info(f"Homing with speed {state.speed}")
+        logger.info(f"Homing with speed {homing_speed}")
         if state.gear_ratio == 6.25:
-            send_grbl_coordinates(0, - 30, state.speed, home=True)
+            send_grbl_coordinates(0, - 30, homing_speed, home=True)
             state.machine_y -= 30
         else:
-            send_grbl_coordinates(0, -22, state.speed, home=True)
+            send_grbl_coordinates(0, -22, homing_speed, home=True)
             state.machine_y -= 22
 
     state.current_theta = state.current_rho = 0
