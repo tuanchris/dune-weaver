@@ -9,7 +9,7 @@ from modules.core import playlist_manager
 from modules.update import update_manager
 from modules.core.state import state
 from modules import mqtt
-
+from modules.led.led_controller import LEDController, effect_idle
 
 # Configure logging
 logging.basicConfig(
@@ -363,22 +363,9 @@ def run_playlist():
     run_mode = data.get("run_mode", "single")
     shuffle = data.get("shuffle", False)
     
-    schedule_hours = None
     start_time = data.get("start_time")
     end_time = data.get("end_time")
     
-    if start_time and end_time:
-        try:
-            start_time_obj = datetime.strptime(start_time, "%H:%M").time()
-            end_time_obj = datetime.strptime(end_time, "%H:%M").time()
-            if start_time_obj >= end_time_obj:
-                logger.error(f"Invalid schedule times: start_time {start_time} >= end_time {end_time}")
-                return jsonify({"success": False, "error": "'start_time' must be earlier than 'end_time'"}), 400
-            schedule_hours = (start_time_obj, end_time_obj)
-            logger.info(f"Playlist {playlist_name} scheduled to run between {start_time} and {end_time}")
-        except ValueError:
-            logger.error(f"Invalid time format provided: start_time={start_time}, end_time={end_time}")
-            return jsonify({"success": False, "error": "Invalid time format. Use HH:MM (e.g., '09:30')"}), 400
 
     logger.info(f"Starting playlist '{playlist_name}' with mode={run_mode}, shuffle={shuffle}")
     success, message = playlist_manager.run_playlist(
@@ -387,7 +374,6 @@ def run_playlist():
         clear_pattern=clear_pattern,
         run_mode=run_mode,
         shuffle=shuffle,
-        schedule_hours=schedule_hours
     )
 
     if not success:
@@ -463,6 +449,13 @@ def get_wled_ip():
         return jsonify({"success": False, "error": "No WLED IP set"}), 404
 
     return jsonify({"success": True, "wled_ip": state.wled_ip})
+
+@app.route('/skip_pattern', methods=['POST'])
+def skip_pattern():
+    if not state.current_playlist:
+        return jsonify({"success": False, "error": "No playlist is currently running"})
+    state.skip_requested = True
+    return jsonify({"success": True})
 
 def on_exit():
     """Function to execute on application shutdown."""

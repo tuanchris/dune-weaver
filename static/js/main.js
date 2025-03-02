@@ -931,14 +931,6 @@ function openPlaylistEditor(playlistName) {
     loadPlaylist(playlistName);
 }
 
-function clearSchedule() {
-    document.getElementById("start_time").value = "";
-    document.getElementById("end_time").value = "";
-    document.getElementById('clear_time').style.display = 'none';
-    setCookie('start_time', '', 365);
-    setCookie('end_time', '', 365);
-}
-
 // Function to run the selected playlist with specified parameters
 async function runPlaylist() {
     const playlistName = document.getElementById('playlist_name_display').textContent;
