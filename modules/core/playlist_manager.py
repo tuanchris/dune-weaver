@@ -84,7 +84,7 @@ def add_to_playlist(playlist_name, pattern):
     logger.info(f"Added pattern '{pattern}' to playlist '{playlist_name}'")
     return True
 
-def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False, schedule_hours=None):
+def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
     """Run a playlist with the given options."""
     playlists = load_playlists()
     if playlist_name not in playlists:
@@ -109,7 +109,6 @@ def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="sing
                 'clear_pattern': clear_pattern,
                 'run_mode': run_mode,
                 'shuffle': shuffle,
-                'schedule_hours': schedule_hours
             },
             daemon=True
         ).start()

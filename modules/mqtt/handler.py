@@ -6,6 +6,7 @@ import json
 from typing import Dict, Callable, List, Optional, Any
 import paho.mqtt.client as mqtt
 import logging
+from functools import partial
 
 from .base import BaseMQTTHandler
 from modules.core.state import state
@@ -155,9 +156,7 @@ class MQTTHandler(BaseMQTTHandler):
             "state_topic": f"{self.speed_topic}/state",
             "device": base_device,
             "icon": "mdi:speedometer",
-            "min": 50,
-            "max": 1000,
-            "step": 50
+            "mode": "box",
         }
         self._publish_discovery("number", "speed", speed_config)
 
@@ -184,6 +183,48 @@ class MQTTHandler(BaseMQTTHandler):
             "icon": "mdi:playlist-play"
         }
         self._publish_discovery("select", "playlist", playlist_config)
+
+        # Playlist Run Mode Select
+        playlist_mode_config = {
+            "name": f"{self.device_name} Playlist Mode",
+            "unique_id": f"{self.device_id}_playlist_mode",
+            "command_topic": f"{self.device_id}/playlist/mode/set",
+            "state_topic": f"{self.device_id}/playlist/mode/state",
+            "options": ["single", "loop"],
+            "device": base_device,
+            "icon": "mdi:repeat",
+            "entity_category": "config"
+        }
+        self._publish_discovery("select", "playlist_mode", playlist_mode_config)
+
+        # Playlist Pause Time Number Input
+        pause_time_config = {
+            "name": f"{self.device_name} Playlist Pause Time",
+            "unique_id": f"{self.device_id}_pause_time",
+            "command_topic": f"{self.device_id}/playlist/pause_time/set",
+            "state_topic": f"{self.device_id}/playlist/pause_time/state",
+            "device": base_device,
+            "icon": "mdi:timer",
+            "entity_category": "config",
+            "mode": "box",
+            "unit_of_measurement": "seconds",
+            "min": 0,
+            "max": 86400,
+        }
+        self._publish_discovery("number", "pause_time", pause_time_config)
+
+        # Clear Pattern Select
+        clear_pattern_config = {
+            "name": f"{self.device_name} Clear Pattern",
+            "unique_id": f"{self.device_id}_clear_pattern",
+            "command_topic": f"{self.device_id}/playlist/clear_pattern/set",
+            "state_topic": f"{self.device_id}/playlist/clear_pattern/state",
+            "options": ["none", "random", "adaptive", "clear_from_in", "clear_from_out", "clear_sideway"],
+            "device": base_device,
+            "icon": "mdi:eraser",
+            "entity_category": "config"
+        }
+        self._publish_discovery("select", "clear_pattern", clear_pattern_config)
 
     def _publish_discovery(self, component: str, config_type: str, config: dict):
         """Helper method to publish HA discovery configs."""
@@ -225,16 +266,18 @@ class MQTTHandler(BaseMQTTHandler):
                 current_file = current_file.split("/")[-1].split("\\")[-1]
             self.client.publish(f"{self.pattern_select_topic}/state", current_file, retain=True)
         else:
+            # Clear the pattern selection
             self.client.publish(f"{self.pattern_select_topic}/state", "None", retain=True)
             
-    def _publish_playlist_state(self, playlist=None):
+    def _publish_playlist_state(self, playlist_name=None):
         """Helper to publish playlist state."""
-        if playlist is None:
-            playlist = self.state.current_playlist
+        if playlist_name is None:
+            playlist_name = self.state.current_playlist_name
             
-        if playlist:
-            self.client.publish(f"{self.playlist_select_topic}/state", playlist, retain=True)
+        if playlist_name:
+            self.client.publish(f"{self.playlist_select_topic}/state", playlist_name, retain=True)
         else:
+            # Clear the playlist selection
             self.client.publish(f"{self.playlist_select_topic}/state", "None", retain=True)
             
     def _publish_serial_state(self):
@@ -244,7 +287,7 @@ class MQTTHandler(BaseMQTTHandler):
         serial_status = f"connected to {serial_port}" if serial_connected else "disconnected"
         self.client.publish(self.serial_state_topic, serial_status, retain=True)
 
-    def update_state(self, current_file=None, is_running=None, playlist=None):
+    def update_state(self, current_file=None, is_running=None, playlist=None, playlist_name=None):
         """Update state in Home Assistant. Only publishes the attributes that are explicitly passed."""
         if not self.is_enabled:
             return
@@ -259,8 +302,8 @@ class MQTTHandler(BaseMQTTHandler):
             self._publish_running_state(running_state)
         
         # Update playlist state if playlist info is provided
-        if playlist is not None:
-            self._publish_playlist_state(playlist)
+        if playlist_name is not None:
+            self._publish_playlist_state(playlist_name)
 
     def on_connect(self, client, userdata, flags, rc):
         """Callback when connected to MQTT broker."""
@@ -274,7 +317,10 @@ class MQTTHandler(BaseMQTTHandler):
                 (self.speed_topic, 0),
                 (f"{self.device_id}/command/stop", 0),
                 (f"{self.device_id}/command/pause", 0),
-                (f"{self.device_id}/command/play", 0)
+                (f"{self.device_id}/command/play", 0),
+                (f"{self.device_id}/playlist/mode/set", 0),
+                (f"{self.device_id}/playlist/pause_time/set", 0),
+                (f"{self.device_id}/playlist/clear_pattern/set", 0),
             ])
             # Publish discovery configurations
             self.setup_ha_discovery()
@@ -295,7 +341,7 @@ class MQTTHandler(BaseMQTTHandler):
         """Callback when message is received."""
         try:
             if msg.topic == self.pattern_select_topic:
-                from .modules.core.pattern_manager import THETA_RHO_DIR
+                from modules.core.pattern_manager import THETA_RHO_DIR
                 # Handle pattern selection
                 pattern_name = msg.payload.decode()
                 if pattern_name in self.patterns:
@@ -305,7 +351,10 @@ class MQTTHandler(BaseMQTTHandler):
                 # Handle playlist selection
                 playlist_name = msg.payload.decode()
                 if playlist_name in self.playlists:
-                    self.callback_registry['run_playlist'](playlist_name=playlist_name)
+                    self.callback_registry['run_playlist'](playlist_name=playlist_name,
+                            run_mode=self.state.playlist_mode,
+                            pause_time=self.state.pause_time,
+                            clear_pattern=self.state.clear_pattern)
                     self.client.publish(f"{self.playlist_select_topic}/state", playlist_name, retain=True)
             elif msg.topic == self.speed_topic:
                 speed = int(msg.payload.decode())
@@ -313,6 +362,9 @@ class MQTTHandler(BaseMQTTHandler):
             elif msg.topic == f"{self.device_id}/command/stop":
                 # Handle stop command
                 self.callback_registry['stop']()
+                # Clear both pattern and playlist selections
+                self._publish_pattern_state(None)
+                self._publish_playlist_state(None)
             elif msg.topic == f"{self.device_id}/command/pause":
                 # Handle pause command - only if in running state
                 if bool(self.state.current_playing_file) and not self.state.pause_requested:
@@ -321,6 +373,21 @@ class MQTTHandler(BaseMQTTHandler):
                 # Handle play command - only if in paused state
                 if bool(self.state.current_playing_file) and self.state.pause_requested:
                     self.callback_registry['resume']()
+            elif msg.topic == f"{self.device_id}/playlist/mode/set":
+                mode = msg.payload.decode()
+                if mode in ["single", "loop"]:
+                    state.playlist_mode = mode
+                    self.client.publish(f"{self.device_id}/playlist/mode/state", mode, retain=True)
+            elif msg.topic == f"{self.device_id}/playlist/pause_time/set":
+                pause_time = float(msg.payload.decode())
+                if 0 <= pause_time <= 60:
+                    state.pause_time = pause_time
+                    self.client.publish(f"{self.device_id}/playlist/pause_time/state", pause_time, retain=True)
+            elif msg.topic == f"{self.device_id}/playlist/clear_pattern/set":
+                clear_pattern = msg.payload.decode()
+                if clear_pattern in ["none", "random", "adaptive", "clear_from_in", "clear_from_out", "clear_sideway"]:
+                    state.clear_pattern = clear_pattern
+                    self.client.publish(f"{self.device_id}/playlist/clear_pattern/state", clear_pattern, retain=True)
             else:
                 # Handle other commands
                 payload = json.loads(msg.payload.decode())
@@ -402,11 +469,32 @@ class MQTTHandler(BaseMQTTHandler):
         if not self.is_enabled:
             return
 
+        # First stop the running flag to prevent new iterations
         self.running = False
-        if self.status_thread:
-            self.status_thread.join(timeout=1)
-        self.client.loop_stop()
-        self.client.disconnect()
+        
+        # Clean up status thread
+        local_status_thread = self.status_thread  # Keep a local reference
+        if local_status_thread and local_status_thread.is_alive():
+            try:
+                local_status_thread.join(timeout=5)
+                if local_status_thread.is_alive():
+                    logger.warning("MQTT status thread did not terminate cleanly")
+            except Exception as e:
+                logger.error(f"Error joining status thread: {e}")
+        self.status_thread = None
+            
+        # Clean up MQTT client
+        try:
+            if hasattr(self, 'client'):
+                self.client.loop_stop()
+                self.client.disconnect()
+        except Exception as e:
+            logger.error(f"Error disconnecting MQTT client: {e}")
+        
+        # Clean up main loop reference
+        self.main_loop = None
+        
+        logger.info("MQTT handler stopped")
 
     @property
     def is_enabled(self) -> bool:

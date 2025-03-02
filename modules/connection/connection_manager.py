@@ -7,7 +7,7 @@ import websocket
 
 from modules.core.state import state
 from modules.core.pattern_manager import move_polar, reset_theta
-
+from modules.led.led_controller import effect_loading, effect_idle, effect_connected, effect_error, LEDController
 logger = logging.getLogger(__name__)
 
 IGNORE_PORTS = ['/dev/cu.debug-console', '/dev/cu.Bluetooth-Incoming-Port']
@@ -76,6 +76,8 @@ class SerialConnection(BaseConnection):
         with self.lock:
             if self.ser.is_open:
                 self.ser.close()
+        # Release the lock resources
+        self.lock = None
 
 ###############################################################################
 # WebSocket Connection Implementation
@@ -122,6 +124,8 @@ class WebSocketConnection(BaseConnection):
         with self.lock:
             if self.ws:
                 self.ws.close()
+        # Release the lock resources
+        self.lock = None
                 
 def list_serial_ports():
     """Return a list of available serial ports."""
@@ -152,15 +156,12 @@ def device_init(homing=True):
 
     time.sleep(2)  # Allow time for the connection to establish
 
-    try:
-        if get_machine_steps():
-            logger.info(f"x_steps_per_mm: {state.x_steps_per_mm}, x_steps_per_mm: {state.y_steps_per_mm}, gear_ratio: {state.gear_ratio}")
-            return True
-    except:
-        logger.fatal("Not GRBL firmware")
-        return False
 
 def connect_device(homing=True):
+    if state.wled_ip:
+        state.led_controller = LEDController(state.wled_ip)
+        effect_loading(state.led_controller)
+        
     ports = list_serial_ports()
 
     if state.port and state.port in ports:
@@ -173,6 +174,9 @@ def connect_device(homing=True):
         return
     if (state.conn.is_connected() if state.conn else False):
         device_init(homing)
+        
+    if state.led_controller:
+        effect_connected(state.led_controller)
 
 def get_status_response() -> str:
     """
@@ -271,6 +275,16 @@ def get_machine_steps(timeout=10):
             
             # If all parameters are received, exit early
             if x_steps_per_mm is not None and y_steps_per_mm is not None and gear_ratio is not None:
+                if y_steps_per_mm == 180:
+                    state.table_type = 'dune_weaver_mini'
+                elif y_steps_per_mm == 320:
+                    state.table_type = 'dune_weaver_pro'
+                elif y_steps_per_mm == 287:
+                    state.table_type = 'dune_weaver'
+                else:
+                    state.table_type = None
+                    logger.warning(f"Unknown table type. Check connection_manager.py")
+                logger.info(f"Machine type: {state.table_type}")
                 return True
 
         except Exception as e:
@@ -292,13 +306,16 @@ def home():
         state.conn.send("$H\n")
         state.conn.send("G1 Y0 F100\n")
     else:
+        homing_speed = 400
+        if state.table_type == 'dune_weaver_mini':
+            homing_speed = 120
         logger.info("Sensorless homing not supported. Using crash homing")
-        logger.info(f"Homing with speed {state.speed}")
+        logger.info(f"Homing with speed {homing_speed}")
         if state.gear_ratio == 6.25:
-            send_grbl_coordinates(0, - 30, state.speed, home=True)
+            send_grbl_coordinates(0, - 30, homing_speed, home=True)
             state.machine_y -= 30
         else:
-            send_grbl_coordinates(0, -22, state.speed, home=True)
+            send_grbl_coordinates(0, -22, homing_speed, home=True)
             state.machine_y -= 22
 
     state.current_theta = state.current_rho = 0
@@ -315,7 +332,7 @@ def check_idle():
             update_machine_position()
             return True
         time.sleep(1)
-
+        
 
 def get_machine_position(timeout=5):
     """
@@ -345,6 +362,7 @@ def update_machine_position():
         logger.info('Saving machine position')
         state.machine_x, state.machine_y = get_machine_position()
         state.save()
+        logger.info(f'Machine position saved: {state.machine_x}, {state.machine_y}')
     
 def restart_connection(homing=False):
     """
@@ -376,4 +394,6 @@ def restart_connection(homing=False):
             return False
     except Exception as e:
         logger.error(f"Error restarting connection: {e}")
+        if state.led_controller:
+            effect_error(state.led_controller)
         return False
