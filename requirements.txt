@@ -5,3 +5,4 @@ tqdm
 paho-mqtt
 python-dotenv
 websocket-client
+requests
