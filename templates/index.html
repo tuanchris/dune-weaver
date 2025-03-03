@@ -7,6 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../static/css/style.css">
     <link rel="stylesheet" href="../static/css/all.min.css">
+    <link rel="stylesheet" href="../static/css/image2sand.css">
     <link rel="apple-touch-icon" sizes="180x180" href="../static/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="../static/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="../static/favicon-16x16.png">
@@ -25,11 +26,14 @@
                 <button class="add-button cta" onclick="toggleSecondaryButtons('add-pattern-container')">
                     <i class="fa-solid fa-plus"></i>
                 </button>
+                <button class="gen-button cta" onclick="toggleSecondaryButtons('generate')">
+                    <i class="fa-solid fa-robot"></i>
+                </button>
             </div>
             <div id="add-pattern-container" class="add-to-container hidden">
                 <div class="action-buttons">
-                    <label for="upload_file">Upload pattern file (.thr):</label>
-                    <input type="file" id="upload_file">
+                    <label for="upload_file">Upload pattern file (.thr) or image (.jpg, .png, etc.):</label>
+                    <input type="file" id="upload_file" accept=".thr,.jpg,.jpeg,.png,.gif,.bmp,.webp,.svg">
                     <button class="cta" onclick="uploadThetaRho()">
                         <i class="fa-solid fa-file-arrow-up"></i>
                         <span>Upload</span>
@@ -38,6 +42,27 @@
                         <i class="fa-solid fa-xmark"></i>
                         <span>Cancel</span>
                     </button>
+                </div>
+            </div>
+            <div id="generate" class="add-to-container hidden">
+                <div class="action-buttons">
+                    <div id="api-key-group"></div>
+                    <input type="text" id="api-key" placeholder="Enter a valid OpenAI API key">
+                    <input type="text" id="prompt" placeholder="What do you want to draw?" maxlength="500">
+                    <div class="checkbox-container">
+                        <input type="checkbox" id="googly-eyes" name="googly-eyes">
+                        <label for="googly-eyes">Add googly eyes</label>                        
+                    </div>                    
+                    <div class="action-buttons">
+                        <button id="gen-image-button" class="cta">
+                            <i class="fa-solid fa-wand-sparkles"></i>
+                            <span>Create</span>
+                        </button>
+                        <button class="cancel" onclick="toggleSecondaryButtons('generate')">
+                            <i class="fa-solid fa-xmark"></i>
+                            <span>Cancel</span>
+                        </button>
+                    </div>
                 </div>
             </div>
             <input type="text" id="search_pattern" placeholder="Search files..." oninput="searchPatternFiles()">
@@ -420,10 +445,123 @@
     <!-- Messages will be appended here -->
 </div>
 
-<div id="debug-log" class="debug-log hidden">
-    <!-- Messages will be appended here -->
+<div id="image-converter-overlay" class="image-converter-overlay">
+    <div class="image-converter-dialog">
+        <div class="image-converter-header">
+            <h2>Convert Image to Pattern</h2>
+            <button class="image-converter-close" onclick="closeImageConverter()">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <div class="image-converter-grid grid">
+            <div class="image-converter-preview">
+                <h3>Original Image</h3>
+                <canvas id="original-image"></canvas>
+            </div>
+            <div class="image-converter-preview">
+                <h3>Detected Edges</h3>
+                <canvas id="edge-image"></canvas>
+            </div>
+            <div class="image-converter-preview">
+                <h3>Identified Points</h3>
+                <canvas id="dot-image"></canvas>
+            </div>
+        </div>
+        
+        <div class="preview-controls-container">
+            <div class="sand-garden-preview">
+                <h3>Sand Garden Preview</h3>
+                <canvas id="connect-image"></canvas>
+                <div id="total-points"></div>
+                <div style="display: none;">
+                    <h4>contours</h4>
+                    <canvas id="plotcontours" width="400" height="400" style="border:1px solid #000000;"></canvas>
+                    <button id="plotButton">Plot Next Contour</button>
+                </div>
+            </div>
+            
+            <div class="image-converter-settings">
+                <div class="setting-item">
+                    <label for="epsilon-slider">Detail Level</label>
+                    <div class="slider-container">
+                        <input type="range" id="epsilon-slider" min="0.1" max="20" step="0.1" value="0.5">
+                        <div class="slider-labels">
+                            <small>Fine</small>
+                            <small id="epsilon-value-display">0.5</small>
+                            <small>Coarse</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <label for="dot-number">Point Limit</label>
+                    <select id="dot-number">
+                        <option value="100">100 points</option>
+                        <option value="200">200 points</option>
+                        <option value="300">300 points</option>
+                        <option value="400">400 points</option>
+                        <option value="500" selected>500 points</option>
+                        <option value="1000">1000 points</option>
+                    </select>
+                </div>
+                <div class="setting-item">
+                    <label for="contour-mode">Contour Mode</label>
+                    <select id="contour-mode">
+                        <option value="External">External Only</option>
+                        <option value="Tree" selected>External + Internal</option>
+                    </select>
+                </div>
+                <div class="checkbox-group">
+                    <div class="checkbox-container">
+                        <input type="checkbox" id="is-loop" checked>
+                        <label for="is-loop">Loop Drawing</label>
+                    </div>
+                    <div class="checkbox-container">
+                        <input type="checkbox" id="no-shortcuts" checked>
+                        <label for="no-shortcuts">No Shortcuts</label>
+                    </div>
+                </div>
+                <input type="hidden" id="output-type" value="2">
+                <div class="generate-button-container">
+                    <button id="generate-button" class="cta" onclick="convertImage()">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        <span>Regenerate Pattern</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="image-converter-actions">
+            <button class="cancel" onclick="closeImageConverter()">
+                <i class="fa-solid fa-xmark"></i>
+                <span>Cancel</span>
+            </button>
+            <button class="cta" id="save-pattern-button" onclick="saveConvertedPattern()">
+                <i class="fa-solid fa-floppy-disk"></i>
+                <span>Save Pattern</span>
+            </button>
+        </div>
+        <div id="processing-status" class="processing-indicator">
+            <div class="spinner"></div>
+            <span id="processing-message">Processing image...</span>
+        </div>
+        <div style="display: none;">
+            <!-- hidden inputs for image2sand compatibility. -->
+            <label id="generation-status" style="display: none;">Image is generating - please wait...</label>
+            <textarea id="polar-coordinates-textarea"></textarea>
+            <div id="simple-coords"></div>
+            <div id="simple-coords-title"></div>
+            <input type="checkbox" id="gaussian-blur-toggle">
+            <div>
+                <input type="file" id="file-input">
+                <button id="file-button"></button>
+                <span id="file-name"></span>
+            </div>
+        </div>        
+    </div>
 </div>
 
 <script src="../static/js/main.js"></script>
+<script src="../static/js/image2sand.js"></script>
+<script src="../static/js/image2sand-init.js"></script>
+<script async src="../static/js/opencv.js" onload="console.log('OpenCV.js loaded successfully')"></script>
 </body>
 </html>
