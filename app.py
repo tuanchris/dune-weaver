@@ -3,6 +3,10 @@ import atexit
 import os
 import logging
 from datetime import datetime
+import asyncio
+import json
+import threading
+import time
 from modules.connection import connection_manager
 from modules.core import pattern_manager
 from modules.core import playlist_manager
@@ -25,6 +29,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+# Create a global lock and thread tracking variable
+pattern_execution_lock = threading.Lock()
+current_execution_thread = None
 
 # Flask API Endpoints
 @app.route('/')
@@ -105,6 +113,8 @@ def upload_theta_rho():
 def run_theta_rho():
     file_name = request.json.get('file_name')
     pre_execution = request.json.get('pre_execution')
+    
+    global current_execution_thread
 
     if not file_name:
         logger.warning('Run theta-rho request received without file name')
@@ -115,18 +125,34 @@ def run_theta_rho():
         logger.error(f'Theta-rho file not found: {file_path}')
         return jsonify({'error': 'File not found'}), 404
 
+    # Check if a pattern is already running
+    if current_execution_thread and current_execution_thread.is_alive():
+        logger.warning(f'Attempted to run pattern while another is already running')
+        return jsonify({'error': 'A pattern is already running. Stop it before starting a new one.'}), 409
+        
     try:
-            
-        if not (state.conn.is_connected() if state.conn else False):
-            logger.warning("Attempted to run a pattern without a connection")
-            return jsonify({"success": False, "error": "Connection not established"}), 400
-        files_to_run = [file_path]
-        logger.info(f'Running theta-rho file: {file_name} with pre_execution={pre_execution}')
-        pattern_manager.run_theta_rho_files(files_to_run, clear_pattern=pre_execution)
-        return jsonify({'success': True})
+        # Create a thread that will execute the pattern
+        current_execution_thread = threading.Thread(
+            target=execute_pattern,
+            args=(file_name, pre_execution),
+            daemon=True
+        )
+        
+        # Start the thread
+        current_execution_thread.start()
+        
+        return jsonify({"success": True, "message": f"Pattern {file_name} started in background"})
     except Exception as e:
         logger.error(f'Failed to run theta-rho file {file_name}: {str(e)}')
         return jsonify({'error': str(e)}), 500
+
+def execute_pattern(file_name, pre_execution):
+    if not (state.conn.is_connected() if state.conn else False):
+        logger.warning("Attempted to run a pattern without a connection")
+        return jsonify({"success": False, "error": "Connection not established"}), 400
+    files_to_run = [os.path.join(pattern_manager.THETA_RHO_DIR, file_name)]
+    logger.info(f'Running theta-rho file: {file_name} with pre_execution={pre_execution}')
+    pattern_manager.run_theta_rho_files(files_to_run, clear_pattern=pre_execution)
 
 @app.route('/stop_execution', methods=['POST'])
 def stop_execution():
@@ -273,6 +299,7 @@ def pause_execution():
 
 @app.route('/status', methods=['GET'])
 def get_status():
+    """Endpoint to get current status information."""
     return jsonify(pattern_manager.get_status())
 
 @app.route('/resume_execution', methods=['POST'])
@@ -437,6 +464,8 @@ def set_wled_ip():
     # Save to state
     state.wled_ip = wled_ip
     state.save()
+    if state.wled_ip:
+        state.led_controlller = LEDController(state.wled_ip)
     logger.info(f"WLED IP updated: {wled_ip}")
 
     return jsonify({"success": True, "wled_ip": state.wled_ip})
@@ -444,11 +473,16 @@ def set_wled_ip():
 
 @app.route('/get_wled_ip', methods=['GET'])
 def get_wled_ip():
-    """Retrieve the saved WLED IP address"""
-    if not state.wled_ip:
-        return jsonify({"success": False, "error": "No WLED IP set"}), 404
-
-    return jsonify({"success": True, "wled_ip": state.wled_ip})
+    # Logic to get WLED IP address
+    try:
+        # Replace with your actual logic to get the WLED IP
+        wled_ip = state.wled_ip if hasattr(state, 'wled_ip') else None
+        if wled_ip:
+            state.led_controlller = LEDController(state.wled_ip)
+        return jsonify({"ip": wled_ip})
+    except Exception as e:
+        logger.error(f"Error getting WLED IP: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/skip_pattern', methods=['POST'])
 def skip_pattern():
@@ -457,12 +491,15 @@ def skip_pattern():
     state.skip_requested = True
     return jsonify({"success": True})
 
+
 def on_exit():
     """Function to execute on application shutdown."""
     logger.info("Shutting down gracefully, please wait for execution to complete")
+    
     pattern_manager.stop_actions()
     state.save()
     mqtt.cleanup_mqtt()
+    logger.info("Shutdown complete")
 
 def entrypoint():
     logger.info("Starting Dune Weaver application...")
@@ -482,6 +519,7 @@ def entrypoint():
 
     try:
         logger.info("Starting Flask server on port 8080...")
+        # Run the Flask app
         app.run(debug=False, host='0.0.0.0', port=8080)
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received. Shutting down.")

@@ -257,12 +257,10 @@ async function runThetaRho() {
                 pre_execution: preExecutionAction 
             })
         });
-
+        
         const result = await response.json();
         if (response.ok) {
-            // Connect WebSocket when starting a pattern
-            connectStatusWebSocket();
-            
+
             // Show the currently playing UI immediately
             document.body.classList.add('playing');
             const currentlyPlayingFile = document.getElementById('currently-playing-file');
@@ -281,6 +279,9 @@ async function runThetaRho() {
         }
     } catch (error) {
         logMessage(`Error running pattern: ${error.message}`, LOG_TYPE.ERROR);
+    }
+    finally {
+        requestStatusUpdate();
     }
 }
 
@@ -548,7 +549,7 @@ async function runClearIn() {
                 pre_execution: 'none'
             })
         });
-        
+        requestStatusUpdate();
         if (!response.ok) {
             if (response.status === 409) {
                 logMessage('Cannot start pattern: Another pattern is already running', LOG_TYPE.WARNING);
@@ -559,7 +560,6 @@ async function runClearIn() {
         
         const result = await response.json();
         if (result.success) {
-            connectStatusWebSocket();
             document.body.classList.add('playing');
             logMessage('Clear from center pattern started', LOG_TYPE.SUCCESS);
         } else {
@@ -589,12 +589,12 @@ async function runClearOut() {
             }
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+        requestStatusUpdate();
         const result = await response.json();
         if (result.success) {
-            connectStatusWebSocket();
             document.body.classList.add('playing');
             logMessage('Clear from perimeter pattern started', LOG_TYPE.SUCCESS);
+
         } else {
             logMessage('Failed to run clear pattern', LOG_TYPE.ERROR);
         }
@@ -614,6 +614,7 @@ async function runClearSide() {
                 pre_execution: 'none'
             })
         });
+        requestStatusUpdate();
         
         if (!response.ok) {
             if (response.status === 409) {
@@ -625,7 +626,6 @@ async function runClearSide() {
         
         const result = await response.json();
         if (result.success) {
-            connectStatusWebSocket();
             document.body.classList.add('playing');
             logMessage('Clear sideways pattern started', LOG_TYPE.SUCCESS);
         } else {
@@ -666,6 +666,7 @@ function executeClearAction(actionFunction) {
 async function runFile(fileName) {
     const response = await fetch(`/run_theta_rho_file/${fileName}`, { method: 'POST' });
     const result = await response.json();
+    requestStatusUpdate();
     if (result.success) {
         logMessage(`Running file: ${fileName}`, LOG_TYPE.SUCCESS);
     } else {
@@ -938,7 +939,7 @@ async function runPlaylist() {
         logMessage('No playlist selected', 'error');
         return;
     }
-
+    
     const pauseTime = parseFloat(document.getElementById('pause_time').value) || 0;
     const clearPattern = document.getElementById('clear_pattern').value;
     const runMode = document.querySelector('input[name="run_mode"]:checked').value;
@@ -958,6 +959,7 @@ async function runPlaylist() {
                 shuffle: shuffle
             })
         });
+        requestStatusUpdate();
 
         if (!response.ok) {
             if (response.status === 409) {
@@ -969,8 +971,6 @@ async function runPlaylist() {
             return;
         }
 
-        // Connect WebSocket when starting a playlist
-        connectStatusWebSocket();
         
         logMessage(`Started playlist: ${playlistName}`, 'success');
         // Close the playlist editor container after successfully starting the playlist
@@ -1780,86 +1780,41 @@ const savedTheme = localStorage.getItem('theme') || 'light';
 document.documentElement.setAttribute('data-theme', savedTheme);
 themeIcon.className = savedTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
 
+// Function to request a status update from the server
+function requestStatusUpdate() {
+    // Request a fresh status update via AJAX
+    fetch('/status')
+        .then(response => response.json())
+        .then(data => {
+            updateCurrentlyPlayingUI(data);
+        })
+        .catch(error => {
+            console.error('Error requesting status update:', error);
+        });
+}
 
-// Add WebSocket connection for status updates
-let statusSocket = null;
-let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 5;
+// Variable to store the status update interval
 let statusUpdateInterval = null;
-let wsConnected = false;
 
-function connectStatusWebSocket() {
-    // Don't create a new connection if one already exists
-    if (wsConnected) {
-        console.log('WebSocket already connected');
-        return;
-    }
+// Function to start the status update interval
+function startStatusUpdates() {
+    // Clear any existing interval first
+    stopStatusUpdates();
+    
+    // Set up a new interval that runs every second
+    statusUpdateInterval = setInterval(requestStatusUpdate, 1000);
+    logMessage("Started automatic status updates", LOG_TYPE.DEBUG);
+}
 
-    // Close existing connection and clear interval if any
-    if (statusSocket) {
-        statusSocket.close();
-    }
+// Function to stop the status update interval
+function stopStatusUpdates() {
     if (statusUpdateInterval) {
         clearInterval(statusUpdateInterval);
-    }
-
-    // Create WebSocket connection
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    statusSocket = new WebSocket(`${protocol}//${window.location.host}/ws/status`);
-
-    statusSocket.onopen = () => {
-        console.log('Status WebSocket connected');
-        wsConnected = true;
-        reconnectAttempts = 0; // Reset reconnect attempts on successful connection
-    };
-
-    statusSocket.onmessage = (event) => {
-        try {
-            const message = JSON.parse(event.data);
-            if (message.type === 'status_update' && message.data) {
-                updateCurrentlyPlayingUI(message.data);
-                
-                // Disconnect WebSocket if no pattern is running
-                if (!message.data.is_running) {
-                    console.log('No pattern running, disconnecting WebSocket');
-                    disconnectStatusWebSocket();
-                }
-            }
-        } catch (error) {
-            console.error('Error processing status update:', error);
-            console.error('Raw data that caused error:', event.data);
-        }
-    };
-
-    statusSocket.onclose = () => {
-        console.log('Status WebSocket disconnected');
-        wsConnected = false;
-        clearInterval(statusUpdateInterval);
-        
-        // Only attempt to reconnect if we're supposed to be connected
-        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS && document.body.classList.contains('playing')) {
-            reconnectAttempts++;
-            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
-            console.log(`Reconnecting in ${delay/1000}s (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
-            setTimeout(connectStatusWebSocket, delay);
-        }
-    };
-
-    statusSocket.onerror = (error) => {
-        console.error('WebSocket error:', error);
-    };
-}
-
-function disconnectStatusWebSocket() {
-    if (statusSocket && wsConnected) {
-        wsConnected = false;
-        statusSocket.close();
-        statusSocket = null;
-        reconnectAttempts = 0;
+        statusUpdateInterval = null;
+        logMessage("Stopped automatic status updates", LOG_TYPE.DEBUG);
     }
 }
 
-// Replace the polling mechanism with WebSocket
 document.addEventListener('DOMContentLoaded', () => {
     const activeTab = getCookie('activeTab') || 'patterns'; // Default to 'patterns' tab
     switchTab(activeTab); // Load the active tab
@@ -1870,30 +1825,18 @@ document.addEventListener('DOMContentLoaded', () => {
     attachFullScreenListeners();
     loadWledIp();
     updateWledUI();
-
-    // Initialize WebSocket connection for status updates
-    connectStatusWebSocket();
-
-    // Handle visibility change
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && statusSocket && statusSocket.readyState !== WebSocket.OPEN) {
-            connectStatusWebSocket();
-        }
-    });
-
     checkForUpdates();
+    requestStatusUpdate(); // Request initial status update on page load
 });
 
 // Track the last time we had a file playing
 let lastPlayingTime = 0;
 const HIDE_DELAY = 5000; // 1 second delay before hiding
 
-// Update the updateCurrentlyPlayingUI function to handle WebSocket updates
 // Track the last played file to detect when a new pattern starts
 let lastPlayedFile = null;
 
 function updateCurrentlyPlayingUI(status) {
-    console.log('Updating UI with status:', status);
 
     // Get all required DOM elements once
     const container = document.getElementById('currently-playing-container');
@@ -1902,6 +1845,7 @@ function updateCurrentlyPlayingUI(status) {
     const progressText = document.getElementById('play_progress_text');
     const pausePlayButton = document.getElementById('pausePlayCurrent');
     const speedDisplay = document.getElementById('current_speed_display');
+    const skipButton = document.getElementById('skipCurrent');
 
     // Check if all required elements exist
     if (!container || !fileNameElement || !progressBar || !progressText) {
@@ -1915,6 +1859,18 @@ function updateCurrentlyPlayingUI(status) {
         return;
     }
 
+    // Start or stop status updates based on pattern running state
+    if (status.is_running || (status.playlist && status.playlist.next_file)) {
+        // Start status updates if they're not already running
+        if (!statusUpdateInterval) {
+            startStatusUpdates();
+        }
+    } else {
+        // Stop status updates if they're running
+        stopStatusUpdates();
+    }
+
+    // Always update the UI even if no pattern is playing
     // Update container visibility based on status
     if (status.current_file && status.is_running) {
         document.body.classList.add('playing');
@@ -1966,7 +1922,7 @@ function updateCurrentlyPlayingUI(status) {
     }
 
     // Update progress information
-    if (status.progress) {
+    if (status.progress && status.current_file) {
         const { percentage, remaining_time, elapsed_time } = status.progress;
         const formattedPercentage = percentage.toFixed(1);
         const remainingText = remaining_time === null ? 'calculating...' : formatSecondsToHMS(remaining_time);
@@ -1984,6 +1940,11 @@ function updateCurrentlyPlayingUI(status) {
         pausePlayButton.innerHTML = status.is_paused ? 
             '<i class="fa-solid fa-play"></i>' : 
             '<i class="fa-solid fa-pause"></i>';
+    }
+
+    // Update skip button visibility
+    if (skipButton) {
+        skipButton.style.display = (status.playlist && status.playlist.next_file) ? 'inline-block' : 'none';
     }
 
     // Update playlist UI if the function exists
