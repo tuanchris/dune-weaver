@@ -98,7 +98,7 @@
 .sand-garden-preview canvas {
     max-width: 100%;
     border: 1px solid var(--border-primary);
-    background-color: #FFFFFF;
+    background-color: var(--theme-secondary);
     margin-bottom: 10px;
     width: 100%;
     height: auto;
@@ -237,7 +237,7 @@
     background-color: var(--theme-primary-hover);
 }
 
-.processing-indicator {
+#processing-indicator {
     position: absolute;
     top: 0;
     left: 0;
@@ -256,7 +256,7 @@
     transition: opacity 0.3s, visibility 0.3s;
 }
 
-.processing-indicator.visible {
+#processing-indicator.visible {
     visibility: visible;
     opacity: 1;
 }
