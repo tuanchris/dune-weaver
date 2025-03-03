@@ -14,6 +14,7 @@ from modules.update import update_manager
 from modules.core.state import state
 from modules import mqtt
 from modules.led.led_controller import LEDController, effect_idle
+import requests  # Add this import
 
 # Configure logging
 logging.basicConfig(
@@ -491,6 +492,41 @@ def skip_pattern():
     state.skip_requested = True
     return jsonify({"success": True})
 
+@app.route('/generate_image', methods=['POST'])
+def generate_image():
+    try:
+        api_key = request.json.get('apiKey')
+        prompt = request.json.get('prompt')
+        
+        if not api_key or not prompt:
+            return jsonify({'error': 'API key and prompt are required'}), 400
+            
+        full_prompt = f"Draw an image of the following: {prompt}. But make it a simple black silhouette on a white background, with very minimal detail and no additional content in the image, so I can use it for a computer icon."
+        
+        response = requests.post(
+            'https://api.openai.com/v1/images/generations',
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            },
+            json={
+                'model': 'dall-e-3',
+                'prompt': full_prompt,
+                'size': '1024x1024',
+                'quality': 'standard',
+                'response_format': 'b64_json',
+                'n': 1
+            }
+        )
+        
+        if response.status_code != 200:
+            return jsonify({'error': response.json().get('error', {}).get('message', 'Unknown error')}), response.status_code
+            
+        return jsonify(response.json())
+        
+    except Exception as e:
+        logger.error(f'Failed to generate image: {str(e)}')
+        return jsonify({'error': str(e)}), 500
 
 def on_exit():
     """Function to execute on application shutdown."""

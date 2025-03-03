@@ -25,8 +25,11 @@ def list_theta_rho_files():
     files = []
     for root, _, filenames in os.walk(THETA_RHO_DIR):
         for file in filenames:
+            # Get the relative path and normalize it to use forward slashes
             relative_path = os.path.relpath(os.path.join(root, file), THETA_RHO_DIR)
-            files.append(relative_path)
+            # Convert Windows backslashes to forward slashes for consistency
+            normalized_path = relative_path.replace(os.path.sep, '/')
+            files.append(normalized_path)
     logger.debug(f"Found {len(files)} theta-rho files")
     return files
 
