@@ -17,11 +17,12 @@ def create_mqtt_callbacks() -> Dict[str, Callable]:
 
     return {
         'run_pattern': lambda file_path: run_theta_rho_file(file_path),
-        'run_playlist': lambda playlist_name: run_playlist(
+        'run_playlist': lambda playlist_name, run_mode="loop", pause_time=0, clear_pattern=None, shuffle=False: run_playlist(
             playlist_name,
-            run_mode="loop",  # Default to loop mode
-            pause_time=0,  # No pause between patterns
-            clear_pattern=None  # No clearing between patterns
+            run_mode=run_mode,
+            pause_time=pause_time,
+            clear_pattern=clear_pattern,
+            shuffle=shuffle
         ),
         'stop': stop_actions,
         'pause': pause_execution,
