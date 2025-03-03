@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 THETA_RHO_DIR = './patterns'
 os.makedirs(THETA_RHO_DIR, exist_ok=True)
 
+# Threading events
+pause_event = threading.Event()
+pause_event.set()  # Initially not paused
+
 def list_theta_rho_files():
     files = []
     for root, _, filenames in os.walk(THETA_RHO_DIR):
@@ -169,6 +173,7 @@ def pause_execution():
     logger.info("Pausing pattern execution")
     with state.pause_condition:
         state.pause_requested = True
+    pause_event.clear()  # Clear event to block execution
     return True
 
 def resume_execution():
@@ -176,6 +181,7 @@ def resume_execution():
     with state.pause_condition:
         state.pause_requested = False
         state.pause_condition.notify_all()
+    pause_event.set()  # Set event to allow execution to continue
     return True
     
 def reset_theta():
@@ -200,6 +206,7 @@ def run_theta_rho_file(file_path):
     # if not file_path:
     #     return
     
+    state.current_playing_file = file_path
     coordinates = parse_theta_rho_file(file_path)
     total_coordinates = len(coordinates)
 
@@ -209,21 +216,20 @@ def run_theta_rho_file(file_path):
         state.execution_progress = None
         return
 
-    state.execution_progress = (0, total_coordinates, None)
-    
-    # stop actions without resetting the playlist
-    stop_actions(clear_playlist=False)
 
-    state.current_playing_file = file_path
-    state.execution_progress = (0, 0, None)
+    # stop actions without resetting the playlist
+    state.execution_progress = (0, total_coordinates, None, 0)
     state.stop_requested = False
     logger.info(f"Starting pattern execution: {file_path}")
     logger.info(f"t: {state.current_theta}, r: {state.current_rho}")
     reset_theta()
     
     if state.led_controller:
-            effect_playing(state.led_controller)
-            
+        effect_playing(state.led_controller)
+    
+    # Track last status update time for time-based updates
+    last_status_update = time.time()
+    status_update_interval = 0.5  # Update status every 0.5 seconds
     
     with tqdm(
         total=total_coordinates,
@@ -235,10 +241,13 @@ def run_theta_rho_file(file_path):
     ) as pbar:
         for i, coordinate in enumerate(coordinates):
             theta, rho = coordinate
+
             if state.stop_requested:
                 logger.info("Execution stopped by user")
                 if state.led_controller:
                     effect_idle(state.led_controller)
+                # Make sure to clear current_playing_file when stopping
+                state.current_playing_file = None
                 break
             
             if state.skip_requested:
@@ -246,6 +255,8 @@ def run_theta_rho_file(file_path):
                 connection_manager.check_idle()
                 if state.led_controller:
                     effect_idle(state.led_controller)
+                # Make sure to clear current_playing_file when skipping
+                state.current_playing_file = None
                 break
 
             # Wait for resume if paused
@@ -265,11 +276,20 @@ def run_theta_rho_file(file_path):
                 estimated_remaining_time = (total_coordinates - i) / pbar.format_dict['rate'] if pbar.format_dict['rate'] and total_coordinates else 0
                 elapsed_time = pbar.format_dict['elapsed']
                 state.execution_progress = (i, total_coordinates, estimated_remaining_time, elapsed_time)
+                
+                # Send status updates based on time interval
+                current_time = time.time()
+                if current_time - last_status_update >= status_update_interval:
+                    last_status_update = current_time
 
     connection_manager.check_idle()
 
+    # Clear pattern state atomically
+
     state.current_playing_file = None
     state.execution_progress = None
+
+    
     logger.info("Pattern execution completed")
 
 def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
@@ -279,6 +299,7 @@ def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="
     # Set initial playlist state
     state.playlist_mode = run_mode
     state.current_playlist_index = 0
+
 
     try:
         while True:
@@ -305,11 +326,15 @@ def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="
 
             # Set the playlist to the first pattern
             state.current_playlist = pattern_sequence
+
             # Execute the pattern sequence
             for idx, file_path in enumerate(pattern_sequence):
                 state.current_playlist_index = idx
+
+                
                 if state.stop_requested:
                     logger.info("Execution stopped")
+
                     return
 
                 # Update state for main patterns only
@@ -322,13 +347,21 @@ def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="
                 if idx < len(pattern_sequence) - 1 and not state.stop_requested and pause_time > 0 and not state.skip_requested:
                     logger.info(f"Pausing for {pause_time} seconds")
                     pause_start = time.time()
+                    last_status_update = time.time()
                     while time.time() - pause_start < pause_time:
                         if state.skip_requested:
                             logger.info("Pause interrupted by stop/skip request")
                             break
-                        time.sleep(1)
+                        
+                        # Periodically send status updates during long pauses
+                        current_time = time.time()
+                        if current_time - last_status_update >= 0.5:  # Update every 0.5 seconds
+                            last_status_update = current_time
+                            
+                        time.sleep(0.1)  # Use shorter sleep to check for skip more frequently
                     
                 state.skip_requested = False
+
 
             if run_mode == "indefinite":
                 logger.info("Playlist completed. Restarting as per 'indefinite' run mode")
@@ -341,16 +374,7 @@ def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="
                 break
 
     finally:
-        # Clean up progress update task
-        # if progress_update_task:
-        #     progress_update_task.cancel()
-        #     try:
-        #         await progress_update_task
-        #     except asyncio.CancelledError:
-        #         pass
-        #     progress_update_task = None
-            
-        # Clear all state variables
+
         state.current_playing_file = None
         state.execution_progress = None
         state.current_playlist = None
@@ -359,7 +383,8 @@ def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="
         
         if state.led_controller:
             effect_idle(state.led_controller)
-        
+
+            
         logger.info("All requested patterns completed (or stopped) and state cleared")
 
 def stop_actions(clear_playlist = True):
@@ -379,21 +404,34 @@ def stop_actions(clear_playlist = True):
         connection_manager.update_machine_position()
 
 def get_status():
-    """Get the current execution status."""
-    # Update state.is_clearing based on current file
-    if state.current_playing_file in CLEAR_PATTERNS.values():
-        state.is_clearing = True
-    else:
-        state.is_clearing = False
-
-    return {
-        "ser_port": state.port,
-        "stop_requested": state.stop_requested,
-        "pause_requested": state.pause_requested,
-        "current_playing_file": state.current_playing_file,
-        "execution_progress": state.execution_progress,
-        "current_playing_index": state.current_playlist_index,
-        "current_playlist": state.current_playlist,
-        "is_clearing": state.is_clearing,
-        "current_speed": state.speed
+    """Get the current status of pattern execution."""
+    status = {
+        "current_file": state.current_playing_file,
+        "is_paused": state.pause_requested,
+        "is_running": bool(state.current_playing_file and not state.stop_requested),
+        "progress": None,
+        "playlist": None,
+        "speed": state.speed
     }
+    
+    # Add playlist information if available
+    if state.current_playlist and state.current_playlist_index is not None:
+        next_index = state.current_playlist_index + 1
+        status["playlist"] = {
+            "current_index": state.current_playlist_index,
+            "total_files": len(state.current_playlist),
+            "mode": state.playlist_mode,
+            "next_file": state.current_playlist[next_index] if next_index < len(state.current_playlist) else None
+        }
+    
+    # Only include progress information if a file is actually playing
+    if state.execution_progress and state.current_playing_file:
+        current, total, remaining_time, elapsed_time = state.execution_progress
+        status["progress"] = {
+            "current": current,
+            "total": total,
+            "remaining_time": remaining_time,
+            "elapsed_time": elapsed_time,
+            "percentage": (current / total * 100) if total > 0 else 0
+        }
+    return status
