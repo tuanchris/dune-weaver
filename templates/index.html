@@ -27,6 +27,9 @@
                 <button class="add-button cta" onclick="toggleSecondaryButtons('add-pattern-container')">
                     <i class="fa-solid fa-plus"></i>
                 </button>
+                <button class="gen-button cta" onclick="toggleSecondaryButtons('generate')">
+                    <i class="fa-solid fa-robot"></i>
+                </button>
             </div>
             <div id="add-pattern-container" class="add-to-container hidden">
                 <div class="action-buttons">
@@ -40,6 +43,27 @@
                         <i class="fa-solid fa-xmark"></i>
                         <span>Cancel</span>
                     </button>
+                </div>
+            </div>
+            <div id="generate" class="add-to-container hidden">
+                <div class="action-buttons">
+                    <div id="api-key-group"></div>
+                    <input type="text" id="api-key" placeholder="Enter a valid OpenAI API key">
+                    <input type="text" id="prompt" placeholder="What do you want to draw?" maxlength="500">
+                    <div class="checkbox-container">
+                        <input type="checkbox" id="googly-eyes" name="googly-eyes">
+                        <label for="googly-eyes">Add googly eyes</label>                        
+                    </div>                    
+                    <div class="action-buttons">
+                        <button id="gen-image-button" class="cta">
+                            <i class="fa-solid fa-wand-sparkles"></i>
+                            <span>Create</span>
+                        </button>
+                        <button class="cancel" onclick="toggleSecondaryButtons('generate')">
+                            <i class="fa-solid fa-xmark"></i>
+                            <span>Cancel</span>
+                        </button>
+                    </div>
                 </div>
             </div>
             <input type="text" id="search_pattern" placeholder="Search files..." oninput="searchPatternFiles()">
@@ -521,7 +545,8 @@
             <span id="processing-message">Processing image...</span>
         </div>
         <div style="display: none;">
-            <!-- hidden inputs for image2sand compatibility. TODO: enable image generation using LLMs -->
+            <!-- hidden inputs for image2sand compatibility. -->
+            <label id="generation-status" style="display: none;">Image is generating - please wait...</label>
             <textarea id="polar-coordinates-textarea"></textarea>
             <div id="simple-coords"></div>
             <div id="simple-coords-title"></div>
@@ -531,8 +556,7 @@
                 <button id="file-button"></button>
                 <span id="file-name"></span>
             </div>
-            <button id="gen-image-button">Create</button>
-        </div>
+        </div>        
     </div>
 </div>
 

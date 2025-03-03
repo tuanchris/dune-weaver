@@ -6,7 +6,6 @@
  */
 
 // Global variables for the image converter
-let imageConverterActive = false;
 let originalImage = null;
 let fileName = '';
 let convertedCoordinates = null;
@@ -40,7 +39,6 @@ function openImageConverter(file) {
         // Show the converter dialog
         const overlay = document.getElementById('image-converter-overlay');
         overlay.classList.add('visible');
-        imageConverterActive = true;
         
         // Initialize the UI elements
         initializeUI();
@@ -181,6 +179,72 @@ function closeImageConverter() {
     //document.getElementById('save-pattern-button').disabled = true;
 }
 
+async function generateOpenAIImage(apiKey, prompt) {
+    if (isGeneratingImage) {
+        logMessage("Image is still generating - please don't press the button.", LOG_TYPE.INFO);
+    } else {
+        isGeneratingImage = true;
+        document.getElementById('gen-image-button').disabled = true;
+        // Show processing indicator
+        const processingIndicator = document.getElementById('processing-status');
+        const processingMessage = document.getElementById('processing-message');
+        if (processingMessage) {
+            processingMessage.textContent = `Generating image...`;
+        }
+        processingIndicator.classList.add('visible');
+        try {
+
+            const fullPrompt = `Draw an image of the following: ${prompt}. But make it a simple black silhouette on a white background, with very minimal detail and no additional content in the image, so I can use it for a computer icon.`;
+
+            const response = await fetch('https://api.openai.com/v1/images/generations', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: 'dall-e-3',
+                    prompt: fullPrompt,
+                    size: '1024x1024',
+                    quality: 'standard',
+                    response_format: 'b64_json', // Specify base64 encoding
+                    n: 1
+                })
+            });
+
+            const data = await response.json();
+            //const imageUrl = data.data[0].url;
+            if ('error' in data) {
+                throw new Error(data.error.message);
+            }
+            const imageData = data.data[0].b64_json;
+
+            //console.log("Image Data: ", imageData);
+
+            const imgElement = new Image();
+            imgElement.onload = function() {
+                // Draw the image on the canvas
+                originalImage = imgElement;
+                drawAndPrepImage(imgElement);
+                
+                // Convert the image with default settings
+                convertImage();
+            };
+            imgElement.src = `data:image/png;base64,${imageData}`;
+
+            //console.log(`Image generated successfully`);
+            logMessage('Image generated successfully', LOG_TYPE.SUCCESS);
+        } catch (error) {
+            //console.error('Image generation error:', error);
+            logMessage('Image generation error: ' + error, LOG_TYPE.ERROR);
+        }
+        isGeneratingImage = false;
+        document.getElementById('gen-image-button').disabled = false;
+        document.getElementById('processing-status').classList.remove('visible');
+    }
+
+}
+
 
 // Override the uploadThetaRho function to handle image files
 const originalUploadThetaRho = window.uploadThetaRho;
@@ -203,4 +267,16 @@ window.uploadThetaRho = async function() {
     
     // For non-image files, use the original function
     await originalUploadThetaRho();
-}; 
+};
+
+// Remove existing event listener and add a new one
+document.getElementById('gen-image-button').addEventListener('click', function() {    
+    let apiKey = document.getElementById('api-key').value;
+    const prompt = document.getElementById('prompt').value + (document.getElementById('googly-eyes').checked ? ' with disproportionately large googly eyes' : '');
+    // Show the converter dialog
+    const overlay = document.getElementById('image-converter-overlay');
+    overlay.classList.add('visible');
+    // Initialize the UI elements
+    initializeUI();
+    generateOpenAIImage(apiKey, prompt);
+});

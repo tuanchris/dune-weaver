@@ -298,3 +298,7 @@ input[type="range"] {
                 color var(--transition-fast),
                 border-color var(--transition-fast);
 } 
+
+.gen-button {
+    margin-left: 10px;
+}
