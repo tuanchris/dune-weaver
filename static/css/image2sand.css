@@ -98,7 +98,7 @@
 .sand-garden-preview canvas {
     max-width: 100%;
     border: 1px solid var(--border-primary);
-    background-color: var(--background-tertiary);
+    background-color: #FFFFFF;
     margin-bottom: 10px;
     width: 100%;
     height: auto;
@@ -301,4 +301,8 @@ input[type="range"] {
 
 .gen-button {
     margin-left: 10px;
+}
+
+canvas#connect-image {
+    clip-path: ellipse();
 }
