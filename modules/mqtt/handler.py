@@ -157,6 +157,9 @@ class MQTTHandler(BaseMQTTHandler):
             "device": base_device,
             "icon": "mdi:speedometer",
             "mode": "box",
+            "min": 0,
+            "max": 1000,
+            "step": 10
         }
         self._publish_discovery("number", "speed", speed_config)
 

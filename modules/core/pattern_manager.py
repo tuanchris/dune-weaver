@@ -380,6 +380,7 @@ def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="
         state.current_playlist = None
         state.current_playlist_index = None
         state.playlist_mode = None
+        state.current_playlist_name = None  # Clear the playlist name in MQTT state
         
         if state.led_controller:
             effect_idle(state.led_controller)
@@ -400,6 +401,7 @@ def stop_actions(clear_playlist = True):
             state.current_playlist = None
             state.current_playlist_index = None
             state.playlist_mode = None
+            state.current_playlist_name = None  # Also clear the playlist name for MQTT updates
         state.pause_condition.notify_all()
         connection_manager.update_machine_position()
 
