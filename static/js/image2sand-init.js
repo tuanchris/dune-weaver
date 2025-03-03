@@ -33,13 +33,43 @@ function openImageConverter(file) {
     img.onload = function() {
         // Draw the image on the canvas
         originalImageElement = img;
+        logMessage(`Image loaded: ${file.name}. Converting...`, LOG_TYPE.INFO);
         drawAndPrepImage(img);
         
         // Show the converter dialog
         showImageConverter();
-
-        // Convert the image with default settings
-        convertImage();
+        // wait for the dialog to be visible and fully rendered
+        waitForDialog()
+            .then(() => {
+                return new Promise(resolve => setTimeout(resolve, 100)); // Add small delay for UI render
+            })
+            .then(() => {
+                // Show processing indicator
+                const processingIndicator = document.getElementById('processing-indicator');
+                const processingMessage = document.getElementById('processing-message');
+                if (processingMessage) {
+                    processingMessage.textContent = `Converting image...`;
+                }
+                processingIndicator.classList.add('visible');                
+            })
+            .then(() => {
+                return new Promise(resolve => setTimeout(resolve, 100)); // Add small delay for UI render
+            })
+            .then(() => {
+                // Convert the image with default settings
+                convertImage();
+                return waitForConversion();
+            })
+            .then(() => {
+                // Hide processing indicator
+                document.getElementById('processing-indicator').classList.remove('visible');
+                logMessage(`Image converted.`, LOG_TYPE.SUCCESS);
+            })
+            .catch(error => {
+                // Hide processing indicator on error
+                document.getElementById('processing-indicator').classList.remove('visible');
+                logMessage("Error during conversion process: " + error, LOG_TYPE.ERROR);
+            });
     };
     
     img.onerror = function() {
@@ -73,7 +103,7 @@ async function saveConvertedPattern() {
         formData.append('file', new File([blob], thrFileName, { type: 'text/plain' }));
         
         // Show processing indicator
-        const processingIndicator = document.getElementById('processing-status');
+        const processingIndicator = document.getElementById('processing-indicator');
         const processingMessage = document.getElementById('processing-message');
         if (processingMessage) {
             processingMessage.textContent = `Saving pattern as ${thrFileName}...`;
@@ -120,7 +150,7 @@ async function saveConvertedPattern() {
         logMessage(`Error saving pattern: ${error.message}`, LOG_TYPE.ERROR);
     } finally {
         // Hide processing indicator
-        document.getElementById('processing-status').classList.remove('visible');
+        document.getElementById('processing-indicator').classList.remove('visible');
     }
 }
 
@@ -174,7 +204,7 @@ async function generateImage(apiKey, prompt, runPattern) {
         document.getElementById('gen-image-button').disabled = true;
         // Show processing indicator
         logMessage("Generating image...", LOG_TYPE.INFO);
-        const processingIndicator = document.getElementById('processing-status');
+        const processingIndicator = document.getElementById('processing-indicator');
         const processingMessage = document.getElementById('processing-message');
         if (processingMessage) {
             processingMessage.textContent = `Generating image...`;
@@ -204,29 +234,59 @@ async function generateImage(apiKey, prompt, runPattern) {
                 originalImageElement = imgElement;
                 drawAndPrepImage(imgElement);
                 
-                // Convert the image with default settings
-                convertImage();
-                if (runPattern) {
-                    waitForConversion()
-                        .then(() => {
-                            // set convertedFileName to the prompt name with no special characters and max 20 characters
-                            convertedFileName = prompt.replace(/[^a-z0-9]/gi, '_').toLowerCase().substring(0, 20);
-                            saveConvertedPattern();
-                            // wait for the file to be uploaded
-                            waitForSelectedFile()
-                                .then(() => {
-                                    // set pre_execution to clear_sideway before starting the pattern run
-                                    pre_execution.value = 'clear_sideway';
-                                    runThetaRho();
-                                })
-                                .catch(error => {
-                                    logMessage("Conversion timeout or error: " + error, LOG_TYPE.ERROR);
-                                });
+                // Show the converter dialog
+                showImageConverter();
+                // wait for the dialog to be visible and fully rendered
+                waitForDialog()
+                    .then(() => {
+                        return new Promise(resolve => setTimeout(resolve, 100)); // Add small delay for UI render
+                    })
+                    .then(() => {
+                        // Show processing indicator
+                        const processingIndicator = document.getElementById('processing-indicator');
+                        const processingMessage = document.getElementById('processing-message');
+                        if (processingMessage) {
+                            processingMessage.textContent = `Converting image...`;
+                        }
+                        processingIndicator.classList.add('visible');                
+                    })
+                    .then(() => {
+                        return new Promise(resolve => setTimeout(resolve, 100)); // Add small delay for UI render
+                    })
+                    .then(() => {
+                        // Convert the image with default settings
+                        convertImage();
+                        if (!runPattern) return;
+                        waitForConversion()
+                            .then(() => {
+                                // set convertedFileName to the prompt name with no special characters and max 20 characters
+                                convertedFileName = prompt.replace(/[^a-z0-9]/gi, '_').toLowerCase().substring(0, 20);
+                                saveConvertedPattern();
+                                // wait for the file to be uploaded
+                                waitForSelectedFile()
+                                    .then(() => {
+                                        // set pre_execution to clear_sideway before starting the pattern run
+                                        pre_execution.value = 'clear_sideway';
+                                        runThetaRho();
+                                    })
+                                    .catch(error => {
+                                        logMessage("Conversion timeout or error: " + error, LOG_TYPE.ERROR);
+                                    });
                             })
-                        .catch(error => {
-                            logMessage("Conversion timeout or error: " + error, LOG_TYPE.ERROR);
-                        });
-                }
+                            .catch(error => {
+                                logMessage("Conversion timeout or error: " + error, LOG_TYPE.ERROR);
+                            });
+                    })
+                    .then(() => {
+                        // Hide processing indicator
+                        document.getElementById('processing-indicator').classList.remove('visible');
+                        logMessage(`Image converted.`, LOG_TYPE.SUCCESS);
+                    })
+                    .catch(error => {
+                        // Hide processing indicator on error
+                        document.getElementById('processing-indicator').classList.remove('visible');
+                        logMessage("Error during conversion process: " + error, LOG_TYPE.ERROR);
+                    });
             };
             imgElement.src = `data:image/png;base64,${imageData}`;
 
@@ -236,7 +296,7 @@ async function generateImage(apiKey, prompt, runPattern) {
         }
         isGeneratingImage = false;
         document.getElementById('gen-image-button').disabled = false;
-        document.getElementById('processing-status').classList.remove('visible');
+        document.getElementById('processing-indicator').classList.remove('visible');
     }
 }
 
@@ -285,6 +345,30 @@ function waitForSelectedFile(timeout = 20000) {
         }
         
         checkSelectedFile();
+    });
+}
+
+
+/**
+ * Wait for the dialog to be visible
+ * @param {number} timeout - The timeout for the dialog
+ * @returns {Promise} A promise that resolves when the dialog is visible
+ */
+function waitForDialog(timeout = 20000) {
+    return new Promise((resolve, reject) => {   
+        const startTime = Date.now();
+        
+        function checkDialog() {
+            if (document.getElementById('image-converter-overlay').classList.contains('visible')) {
+                resolve();
+            } else if (Date.now() - startTime > timeout) {
+                reject('Timeout waiting for dialog');
+            } else {
+                setTimeout(checkDialog, 500); // Check every 500ms
+            }
+        }
+        
+        checkDialog();  
     });
 }
 
@@ -355,8 +439,6 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('gen-image-button').addEventListener('click', function() {    
         let apiKey = document.getElementById('api-key').value;
         const prompt = document.getElementById('prompt').value + (document.getElementById('googly-eyes').checked ? ' with disproportionately large googly eyes' : '');
-        // Show the converter dialog
-        showImageConverter();
         generateImage(apiKey, prompt);
     });
 });
