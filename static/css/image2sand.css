@@ -1,0 +1,308 @@
+/* Image Converter Dialog Styles */
+.image-converter-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s, visibility 0.3s;
+}
+
+.image-converter-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.image-converter-dialog {
+    background-color: var(--background-secondary);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    width: 90%;
+    max-width: 1000px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 20px;
+    position: relative;
+    color: var(--text-primary);
+}
+
+.image-converter-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-primary);
+    padding-bottom: 10px;
+}
+
+.image-converter-header h2 {
+    margin: 0;
+    color: var(--theme-secondary-hover);
+}
+
+.image-converter-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: var(--text-primary);
+}
+
+.image-converter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.preview-controls-container {
+    display: grid;
+    grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr);
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+@media (max-width: 768px) {
+    .image-converter-grid,
+    .preview-controls-container {
+        grid-template-columns: 1fr;
+    }
+}
+
+.image-converter-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding: 15px;
+    background-color: var(--background-tertiary);
+    border-radius: 6px;
+    border: 1px solid var(--border-primary);
+}
+
+.image-converter-preview, 
+.sand-garden-preview {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.image-converter-preview canvas,
+.sand-garden-preview canvas {
+    max-width: 100%;
+    border: 1px solid var(--border-primary);
+    background-color: #FFFFFF;
+    margin-bottom: 10px;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1 / 1;
+    object-fit: contain;
+    min-height: 250px;
+}
+
+/* Ensure all canvases have the same size */
+#original-image, #edge-image, #dot-image, #connect-image {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1 / 1;
+    min-height: 250px;
+}
+
+.sand-garden-preview canvas {
+    min-height: 250px;
+}
+
+.image-converter-preview h3,
+.sand-garden-preview h3 {
+    margin-top: 0;
+    margin-bottom: 8px;
+    font-size: 1rem;
+    color: var(--theme-secondary-hover);
+}
+
+.image-converter-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 15px;
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid var(--border-primary);
+}
+
+.image-converter-actions button {
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.image-converter-actions button i {
+    font-size: 1.1rem;
+}
+
+.image-converter-actions .cancel {
+    background-color: var(--color-error);
+    color: var(--text-secondary);
+    border: none;
+}
+
+.image-converter-actions .cta {
+    background-color: var(--theme-primary);
+    color: var(--text-secondary);
+    border: none;
+}
+
+.slider-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.slider-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+}
+
+.setting-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.setting-item label {
+    margin-bottom: 5px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.setting-item select,
+.setting-item input {
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border-primary);
+    background-color: var(--input-background);
+    color: var(--input-text);
+}
+
+.checkbox-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin: 10px 0;
+}
+
+.checkbox-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.checkbox-container label {
+    margin-bottom: 0;
+    color: var(--text-primary);
+}
+
+.generate-button-container {
+    display: flex;
+    justify-content: center;
+    margin-top: 15px;
+}
+
+.generate-button-container button {
+    padding: 10px 20px;
+    font-size: 1rem;
+    background-color: var(--theme-primary);
+    color: var(--text-secondary);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.generate-button-container button:hover {
+    background-color: var(--theme-primary-hover);
+}
+
+.processing-indicator {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--background-translucent);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.3s, visibility 0.3s;
+}
+
+.processing-indicator.visible {
+    visibility: visible;
+    opacity: 1;
+}
+
+.spinner {
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top: 4px solid var(--theme-primary);
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin-bottom: 15px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+#total-points {
+    margin-top: 10px;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+/* Ensure inputs and checkboxes match the theme */
+input[type="checkbox"] {
+    accent-color: var(--theme-primary);
+}
+
+input[type="range"] {
+    accent-color: var(--theme-primary);
+    background-color: var(--input-background);
+}
+
+/* Ensure the dialog transitions smoothly with theme changes */
+.image-converter-dialog * {
+    transition: background-color var(--transition-fast),
+                color var(--transition-fast),
+                border-color var(--transition-fast);
+} 
+
+.gen-button {
+    margin-left: 10px;
+}
+
+canvas#connect-image {
+    clip-path: ellipse();
+}
