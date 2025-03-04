@@ -1499,7 +1499,7 @@ function attachFullScreenListeners() {
             const stickySection = this.closest('.sticky'); // Find the closest sticky section
             if (stickySection) {
                 // Close all other sections
-                document.querySelectorAll('.sticky:not(#currently-playing-container)').forEach(section => {
+                document.querySelectorAll('.sticky:not(#currently-playing-container):not(#image-converter)').forEach(section => {
                     if (section !== stickySection) {
                         section.classList.remove('fullscreen');
                         section.classList.remove('visible');
@@ -1572,11 +1572,13 @@ function saveSettingsToCookies() {
     const clearPattern = document.getElementById('clear_pattern').value;
     const runMode = document.querySelector('input[name="run_mode"]:checked').value;
     const shuffle = document.getElementById('shuffle_playlist').checked;
+    const apiKey = document.getElementById('api-key').value;
 
     setCookie('pause_time', pauseTime, 365);
     setCookie('clear_pattern', clearPattern, 365);
     setCookie('run_mode', runMode, 365);
     setCookie('shuffle', shuffle, 365);
+    setCookie('api_key', apiKey, 365);
 }
 
 // Load settings from cookies
@@ -1601,6 +1603,11 @@ function loadSettingsFromCookies() {
         document.getElementById('shuffle_playlist').checked = shuffle === 'true';
     }
 
+    const apiKey = getCookie('api_key');
+    if (apiKey !== '') {
+        document.getElementById('api-key').value = apiKey;
+    }
+
     logMessage('Settings loaded from cookies.');
 }
 
@@ -1613,6 +1620,7 @@ function attachSettingsSaveListeners() {
         input.addEventListener('change', saveSettingsToCookies);
     });
     document.getElementById('shuffle_playlist').addEventListener('change', saveSettingsToCookies);
+    document.getElementById('api-key').addEventListener('change', saveSettingsToCookies);
 }
 
 

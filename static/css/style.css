@@ -15,7 +15,7 @@
     --background-secondary-dark: #1e1e1e;
     --background-tertiary-dark: #2d2d2d;
     --background-accent-dark: #4e453fef;
-    --background-translucent-dark: rgba(18, 18, 18, 0.5);
+    --background-translucent-dark: rgba(18, 18, 18, 0.75);
     --text-primary-dark: #eeeeee;
     --text-secondary-dark: #fff;
     --border-primary-dark: #404040;
@@ -161,7 +161,7 @@ header {
     position: sticky;
     height: 50px;
     top: 0;
-    z-index: 10;
+    z-index: 20;
     background: var(--background-primary);
     display: flex;
     justify-content: center;
@@ -484,7 +484,7 @@ section.sticky {
 
 section.sticky.fullscreen {
     position: fixed;
-    top: 0;
+    top: 50px;
     left: 0;
     width: 100vw;
     max-height: none;
