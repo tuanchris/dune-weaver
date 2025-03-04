@@ -1,0 +1,319 @@
+/* Timelapse Interface Styles */
+.timelapse-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.timelapse-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+}
+
+.timelapse-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+    padding: 10px;
+}
+
+.timelapse-preview {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #000;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 15px;
+    position: relative;
+    min-height: 300px;
+}
+
+.timelapse-preview img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.timelapse-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.timelapse-control-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+}
+
+.timelapse-control-group label {
+    min-width: 120px;
+}
+
+.timelapse-control-group select,
+.timelapse-control-group input {
+    flex: 1;
+    min-width: 150px;
+}
+
+.timelapse-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.timelapse-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 4px;
+    background-color: var(--background-secondary);
+}
+
+.timelapse-status.active {
+    background-color: var(--background-success);
+    color: white;
+}
+
+.timelapse-status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: var(--color-error);
+}
+
+.timelapse-status-indicator.active {
+    background-color: var(--color-success);
+}
+
+.timelapse-sessions {
+    margin-top: 20px;
+    overflow-y: auto;
+    max-height: 300px;
+}
+
+.timelapse-session {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    background-color: var(--background-secondary);
+    cursor: pointer;
+    transition: background-color 0.2s;
+    position: relative;
+}
+
+.timelapse-session:hover {
+    background-color: var(--background-tertiary);
+}
+
+.timelapse-session.selected {
+    background-color: var(--background-tertiary);
+    border-left: 4px solid var(--color-primary);
+}
+
+.timelapse-session-thumbnail {
+    width: 80px;
+    height: 60px;
+    background-color: #000;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-right: 15px;
+}
+
+.timelapse-session-thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.timelapse-session-info {
+    flex: 1;
+}
+
+.timelapse-session-title {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.timelapse-session-details {
+    font-size: 0.9em;
+    color: var(--text-secondary);
+}
+
+.timelapse-frames {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 15px;
+    overflow-y: auto;
+    max-height: 200px;
+    padding: 10px;
+    background-color: var(--background-secondary);
+    border-radius: 4px;
+}
+
+.timelapse-frame {
+    width: 100px;
+    height: 75px;
+    background-color: #000;
+    border-radius: 4px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.timelapse-frame:hover {
+    transform: scale(1.05);
+}
+
+.timelapse-frame img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.timelapse-video-container {
+    margin-top: 15px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.timelapse-video {
+    width: 100%;
+    max-width: 640px;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.timelapse-video video {
+    width: 100%;
+}
+
+.timelapse-loading {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    font-size: 1.2em;
+    z-index: 10;
+}
+
+.timelapse-spinner {
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top: 4px solid white;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin-right: 10px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Dark mode adjustments */
+:root[data-theme="dark"] .timelapse-session {
+    background-color: var(--background-secondary-dark);
+}
+
+:root[data-theme="dark"] .timelapse-session:hover {
+    background-color: var(--background-tertiary-dark);
+}
+
+:root[data-theme="dark"] .timelapse-session.selected {
+    background-color: var(--background-tertiary-dark);
+    border-left: 4px solid var(--color-primary-dark);
+}
+
+:root[data-theme="dark"] .timelapse-status {
+    background-color: var(--background-secondary-dark);
+}
+
+:root[data-theme="dark"] .timelapse-status.active {
+    background-color: var(--color-success);
+}
+
+:root[data-theme="dark"] .timelapse-frames {
+    background-color: var(--background-secondary-dark);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .timelapse-control-group {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .timelapse-control-group label {
+        margin-bottom: 5px;
+    }
+    
+    .timelapse-control-group select,
+    .timelapse-control-group input {
+        width: 100%;
+    }
+    
+    .timelapse-frame {
+        width: 80px;
+        height: 60px;
+    }
+}
+
+/* Add styles for the delete button */
+.timelapse-session .delete-button {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--color-error);
+    color: white;
+    border: none;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.timelapse-session:hover .delete-button {
+    opacity: 1;
+}
+
+.timelapse-session .delete-button:hover {
+    background-color: var(--color-error-dark);
+}
+
+/* Dark mode adjustments for delete button */
+:root[data-theme="dark"] .timelapse-session .delete-button {
+    background-color: var(--color-error);
+    color: white;
+}
+
+:root[data-theme="dark"] .timelapse-session .delete-button:hover {
+    background-color: var(--color-error-dark);
+} 

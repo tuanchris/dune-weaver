@@ -16,6 +16,7 @@ from modules.core.state import state
 from modules import mqtt
 from modules.led.led_controller import LEDController, effect_idle
 import requests  # Add this import
+from modules.webcam.webcam_controller import webcam_controller  # Add this import
 
 # Configure logging
 logging.basicConfig(
@@ -133,6 +134,9 @@ def run_theta_rho():
         return jsonify({'error': 'A pattern is already running. Stop it before starting a new one.'}), 409
         
     try:
+        # Notify webcam controller that a pattern is starting
+        webcam_controller.pattern_started()
+
         # Create a thread that will execute the pattern
         current_execution_thread = threading.Thread(
             target=execute_pattern,
@@ -162,6 +166,7 @@ def stop_execution():
         logger.warning("Attempted to stop without a connection")
         return jsonify({"success": False, "error": "Connection not established"}), 400
     pattern_manager.stop_actions()
+    webcam_controller.pattern_stopped()
     return jsonify({'success': True})
 
 @app.route('/send_home', methods=['POST'])
@@ -330,37 +335,37 @@ def get_playlist():
 @app.route("/create_playlist", methods=["POST"])
 def create_playlist():
     data = request.get_json()
-    if not data or "name" not in data or "files" not in data:
-        return jsonify({"success": False, "error": "Playlist 'name' and 'files' are required"}), 400
+    if not data or "playlist_name" not in data or "files" not in data:
+        return jsonify({"success": False, "error": "Playlist 'playlist_name' and 'files' are required"}), 400
 
-    success = playlist_manager.create_playlist(data["name"], data["files"])
+    success = playlist_manager.create_playlist(data["playlist_name"], data["files"])
     return jsonify({
         "success": success,
-        "message": f"Playlist '{data['name']}' created/updated"
+        "message": f"Playlist '{data['playlist_name']}' created/updated"
     })
 
 @app.route("/modify_playlist", methods=["POST"])
 def modify_playlist():
     data = request.get_json()
-    if not data or "name" not in data or "files" not in data:
-        return jsonify({"success": False, "error": "Playlist 'name' and 'files' are required"}), 400
+    if not data or "playlist_name" not in data or "files" not in data:
+        return jsonify({"success": False, "error": "Playlist 'playlist_name' and 'files' are required"}), 400
 
-    success = playlist_manager.modify_playlist(data["name"], data["files"])
-    return jsonify({"success": success, "message": f"Playlist '{data['name']}' updated"})
+    success = playlist_manager.modify_playlist(data["playlist_name"], data["files"])
+    return jsonify({"success": success, "message": f"Playlist '{data['playlist_name']}' updated"})
 
 @app.route("/delete_playlist", methods=["DELETE"])
 def delete_playlist():
     data = request.get_json()
-    if not data or "name" not in data:
-        return jsonify({"success": False, "error": "Missing 'name' field"}), 400
+    if not data or "playlist_name" not in data:
+        return jsonify({"success": False, "error": "Missing 'playlist_name' field"}), 400
 
-    success = playlist_manager.delete_playlist(data["name"])
+    success = playlist_manager.delete_playlist(data["playlist_name"])
     if not success:
-        return jsonify({"success": False, "error": f"Playlist '{data['name']}' not found"}), 404
+        return jsonify({"success": False, "error": f"Playlist '{data['playlist_name']}' not found"}), 404
 
     return jsonify({
         "success": True,
-        "message": f"Playlist '{data['name']}' deleted"
+        "message": f"Playlist '{data['playlist_name']}' deleted"
     })
 
 @app.route('/add_to_playlist', methods=['POST'])
@@ -528,6 +533,200 @@ def generate_image():
     except Exception as e:
         logger.error(f'Failed to generate image: {str(e)}')
         return jsonify({'error': str(e)}), 500
+
+@app.route('/timelapse/status', methods=['GET'])
+def timelapse_status():
+    """Get current timelapse status"""
+    try:
+        status = webcam_controller.get_status()
+        return jsonify(status)
+    except Exception as e:
+        logger.error(f"Error getting timelapse status: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/timelapse/cameras', methods=['GET'])
+def list_cameras():
+    """List available cameras"""
+    try:
+        cameras = webcam_controller.scan_cameras()
+        return jsonify({"cameras": cameras})
+    except Exception as e:
+        logger.error(f"Error listing cameras: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/timelapse/start', methods=['POST'])
+def start_timelapse():
+    """Start timelapse capture"""
+    try:
+        data = request.json
+        camera = data.get('camera')
+        interval = data.get('interval')
+        auto_mode = data.get('auto_mode')
+        
+        result = webcam_controller.start_timelapse(camera, interval, auto_mode)
+        if result:
+            return jsonify({"success": True})
+        else:
+            return jsonify({"success": False, "error": "Failed to start timelapse"}), 400
+    except Exception as e:
+        logger.error(f"Error starting timelapse: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/timelapse/stop', methods=['POST'])
+def stop_timelapse():
+    """Stop timelapse capture"""
+    try:
+        result = webcam_controller.stop_timelapse()
+        if result:
+            return jsonify({"success": True})
+        else:
+            return jsonify({"success": False, "error": "No timelapse running"}), 400
+    except Exception as e:
+        logger.error(f"Error stopping timelapse: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/timelapse/sessions', methods=['GET'])
+def list_timelapse_sessions():
+    """List all timelapse sessions"""
+    try:
+        sessions = webcam_controller.list_sessions()
+        return jsonify({"sessions": sessions})
+    except Exception as e:
+        logger.error(f"Error listing timelapse sessions: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/timelapse/frames/<session_id>', methods=['GET'])
+def get_session_frames(session_id):
+    """Get all frames for a session"""
+    try:
+        frames = webcam_controller.get_session_frames(session_id)
+        return jsonify({"frames": frames})
+    except Exception as e:
+        logger.error(f"Error getting session frames: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/timelapse/create_video', methods=['POST'])
+def create_timelapse_video():
+    """Create a video from the captured frames"""
+    try:
+        data = request.json
+        session_id = data.get('session_id')
+        fps = data.get('fps', 10)
+        
+        if not session_id:
+            return jsonify({"error": "Session ID is required"}), 400
+        
+        session_dir = os.path.join(webcam_controller.timelapse_dir, session_id)
+        result = webcam_controller.create_video(session_dir, fps)
+        
+        if result:
+            return jsonify(result)
+        else:
+            return jsonify({"success": False, "error": "Failed to create video"}), 400
+    except Exception as e:
+        logger.error(f"Error creating timelapse video: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/timelapse/image/<path:filename>', methods=['GET'])
+def get_timelapse_image(filename):
+    """Get a timelapse image"""
+    try:
+        # Split the path into directory and filename
+        parts = filename.split('/')
+        if len(parts) < 2:
+            return jsonify({"error": "Invalid path"}), 400
+        
+        session_id = parts[0]
+        image_file = parts[1]
+        
+        return send_from_directory(os.path.join(webcam_controller.timelapse_dir, session_id), image_file)
+    except Exception as e:
+        logger.error(f"Error getting timelapse image: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/timelapse/video/<session_id>', methods=['GET'])
+def get_timelapse_video(session_id):
+    """Get a timelapse video"""
+    try:
+        video_file = f"timelapse_{session_id}.mp4"
+        return send_from_directory(os.path.join(webcam_controller.timelapse_dir, session_id), video_file)
+    except Exception as e:
+        logger.error(f"Error getting timelapse video: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/timelapse/test_capture', methods=['POST'])
+def test_timelapse_capture():
+    """Test camera capture"""
+    try:
+        data = request.json
+        camera = data.get('camera')
+        
+        if not camera:
+            return jsonify({"success": False, "error": "No camera selected"}), 400
+        
+        # Create a test directory if it doesn't exist
+        test_dir = os.path.join(webcam_controller.timelapse_dir, 'test_captures')
+        os.makedirs(test_dir, exist_ok=True)
+        
+        # Generate a unique filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = os.path.join(test_dir, f"test_capture_{timestamp}.jpg")
+        
+        # Temporarily set the camera
+        original_camera = webcam_controller.selected_camera
+        webcam_controller.selected_camera = camera
+        
+        try:
+            # Capture a frame
+            webcam_controller._capture_frame(output_file)
+            
+            # Check if the file was created
+            if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
+                return jsonify({"success": False, "error": "Failed to capture image"}), 400
+            
+            # Return the path to the image
+            relative_path = os.path.join('test_captures', f"test_capture_{timestamp}.jpg")
+            return jsonify({
+                "success": True, 
+                "image_path": relative_path
+            })
+        finally:
+            # Restore the original camera
+            webcam_controller.selected_camera = original_camera
+    except Exception as e:
+        logger.error(f"Error testing camera capture: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/timelapse/delete/<session_id>', methods=['DELETE'])
+def delete_timelapse_session(session_id):
+    """Delete a timelapse session"""
+    try:
+        # Validate session_id to prevent directory traversal
+        if not session_id or '..' in session_id or not session_id.startswith('timelapse_'):
+            return jsonify({"success": False, "error": "Invalid session ID"}), 400
+        
+        session_dir = os.path.join(webcam_controller.timelapse_dir, session_id)
+        
+        # Check if directory exists
+        if not os.path.exists(session_dir) or not os.path.isdir(session_dir):
+            return jsonify({"success": False, "error": "Session not found"}), 404
+        
+        # Delete all files in the directory
+        for file in os.listdir(session_dir):
+            file_path = os.path.join(session_dir, file)
+            try:
+                if os.path.isfile(file_path):
+                    os.unlink(file_path)
+            except Exception as e:
+                logger.error(f"Error deleting file {file_path}: {str(e)}")
+        
+        # Delete the directory
+        os.rmdir(session_dir)
+        
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error deleting timelapse session: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 def on_exit():
     """Function to execute on application shutdown."""
