@@ -60,6 +60,14 @@ document.addEventListener('DOMContentLoaded', function() {
  * Initialize the timelapse UI
  */
 function initTimelapseUI() {
+    // Ensure the timelapse container has the fullscreen class when initialized
+    const container = document.getElementById('timelapse-container');
+    if (container) {
+        // Make sure it's hidden initially but has the fullscreen class
+        container.classList.add('hidden');
+        container.classList.add('fullscreen');
+    }
+    
     // Set up event listeners for timelapse preview image
     const previewImage = document.getElementById('timelapse-preview-image');
     previewImage.addEventListener('load', function() {
@@ -80,10 +88,22 @@ function initTimelapseUI() {
         logMessage(`Camera changed to: ${selectedCamera}`, LOG_TYPE.DEBUG);
     });
     
+    // Add event listener for auto mode checkbox
+    const autoModeCheckbox = document.getElementById('timelapse-auto-mode');
+    autoModeCheckbox.addEventListener('change', updateAutoMode);
+    
     // Add event listener for test capture button
     const testCaptureButton = document.getElementById('timelapse-test-capture');
     if (testCaptureButton) {
         testCaptureButton.addEventListener('click', testCameraCapture);
+    }
+    
+    // Load saved settings from localStorage
+    const savedAutoMode = localStorage.getItem('timelapseAutoMode');
+    if (savedAutoMode !== null) {
+        autoModeCheckbox.checked = savedAutoMode === 'true';
+        // Update the server with the saved setting
+        updateAutoMode();
     }
 }
 
@@ -554,6 +574,12 @@ async function deleteTimelapseSession(sessionId) {
  */
 async function loadSessionDetails(session) {
     try {
+        // Store selected session
+        selectedSession = session;
+        
+        // Hide sessions list for cleaner UI
+        document.getElementById('timelapse-sessions').style.display = 'none';
+        
         // Show session details
         const sessionDetails = document.getElementById('timelapse-session-details');
         sessionDetails.style.display = 'block';
@@ -673,5 +699,87 @@ async function createTimelapseVideo() {
     } finally {
         // Hide loading indicator
         document.getElementById('timelapse-loading').style.display = 'none';
+    }
+}
+
+/**
+ * Go back to the sessions list from session details
+ */
+function backToSessionsList() {
+    // Hide session details
+    document.getElementById('timelapse-session-details').style.display = 'none';
+    
+    // Clear selected session
+    selectedSession = null;
+    
+    // Ensure sessions list is visible
+    document.getElementById('timelapse-sessions').style.display = 'block';
+    
+    // Clear any selected session styling
+    const sessionElements = document.querySelectorAll('.timelapse-session');
+    sessionElements.forEach(el => el.classList.remove('selected'));
+}
+
+/**
+ * Close the timelapse container without removing the fullscreen class
+ */
+function closeTimelapseContainer() {
+    const container = document.getElementById('timelapse-container');
+    if (!container) return;
+    
+    container.classList.remove('visible');
+    // Don't remove the fullscreen class
+    container.classList.add('hidden');
+    
+    // Hide session details if visible
+    document.getElementById('timelapse-session-details').style.display = 'none';
+    
+    // Ensure sessions list is visible for next time
+    document.getElementById('timelapse-sessions').style.display = 'block';
+    
+    // Clear any selected session styling
+    const sessionElements = document.querySelectorAll('.timelapse-session');
+    sessionElements.forEach(el => el.classList.remove('selected'));
+    
+    logMessage('Closed timelapse container');
+}
+
+/**
+ * Update the auto mode setting
+ */
+async function updateAutoMode() {
+    const autoModeCheckbox = document.getElementById('timelapse-auto-mode');
+    const autoMode = autoModeCheckbox.checked;
+    
+    try {
+        // Save to localStorage
+        localStorage.setItem('timelapseAutoMode', autoMode);
+        
+        // Send to server
+        const response = await fetch('/timelapse/update_auto_mode', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                auto_mode: autoMode
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            logMessage(`Auto mode ${autoMode ? 'enabled' : 'disabled'}`, LOG_TYPE.SUCCESS);
+            // Update local status
+            timelapseStatus.auto_mode = autoMode;
+        } else {
+            logMessage(`Failed to update auto mode: ${data.error}`, LOG_TYPE.ERROR);
+            // Revert checkbox if there was an error
+            autoModeCheckbox.checked = timelapseStatus.auto_mode;
+        }
+    } catch (error) {
+        logMessage(`Error updating auto mode: ${error.message}`, LOG_TYPE.ERROR);
+        // Revert checkbox if there was an error
+        autoModeCheckbox.checked = timelapseStatus.auto_mode;
     }
 } 

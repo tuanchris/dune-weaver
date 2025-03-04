@@ -701,32 +701,34 @@ def test_timelapse_capture():
 def delete_timelapse_session(session_id):
     """Delete a timelapse session"""
     try:
-        # Validate session_id to prevent directory traversal
-        if not session_id or '..' in session_id or not session_id.startswith('timelapse_'):
-            return jsonify({"success": False, "error": "Invalid session ID"}), 400
+        # Delete the session
+        success = webcam_controller.delete_session(session_id)
         
-        session_dir = os.path.join(webcam_controller.timelapse_dir, session_id)
-        
-        # Check if directory exists
-        if not os.path.exists(session_dir) or not os.path.isdir(session_dir):
-            return jsonify({"success": False, "error": "Session not found"}), 404
-        
-        # Delete all files in the directory
-        for file in os.listdir(session_dir):
-            file_path = os.path.join(session_dir, file)
-            try:
-                if os.path.isfile(file_path):
-                    os.unlink(file_path)
-            except Exception as e:
-                logger.error(f"Error deleting file {file_path}: {str(e)}")
-        
-        # Delete the directory
-        os.rmdir(session_dir)
-        
-        return jsonify({"success": True})
+        if success:
+            logger.info(f"Deleted timelapse session: {session_id}")
+            return jsonify({'success': True})
+        else:
+            logger.error(f"Failed to delete timelapse session: {session_id}")
+            return jsonify({'success': False, 'error': 'Failed to delete session'}), 500
     except Exception as e:
         logger.error(f"Error deleting timelapse session: {str(e)}")
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/timelapse/update_auto_mode', methods=['POST'])
+def update_timelapse_auto_mode():
+    """Update the timelapse auto mode setting"""
+    try:
+        data = request.json
+        auto_mode = data.get('auto_mode', False)
+        
+        # Update the auto mode setting in the webcam controller
+        webcam_controller.auto_mode = auto_mode
+        
+        logger.info(f"Updated timelapse auto mode: {auto_mode}")
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error updating timelapse auto mode: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 def on_exit():
     """Function to execute on application shutdown."""

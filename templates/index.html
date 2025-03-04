@@ -258,7 +258,7 @@
                 <button class="fullscreen-button no-bg">
                     <i class="fa-solid fa-expand"></i>
                 </button>
-                <button class="close-button no-bg" onclick="closeStickySection('timelapse-container')">
+                <button class="close-button no-bg" onclick="closeTimelapseContainer()">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -321,7 +321,13 @@
                     </div>
                     
                     <div id="timelapse-session-details" style="display: none;">
-                        <h3>Session Details: <span id="timelapse-session-name"></span></h3>
+                        <div class="timelapse-session-header">
+                            <h3>Session Details: <span id="timelapse-session-name"></span></h3>
+                            <button onclick="backToSessionsList()" class="cancel">
+                                <i class="fa-solid fa-arrow-left"></i>
+                                <span>Back to Sessions</span>
+                            </button>
+                        </div>
                         
                         <div class="timelapse-control-group">
                             <label for="timelapse-fps">FPS:</label>

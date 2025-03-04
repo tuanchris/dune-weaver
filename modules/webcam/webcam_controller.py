@@ -194,126 +194,115 @@ class WebcamController:
     def _capture_loop(self):
         """Background thread for capturing images at intervals"""
         frame_count = 0
+        last_capture_time = 0
         
         while self.is_capturing:
             try:
+                # Get current time
+                current_time = time.time()
+                
+                # Check if it's time for the next capture
+                # This prevents double captures if the previous capture took longer than expected
+                if current_time - last_capture_time < self.interval:
+                    # Not time yet, sleep a bit and continue
+                    time.sleep(0.1)
+                    continue
+                
+                # Update last capture time
+                last_capture_time = current_time
+                
+                # Increment frame count
                 frame_count += 1
+                
+                # Generate timestamp and output filename
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 output_file = os.path.join(self.current_session_dir, f"frame_{frame_count:06d}_{timestamp}.jpg")
                 
+                # Small delay before capture to ensure camera is ready
+                time.sleep(0.2)
+                
+                # Capture the frame
+                logger.debug(f"Capturing frame {frame_count} at {timestamp}")
                 self._capture_frame(output_file)
                 
-                # Sleep for the interval
-                time.sleep(self.interval)
+                # Small delay after capture to allow camera to reset
+                time.sleep(0.2)
+                
+                # Calculate time elapsed during capture
+                elapsed = time.time() - current_time
+                
+                # Calculate remaining sleep time
+                sleep_time = max(0, self.interval - elapsed)
+                
+                logger.debug(f"Frame {frame_count} captured in {elapsed:.2f}s, sleeping for {sleep_time:.2f}s")
+                
+                # Sleep for the remaining interval
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+                
             except Exception as e:
                 logger.error(f"Error in capture loop: {str(e)}")
-                time.sleep(1)  # Sleep briefly to avoid tight loop on error
+                # Sleep briefly to avoid tight loop on error
+                time.sleep(max(1, self.interval / 2))  # Sleep at least 1 second, or half the interval
     
     def _capture_frame(self, output_file):
         """Capture a single frame using the appropriate method for the platform"""
         try:
             if self.platform == 'Linux':
-                # Try v4l2-ctl first (for Raspberry Pi)
-                try:
-                    subprocess.run([
-                        'v4l2-ctl',
-                        '--device', self.selected_camera,
-                        '--set-fmt-video=width=1280,height=720,pixelformat=MJPG',
-                        '--stream-mmap',
-                        '--stream-count=1',
-                        f'--stream-to={output_file}'
-                    ], check=True, timeout=5)
-                    return
-                except (subprocess.SubprocessError, FileNotFoundError) as e:
-                    logger.warning(f"v4l2-ctl failed, falling back to ffmpeg: {str(e)}")
+                # On Linux, use v4l2-ctl
+                subprocess.run([
+                    'v4l2-ctl',
+                    '--device', self.selected_camera,
+                    '--set-fmt-video=width=1280,height=720,pixelformat=MJPG',
+                    '--stream-mmap',
+                    '--stream-count=1',
+                    '--stream-to=' + output_file
+                ], check=True, timeout=10)
+            elif self.platform == 'Windows':
+                print("Capturing on Windows...")
+                # On Windows, use a more direct approach with minimal camera access
+                # Set creation flags to avoid console window
+                creation_flags = 0x08000000 if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
                 
-                # Fallback to ffmpeg
+                # Determine the camera index (use 0 as default)
+                index = "0"
+                if self.selected_camera.isdigit():
+                    index = self.selected_camera
+                elif ':' in self.selected_camera and self.selected_camera.split(':')[0].isdigit():
+                    index = self.selected_camera.split(':')[0]
+                
+                # Use a single command with explicit options to minimize camera initialization
+                # Disable audio to prevent extra device access
+                # Use -loglevel quiet to minimize unnecessary operations
                 subprocess.run([
                     'ffmpeg',
-                    '-f', 'v4l2',
-                    '-i', self.selected_camera,
+                    '-loglevel', 'quiet',
+                    '-f', 'vfwcap',
+                    '-i', index,
                     '-frames:v', '1',
+                    '-an',  # Disable audio
                     '-y',
                     output_file
-                ], check=True, timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                
-            elif self.platform == 'Windows':
-                # On Windows, try multiple approaches
-                try:
-                    # First try with DirectShow using camera name
-                    if self.selected_camera.isdigit():
-                        # If it's just a number, use it as an index
-                        video_input = f"video={self.selected_camera}"
-                    else:
-                        # Otherwise use the full name
-                        video_input = f"video={self.selected_camera}"
-                    
-                    # Create directory if it doesn't exist
-                    os.makedirs(os.path.dirname(output_file), exist_ok=True)
-                    
-                    # Use subprocess with shell=True for Windows
-                    cmd = [
-                        'ffmpeg',
-                        '-f', 'dshow',
-                        '-i', video_input,
-                        '-frames:v', '1',
-                        '-y',
-                        output_file
-                    ]
-                    
-                    # Add creation flags to hide console window
-                    creation_flags = 0
-                    if hasattr(subprocess, 'CREATE_NO_WINDOW'):
-                        creation_flags = subprocess.CREATE_NO_WINDOW
-                    
-                    process = subprocess.run(
-                        cmd,
-                        check=True,
-                        timeout=5,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        creationflags=creation_flags
-                    )
-                    
-                    # Check if file was created
-                    if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
-                        raise Exception("Failed to capture frame - output file is empty or missing")
-                    
-                except Exception as e:
-                    logger.warning(f"DirectShow capture failed: {str(e)}, trying alternative method")
-                    
-                    # Try using index-based approach
-                    try:
-                        # Try using index-based approach with vfwcap
-                        index = "0"
-                        if self.selected_camera.isdigit():
-                            index = self.selected_camera
-                        
-                        subprocess.run([
-                            'ffmpeg',
-                            '-f', 'vfwcap',
-                            '-i', index,
-                            '-frames:v', '1',
-                            '-y',
-                            output_file
-                        ], check=True, timeout=5, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                        creationflags=creation_flags)
-                    except Exception as e2:
-                        logger.error(f"All Windows capture methods failed: {str(e2)}")
-                        raise
-                
+                ], check=True, timeout=15, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                creationflags=creation_flags)
             elif self.platform == 'Darwin':  # macOS
                 # On macOS, use ffmpeg with AVFoundation
                 device_index = self.selected_camera.split(':')[0] if ':' in self.selected_camera else '0'
                 subprocess.run([
                     'ffmpeg',
+                    '-loglevel', 'quiet',
                     '-f', 'avfoundation',
                     '-i', f'{device_index}',
                     '-frames:v', '1',
+                    '-an',  # Disable audio
                     '-y',
                     output_file
-                ], check=True, timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                ], check=True, timeout=15, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             
+            # Verify the file was created successfully
+            if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
+                raise Exception(f"Failed to capture frame - output file is empty or missing: {output_file}")
+                
             logger.debug(f"Captured frame to {output_file}")
         except Exception as e:
             logger.error(f"Error capturing frame: {str(e)}")
@@ -339,17 +328,40 @@ class WebcamController:
             # Create output video filename
             output_video = os.path.join(session_dir, f"timelapse_{Path(session_dir).name}.mp4")
             
-            # Use ffmpeg to create video
-            subprocess.run([
-                'ffmpeg',
-                '-framerate', str(fps),
-                '-pattern_type', 'glob',
-                '-i', os.path.join(session_dir, 'frame_*.jpg'),
-                '-c:v', 'libx264',
-                '-pix_fmt', 'yuv420p',
-                '-y',
-                output_video
-            ], check=True, timeout=60)
+            # Create a temporary file list for ffmpeg
+            temp_list_file = os.path.join(session_dir, "frames_list.txt")
+            with open(temp_list_file, 'w') as f:
+                for frame in frames:
+                    # Write just the filename, not the full path
+                    f.write(f"file '{frame}'\n")
+            
+            # Change working directory to the session directory before running ffmpeg
+            current_dir = os.getcwd()
+            os.chdir(session_dir)
+            
+            try:
+                # Use ffmpeg with the concat demuxer instead of glob patterns
+                # Using -r instead of -framerate for better compatibility
+                subprocess.run([
+                    'ffmpeg',
+                    '-f', 'concat',
+                    '-safe', '0',
+                    '-i', 'frames_list.txt',
+                    '-r', str(fps),  # Use -r instead of -framerate
+                    '-c:v', 'libx264',
+                    '-pix_fmt', 'yuv420p',
+                    '-y',
+                    Path(output_video).name
+                ], check=True, timeout=60)
+            finally:
+                # Restore the original working directory
+                os.chdir(current_dir)
+            
+            # Clean up the temporary file
+            try:
+                os.remove(temp_list_file)
+            except:
+                pass
             
             logger.info(f"Created timelapse video: {output_video}")
             return {
@@ -448,6 +460,38 @@ class WebcamController:
         if self.auto_mode and self.is_capturing:
             logger.info("Auto-stopping timelapse due to pattern stop")
             self.stop_timelapse()
+            
+    def delete_session(self, session_id):
+        """Delete a timelapse session"""
+        try:
+            # Validate session_id to prevent directory traversal
+            if not session_id or '..' in session_id or not session_id.startswith('timelapse_'):
+                logger.error(f"Invalid session ID: {session_id}")
+                return False
+            
+            session_dir = os.path.join(self.timelapse_dir, session_id)
+            
+            # Check if directory exists
+            if not os.path.exists(session_dir) or not os.path.isdir(session_dir):
+                logger.error(f"Session not found: {session_id}")
+                return False
+            
+            # Delete all files in the directory
+            for file in os.listdir(session_dir):
+                file_path = os.path.join(session_dir, file)
+                try:
+                    if os.path.isfile(file_path):
+                        os.unlink(file_path)
+                except Exception as e:
+                    logger.error(f"Error deleting file {file_path}: {str(e)}")
+            
+            # Delete the directory
+            os.rmdir(session_dir)
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting session {session_id}: {str(e)}")
+            return False
 
 # Create a singleton instance
 webcam_controller = WebcamController() 

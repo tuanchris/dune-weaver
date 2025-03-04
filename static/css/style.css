@@ -488,6 +488,8 @@ section.sticky.fullscreen {
     left: 0;
     width: 100vw;
     max-height: none;
+    height: calc(100vh - 50px); /* Set a fixed height */
+    overflow: auto; /* Enable scrolling */
 }
 
 section.sticky.hidden {
