@@ -139,7 +139,7 @@
                 </button>
             </div>
             <div class="image-converter-content">
-                <div id="processing-status" class="processing-indicator">
+                <div id="processing-indicator" >
                     <div class="spinner"></div>
                     <span id="processing-message">Processing image...</span>
                 </div>
@@ -220,6 +220,7 @@
 
                 <div style="display: none;">
                     <!-- hidden inputs for image2sand compatibility. -->
+                    <div id="processing-status"></div>
                     <label id="generation-status" style="display: none;">Image is generating - please wait...</label>
                     <textarea id="polar-coordinates-textarea"></textarea>
                     <div id="simple-coords"></div>
