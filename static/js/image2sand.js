@@ -203,11 +203,6 @@ function processImage(imgElement) {
         // Invert the colors of the detected edges image
         cv.bitwise_not(dst, dst);
 
-        // Ensure edge-image canvas has the same dimensions as the original image
-        const edgeCanvas = document.getElementById('edge-image');
-        edgeCanvas.width = imgElement.naturalWidth;
-        edgeCanvas.height = imgElement.naturalHeight;
-
         cv.imshow('edge-image', dst);
         cv.bitwise_not(dst, dst);
         generateDots(dst);
@@ -818,8 +813,6 @@ function getOrderedContours(edgeImage, initialEpsilon, retrievalMode, maxPoints)
                     points = closeContour(points);
                 }
                 
-                // We no longer interpolate points here - we'll do it later only if needed
-                
                 if (isFullyClosed(points)) {
                     // Move starting point to nearest the center
                     points = reorderPointsForLoop(points);
@@ -868,20 +861,9 @@ function getRandomColor() {
 function resetCanvas(canvasId) {
     const canvas = document.getElementById(canvasId);
     const ctx = canvas.getContext('2d');
-    
-    // Store current dimensions
-    const width = canvas.width;
-    const height = canvas.height;
-    
-    // Clear the canvas
-    ctx.clearRect(0, 0, width, height);
-    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     // Reset transformation matrix
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    
-    // Ensure dimensions are maintained
-    canvas.width = width;
-    canvas.height = height;
 }
 
 
@@ -941,20 +923,6 @@ function generateDots(edgeImage) {
     // Reset the canvas before drawing the new image
     resetCanvas('dot-image');
     resetCanvas('connect-image');
-    
-    // Ensure canvases have the same dimensions
-    const dotCanvas = document.getElementById('dot-image');
-    const connectCanvas = document.getElementById('connect-image');
-    const originalCanvas = document.getElementById('original-image');
-    const edgeCanvas = document.getElementById('edge-image');
-    
-    if (originalImageElement) {
-        // Set all canvases to the same dimensions
-        dotCanvas.width = originalImageElement.naturalWidth;
-        dotCanvas.height = originalImageElement.naturalHeight;
-        connectCanvas.width = originalImageElement.naturalWidth;
-        connectCanvas.height = originalImageElement.naturalHeight;
-    }
 
     const epsilon = parseFloat(document.getElementById('epsilon-slider').value),
         contourMode = document.getElementById('contour-mode').value,
@@ -1080,13 +1048,6 @@ function reorderPointsForLoop(points, startNear = calculateCentroid(points)) {
 
 function drawDots(points) {
     const canvas = document.getElementById('dot-image'), ctx = canvas.getContext('2d');
-    
-    // Set canvas dimensions to match the original image
-    if (originalImageElement) {
-        canvas.width = originalImageElement.naturalWidth;
-        canvas.height = originalImageElement.naturalHeight;
-    }
-    
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     const width = canvas.width, height = canvas.height;
