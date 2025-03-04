@@ -233,11 +233,11 @@ async function generateImage(apiKey, prompt, runPattern) {
                 drawAndPrepImage(imgElement);
                 
                 convertImage();
+                // set convertedFileName to the prompt name with no special characters and max 20 characters
+                convertedFileName = prompt.replace(/[^a-z0-9]/gi, '_').toLowerCase().substring(0, 20);
                 if (!runPattern) return;
                 waitForConversion()
                     .then(() => {
-                        // set convertedFileName to the prompt name with no special characters and max 20 characters
-                        convertedFileName = prompt.replace(/[^a-z0-9]/gi, '_').toLowerCase().substring(0, 20);
                         saveConvertedPattern();
                         // wait for the file to be uploaded
                         waitForSelectedFile()
