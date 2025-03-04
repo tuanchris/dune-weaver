@@ -292,6 +292,8 @@ def run_theta_rho_file(file_path):
     state.current_playing_file = None
     state.execution_progress = None
 
+    # Save state to persist changes to state.json
+    state.save()
     
     logger.info("Pattern execution completed")
 
@@ -388,6 +390,8 @@ def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="
         if state.led_controller:
             effect_idle(state.led_controller)
 
+        # Save state to persist changes to state.json
+        state.save()
             
         logger.info("All requested patterns completed (or stopped) and state cleared")
 
