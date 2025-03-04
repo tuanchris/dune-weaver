@@ -7,6 +7,7 @@ import asyncio
 import json
 import threading
 import time
+import signal
 from modules.connection import connection_manager
 from modules.core import pattern_manager
 from modules.core import playlist_manager
@@ -537,11 +538,19 @@ def on_exit():
     mqtt.cleanup_mqtt()
     logger.info("Shutdown complete")
 
+def signal_handler(sig, frame):
+    logger.info(f"Received signal {sig}, shutting down...")
+    on_exit()
+    os._exit(0)
+
 def entrypoint():
     logger.info("Starting Dune Weaver application...")
     
     # Register the on_exit function
     atexit.register(on_exit)
+    # Register signal handlers for graceful shutdown
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
     # Auto-connect to serial
     try:
         connection_manager.connect_device()
