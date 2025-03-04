@@ -341,4 +341,69 @@
 
 .timelapse-session-header button {
     padding: 8px 12px;
+}
+
+.timelapse-camera-adjustments {
+    margin-top: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 10px;
+    background-color: var(--background-secondary);
+}
+
+.timelapse-camera-adjustments h4 {
+    margin: 0 0 10px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.timelapse-camera-adjustments .timelapse-control-group {
+    margin-bottom: 10px;
+}
+
+.timelapse-camera-adjustments .timelapse-control-group:last-child {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.timelapse-camera-adjustments .timelapse-control-group button {
+    flex: 1;
+    min-width: 80px;
+}
+
+.timelapse-camera-adjustments input[type="range"] {
+    flex: 1;
+    min-width: 150px;
+}
+
+.timelapse-camera-adjustments span {
+    min-width: 30px;
+    text-align: right;
+    margin-left: 10px;
+}
+
+#camera-adjustment-controls {
+    transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out;
+    overflow: hidden;
+}
+
+#camera-adjustment-controls.hidden {
+    max-height: 0;
+    opacity: 0;
+    margin: 0;
+    padding: 0;
+}
+
+#camera-adjustment-controls:not(.hidden) {
+    max-height: 300px;
+    opacity: 1;
+    margin-top: 10px;
+}
+
+:root[data-theme="dark"] .timelapse-camera-adjustments {
+    background-color: var(--background-tertiary);
+    border-color: var(--border-color-dark);
 } 

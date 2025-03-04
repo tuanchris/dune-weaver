@@ -17,6 +17,7 @@ from modules import mqtt
 from modules.led.led_controller import LEDController, effect_idle
 import requests  # Add this import
 from modules.webcam.webcam_controller import webcam_controller  # Add this import
+import platform
 
 # Configure logging
 logging.basicConfig(
@@ -656,7 +657,7 @@ def get_timelapse_video(session_id):
 
 @app.route('/timelapse/test_capture', methods=['POST'])
 def test_timelapse_capture():
-    """Test camera capture"""
+    """Test camera capture using the WebcamController - returns base64 encoded image"""
     try:
         data = request.json
         camera = data.get('camera')
@@ -664,35 +665,21 @@ def test_timelapse_capture():
         if not camera:
             return jsonify({"success": False, "error": "No camera selected"}), 400
         
-        # Create a test directory if it doesn't exist
-        test_dir = os.path.join(webcam_controller.timelapse_dir, 'test_captures')
-        os.makedirs(test_dir, exist_ok=True)
-        
-        # Generate a unique filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = os.path.join(test_dir, f"test_capture_{timestamp}.jpg")
-        
-        # Temporarily set the camera
-        original_camera = webcam_controller.selected_camera
-        webcam_controller.selected_camera = camera
-        
+        # Use the WebcamController's test_capture method with return_base64=True
         try:
-            # Capture a frame
-            webcam_controller._capture_frame(output_file)
+            # Capture frame and get base64 encoded image
+            base64_image = webcam_controller.test_capture(camera=camera, return_base64=True)
             
-            # Check if the file was created
-            if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
+            if base64_image:
+                return jsonify({
+                    "success": True, 
+                    "image_data": base64_image
+                })
+            else:
                 return jsonify({"success": False, "error": "Failed to capture image"}), 400
-            
-            # Return the path to the image
-            relative_path = os.path.join('test_captures', f"test_capture_{timestamp}.jpg")
-            return jsonify({
-                "success": True, 
-                "image_path": relative_path
-            })
-        finally:
-            # Restore the original camera
-            webcam_controller.selected_camera = original_camera
+        except Exception as e:
+            logger.error(f"Error in test capture: {str(e)}")
+            return jsonify({"success": False, "error": str(e)}), 500
     except Exception as e:
         logger.error(f"Error testing camera capture: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
@@ -728,6 +715,33 @@ def update_timelapse_auto_mode():
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error updating timelapse auto mode: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/timelapse/update_camera_settings', methods=['POST'])
+def update_camera_settings():
+    """Update camera settings for timelapse captures"""
+    try:
+        data = request.json
+        brightness = data.get('brightness', 0.4)
+        contrast = data.get('contrast', 1.2)
+        exposure = data.get('exposure', 0.1)
+        
+        # Debug log the received values
+        logger.info(f"Received camera settings: brightness={brightness} ({type(brightness)}), contrast={contrast} ({type(contrast)}), exposure={exposure} ({type(exposure)})")
+        
+        # Update the camera settings in the webcam controller
+        webcam_controller.camera_settings = {
+            'brightness': float(brightness),
+            'contrast': float(contrast),
+            'exposure': float(exposure)
+        }
+        
+        # Debug log the updated controller settings
+        logger.info(f"Updated webcam_controller.camera_settings: {webcam_controller.camera_settings}")
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error updating camera settings: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 def on_exit():

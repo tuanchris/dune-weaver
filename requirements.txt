@@ -7,3 +7,4 @@ python-dotenv
 websocket-client
 requests
 ffmpeg-python
+opencv-python

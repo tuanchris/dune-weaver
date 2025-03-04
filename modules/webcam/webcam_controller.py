@@ -7,6 +7,8 @@ import logging
 import json
 from datetime import datetime
 from pathlib import Path
+import numpy as np
+import cv2  # Import OpenCV globally
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -22,6 +24,13 @@ class WebcamController:
         self.selected_camera = '/dev/video0'  # Default camera
         self.available_cameras = []
         self.lock = threading.Lock()
+        
+        # Default camera settings
+        self.camera_settings = {
+            'brightness': 0.4,
+            'contrast': 1.2,
+            'exposure': 0.1
+        }
         
         # Create timelapses directory if it doesn't exist
         os.makedirs(self.timelapse_dir, exist_ok=True)
@@ -223,7 +232,7 @@ class WebcamController:
                 
                 # Capture the frame
                 logger.debug(f"Capturing frame {frame_count} at {timestamp}")
-                self._capture_frame(output_file)
+                self.capture_single_frame(output_file)
                 
                 # Small delay after capture to allow camera to reset
                 time.sleep(0.2)
@@ -245,67 +254,176 @@ class WebcamController:
                 # Sleep briefly to avoid tight loop on error
                 time.sleep(max(1, self.interval / 2))  # Sleep at least 1 second, or half the interval
     
-    def _capture_frame(self, output_file):
-        """Capture a single frame using the appropriate method for the platform"""
-        try:
-            if self.platform == 'Linux':
-                # On Linux, use v4l2-ctl
-                subprocess.run([
-                    'v4l2-ctl',
-                    '--device', self.selected_camera,
-                    '--set-fmt-video=width=1280,height=720,pixelformat=MJPG',
-                    '--stream-mmap',
-                    '--stream-count=1',
-                    '--stream-to=' + output_file
-                ], check=True, timeout=10)
-            elif self.platform == 'Windows':
-                print("Capturing on Windows...")
-                # On Windows, use a more direct approach with minimal camera access
-                # Set creation flags to avoid console window
-                creation_flags = 0x08000000 if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
-                
-                # Determine the camera index (use 0 as default)
-                index = "0"
-                if self.selected_camera.isdigit():
-                    index = self.selected_camera
-                elif ':' in self.selected_camera and self.selected_camera.split(':')[0].isdigit():
-                    index = self.selected_camera.split(':')[0]
-                
-                # Use a single command with explicit options to minimize camera initialization
-                # Disable audio to prevent extra device access
-                # Use -loglevel quiet to minimize unnecessary operations
-                subprocess.run([
-                    'ffmpeg',
-                    '-loglevel', 'quiet',
-                    '-f', 'vfwcap',
-                    '-i', index,
-                    '-frames:v', '1',
-                    '-an',  # Disable audio
-                    '-y',
-                    output_file
-                ], check=True, timeout=15, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                creationflags=creation_flags)
-            elif self.platform == 'Darwin':  # macOS
-                # On macOS, use ffmpeg with AVFoundation
-                device_index = self.selected_camera.split(':')[0] if ':' in self.selected_camera else '0'
-                subprocess.run([
-                    'ffmpeg',
-                    '-loglevel', 'quiet',
-                    '-f', 'avfoundation',
-                    '-i', f'{device_index}',
-                    '-frames:v', '1',
-                    '-an',  # Disable audio
-                    '-y',
-                    output_file
-                ], check=True, timeout=15, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    def capture_single_frame(self, output_file=None, camera=None, return_base64=False):
+        """Capture a single frame using OpenCV - can be used for both test captures and timelapse captures
+        
+        Args:
+            output_file: Path to save the captured frame (optional if return_base64=True)
+            camera: Camera identifier (index, string, or device path)
+            return_base64: If True, return the frame as a base64 encoded string instead of saving to disk
             
-            # Verify the file was created successfully
-            if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
-                raise Exception(f"Failed to capture frame - output file is empty or missing: {output_file}")
+        Returns:
+            True if saved to disk successfully, or base64 encoded string if return_base64=True
+        """
+        try:
+            # Convert camera identifier to integer index if needed
+            camera_index = None
+            
+            # If camera is provided, convert it to an index
+            if camera is not None:
+                if isinstance(camera, int):
+                    camera_index = camera
+                elif isinstance(camera, str):
+                    if camera.isdigit():
+                        camera_index = int(camera)
+                    elif ':' in camera and camera.split(':')[0].isdigit():
+                        camera_index = int(camera.split(':')[0])
+                    elif self.platform == 'Linux' and camera.startswith('/dev/video'):
+                        try:
+                            camera_index = int(camera.replace('/dev/video', ''))
+                        except ValueError:
+                            camera_index = 0
+            
+            # If no camera index was determined, use the selected camera
+            if camera_index is None:
+                # Convert selected_camera to integer index if possible
+                camera_index = 0  # Default to first camera
+                if self.selected_camera.isdigit():
+                    camera_index = int(self.selected_camera)
+                elif ':' in self.selected_camera and self.selected_camera.split(':')[0].isdigit():
+                    camera_index = int(self.selected_camera.split(':')[0])
+                elif self.platform == 'Linux' and self.selected_camera.startswith('/dev/video'):
+                    # Extract number from /dev/videoX
+                    try:
+                        camera_index = int(self.selected_camera.replace('/dev/video', ''))
+                    except ValueError:
+                        camera_index = 0
+            
+            logger.debug(f"Capturing with camera index: {camera_index} and settings: {self.camera_settings}")
+            
+            # Initialize the camera
+            cam = cv2.VideoCapture(camera_index)
+            
+            # Set camera properties for better image quality
+            cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+            cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+            
+            # Try to apply user-defined camera settings to hardware
+            brightness_result = cam.set(cv2.CAP_PROP_BRIGHTNESS, self.camera_settings['brightness'])
+            contrast_result = cam.set(cv2.CAP_PROP_CONTRAST, self.camera_settings['contrast'])
+            auto_exposure_result = cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # Manual exposure
+            exposure_result = cam.set(cv2.CAP_PROP_EXPOSURE, self.camera_settings['exposure'])
+            
+            # Log whether the settings were applied successfully
+            logger.debug(f"Camera property set results - brightness: {brightness_result}, contrast: {contrast_result}, auto_exposure: {auto_exposure_result}, exposure: {exposure_result}")
+            
+            # Wait a moment for camera to adjust
+            time.sleep(0.5)
+            
+            # Capture frame
+            ret, frame = cam.read()
+            
+            # Release the camera
+            cam.release()
+            
+            if not ret or frame is None:
+                raise Exception("Failed to capture frame from camera")
+            
+            # Apply post-processing adjustments in software
+            # This ensures the settings have an effect even if the camera hardware controls don't work
+            
+            # Convert brightness from 0-1 to -1 to 1 range (0.5 is neutral)
+            brightness_adjust = (self.camera_settings['brightness'] - 0.5) * 2.0
+            
+            # Apply brightness adjustment
+            if brightness_adjust > 0:
+                # Increase brightness
+                frame = cv2.addWeighted(frame, 1, np.zeros(frame.shape, frame.dtype), 0, brightness_adjust * 100)
+            else:
+                # Decrease brightness
+                frame = cv2.addWeighted(frame, 1, np.zeros(frame.shape, frame.dtype), 0, brightness_adjust * 100)
+            
+            # Apply contrast adjustment
+            # Convert to float and normalize to 0-1
+            f = frame.astype(np.float32) / 255.0
+            # Apply contrast adjustment (contrast_factor of 1.0 is neutral)
+            contrast_factor = self.camera_settings['contrast']
+            f = (f - 0.5) * contrast_factor + 0.5
+            # Clip to 0-1 range
+            f = np.clip(f, 0, 1)
+            # Convert back to 8-bit
+            frame = (f * 255).astype(np.uint8)
+            
+            # If return_base64 is True, return the frame as a base64 encoded string
+            if return_base64:
+                # Encode the frame as JPEG
+                success, buffer = cv2.imencode('.jpg', frame)
+                if not success:
+                    raise Exception("Failed to encode image")
                 
-            logger.debug(f"Captured frame to {output_file}")
+                # Convert to base64
+                import base64
+                jpg_as_text = base64.b64encode(buffer).decode('utf-8')
+                
+                # Return the base64 encoded image with MIME type
+                return f"data:image/jpeg;base64,{jpg_as_text}"
+            
+            # Otherwise save the processed frame to disk
+            else:
+                if output_file is None:
+                    raise ValueError("output_file must be provided when return_base64 is False")
+                
+                # Save the processed frame
+                cv2.imwrite(output_file, frame)
+                
+                # Verify the file was created successfully
+                if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
+                    raise Exception(f"Failed to save frame - output file is empty or missing: {output_file}")
+                    
+                logger.debug(f"Captured and processed frame to {output_file}")
+                return True
+                
         except Exception as e:
             logger.error(f"Error capturing frame: {str(e)}")
+            raise
+
+    def test_capture(self, camera=None, output_dir=None, return_base64=True):
+        """Take a test capture with the specified camera
+        
+        Args:
+            camera: Camera identifier (index, string, or device path)
+            output_dir: Directory to save the captured frame (only used if return_base64=False)
+            return_base64: If True, return the frame as a base64 encoded string instead of saving to disk
+            
+        Returns:
+            Base64 encoded string if return_base64=True, or relative path to the saved image if return_base64=False
+        """
+        try:
+            # If returning base64, just use the capture_single_frame method directly
+            if return_base64:
+                return self.capture_single_frame(camera=camera, return_base64=True)
+            
+            # Otherwise, save to disk
+            # Create test directory if it doesn't exist
+            if output_dir is None:
+                output_dir = os.path.join(self.timelapse_dir, 'test_captures')
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Generate a unique filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_file = os.path.join(output_dir, f"test_capture_{timestamp}.jpg")
+            
+            # Capture the frame using the common method
+            # The camera conversion is handled inside capture_single_frame
+            success = self.capture_single_frame(output_file=output_file, camera=camera, return_base64=False)
+            
+            if success:
+                # Return the relative path to the image
+                return os.path.join('test_captures', f"test_capture_{timestamp}.jpg")
+            else:
+                return None
+        except Exception as e:
+            logger.error(f"Error in test capture: {str(e)}")
             raise
     
     def create_video(self, session_dir=None, fps=10):
@@ -492,6 +610,10 @@ class WebcamController:
         except Exception as e:
             logger.error(f"Error deleting session {session_id}: {str(e)}")
             return False
+
+    def capture_frame_to_base64(self, camera=None):
+        """Capture a single frame and return it as a base64 encoded string without saving to disk"""
+        return self.capture_single_frame(camera=camera, return_base64=True)
 
 # Create a singleton instance
 webcam_controller = WebcamController() 

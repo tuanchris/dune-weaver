@@ -105,6 +105,171 @@ function initTimelapseUI() {
         // Update the server with the saved setting
         updateAutoMode();
     }
+    
+    // Set up camera adjustment controls
+    setupCameraAdjustments();
+}
+
+/**
+ * Set up camera adjustment controls
+ */
+function setupCameraAdjustments() {
+    // Toggle camera adjustment controls
+    const toggleButton = document.getElementById('toggle-camera-adjustments');
+    const adjustmentControls = document.getElementById('camera-adjustment-controls');
+    
+    if (toggleButton && adjustmentControls) {
+        toggleButton.addEventListener('click', function() {
+            adjustmentControls.classList.toggle('hidden');
+        });
+    }
+    
+    // Set up range input event listeners
+    setupRangeInput('camera-brightness', 'brightness-value');
+    setupRangeInput('camera-contrast', 'contrast-value');
+    setupRangeInput('camera-exposure', 'exposure-value');
+    
+    // Load saved camera settings from localStorage
+    loadCameraSettings();
+    
+    // Apply camera settings button
+    const applyButton = document.getElementById('apply-camera-settings');
+    if (applyButton) {
+        applyButton.addEventListener('click', applyCameraSettings);
+    }
+    
+    // Reset camera settings button
+    const resetButton = document.getElementById('reset-camera-settings');
+    if (resetButton) {
+        resetButton.addEventListener('click', resetCameraSettings);
+    }
+    
+    // Test camera settings button
+    const testButton = document.getElementById('test-camera-settings');
+    if (testButton) {
+        testButton.addEventListener('click', testCameraCapture);
+    }
+}
+
+/**
+ * Set up a range input with live value display
+ */
+function setupRangeInput(inputId, valueId) {
+    const input = document.getElementById(inputId);
+    const valueDisplay = document.getElementById(valueId);
+    
+    if (input && valueDisplay) {
+        // Update value display on input change
+        input.addEventListener('input', function() {
+            valueDisplay.textContent = input.value;
+        });
+        
+        // Load saved value from localStorage
+        const savedValue = localStorage.getItem(inputId);
+        if (savedValue !== null) {
+            input.value = savedValue;
+            valueDisplay.textContent = savedValue;
+        }
+    }
+}
+
+/**
+ * Load camera settings from localStorage
+ */
+function loadCameraSettings() {
+    const brightnessInput = document.getElementById('camera-brightness');
+    const contrastInput = document.getElementById('camera-contrast');
+    const exposureInput = document.getElementById('camera-exposure');
+    
+    // Load saved values
+    const savedBrightness = localStorage.getItem('camera-brightness');
+    const savedContrast = localStorage.getItem('camera-contrast');
+    const savedExposure = localStorage.getItem('camera-exposure');
+    
+    // Apply saved values if they exist
+    if (savedBrightness !== null && brightnessInput) {
+        brightnessInput.value = savedBrightness;
+        document.getElementById('brightness-value').textContent = savedBrightness;
+    }
+    
+    if (savedContrast !== null && contrastInput) {
+        contrastInput.value = savedContrast;
+        document.getElementById('contrast-value').textContent = savedContrast;
+    }
+    
+    if (savedExposure !== null && exposureInput) {
+        exposureInput.value = savedExposure;
+        document.getElementById('exposure-value').textContent = savedExposure;
+    }
+}
+
+/**
+ * Apply camera settings
+ */
+async function applyCameraSettings() {
+    const brightness = document.getElementById('camera-brightness').value;
+    const contrast = document.getElementById('camera-contrast').value;
+    const exposure = document.getElementById('camera-exposure').value;
+    
+    // Log the values being sent
+    console.log(`Applying camera settings - brightness: ${brightness}, contrast: ${contrast}, exposure: ${exposure}`);
+    
+    // Save settings to localStorage
+    localStorage.setItem('camera-brightness', brightness);
+    localStorage.setItem('camera-contrast', contrast);
+    localStorage.setItem('camera-exposure', exposure);
+    
+    try {
+        // Send settings to server
+        const response = await fetch('/timelapse/update_camera_settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                brightness: parseFloat(brightness),
+                contrast: parseFloat(contrast),
+                exposure: parseFloat(exposure)
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            logMessage('Camera settings updated', LOG_TYPE.SUCCESS);
+        } else {
+            logMessage(`Failed to update camera settings: ${data.error}`, LOG_TYPE.ERROR);
+        }
+    } catch (error) {
+        logMessage(`Error updating camera settings: ${error.message}`, LOG_TYPE.ERROR);
+    }
+}
+
+/**
+ * Reset camera settings to defaults
+ */
+function resetCameraSettings() {
+    // Default values
+    const defaultBrightness = 0.4;
+    const defaultContrast = 1.2;
+    const defaultExposure = 0.1;
+    
+    // Reset input values
+    const brightnessInput = document.getElementById('camera-brightness');
+    const contrastInput = document.getElementById('camera-contrast');
+    const exposureInput = document.getElementById('camera-exposure');
+    
+    brightnessInput.value = defaultBrightness;
+    contrastInput.value = defaultContrast;
+    exposureInput.value = defaultExposure;
+    
+    // Reset value displays
+    document.getElementById('brightness-value').textContent = defaultBrightness;
+    document.getElementById('contrast-value').textContent = defaultContrast;
+    document.getElementById('exposure-value').textContent = defaultExposure;
+    
+    // Apply the reset settings
+    applyCameraSettings();
 }
 
 /**
@@ -138,15 +303,15 @@ async function testCameraCapture() {
         if (data.success) {
             logMessage('Test capture successful', LOG_TYPE.SUCCESS);
             
-            // Display the captured image
+            // Display the captured image from base64 data
             const previewImage = document.getElementById('timelapse-preview-image');
-            previewImage.src = `/timelapse/image/${data.image_path}?t=${new Date().getTime()}`;
+            previewImage.src = data.image_data; // Use the base64 data directly
             previewImage.style.display = 'block';
         } else {
             logMessage(`Test capture failed: ${data.error}`, LOG_TYPE.ERROR);
         }
     } catch (error) {
-        logMessage(`Error testing camera: ${error.message}`, LOG_TYPE.ERROR);
+        logMessage(`Error during test capture: ${error.message}`, LOG_TYPE.ERROR);
     } finally {
         // Hide loading indicator
         document.getElementById('timelapse-loading').style.display = 'none';
