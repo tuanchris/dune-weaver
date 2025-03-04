@@ -176,9 +176,10 @@ function showImageConverter() {
  * Close the image converter dialog
  */
 function closeImageConverter() {
-    const overlay = document.getElementById('image-converter-overlay');
+    const overlay = document.getElementById('image-converter');
     overlay.classList.remove('visible');
-    
+    overlay.classList.add('hidden');
+
     // Clear the canvases
     clearCanvas('original-image');
     clearCanvas('edge-image');
@@ -201,6 +202,10 @@ async function generateImage(apiKey, prompt, runPattern) {
         return;
     } else {
         isGeneratingImage = true;
+        clearCanvas('original-image');
+        clearCanvas('edge-image');
+        clearCanvas('dot-image');
+        clearCanvas('connect-image');
         document.getElementById('gen-image-button').disabled = true;
         // Show processing indicator
         logMessage("Generating image...", LOG_TYPE.INFO);
