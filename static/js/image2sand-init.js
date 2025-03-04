@@ -27,6 +27,17 @@ function openImageConverter(file) {
     }
 
     convertedFileName = file.name.split('.')[0]; // Remove extension
+    // clear the canvases
+    clearAllCanvases();
+    // Show the converter dialog
+    showImageConverter();
+    // Show processing indicator
+    const processingIndicator = document.getElementById('processing-indicator');
+    const processingMessage = document.getElementById('processing-message');
+    if (processingMessage) {
+        processingMessage.textContent = `Converting image...`;
+    }
+    processingIndicator.classList.add('visible');                
     
     // Create an image element to load the file
     const img = new Image();
@@ -36,30 +47,8 @@ function openImageConverter(file) {
         logMessage(`Image loaded: ${file.name}. Converting...`, LOG_TYPE.INFO);
         drawAndPrepImage(img);
         
-        // Show the converter dialog
-        showImageConverter();
-        // wait for the dialog to be visible and fully rendered
-        waitForDialog()
-            .then(() => {
-                return new Promise(resolve => setTimeout(resolve, 100)); // Add small delay for UI render
-            })
-            .then(() => {
-                // Show processing indicator
-                const processingIndicator = document.getElementById('processing-indicator');
-                const processingMessage = document.getElementById('processing-message');
-                if (processingMessage) {
-                    processingMessage.textContent = `Converting image...`;
-                }
-                processingIndicator.classList.add('visible');                
-            })
-            .then(() => {
-                return new Promise(resolve => setTimeout(resolve, 100)); // Add small delay for UI render
-            })
-            .then(() => {
-                // Convert the image with default settings
-                convertImage();
-                return waitForConversion();
-            })
+        convertImage();
+        waitForConversion()
             .then(() => {
                 // Hide processing indicator
                 document.getElementById('processing-indicator').classList.remove('visible');
@@ -164,12 +153,20 @@ function clearCanvas(canvasId) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
+function clearAllCanvases() {
+    clearCanvas('original-image');
+    clearCanvas('edge-image');
+    clearCanvas('dot-image');
+    clearCanvas('connect-image');
+}
+
 /**
  * Show the image converter dialog
  */
 function showImageConverter() {
-    const overlay = document.getElementById('image-converter-overlay');
+    const overlay = document.getElementById('image-converter');
     overlay.classList.add('visible');
+    overlay.classList.remove('hidden');
 }
 
 /**
@@ -181,10 +178,7 @@ function closeImageConverter() {
     overlay.classList.add('hidden');
 
     // Clear the canvases
-    clearCanvas('original-image');
-    clearCanvas('edge-image');
-    clearCanvas('dot-image');
-    clearCanvas('connect-image');
+    clearAllCanvases();
     
     // Reset variables
     originalImageElement = null;
@@ -202,11 +196,10 @@ async function generateImage(apiKey, prompt, runPattern) {
         return;
     } else {
         isGeneratingImage = true;
-        clearCanvas('original-image');
-        clearCanvas('edge-image');
-        clearCanvas('dot-image');
-        clearCanvas('connect-image');
-        document.getElementById('gen-image-button').disabled = true;
+        clearAllCanvases();
+        document.getElementById('generate-image-button').disabled = true;
+        // Show the converter dialog
+        showImageConverter();
         // Show processing indicator
         logMessage("Generating image...", LOG_TYPE.INFO);
         const processingIndicator = document.getElementById('processing-indicator');
@@ -239,58 +232,26 @@ async function generateImage(apiKey, prompt, runPattern) {
                 originalImageElement = imgElement;
                 drawAndPrepImage(imgElement);
                 
-                // Show the converter dialog
-                showImageConverter();
-                // wait for the dialog to be visible and fully rendered
-                waitForDialog()
+                convertImage();
+                if (!runPattern) return;
+                waitForConversion()
                     .then(() => {
-                        return new Promise(resolve => setTimeout(resolve, 100)); // Add small delay for UI render
-                    })
-                    .then(() => {
-                        // Show processing indicator
-                        const processingIndicator = document.getElementById('processing-indicator');
-                        const processingMessage = document.getElementById('processing-message');
-                        if (processingMessage) {
-                            processingMessage.textContent = `Converting image...`;
-                        }
-                        processingIndicator.classList.add('visible');                
-                    })
-                    .then(() => {
-                        return new Promise(resolve => setTimeout(resolve, 100)); // Add small delay for UI render
-                    })
-                    .then(() => {
-                        // Convert the image with default settings
-                        convertImage();
-                        if (!runPattern) return;
-                        waitForConversion()
+                        // set convertedFileName to the prompt name with no special characters and max 20 characters
+                        convertedFileName = prompt.replace(/[^a-z0-9]/gi, '_').toLowerCase().substring(0, 20);
+                        saveConvertedPattern();
+                        // wait for the file to be uploaded
+                        waitForSelectedFile()
                             .then(() => {
-                                // set convertedFileName to the prompt name with no special characters and max 20 characters
-                                convertedFileName = prompt.replace(/[^a-z0-9]/gi, '_').toLowerCase().substring(0, 20);
-                                saveConvertedPattern();
-                                // wait for the file to be uploaded
-                                waitForSelectedFile()
-                                    .then(() => {
-                                        // set pre_execution to clear_sideway before starting the pattern run
-                                        pre_execution.value = 'clear_sideway';
-                                        runThetaRho();
-                                    })
-                                    .catch(error => {
-                                        logMessage("Conversion timeout or error: " + error, LOG_TYPE.ERROR);
-                                    });
+                                // set pre_execution to clear_sideway before starting the pattern run
+                                pre_execution.value = 'clear_sideway';
+                                runThetaRho();
                             })
                             .catch(error => {
                                 logMessage("Conversion timeout or error: " + error, LOG_TYPE.ERROR);
                             });
                     })
-                    .then(() => {
-                        // Hide processing indicator
-                        document.getElementById('processing-indicator').classList.remove('visible');
-                        logMessage(`Image converted.`, LOG_TYPE.SUCCESS);
-                    })
                     .catch(error => {
-                        // Hide processing indicator on error
-                        document.getElementById('processing-indicator').classList.remove('visible');
-                        logMessage("Error during conversion process: " + error, LOG_TYPE.ERROR);
+                        logMessage("Conversion timeout or error: " + error, LOG_TYPE.ERROR);
                     });
             };
             imgElement.src = `data:image/png;base64,${imageData}`;
@@ -300,7 +261,7 @@ async function generateImage(apiKey, prompt, runPattern) {
             logMessage('Image generation error: ' + error, LOG_TYPE.ERROR);
         }
         isGeneratingImage = false;
-        document.getElementById('gen-image-button').disabled = false;
+        document.getElementById('generate-image-button').disabled = false;
         document.getElementById('processing-indicator').classList.remove('visible');
     }
 }
@@ -364,7 +325,7 @@ function waitForDialog(timeout = 20000) {
         const startTime = Date.now();
         
         function checkDialog() {
-            if (document.getElementById('image-converter-overlay').classList.contains('visible')) {
+            if (document.getElementById('image-converter').classList.contains('visible')) {
                 resolve();
             } else if (Date.now() - startTime > timeout) {
                 reject('Timeout waiting for dialog');
@@ -441,7 +402,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Add event listener to the button inside the DOMContentLoaded event
-    document.getElementById('gen-image-button').addEventListener('click', function() {    
+    document.getElementById('generate-image-button').addEventListener('click', function() {    
         let apiKey = document.getElementById('api-key').value;
         const prompt = document.getElementById('prompt').value + (document.getElementById('googly-eyes').checked ? ' with disproportionately large googly eyes' : '');
         generateImage(apiKey, prompt);
