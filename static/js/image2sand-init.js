@@ -37,9 +37,10 @@ function openImageConverter(file) {
         drawAndPrepImage(img);
         
         // Show the converter dialog
-        const overlay = document.getElementById('image-converter-overlay');
+        const overlay = document.getElementById('image-converter');
+        overlay.classList.remove('hidden');
         overlay.classList.add('visible');
-        
+
         // Initialize the UI elements
         initializeUI();
         
@@ -160,9 +161,10 @@ function clearCanvas(canvasId) {
  * Close the image converter dialog
  */
 function closeImageConverter() {
-    const overlay = document.getElementById('image-converter-overlay');
+    const overlay = document.getElementById('image-converter');
     overlay.classList.remove('visible');
-    
+    overlay.classList.add('hidden');
+
     // Clear the canvases
     clearCanvas('original-image');
     clearCanvas('edge-image');
@@ -184,6 +186,10 @@ async function generateOpenAIImage(apiKey, prompt) {
         logMessage("Image is still generating - please don't press the button.", LOG_TYPE.INFO);
     } else {
         isGeneratingImage = true;
+        clearCanvas('original-image');
+        clearCanvas('edge-image');
+        clearCanvas('dot-image');
+        clearCanvas('connect-image');
         document.getElementById('gen-image-button').disabled = true;
         // Show processing indicator
         const processingIndicator = document.getElementById('processing-status');
@@ -245,7 +251,6 @@ async function generateOpenAIImage(apiKey, prompt) {
 
 }
 
-
 // Override the uploadThetaRho function to handle image files
 const originalUploadThetaRho = window.uploadThetaRho;
 
@@ -274,8 +279,8 @@ document.getElementById('gen-image-button').addEventListener('click', function()
     let apiKey = document.getElementById('api-key').value;
     const prompt = document.getElementById('prompt').value + (document.getElementById('googly-eyes').checked ? ' with disproportionately large googly eyes' : '');
     // Show the converter dialog
-    const overlay = document.getElementById('image-converter-overlay');
-    overlay.classList.add('visible');
+    const overlay = document.getElementById('image-converter');
+    overlay.classList.remove('hidden');
     // Initialize the UI elements
     initializeUI();
     generateOpenAIImage(apiKey, prompt);
