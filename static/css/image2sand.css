@@ -12,6 +12,11 @@
     width: 100%;
 }
 
+.image-converter-steps .tab-button.active {
+    background: rgba(255, 255, 255, 0.75);
+    color: var(--theme-primary);
+}
+
 .image-converter-steps canvas {
     background-color: white;
 }

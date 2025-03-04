@@ -50,9 +50,13 @@
                     <input type="password" id="api-key" placeholder="Enter a valid OpenAI API key">
                     <input type="text" id="prompt" placeholder="What do you want to draw?" maxlength="500">
                     <div class="checkbox-container">
-                        <input type="checkbox" id="googly-eyes" name="googly-eyes">
-                        <label for="googly-eyes">Add googly eyes</label>                        
-                    </div>                    
+                        <label class="custom-input">
+                            <input type="checkbox" id="googly-eyes" name="googly-eyes">
+                            <span class="custom-checkbox"></span>
+                            Add googly eyes
+                        </label>
+                    </div>
+
                     <div class="action-buttons">
                         <button id="gen-image-button" class="cta">
                             <i class="fa-solid fa-wand-sparkles"></i>
@@ -194,15 +198,17 @@
                             <option value="Tree" selected>External + Internal</option>
                         </select>
                     </div>
-                    <div class="checkbox-group">
-                        <div class="checkbox-container">
+                    <div class="control-group">
+                        <label class="custom-input">
                             <input type="checkbox" id="is-loop" checked>
-                            <label for="is-loop">Loop Drawing</label>
-                        </div>
-                        <div class="checkbox-container">
+                            <span class="custom-checkbox"></span>
+                            Loop Drawing
+                        </label>
+                        <label class="custom-input">
                             <input type="checkbox" id="no-shortcuts" checked>
-                            <label for="no-shortcuts">No Shortcuts</label>
-                        </div>
+                            <span class="custom-checkbox"></span>
+                            No Shortcuts
+                        </label>
                     </div>
                     <input type="hidden" id="output-type" value="2">
                     <div class="generate-button-container">
