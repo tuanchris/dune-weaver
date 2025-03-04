@@ -138,7 +138,9 @@ async function selectFile(file, listItem) {
 
     // Update the Remove button visibility
     const removeButton = document.querySelector('#pattern-preview-container .remove-button');
-    if (file.startsWith('custom_patterns/')) {
+    // Normalize path by replacing backslashes with forward slashes
+    const normalizedPath = file.replace(/\\/g, '/');
+    if (normalizedPath.startsWith('custom_patterns/')) {
         removeButton.classList.remove('hidden');
     } else {
         removeButton.classList.add('hidden');
@@ -161,8 +163,11 @@ async function loadThetaRhoFiles() {
         files = files.filter(file => file.endsWith('.thr'));
         // Sort files with custom_patterns on top and all alphabetically sorted
         const sortedFiles = files.sort((a, b) => {
-            const isCustomA = a.startsWith('custom_patterns/');
-            const isCustomB = b.startsWith('custom_patterns/');
+            // Normalize paths by replacing backslashes with forward slashes
+            const normalizedA = a.replace(/\\/g, '/');
+            const normalizedB = b.replace(/\\/g, '/');
+            const isCustomA = normalizedA.startsWith('custom_patterns/');
+            const isCustomB = normalizedB.startsWith('custom_patterns/');
 
             if (isCustomA && !isCustomB) return -1; // a comes first
             if (!isCustomA && isCustomB) return 1;  // b comes first
@@ -332,7 +337,9 @@ function removeCurrentPattern() {
         return;
     }
 
-    if (!selectedFile.startsWith('custom_patterns/')) {
+    // Normalize path by replacing backslashes with forward slashes
+    const normalizedPath = selectedFile.replace(/\\/g, '/');
+    if (!normalizedPath.startsWith('custom_patterns/')) {
         logMessage('Only custom patterns can be removed.', LOG_TYPE.WARNING);
         return;
     }

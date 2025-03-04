@@ -25,8 +25,11 @@ def list_theta_rho_files():
     files = []
     for root, _, filenames in os.walk(THETA_RHO_DIR):
         for file in filenames:
+            # Get the relative path and normalize it to use forward slashes
             relative_path = os.path.relpath(os.path.join(root, file), THETA_RHO_DIR)
-            files.append(relative_path)
+            # Convert Windows backslashes to forward slashes for consistency
+            normalized_path = relative_path.replace(os.path.sep, '/')
+            files.append(normalized_path)
     logger.debug(f"Found {len(files)} theta-rho files")
     return files
 
@@ -289,6 +292,8 @@ def run_theta_rho_file(file_path):
     state.current_playing_file = None
     state.execution_progress = None
 
+    # Save state to persist changes to state.json
+    state.save()
     
     logger.info("Pattern execution completed")
 
@@ -385,6 +390,8 @@ def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="
         if state.led_controller:
             effect_idle(state.led_controller)
 
+        # Save state to persist changes to state.json
+        state.save()
             
         logger.info("All requested patterns completed (or stopped) and state cleared")
 
