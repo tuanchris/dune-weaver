@@ -1618,12 +1618,12 @@ function attachSettingsSaveListeners() {
 
 
 // Tab switching logic with cookie storage
-function switchTab(tabName) {
-    // Store the active tab in a cookie
-    setCookie('activeTab', tabName, 365); // Store for 7 days
+function switchTab(tabName, tabGroup = 'main') {
+    // Store the active tab in a cookie (per tab group)
+    setCookie(`activeTab-${tabGroup}`, tabName, 365);
 
-    // Deactivate all tab content
-    document.querySelectorAll('.tab-content').forEach(tab => {
+    // Deactivate all tab content in the specific group
+    document.querySelectorAll(`.tab-content[data-group="${tabGroup}"]`).forEach(tab => {
         tab.classList.remove('active');
     });
 
@@ -1635,8 +1635,8 @@ function switchTab(tabName) {
         console.error(`Error: Tab "${tabName}" not found.`);
     }
 
-    // Deactivate all nav buttons
-    document.querySelectorAll('.bottom-nav .tab-button').forEach(button => {
+    // Deactivate all buttons in this group
+    document.querySelectorAll(`.tab-button[data-group="${tabGroup}"]`).forEach(button => {
         button.classList.remove('active');
     });
 
@@ -1824,8 +1824,10 @@ function stopStatusUpdates() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    const activeTab = getCookie('activeTab') || 'patterns'; // Default to 'patterns' tab
-    switchTab(activeTab); // Load the active tab
+    const activeMainTab = getCookie('activeTab-main') || 'patterns';
+    switchTab(activeMainTab, 'main');
+    const activeImageConverterTab = getCookie('activeTab-image-converter') || 'dot';
+    switchTab(activeImageConverterTab, 'image-converter');
     checkSerialStatus(); // Check connection status
     loadThetaRhoFiles(); // Load files on page load
     loadAllPlaylists(); // Load all playlists on page load
@@ -1834,7 +1836,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadWledIp();
     updateWledUI();
     checkForUpdates();
-    requestStatusUpdate(); // Request initial status update on page load
+    requestStatusUpdate(); // Request initial status upstdate on page load
 });
 
 // Track the last time we had a file playing

@@ -138,24 +138,30 @@
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
-            <div class="image-converter-content">
+            <div class="image-converter-content grid">
                 <div id="processing-status" class="processing-indicator">
                     <div class="spinner"></div>
                     <span id="processing-message">Processing image...</span>
                 </div>
                 <div class="image-converter-steps">
-                    <div class="image-converter-preview">
-                        <h3>Original Image</h3>
+                    <div class="tab-content" id="original-tab" data-group="image-converter">
                         <canvas id="original-image"></canvas>
                     </div>
-                    <div class="image-converter-preview">
-                        <h3>Detected Edges</h3>
+
+                    <div class="tab-content" id="edge-tab" data-group="image-converter">
                         <canvas id="edge-image"></canvas>
                     </div>
-                    <div class="image-converter-preview">
-                        <h3>Identified Points</h3>
+
+                    <div class="tab-content" id="dot-tab" data-group="image-converter">
                         <canvas id="dot-image"></canvas>
                     </div>
+
+                    <div class="tab-container">
+                        <button class="tab-button" onclick="switchTab('original', 'image-converter')" id="nav-original" data-group="image-converter">Original Image</button>
+                        <button class="tab-button" onclick="switchTab('edge', 'image-converter')" id="nav-edge" data-group="image-converter">Detected Edges</button>
+                        <button class="tab-button" onclick="switchTab('dot', 'image-converter')" id="nav-dot" data-group="image-converter">Identified Points</button>
+                    </div>
+
                 </div>
 
                 <div class="image-converter-settings">
@@ -200,7 +206,7 @@
                     </div>
                     <input type="hidden" id="output-type" value="2">
                     <div class="generate-button-container">
-                        <button id="generate-button" class="cta" onclick="convertImage()">
+                        <button id="generate-button" class="cta" onclick="regeneratePattern()">
                             <i class="fa-solid fa-wand-magic-sparkles"></i>
                             <span>Regenerate Pattern</span>
                         </button>

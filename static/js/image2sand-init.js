@@ -251,6 +251,34 @@ async function generateOpenAIImage(apiKey, prompt) {
 
 }
 
+function regeneratePattern() {
+    const generateButton = document.getElementById('generate-button');
+
+    // Disable button & show existing loader
+    generateButton.disabled = true;
+    generateButton.classList.add('loading');
+    // Wrap convertImage() in a Promise
+    new Promise((resolve, reject) => {
+        try {
+            convertImage();
+            setTimeout(resolve, 1000);
+        } catch (error) {
+            reject(error);
+        }
+    })
+        .then(() => {
+            logMessage("Pattern regenerated successfully.", LOG_TYPE.SUCCESS);
+        })
+        .catch(error => {
+            logMessage("Error regenerating pattern: " + error.message, LOG_TYPE.ERROR);
+        })
+        .finally(() => {
+            // Re-enable button & hide loader
+            generateButton.disabled = false;
+            generateButton.classList.remove('loading');
+        });
+}
+
 // Override the uploadThetaRho function to handle image files
 const originalUploadThetaRho = window.uploadThetaRho;
 

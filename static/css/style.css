@@ -410,6 +410,9 @@ button.warning:hover{}
     display: none;
     flex: 1;
     overflow-y: auto;
+}
+
+.app > .tab-content {
     background: var(--background-secondary);
 }
 
@@ -1389,14 +1392,17 @@ input[type="number"]:focus {
 
     /* Show all tabs in grid layout */
     .tab-content {
-        display: flex !important; /* Always display tab-content */
         flex-direction: column;
-        border: 1px solid var(--border-primary);
-        background-color: var(--background-primary);
-        border-radius: 8px;
         overflow-y: auto;
         overflow-x: hidden;
         position: relative;
+    }
+
+    .app > .tab-content {
+        display: flex !important; /* Always display main tab-content */
+        border-radius: 8px;
+        background-color: var(--background-primary);
+        border: 1px solid var(--border-primary);
     }
 
     body.playing .app {
