@@ -446,7 +446,8 @@ async function refreshCameras(shouldPreInitialize = true) {
     const cameraSelect = document.getElementById('timelapse-camera');
     const refreshButton = cameraSelect.nextElementSibling; // The refresh button next to the select
     const testCaptureButton = document.getElementById('timelapse-test-capture');
-    
+    // Try to restore the previous selection
+    let selectedCamera = null;
     try {
         // Show loading indicator
         const loadingIndicator = document.getElementById('timelapse-loading');
@@ -499,13 +500,13 @@ async function refreshCameras(shouldPreInitialize = true) {
                     cameraSelect.appendChild(option);
                 });
                 
-                // Try to restore the previous selection
-                let selectedCamera = null;
+                
                 
                 // Selection priority:
                 // 1. Current selection if it's still in the list
                 // 2. Camera being used for active timelapse
                 // 3. Saved camera from localStorage
+                // 4. First camera in the list
                 
                 // First try to use the current selection if it's still available
                 if (currentSelection && data.cameras.includes(currentSelection)) {
@@ -524,6 +525,11 @@ async function refreshCameras(shouldPreInitialize = true) {
                         cameraSelect.value = savedCamera;
                         selectedCamera = savedCamera;
                         lastCameraSelection = savedCamera;
+                    } else {
+                        // If no previously selected camera, use the first camera in the list
+                        cameraSelect.value = data.cameras[0];
+                        selectedCamera = data.cameras[0];
+                        lastCameraSelection = data.cameras[0];
                     }
                 }
                 
@@ -541,7 +547,7 @@ async function refreshCameras(shouldPreInitialize = true) {
     } finally {
         // Hide loading indicator if we're not pre-initializing
         // (if pre-initializing, the preInitializeCamera function will handle this)
-        if (!shouldPreInitialize) {
+        if (!shouldPreInitialize || !selectedCamera) {
             const loadingIndicator = document.getElementById('timelapse-loading');
             if (loadingIndicator) {
                 loadingIndicator.style.display = 'none';

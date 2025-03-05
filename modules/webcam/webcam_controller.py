@@ -385,7 +385,7 @@ class WebcamController:
                 logger.debug(f"Applied manual camera settings: {self.camera_settings}")
             else:
                 # Auto mode - enable auto exposure
-                cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)  # Auto exposure (0.75 or 3)
+                cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3)  # Auto exposure (0.75 or 3)
                 logger.debug("Using auto exposure and default camera settings")
             
             # Add to cache
