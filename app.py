@@ -328,37 +328,37 @@ def get_playlist():
 @app.route("/create_playlist", methods=["POST"])
 def create_playlist():
     data = request.get_json()
-    if not data or "name" not in data or "files" not in data:
-        return jsonify({"success": False, "error": "Playlist 'name' and 'files' are required"}), 400
+    if not data or "playlist_name" not in data or "files" not in data:
+        return jsonify({"success": False, "error": "Playlist 'playlist_name' and 'files' are required"}), 400
 
-    success = playlist_manager.create_playlist(data["name"], data["files"])
+    success = playlist_manager.create_playlist(data["playlist_name"], data["files"])
     return jsonify({
         "success": success,
-        "message": f"Playlist '{data['name']}' created/updated"
+        "message": f"Playlist '{data['playlist_name']}' created/updated"
     })
 
 @app.route("/modify_playlist", methods=["POST"])
 def modify_playlist():
     data = request.get_json()
-    if not data or "name" not in data or "files" not in data:
-        return jsonify({"success": False, "error": "Playlist 'name' and 'files' are required"}), 400
+    if not data or "playlist_name" not in data or "files" not in data:
+        return jsonify({"success": False, "error": "Playlist 'playlist_name' and 'files' are required"}), 400
 
-    success = playlist_manager.modify_playlist(data["name"], data["files"])
-    return jsonify({"success": success, "message": f"Playlist '{data['name']}' updated"})
+    success = playlist_manager.modify_playlist(data["playlist_name"], data["files"])
+    return jsonify({"success": success, "message": f"Playlist '{data['playlist_name']}' updated"})
 
 @app.route("/delete_playlist", methods=["DELETE"])
 def delete_playlist():
     data = request.get_json()
-    if not data or "name" not in data:
-        return jsonify({"success": False, "error": "Missing 'name' field"}), 400
+    if not data or "playlist_name" not in data:
+        return jsonify({"success": False, "error": "Missing 'playlist_name' field"}), 400
 
-    success = playlist_manager.delete_playlist(data["name"])
+    success = playlist_manager.delete_playlist(data["playlist_name"])
     if not success:
-        return jsonify({"success": False, "error": f"Playlist '{data['name']}' not found"}), 404
+        return jsonify({"success": False, "error": f"Playlist '{data['playlist_name']}' not found"}), 404
 
     return jsonify({
         "success": True,
-        "message": f"Playlist '{data['name']}' deleted"
+        "message": f"Playlist '{data['playlist_name']}' deleted"
     })
 
 @app.route('/add_to_playlist', methods=['POST'])
