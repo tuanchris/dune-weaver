@@ -199,6 +199,9 @@ def set_speed(new_speed):
 def run_theta_rho_file(file_path):
     """Run a theta-rho file by sending data in optimized batches with tqdm ETA tracking."""
     
+    # Import webcam_controller here to avoid circular imports
+    from app import webcam_controller
+    
     # Check if connection is still valid, if not, restart
     # if not connection_manager.get_status_response() and isinstance(state.conn, connection_manager.WebSocketConnection):
     #     logger.info('Cannot get status response, restarting connection')
@@ -234,6 +237,13 @@ def run_theta_rho_file(file_path):
     last_status_update = time.time()
     status_update_interval = 0.5  # Update status every 0.5 seconds
     
+    # Start timelapse capture if auto mode is enabled
+    try:
+        webcam_controller.pattern_started()
+        logger.debug("Notified webcam controller that pattern has started")
+    except Exception as e:
+        logger.error(f"Error notifying webcam controller of pattern start: {str(e)}")
+
     with tqdm(
         total=total_coordinates,
         unit="coords",
@@ -294,6 +304,13 @@ def run_theta_rho_file(file_path):
 
     # Save state to persist changes to state.json
     state.save()
+
+    # Stop timelapse capture if auto mode is enabled
+    try:
+        webcam_controller.pattern_stopped()
+        logger.debug("Notified webcam controller that pattern has stopped")
+    except Exception as e:
+        logger.error(f"Error notifying webcam controller of pattern stop: {str(e)}")
     
     logger.info("Pattern execution completed")
 

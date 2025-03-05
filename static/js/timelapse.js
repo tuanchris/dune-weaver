@@ -26,8 +26,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load initial status
     refreshTimelapseStatus();
     
-    // Load available cameras
-    refreshCameras();
+    // Load available cameras without pre-initializing
+    refreshCameras(false);
     
     // Load timelapse sessions
     loadTimelapsesSessions();
@@ -44,8 +44,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (mutation.attributeName === 'class') {
                     const isHidden = timelapseContainer.classList.contains('hidden');
                     if (!isHidden) {
-                        // Container is now visible, refresh data
-                        refreshCameras();
+                        // Container is now visible, refresh data with pre-initialization
+                        refreshCameras(true);
                         loadTimelapsesSessions();
                     }
                 }
@@ -53,6 +53,21 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         observer.observe(timelapseContainer, { attributes: true });
+    }
+    
+    // Add event listener for camera selection change to pre-initialize the camera
+    const cameraSelect = document.getElementById('timelapse-camera');
+    if (cameraSelect) {
+        cameraSelect.addEventListener('change', function() {
+            const selectedCamera = cameraSelect.value;
+            if (selectedCamera) {
+                // Pre-initialize the selected camera
+                preInitializeCamera(selectedCamera);
+                // Save the selection to localStorage
+                localStorage.setItem('selectedCamera', selectedCamera);
+                lastCameraSelection = selectedCamera;
+            }
+        });
     }
 });
 
@@ -76,16 +91,6 @@ function initTimelapseUI() {
     
     previewImage.addEventListener('error', function() {
         previewImage.style.display = 'none';
-    });
-    
-    // Add event listener for camera select change
-    const cameraSelect = document.getElementById('timelapse-camera');
-    cameraSelect.addEventListener('change', function() {
-        // Save the selected camera in localStorage for persistence
-        const selectedCamera = cameraSelect.value;
-        localStorage.setItem('selectedCamera', selectedCamera);
-        lastCameraSelection = selectedCamera; // Update the last selection
-        logMessage(`Camera changed to: ${selectedCamera}`, LOG_TYPE.DEBUG);
     });
     
     // Add event listener for auto mode checkbox
@@ -249,10 +254,10 @@ async function applyCameraSettings() {
  * Reset camera settings to defaults
  */
 function resetCameraSettings() {
-    // Default values
-    const defaultBrightness = 0.4;
-    const defaultContrast = 1.2;
-    const defaultExposure = 0.1;
+    // Default values - using neutral values to enable auto mode
+    const defaultBrightness = 0.5;  // Changed from 0.4 to 0.5 as neutral value
+    const defaultContrast = 1.0;    // Changed from 1.2 to 1.0 as neutral value
+    const defaultExposure = 0.5;    // Changed from 0.1 to 0.5 as neutral value
     
     // Reset input values
     const brightnessInput = document.getElementById('camera-brightness');
@@ -284,9 +289,27 @@ async function testCameraCapture() {
         return;
     }
     
+    // Get UI elements
+    const refreshButton = cameraSelect.nextElementSibling; // The refresh button next to the select
+    const testCaptureButton = document.getElementById('timelapse-test-capture');
+    
     try {
         // Show loading indicator
-        document.getElementById('timelapse-loading').style.display = 'flex';
+        const loadingIndicator = document.getElementById('timelapse-loading');
+        if (loadingIndicator) {
+            loadingIndicator.style.display = 'flex';
+            
+            // Update loading message
+            const loadingMessage = loadingIndicator.querySelector('span');
+            if (loadingMessage) {
+                loadingMessage.textContent = 'Capturing test image...';
+            }
+        }
+        
+        // Disable camera controls during capture
+        if (cameraSelect) cameraSelect.disabled = true;
+        if (refreshButton) refreshButton.disabled = true;
+        if (testCaptureButton) testCaptureButton.disabled = true;
         
         const response = await fetch('/timelapse/test_capture', {
             method: 'POST',
@@ -314,7 +337,21 @@ async function testCameraCapture() {
         logMessage(`Error during test capture: ${error.message}`, LOG_TYPE.ERROR);
     } finally {
         // Hide loading indicator
-        document.getElementById('timelapse-loading').style.display = 'none';
+        const loadingIndicator = document.getElementById('timelapse-loading');
+        if (loadingIndicator) {
+            loadingIndicator.style.display = 'none';
+            
+            // Reset loading message
+            const loadingMessage = loadingIndicator.querySelector('span');
+            if (loadingMessage) {
+                loadingMessage.textContent = 'Processing...';
+            }
+        }
+        
+        // Re-enable camera controls
+        if (cameraSelect) cameraSelect.disabled = false;
+        if (refreshButton) refreshButton.disabled = false;
+        if (testCaptureButton) testCaptureButton.disabled = false;
     }
 }
 
@@ -402,14 +439,31 @@ function updateTimelapseStatusUI() {
 
 /**
  * Refresh the list of available cameras
+ * @param {boolean} shouldPreInitialize - Whether to pre-initialize the camera after refresh (default: true)
  */
-async function refreshCameras() {
+async function refreshCameras(shouldPreInitialize = true) {
+    // Get UI elements
+    const cameraSelect = document.getElementById('timelapse-camera');
+    const refreshButton = cameraSelect.nextElementSibling; // The refresh button next to the select
+    const testCaptureButton = document.getElementById('timelapse-test-capture');
+    
     try {
         // Show loading indicator
         const loadingIndicator = document.getElementById('timelapse-loading');
         if (loadingIndicator) {
             loadingIndicator.style.display = 'flex';
+            
+            // Update loading message
+            const loadingMessage = loadingIndicator.querySelector('span');
+            if (loadingMessage) {
+                loadingMessage.textContent = 'Scanning for cameras...';
+            }
         }
+        
+        // Disable camera controls during refresh
+        if (cameraSelect) cameraSelect.disabled = true;
+        if (refreshButton) refreshButton.disabled = true;
+        if (testCaptureButton) testCaptureButton.disabled = true;
         
         const response = await fetch('/timelapse/cameras');
         const data = await response.json();
@@ -418,12 +472,10 @@ async function refreshCameras() {
             // Update global status
             timelapseStatus.available_cameras = data.cameras;
             
-            // Update camera select
-            const cameraSelect = document.getElementById('timelapse-camera');
-            
             // Remember the current selection
             const currentSelection = cameraSelect.value;
             
+            // Clear existing options
             cameraSelect.innerHTML = '';
             
             if (data.cameras.length === 0) {
@@ -439,6 +491,7 @@ async function refreshCameras() {
                 blankOption.textContent = 'Select a camera...';
                 cameraSelect.appendChild(blankOption);
                 
+                // Add cameras to select
                 data.cameras.forEach(camera => {
                     const option = document.createElement('option');
                     option.value = camera;
@@ -446,27 +499,38 @@ async function refreshCameras() {
                     cameraSelect.appendChild(option);
                 });
                 
+                // Try to restore the previous selection
+                let selectedCamera = null;
+                
                 // Selection priority:
                 // 1. Current selection if it's still in the list
-                // 2. Last known selection from lastCameraSelection
-                // 3. Selected camera from status
-                // 4. Saved camera from localStorage
+                // 2. Camera being used for active timelapse
+                // 3. Saved camera from localStorage
                 
+                // First try to use the current selection if it's still available
                 if (currentSelection && data.cameras.includes(currentSelection)) {
                     cameraSelect.value = currentSelection;
+                    selectedCamera = currentSelection;
                     lastCameraSelection = currentSelection;
-                } else if (lastCameraSelection && data.cameras.includes(lastCameraSelection)) {
-                    cameraSelect.value = lastCameraSelection;
-                } else if (timelapseStatus.selected_camera && data.cameras.includes(timelapseStatus.selected_camera)) {
+                } else if (timelapseStatus.is_capturing && timelapseStatus.selected_camera) {
+                    // If a timelapse is running, use that camera
                     cameraSelect.value = timelapseStatus.selected_camera;
+                    selectedCamera = timelapseStatus.selected_camera;
                     lastCameraSelection = timelapseStatus.selected_camera;
                 } else {
                     // Try to use the previously selected camera from localStorage
                     const savedCamera = localStorage.getItem('selectedCamera');
                     if (savedCamera && data.cameras.includes(savedCamera)) {
                         cameraSelect.value = savedCamera;
+                        selectedCamera = savedCamera;
                         lastCameraSelection = savedCamera;
                     }
+                }
+                
+                // Pre-initialize the selected camera if one was chosen and pre-initialization is requested
+                if (selectedCamera && shouldPreInitialize) {
+                    // Don't need to disable controls again as they're already disabled
+                    await preInitializeCamera(selectedCamera);
                 }
                 
                 logMessage(`Found ${data.cameras.length} camera(s)`, LOG_TYPE.DEBUG);
@@ -475,11 +539,93 @@ async function refreshCameras() {
     } catch (error) {
         logMessage(`Error refreshing cameras: ${error.message}`, LOG_TYPE.ERROR);
     } finally {
+        // Hide loading indicator if we're not pre-initializing
+        // (if pre-initializing, the preInitializeCamera function will handle this)
+        if (!shouldPreInitialize) {
+            const loadingIndicator = document.getElementById('timelapse-loading');
+            if (loadingIndicator) {
+                loadingIndicator.style.display = 'none';
+                
+                // Reset loading message
+                const loadingMessage = loadingIndicator.querySelector('span');
+                if (loadingMessage) {
+                    loadingMessage.textContent = 'Processing...';
+                }
+            }
+            
+            // Re-enable camera controls
+            if (cameraSelect) cameraSelect.disabled = false;
+            if (refreshButton) refreshButton.disabled = false;
+            if (testCaptureButton) testCaptureButton.disabled = false;
+        }
+    }
+}
+
+/**
+ * Pre-initialize a camera to make the first capture faster
+ * @param {string} camera - The camera to initialize
+ */
+async function preInitializeCamera(camera) {
+    if (!camera) return;
+    
+    // Get UI elements
+    const cameraSelect = document.getElementById('timelapse-camera');
+    const refreshButton = cameraSelect.nextElementSibling; // The refresh button next to the select
+    const testCaptureButton = document.getElementById('timelapse-test-capture');
+    
+    try {
+        // Show loading indicator
+        const loadingIndicator = document.getElementById('timelapse-loading');
+        if (loadingIndicator) {
+            loadingIndicator.style.display = 'flex';
+        }
+        
+        // Disable camera controls during initialization
+        if (cameraSelect) cameraSelect.disabled = true;
+        if (refreshButton) refreshButton.disabled = true;
+        if (testCaptureButton) testCaptureButton.disabled = true;
+        
+        // Add a message to the loading indicator
+        const loadingMessage = loadingIndicator.querySelector('span');
+        if (loadingMessage) {
+            loadingMessage.textContent = 'Initializing camera...';
+        }
+        
+        // Call the pre-initialize endpoint
+        const response = await fetch('/timelapse/pre_initialize_camera', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ camera: camera })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            logMessage(`Camera ${camera} pre-initialized successfully`, LOG_TYPE.DEBUG);
+        } else {
+            logMessage(`Failed to pre-initialize camera ${camera}`, LOG_TYPE.WARNING);
+        }
+    } catch (error) {
+        logMessage(`Error pre-initializing camera: ${error.message}`, LOG_TYPE.ERROR);
+    } finally {
         // Hide loading indicator
         const loadingIndicator = document.getElementById('timelapse-loading');
         if (loadingIndicator) {
             loadingIndicator.style.display = 'none';
+            
+            // Reset the loading message
+            const loadingMessage = loadingIndicator.querySelector('span');
+            if (loadingMessage) {
+                loadingMessage.textContent = 'Processing...';
+            }
         }
+        
+        // Re-enable camera controls
+        if (cameraSelect) cameraSelect.disabled = false;
+        if (refreshButton) refreshButton.disabled = false;
+        if (testCaptureButton) testCaptureButton.disabled = false;
     }
 }
 
@@ -739,8 +885,8 @@ async function deleteTimelapseSession(sessionId) {
  */
 async function loadSessionDetails(session) {
     try {
-        // Store selected session
-        selectedSession = session;
+        // Store selected session ID, not the entire object
+        selectedSession = session.id;
         
         // Hide sessions list for cleaner UI
         document.getElementById('timelapse-sessions').style.display = 'none';
@@ -831,13 +977,16 @@ async function createTimelapseVideo() {
         
         const fps = parseInt(document.getElementById('timelapse-fps').value) || 10;
         
+        // Make sure we're using the session ID, not the entire session object
+        const sessionId = typeof selectedSession === 'object' ? selectedSession.id : selectedSession;
+        
         const response = await fetch('/timelapse/create_video', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                session_id: selectedSession,
+                session_id: sessionId,
                 fps
             })
         });
@@ -855,7 +1004,7 @@ async function createTimelapseVideo() {
             videoContainer.style.display = 'block';
             
             const video = document.getElementById('timelapse-video');
-            video.src = `/timelapse/video/${selectedSession}`;
+            video.src = `/timelapse/video/${sessionId}`;
         } else {
             logMessage(`Failed to create video: ${data.error}`, LOG_TYPE.ERROR);
         }

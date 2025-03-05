@@ -15,8 +15,8 @@ from modules.update import update_manager
 from modules.core.state import state
 from modules import mqtt
 from modules.led.led_controller import LEDController, effect_idle
-import requests  # Add this import
-from modules.webcam.webcam_controller import webcam_controller  # Add this import
+import requests 
+from modules.webcam.webcam_controller import webcam_controller
 import platform
 
 # Configure logging
@@ -135,8 +135,6 @@ def run_theta_rho():
         return jsonify({'error': 'A pattern is already running. Stop it before starting a new one.'}), 409
         
     try:
-        # Notify webcam controller that a pattern is starting
-        webcam_controller.pattern_started()
 
         # Create a thread that will execute the pattern
         current_execution_thread = threading.Thread(
@@ -167,7 +165,6 @@ def stop_execution():
         logger.warning("Attempted to stop without a connection")
         return jsonify({"success": False, "error": "Connection not established"}), 400
     pattern_manager.stop_actions()
-    webcam_controller.pattern_stopped()
     return jsonify({'success': True})
 
 @app.route('/send_home', methods=['POST'])
@@ -555,6 +552,21 @@ def list_cameras():
         logger.error(f"Error listing cameras: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/timelapse/pre_initialize_camera', methods=['POST'])
+def pre_initialize_camera():
+    """Pre-initialize a camera for faster first capture"""
+    try:
+        data = request.json
+        camera = data.get('camera')
+        
+        # Pre-initialize the camera
+        success = webcam_controller.pre_initialize_camera(camera)
+        
+        return jsonify({"success": success})
+    except Exception as e:
+        logger.error(f"Error pre-initializing camera: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/timelapse/start', methods=['POST'])
 def start_timelapse():
     """Start timelapse capture"""
@@ -617,7 +629,18 @@ def create_timelapse_video():
         if not session_id:
             return jsonify({"error": "Session ID is required"}), 400
         
+        # Make sure session_id is a string
+        if not isinstance(session_id, str):
+            logger.warning(f"Received non-string session_id: {session_id} (type: {type(session_id)})")
+            session_id = str(session_id)
+        
         session_dir = os.path.join(webcam_controller.timelapse_dir, session_id)
+        
+        # Verify the session directory exists
+        if not os.path.exists(session_dir):
+            logger.error(f"Session directory does not exist: {session_dir}")
+            return jsonify({"error": f"Session directory not found: {session_id}"}), 404
+        
         result = webcam_controller.create_video(session_dir, fps)
         
         if result:
@@ -722,9 +745,9 @@ def update_camera_settings():
     """Update camera settings for timelapse captures"""
     try:
         data = request.json
-        brightness = data.get('brightness', 0.4)
-        contrast = data.get('contrast', 1.2)
-        exposure = data.get('exposure', 0.1)
+        brightness = data.get('brightness', 0.5)
+        contrast = data.get('contrast', 1.0)
+        exposure = data.get('exposure', 0.5)
         
         # Debug log the received values
         logger.info(f"Received camera settings: brightness={brightness} ({type(brightness)}), contrast={contrast} ({type(contrast)}), exposure={exposure} ({type(exposure)})")
