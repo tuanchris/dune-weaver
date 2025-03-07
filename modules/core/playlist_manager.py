@@ -84,6 +84,23 @@ def add_to_playlist(playlist_name, pattern):
     logger.info(f"Added pattern '{pattern}' to playlist '{playlist_name}'")
     return True
 
+def run_playlist_with_cleanup():
+    try:
+        pattern_manager.run_theta_rho_files(
+            file_paths,
+            pause_time=pause_time,
+            clear_pattern=clear_pattern,
+            run_mode=run_mode,
+            shuffle=shuffle
+        )
+    except Exception as e:
+        logger.error(f"Error in playlist thread: {str(e)}")
+    finally:
+        # Ensure state is properly reset when thread exits
+        if state.current_playing_file:
+            logger.info("Playlist thread exit: resetting current_playing_file to None")
+            state.current_playing_file = None
+
 def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
     """Run a playlist with the given options."""
     playlists = load_playlists()
@@ -102,17 +119,12 @@ def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="sing
         logger.info(f"Starting playlist '{playlist_name}' with mode={run_mode}, shuffle={shuffle}")
         state.current_playlist_name = playlist_name
         state.current_playlist = playlist_name
+        
         threading.Thread(
-            target=pattern_manager.run_theta_rho_files,
-            args=(file_paths,),
-            kwargs={
-                'pause_time': pause_time,
-                'clear_pattern': clear_pattern,
-                'run_mode': run_mode,
-                'shuffle': shuffle,
-            },
+            target=run_playlist_with_cleanup,
             daemon=True
         ).start()
+        
         return True, f"Playlist '{playlist_name}' is now running."
     except Exception as e:
         logger.error(f"Failed to run playlist '{playlist_name}': {str(e)}")

@@ -117,7 +117,7 @@ async function generateImage(apiKey, prompt, autoprocess) {
         document.getElementById('generation-status').style.display = 'block';
         try {
 
-            const fullPrompt = `Draw an image of the following: ${prompt}. But make it a simple black silhouette on a white background, with very minimal detail and no additional content in the image, so I can use it for a computer icon.`;
+            const fullPrompt = `Draw an image of the following: ${prompt}. Make the line black and the background white. The drawing should be a single line, don't add any additional details to the image.`;
 
             const response = await fetch('https://api.openai.com/v1/images/generations', {
                 method: 'POST',
@@ -1369,10 +1369,21 @@ document.addEventListener('DOMContentLoaded', (event) => {
     }
 
     // Add event listener to the button inside the DOMContentLoaded event
-    document.getElementById('gen-image-button').addEventListener('click', () => {
-        let apiKey = document.getElementById('api-key').value;
-        const prompt = document.getElementById('prompt').value + (document.getElementById('googly-eyes').checked ? ' with disproportionately large googly eyes' : '');
-        generateImage(apiKey, prompt, false);
-    });
+    const genImageButton = document.getElementById('gen-image-button');
+    if (genImageButton) {
+        genImageButton.addEventListener('click', () => {
+            const apiKeyElement = document.getElementById('api-key');
+            const promptElement = document.getElementById('prompt');
+            const googlyEyes = document.getElementById('googly-eyes');
+            
+            // Add null checks
+            const apiKey = apiKeyElement?.value || '';
+            const promptValue = promptElement?.value || '';
+            const googlyEyesChecked = googlyEyes?.checked || false;
+            
+            const prompt = promptValue + (googlyEyesChecked ? ' with disproportionately large googly eyes' : '');
+            generateImage(apiKey, prompt, false);
+        });
+    }
     
 });

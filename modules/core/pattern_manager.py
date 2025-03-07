@@ -206,91 +206,95 @@ def run_theta_rho_file(file_path):
     # if not file_path:
     #     return
     
-    state.current_playing_file = file_path
-    coordinates = parse_theta_rho_file(file_path)
-    total_coordinates = len(coordinates)
+    try:
+        state.current_playing_file = file_path
+        coordinates = parse_theta_rho_file(file_path)
+        total_coordinates = len(coordinates)
 
-    if total_coordinates < 2:
-        logger.warning("Not enough coordinates for interpolation")
+        if total_coordinates < 2:
+            logger.warning("Not enough coordinates for interpolation")
+            state.current_playing_file = None
+            state.execution_progress = None
+            return
+
+
+        # stop actions without resetting the playlist
+        state.execution_progress = (0, total_coordinates, None, 0)
+        state.stop_requested = False
+        logger.info(f"Starting pattern execution: {file_path}")
+        logger.info(f"t: {state.current_theta}, r: {state.current_rho}")
+        reset_theta()
+        
+        if state.led_controller:
+            effect_playing(state.led_controller)
+        
+        # Track last status update time for time-based updates
+        last_status_update = time.time()
+        status_update_interval = 0.5  # Update status every 0.5 seconds
+        
+        with tqdm(
+            total=total_coordinates,
+            unit="coords",
+            desc=f"Executing Pattern {file_path}",
+            dynamic_ncols=True,
+            disable=False,  # Force enable the progress bar
+            mininterval=1.0  # Optional: reduce update frequency to prevent flooding
+        ) as pbar:
+            for i, coordinate in enumerate(coordinates):
+                theta, rho = coordinate
+
+                if state.stop_requested:
+                    logger.info("Execution stopped by user")
+                    if state.led_controller:
+                        effect_idle(state.led_controller)
+                    # Make sure to clear current_playing_file when stopping
+                    state.current_playing_file = None
+                    break
+                
+                if state.skip_requested:
+                    logger.info("Skipping pattern...")
+                    connection_manager.check_idle()
+                    if state.led_controller:
+                        effect_idle(state.led_controller)
+                    # Make sure to clear current_playing_file when skipping
+                    state.current_playing_file = None
+                    break
+
+                # Wait for resume if paused
+                if state.pause_requested:
+                    logger.info("Execution paused...")
+                    if state.led_controller:
+                        effect_idle(state.led_controller)
+                    pause_event.wait()
+                    logger.info("Execution resumed...")
+                    if state.led_controller:
+                        effect_playing(state.led_controller)
+
+                move_polar(theta, rho)
+                
+                if i != 0:
+                    pbar.update(1)
+                    estimated_remaining_time = (total_coordinates - i) / pbar.format_dict['rate'] if pbar.format_dict['rate'] and total_coordinates else 0
+                    elapsed_time = pbar.format_dict['elapsed']
+                    state.execution_progress = (i, total_coordinates, estimated_remaining_time, elapsed_time)
+                    
+                    # Send status updates based on time interval
+                    current_time = time.time()
+                    if current_time - last_status_update >= status_update_interval:
+                        last_status_update = current_time
+
+        connection_manager.check_idle()
+    except Exception as e:
+        logger.error(f"Error in pattern execution: {str(e)}")
+    finally:
+        # Clear pattern state atomically - ensure this is always called
         state.current_playing_file = None
         state.execution_progress = None
-        return
-
-
-    # stop actions without resetting the playlist
-    state.execution_progress = (0, total_coordinates, None, 0)
-    state.stop_requested = False
-    logger.info(f"Starting pattern execution: {file_path}")
-    logger.info(f"t: {state.current_theta}, r: {state.current_rho}")
-    reset_theta()
-    
-    if state.led_controller:
-        effect_playing(state.led_controller)
-    
-    # Track last status update time for time-based updates
-    last_status_update = time.time()
-    status_update_interval = 0.5  # Update status every 0.5 seconds
-    
-    with tqdm(
-        total=total_coordinates,
-        unit="coords",
-        desc=f"Executing Pattern {file_path}",
-        dynamic_ncols=True,
-        disable=False,  # Force enable the progress bar
-        mininterval=1.0  # Optional: reduce update frequency to prevent flooding
-    ) as pbar:
-        for i, coordinate in enumerate(coordinates):
-            theta, rho = coordinate
-
-            if state.stop_requested:
-                logger.info("Execution stopped by user")
-                if state.led_controller:
-                    effect_idle(state.led_controller)
-                # Make sure to clear current_playing_file when stopping
-                state.current_playing_file = None
-                break
+        
+        if state.led_controller:
+            effect_idle(state.led_controller)
             
-            if state.skip_requested:
-                logger.info("Skipping pattern...")
-                connection_manager.check_idle()
-                if state.led_controller:
-                    effect_idle(state.led_controller)
-                # Make sure to clear current_playing_file when skipping
-                state.current_playing_file = None
-                break
-
-            # Wait for resume if paused
-            if state.pause_requested:
-                logger.info("Execution paused...")
-                if state.led_controller:
-                    effect_idle(state.led_controller)
-                pause_event.wait()
-                logger.info("Execution resumed...")
-                if state.led_controller:
-                    effect_playing(state.led_controller)
-
-            move_polar(theta, rho)
-            
-            if i != 0:
-                pbar.update(1)
-                estimated_remaining_time = (total_coordinates - i) / pbar.format_dict['rate'] if pbar.format_dict['rate'] and total_coordinates else 0
-                elapsed_time = pbar.format_dict['elapsed']
-                state.execution_progress = (i, total_coordinates, estimated_remaining_time, elapsed_time)
-                
-                # Send status updates based on time interval
-                current_time = time.time()
-                if current_time - last_status_update >= status_update_interval:
-                    last_status_update = current_time
-
-    connection_manager.check_idle()
-
-    # Clear pattern state atomically
-
-    state.current_playing_file = None
-    state.execution_progress = None
-
-    
-    logger.info("Pattern execution completed")
+        logger.info("Pattern execution completed")
 
 def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
     """Run multiple .thr files in sequence with options."""

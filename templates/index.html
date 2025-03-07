@@ -49,14 +49,6 @@
                     <div id="api-key-group"></div>
                     <input type="password" id="api-key" placeholder="Enter a valid OpenAI API key">
                     <input type="text" id="prompt" placeholder="What do you want to draw?" maxlength="500">
-                    <div class="checkbox-container">
-                        <label class="custom-input">
-                            <input type="checkbox" id="googly-eyes" name="googly-eyes">
-                            <span class="custom-checkbox"></span>
-                            Add googly eyes
-                        </label>
-                    </div>
-
                     <div class="action-buttons">
                         <button id="gen-image-button" class="cta">
                             <i class="fa-solid fa-wand-sparkles"></i>
@@ -172,7 +164,7 @@
                     <div class="setting-item">
                         <label for="epsilon-slider">Detail Level</label>
                         <div class="slider-container">
-                            <input type="range" id="epsilon-slider" min="0.1" max="20" step="0.1" value="0.5">
+                            <input type="range" id="epsilon-slider" min="0.1" max="1" step="0.05" value="0.3">
                             <div class="slider-labels">
                                 <small>Fine</small>
                                 <small id="epsilon-value-display">0.5</small>
@@ -200,7 +192,7 @@
                     </div>
                     <div class="control-group">
                         <label class="custom-input">
-                            <input type="checkbox" id="is-loop" checked>
+                            <input type="checkbox" id="is-loop">
                             <span class="custom-checkbox"></span>
                             Loop Drawing
                         </label>

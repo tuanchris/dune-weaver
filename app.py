@@ -147,12 +147,20 @@ def run_theta_rho():
         return jsonify({'error': str(e)}), 500
 
 def execute_pattern(file_name, pre_execution):
-    if not (state.conn.is_connected() if state.conn else False):
-        logger.warning("Attempted to run a pattern without a connection")
-        return jsonify({"success": False, "error": "Connection not established"}), 400
-    files_to_run = [os.path.join(pattern_manager.THETA_RHO_DIR, file_name)]
-    logger.info(f'Running theta-rho file: {file_name} with pre_execution={pre_execution}')
-    pattern_manager.run_theta_rho_files(files_to_run, clear_pattern=pre_execution)
+    try:
+        if not (state.conn.is_connected() if state.conn else False):
+            logger.warning("Attempted to run a pattern without a connection")
+            return
+        files_to_run = [os.path.join(pattern_manager.THETA_RHO_DIR, file_name)]
+        logger.info(f'Running theta-rho file: {file_name} with pre_execution={pre_execution}')
+        pattern_manager.run_theta_rho_files(files_to_run, clear_pattern=pre_execution)
+    except Exception as e:
+        logger.error(f"Error in pattern execution thread: {str(e)}")
+    finally:
+        # Ensure state is properly reset when thread exits
+        if state.current_playing_file:
+            logger.info("Thread exit: resetting current_playing_file to None")
+            state.current_playing_file = None
 
 @app.route('/stop_execution', methods=['POST'])
 def stop_execution():

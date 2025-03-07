@@ -1578,27 +1578,42 @@ function saveSettingsToCookies() {
 function loadSettingsFromCookies() {
     const pauseTime = getCookie('pause_time');
     if (pauseTime !== '') {
-        document.getElementById('pause_time').value = pauseTime;
+        const pauseTimeElement = document.getElementById('pause_time');
+        if (pauseTimeElement) {
+            pauseTimeElement.value = pauseTime;
+        }
     }
 
     const clearPattern = getCookie('clear_pattern');
     if (clearPattern !== '') {
-        document.getElementById('clear_pattern').value = clearPattern;
+        const clearPatternElement = document.getElementById('clear_pattern');
+        if (clearPatternElement) {
+            clearPatternElement.value = clearPattern;
+        }
     }
 
     const runMode = getCookie('run_mode');
     if (runMode !== '') {
-        document.querySelector(`input[name="run_mode"][value="${runMode}"]`).checked = true;
+        const runModeElement = document.querySelector(`input[name="run_mode"][value="${runMode}"]`);
+        if (runModeElement) {
+            runModeElement.checked = true;
+        }
     }
 
     const shuffle = getCookie('shuffle');
     if (shuffle !== '') {
-        document.getElementById('shuffle_playlist').checked = shuffle === 'true';
+        const shuffleElement = document.getElementById('shuffle_playlist');
+        if (shuffleElement) {
+            shuffleElement.checked = shuffle === 'true';
+        }
     }
 
     const apiKey = getCookie('api_key');
     if (apiKey !== '') {
-        document.getElementById('api-key').value = apiKey;
+        const apiKeyElement = document.getElementById('api-key');
+        if (apiKeyElement) {
+            apiKeyElement.value = apiKey;
+        }
     }
 
     logMessage('Settings loaded from cookies.');

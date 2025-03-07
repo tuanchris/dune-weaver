@@ -200,7 +200,7 @@ async function generateOpenAIImage(apiKey, prompt) {
         processingIndicator.classList.add('visible');
         try {
 
-            const fullPrompt = `Draw an image of the following: ${prompt}. But make it a simple black silhouette on a white background, with very minimal detail and no additional content in the image, so I can use it for a computer icon.`;
+            const fullPrompt = `Draw an image of the following: ${prompt}. Make the line black and the background white. The drawing should be a single line, don't add any additional details to the image.`;
 
             const response = await fetch('https://api.openai.com/v1/images/generations', {
                 method: 'POST',
@@ -303,13 +303,23 @@ window.uploadThetaRho = async function() {
 };
 
 // Remove existing event listener and add a new one
-document.getElementById('gen-image-button').addEventListener('click', function() {    
-    let apiKey = document.getElementById('api-key').value;
-    const prompt = document.getElementById('prompt').value + (document.getElementById('googly-eyes').checked ? ' with disproportionately large googly eyes' : '');
+document.getElementById('gen-image-button')?.addEventListener('click', function() {    
+    let apiKey = document.getElementById('api-key')?.value || '';
+    const googlyEyes = document.getElementById('googly-eyes');
+    const promptElement = document.getElementById('prompt');
+    
+    // Add null checks
+    const promptValue = promptElement?.value || '';
+    const googlyEyesChecked = googlyEyes?.checked || false;
+    
+    const prompt = promptValue + (googlyEyesChecked ? ' with disproportionately large googly eyes' : '');
+    
     // Show the converter dialog
     const overlay = document.getElementById('image-converter');
-    overlay.classList.remove('hidden');
-    // Initialize the UI elements
-    initializeUI();
-    generateOpenAIImage(apiKey, prompt);
+    if (overlay) {
+        overlay.classList.remove('hidden');
+        // Initialize the UI elements
+        initializeUI();
+        generateOpenAIImage(apiKey, prompt);
+    }
 });
