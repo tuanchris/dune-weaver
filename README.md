@@ -69,11 +69,39 @@ This correction ensures that the table accurately follows the intended path with
 
 ---
 
-## Software Architecture
-The project is built on a combination of C++, Python, and JavaScript:
-1. **Motor Control (C++)**:
-   - Runs on the ESP32 or Arduino Uno and handles precise motor movements.
-2. **Backend Communication (Python)**:
-   - Runs on a computer or Raspberry Pi, sending pattern data to the ESP32 or Arduino Uno.
-3. **Web Interface (JavaScript/HTML/CSS)**:
-   - Provides an intuitive frontend for users to control the sand table remotely.
+Each pattern file consists of lines with theta and rho values (in degrees and normalized units, respectively), separated by a space. Comments start with #.
+
+Example:
+
+```
+# Example pattern
+0 0.5
+90 0.7
+180 0.5
+270 0.7
+```
+
+## API Endpoints
+
+The project exposes RESTful APIs for various actions. Here are some key endpoints:
+ • List Serial Ports: /list_serial_ports (GET)
+ • Connect to Serial: /connect (POST)
+ • Upload Pattern: /upload_theta_rho (POST)
+ • Run Pattern: /run_theta_rho (POST)
+ • Stop Execution: /stop_execution (POST)
+
+## Project Structure
+
+```
+dune-weaver/
+├── app.py              # Flask app and core logic
+├── patterns/           # Directory for theta-rho files
+├── static/             # Static files (CSS, JS)
+├── templates/          # HTML templates for the web interface
+├── README.md           # Project documentation
+├── requirements.txt    # Python dependencies
+└── arduino/            # Arduino firmware
+```
+
+**Happy sand drawing with Dune Weaver! 🌟**
+

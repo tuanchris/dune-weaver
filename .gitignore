@@ -4,4 +4,5 @@ __pycache__/
 *.pyo
 .env
 .idea
-playlists.json
+*.json
+.venv/
