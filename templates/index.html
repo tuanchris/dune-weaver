@@ -19,7 +19,7 @@
 </header>
 <div class="app">
     <!-- Home Tab -->
-    <main class="tab-content" id="patterns-tab">
+    <main class="tab-content" id="patterns-tab" data-group="main">
         <section class="main">
             <div class="header">
                 <h2>Patterns</h2>
@@ -250,7 +250,7 @@
     </main>
 
     <!-- Playlists Tab -->
-    <main class="tab-content" id="playlists-tab">
+    <main class="tab-content" id="playlists-tab" data-group="main">
         <section>
             <div class="header">
                 <h2>Playlists</h2>
@@ -373,7 +373,7 @@
     </main>
 
     <!-- Device / Settings Tab -->
-    <main class="tab-content" id="settings-tab">
+    <main class="tab-content" id="settings-tab" data-group="main">
         <section class="main">
             <div class="header">
                 <h2>Device Controls</h2>
@@ -553,9 +553,9 @@
             <div id="play_progress_text">0%</div>
         </div>
     </section>
-    <button class="tab-button" onclick="switchTab('patterns')" id="nav-patterns">Patterns</button>
-    <button class="tab-button" onclick="switchTab('playlists')" id="nav-playlists">Playlists</button>
-    <button class="tab-button" onclick="switchTab('settings')" id="nav-settings">Device</button>
+    <button class="tab-button" onclick="switchTab('patterns')" id="nav-patterns" data-group="main">Patterns</button>
+    <button class="tab-button" onclick="switchTab('playlists')" id="nav-playlists" data-group="main">Playlists</button>
+    <button class="tab-button" onclick="switchTab('settings')" id="nav-settings" data-group="main">Device</button>
 </nav>
 
 <div id="status_log">

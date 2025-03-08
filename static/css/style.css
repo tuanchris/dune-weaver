@@ -418,7 +418,6 @@ button.warning:hover{}
 
 .tab-content.active {
     display: flex;
-    position: relative;
     flex-direction: column;
 }
 
@@ -1539,4 +1538,15 @@ input[type="number"]:focus {
 :root[data-theme="dark"] .header #open-settings-button:hover {
     background: var(--color-success-dark);
     color: var(--text-primary-dark);
+}
+
+/* Make sure on mobile screens that only active tab content is shown */
+@media screen and (max-width: 1023px) {
+    .app > .tab-content {
+        display: none;
+    }
+    
+    .app > .tab-content.active {
+        display: flex;
+    }
 }
