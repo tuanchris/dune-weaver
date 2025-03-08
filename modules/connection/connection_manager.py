@@ -357,13 +357,16 @@ def get_machine_position(timeout=5):
     logger.warning("Timeout reached waiting for machine position")
     return None, None
 
-def update_machine_position():     
+def update_machine_position():
     if (state.conn.is_connected() if state.conn else False):
-        logger.info('Saving machine position')
-        state.machine_x, state.machine_y = get_machine_position()
-        state.save()
-        logger.info(f'Machine position saved: {state.machine_x}, {state.machine_y}')
-    
+        try:
+            logger.info('Saving machine position')
+            state.machine_x, state.machine_y = get_machine_position()
+            state.save()
+            logger.info(f'Machine position saved: {state.machine_x}, {state.machine_y}')
+        except Exception as e:
+            logger.error(f"Error updating machine position: {e}")
+
 def restart_connection(homing=False):
     """
     Restart the connection. If a connection exists, close it and attempt to establish a new one.

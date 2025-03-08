@@ -1500,7 +1500,7 @@ function attachFullScreenListeners() {
             const stickySection = this.closest('.sticky'); // Find the closest sticky section
             if (stickySection) {
                 // Close all other sections
-                document.querySelectorAll('.sticky:not(#currently-playing-container)').forEach(section => {
+                document.querySelectorAll('.sticky:not(#currently-playing-container):not(#image-converter)').forEach(section => {
                     if (section !== stickySection) {
                         section.classList.remove('fullscreen');
                         section.classList.remove('visible');
@@ -1573,33 +1573,55 @@ function saveSettingsToCookies() {
     const clearPattern = document.getElementById('clear_pattern').value;
     const runMode = document.querySelector('input[name="run_mode"]:checked').value;
     const shuffle = document.getElementById('shuffle_playlist').checked;
+    const apiKey = document.getElementById('api-key').value;
 
     setCookie('pause_time', pauseTime, 365);
     setCookie('clear_pattern', clearPattern, 365);
     setCookie('run_mode', runMode, 365);
     setCookie('shuffle', shuffle, 365);
+    setCookie('api_key', apiKey, 365);
 }
 
 // Load settings from cookies
 function loadSettingsFromCookies() {
     const pauseTime = getCookie('pause_time');
     if (pauseTime !== '') {
-        document.getElementById('pause_time').value = pauseTime;
+        const pauseTimeElement = document.getElementById('pause_time');
+        if (pauseTimeElement) {
+            pauseTimeElement.value = pauseTime;
+        }
     }
 
     const clearPattern = getCookie('clear_pattern');
     if (clearPattern !== '') {
-        document.getElementById('clear_pattern').value = clearPattern;
+        const clearPatternElement = document.getElementById('clear_pattern');
+        if (clearPatternElement) {
+            clearPatternElement.value = clearPattern;
+        }
     }
 
     const runMode = getCookie('run_mode');
     if (runMode !== '') {
-        document.querySelector(`input[name="run_mode"][value="${runMode}"]`).checked = true;
+        const runModeElement = document.querySelector(`input[name="run_mode"][value="${runMode}"]`);
+        if (runModeElement) {
+            runModeElement.checked = true;
+        }
     }
 
     const shuffle = getCookie('shuffle');
     if (shuffle !== '') {
-        document.getElementById('shuffle_playlist').checked = shuffle === 'true';
+        const shuffleElement = document.getElementById('shuffle_playlist');
+        if (shuffleElement) {
+            shuffleElement.checked = shuffle === 'true';
+        }
+    }
+
+    const apiKey = getCookie('api_key');
+    if (apiKey !== '') {
+        const apiKeyElement = document.getElementById('api-key');
+        if (apiKeyElement) {
+            apiKeyElement.value = apiKey;
+        }
     }
 
     logMessage('Settings loaded from cookies.');
@@ -1614,16 +1636,17 @@ function attachSettingsSaveListeners() {
         input.addEventListener('change', saveSettingsToCookies);
     });
     document.getElementById('shuffle_playlist').addEventListener('change', saveSettingsToCookies);
+    document.getElementById('api-key').addEventListener('change', saveSettingsToCookies);
 }
 
 
 // Tab switching logic with cookie storage
-function switchTab(tabName) {
-    // Store the active tab in a cookie
-    setCookie('activeTab', tabName, 365); // Store for 7 days
+function switchTab(tabName, tabGroup = 'main') {
+    // Store the active tab in a cookie (per tab group)
+    setCookie(`activeTab-${tabGroup}`, tabName, 365);
 
-    // Deactivate all tab content
-    document.querySelectorAll('.tab-content').forEach(tab => {
+    // Deactivate all tab content in the specific group
+    document.querySelectorAll(`.tab-content[data-group="${tabGroup}"]`).forEach(tab => {
         tab.classList.remove('active');
     });
 
@@ -1635,8 +1658,8 @@ function switchTab(tabName) {
         console.error(`Error: Tab "${tabName}" not found.`);
     }
 
-    // Deactivate all nav buttons
-    document.querySelectorAll('.bottom-nav .tab-button').forEach(button => {
+    // Deactivate all buttons in this group
+    document.querySelectorAll(`.tab-button[data-group="${tabGroup}"]`).forEach(button => {
         button.classList.remove('active');
     });
 
@@ -1869,8 +1892,10 @@ function disconnectStatusWebSocket() {
 
 // Replace the polling mechanism with WebSocket
 document.addEventListener('DOMContentLoaded', () => {
-    const activeTab = getCookie('activeTab') || 'patterns'; // Default to 'patterns' tab
-    switchTab(activeTab); // Load the active tab
+    const activeMainTab = getCookie('activeTab-main') || 'patterns';
+    switchTab(activeMainTab, 'main');
+    const activeImageConverterTab = getCookie('activeTab-image-converter') || 'dot';
+    switchTab(activeImageConverterTab, 'image-converter');
     checkSerialStatus(); // Check connection status
     loadThetaRhoFiles(); // Load files on page load
     loadAllPlaylists(); // Load all playlists on page load
@@ -1901,8 +1926,6 @@ const HIDE_DELAY = 5000; // 1 second delay before hiding
 let lastPlayedFile = null;
 
 function updateCurrentlyPlayingUI(status) {
-    console.log('Updating UI with status:', status);
-
     // Get all required DOM elements once
     const container = document.getElementById('currently-playing-container');
     const fileNameElement = document.getElementById('currently-playing-file');

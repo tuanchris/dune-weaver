@@ -12,8 +12,8 @@ axes:
   shared_stepper_disable_pin: i2so.0
   x:
     steps_per_mm: 320
-    max_rate_mm_per_min: 30
-    acceleration_mm_per_sec2: 300
+    max_rate_mm_per_min: 2000
+    acceleration_mm_per_sec2: 500
     max_travel_mm: 325
     soft_limits: false
     motor0:
@@ -32,7 +32,7 @@ axes:
   y:
     steps_per_mm: 320
     max_rate_mm_per_min: 2000
-    acceleration_mm_per_sec2: 30
+    acceleration_mm_per_sec2: 500
     max_travel_mm: 10
     soft_limits: false
     motor0:
