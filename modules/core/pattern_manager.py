@@ -183,6 +183,24 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
             return False
         return table_patterns[clear_pattern_mode]
 
+def is_clear_pattern(file_path):
+    """Check if a file path is a clear pattern file."""
+    # Get all possible clear pattern files for all table types
+    clear_patterns = []
+    for table_type in ['dune_weaver', 'dune_weaver_mini', 'dune_weaver_pro']:
+        clear_patterns.extend([
+            f'./patterns/clear_from_out{("_" + table_type.split("_")[-1]) if table_type != "dune_weaver" else ""}.thr',
+            f'./patterns/clear_from_in{("_" + table_type.split("_")[-1]) if table_type != "dune_weaver" else ""}.thr',
+            f'./patterns/clear_sideway{("_" + table_type.split("_")[-1]) if table_type != "dune_weaver" else ""}.thr'
+        ])
+    
+    # Normalize paths for comparison
+    normalized_path = os.path.normpath(file_path)
+    normalized_clear_patterns = [os.path.normpath(p) for p in clear_patterns]
+    
+    # Check if the file path matches any clear pattern path
+    return normalized_path in normalized_clear_patterns
+
 async def run_theta_rho_file(file_path, is_playlist=False):
     """Run a theta-rho file by sending data in optimized batches with tqdm ETA tracking."""
     if pattern_lock.locked():
@@ -352,13 +370,17 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
 
                 # Handle pause between patterns
                 if idx < len(pattern_sequence) - 1 and not state.stop_requested and pause_time > 0 and not state.skip_requested:
-                    logger.info(f"Pausing for {pause_time} seconds")
-                    pause_start = time.time()
-                    while time.time() - pause_start < pause_time:
-                        if state.skip_requested:
-                            logger.info("Pause interrupted by stop/skip request")
-                            break
-                        await asyncio.sleep(1)  # Check every 100ms
+                    # Check if current pattern is a clear pattern
+                    if is_clear_pattern(file_path):
+                        logger.info("Skipping pause after clear pattern")
+                    else:
+                        logger.info(f"Pausing for {pause_time} seconds")
+                        pause_start = time.time()
+                        while time.time() - pause_start < pause_time:
+                            if state.skip_requested:
+                                logger.info("Pause interrupted by stop/skip request")
+                                break
+                            await asyncio.sleep(1)  # Check every 100ms
                     
                 state.skip_requested = False
 
