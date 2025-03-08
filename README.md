@@ -4,78 +4,70 @@
 
 ![Dune Weaver Gif](./static/IMG_7404.gif)
 
-Dune Weaver is a project for a mesmerizing, motorized sand table that draws intricate patterns in sand using a steel ball moved by a magnet. This project combines hardware and software, leveraging an Arduino for hardware control and a Python/Flask-based web interface for interaction.
+Dune Weaver is a project for a mesmerizing, motorized sand table that draws intricate patterns in sand using a steel ball moved by a magnet. This project combines hardware and software, leveraging an Arduino for hardware control and a Python/Flask-based web interface for interaction. 
 
-## Features
+### **Check out the wiki [here](https://github.com/tuanchris/dune-weaver/wiki/Wiring) for more details.**
 
-- **Theta-Rho Coordinate System**: Supports theta-rho pattern files to generate smooth, intricate designs.
-- **Web-Based Control**: Easily upload, preview, and execute patterns via a Flask-based web interface.
-- **Batch Execution**: Optimized batching for smoother table movement.
-- **Pre-Execution Actions**: Configurable pre-execution clearing actions.
-- **Arduino Integration**: Communicates with the Arduino over serial for precise movement control.
-- **Real-Time Monitoring**: Continuously reads and displays Arduino responses.
+---
 
-## Technologies Used
+The Dune Weaver comes in two versions:
 
-- **Python**: Backend application logic and web server.
-- **Flask**: Lightweight web framework for serving the UI and handling API calls.
-- **Arduino**: Handles the motor control for the sand table.
-- **Serial Communication**: Facilitates communication between Python and the Arduino.
+1. **Small Version (Mini Dune Weaver)**:
+   - Uses two **28BYJ-48 DC 5V stepper motors**.
+   - Controlled via **ULN2003 motor drivers**.
+   - Powered by an **ESP32**.
 
-## Setup Instructions
+2. **Larger Version (Dune Weaver)**:
+   - Uses two **NEMA 17 or NEMA 23 stepper motors**.
+   - Controlled via **TMC2209 or DRV8825 motor drivers**.
+   - Powered by an **Arduino UNO with a CNC shield**.
 
-### Hardware Requirements
+Each version operates similarly but differs in power, precision, and construction cost.
 
-1. A sand table with:
-   - A stepper motor
-   - Magnet for moving the steel ball
-2. Arduino Uno (or compatible microcontroller).
-3. DRV8825 motor driver (or an alternative for quieter operation).
-4. Power supply and necessary wiring.
-5. Computer with USB connection to the Arduino.
+The sand table consists of two main bases:
+1. **Lower Base**: Houses all the electronic components, including motor drivers, and power connections.
+2. **Upper Base**: Contains the sand and the marble, which is moved by a magnet beneath.
 
-### Software Requirements
+Both versions of the table use two stepper motors:
 
-![UI](./static/UI.png)
+- **Radial Axis Motor**: Controls the in-and-out movement of the arm.
+- **Angular Axis Motor**: Controls the rotational movement of the arm.
 
-- Python 3.7+
-- Arduino IDE
-- Flask
-- Serial communication libraries
+The small version uses **28BYJ-48 motors** driven by **ULN2003 drivers**, while the larger version uses **NEMA 17 or NEMA 23 motors** with **TMC2209 or DRV8825 drivers**.: Controls the in-and-out movement of the arm.
+- **Angular Axis Motor**: Controls the rotational movement of the arm.
 
-### Installation Steps
+Each motor is connected to a motor driver that dictates step and direction. The motor drivers are, in turn, connected to the ESP32 board, which serves as the system's main controller. The entire table is powered by a single USB cable attached to the ESP32.
 
-1. Clone the repository:
+---
 
-   ```bash
-   git clone https://github.com/tuanchris/dune-weaver.git
-   cd dune-weaver
-   ```
+## Coordinate System
+Unlike traditional CNC machines that use an **X-Y coordinate system**, the sand table operates on a **theta-rho (θ, ρ) coordinate system**:
+- **Theta (θ)**: Represents the angular position of the arm, with **2π radians (360 degrees) for one full revolution**.
+- **Rho (ρ)**: Represents the radial distance of the marble from the center, with **0 at the center and 1 at the perimeter**.
 
-2. Install the required Python libraries:
+This system allows the table to create intricate radial designs that differ significantly from traditional Cartesian-based CNC machines.
 
-    ```bash
-    pip install -r requirements.txt
-    ```
+---
 
-3. Set up your Arduino:
-• Flash the Arduino with the provided firmware to handle serial commands.
-• Connect the Arduino to your computer.
-4. Run the Flask server:
+## Homing and Position Tracking
+Unlike conventional CNC machines, the sand table **does not have a limit switch** for homing. Instead, it uses a **crash-homing method**:
+1. Upon power-on, the radial axis moves inward to its physical limit, ensuring the marble is positioned at the center.
+2. The software then assumes this as the **home position (0,0 in polar coordinates)**.
+3. The system continuously tracks all executed coordinates to maintain an accurate record of the marble’s position.
 
-    ```bash
-    python app.py
-    ```
+---
 
-5. Access the web interface:
-Open your browser and navigate to <http://localhost:8080>.
+## Mechanical Constraints and Software Adjustments
+### Coupled Angular and Radial Motion
+Due to the **hardware design choice**, the angular axis **does not move independently**. This means that when the angular motor moves one full revolution, the radial axis **also moves slightly**—either inwards or outwards, depending on the rotation direction.
 
-## File Management
+To counteract this behavior, the software:
+- Monitors how many revolutions the angular axis has moved.
+- Applies an offset to the radial axis to compensate for unintended movements.
 
- • Patterns: Save .thr files (theta-rho coordinate files) in the patterns/ directory.
- • Uploads: Upload patterns via the web interface.
+This correction ensures that the table accurately follows the intended path without accumulating errors over time.
 
-## Pattern File Format
+---
 
 Each pattern file consists of lines with theta and rho values (in degrees and normalized units, respectively), separated by a space. Comments start with #.
 
@@ -112,3 +104,4 @@ dune-weaver/
 ```
 
 **Happy sand drawing with Dune Weaver! 🌟**
+
