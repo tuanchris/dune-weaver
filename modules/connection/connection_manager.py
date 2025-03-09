@@ -218,7 +218,7 @@ def parse_machine_position(response: str):
 def send_grbl_coordinates(x, y, speed=600, timeout=2, home=False):
     """
     Send a G-code command to FluidNC and wait for an 'ok' response.
-    If no response after 5 seconds total, sets state to stop and disconnects.
+    If no response after set timeout, sets state to stop and disconnects.
     """
     logger.debug(f"Sending G-code: X{x} Y{y} at F{speed}")
     
@@ -239,7 +239,18 @@ def send_grbl_coordinates(x, y, speed=600, timeout=2, home=False):
                     logger.debug("Command execution confirmed.")
                     return
         except Exception as e:
-            logger.warning(f"Error sending command: {str(e)}")
+            # Store the error string inside the exception block
+            error_str = str(e)
+            logger.warning(f"Error sending command: {error_str}")
+            
+            # Immediately return for device not configured errors
+            if "Device not configured" in error_str or "Errno 6" in error_str:
+                logger.error(f"Device configuration error detected: {error_str}")
+                state.stop_requested = True
+                state.conn = None
+                state.is_connected = False
+                logger.info("Connection marked as disconnected due to device error")
+                return False
             
         # Check if we've exceeded our overall timeout
         if time.time() - overall_start_time >= max_total_attempt_time:
@@ -248,14 +259,19 @@ def send_grbl_coordinates(x, y, speed=600, timeout=2, home=False):
         logger.warning(f"No 'ok' received for X{x} Y{y}, speed {speed}. Retrying...")
         time.sleep(0.1)
     
-    # If we reach here, the 5-second timeout has occurred
+    # If we reach here, the timeout has occurred
     logger.error(f"Failed to receive 'ok' response after {max_total_attempt_time} seconds. Stopping and disconnecting.")
     
     # Set state to stop
     state.stop_requested = True
     
     # Set connection status to disconnected
-    state.conn = None
+    if state.conn:
+        try:
+            state.conn.disconnect()
+        except:
+            pass
+        state.conn = None
         
     # Update the state connection status
     state.is_connected = False
