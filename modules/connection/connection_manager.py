@@ -224,7 +224,7 @@ def send_grbl_coordinates(x, y, speed=600, timeout=2, home=False):
     
     # Track overall attempt time
     overall_start_time = time.time()
-    max_total_attempt_time = 10 # Maximum total seconds to try
+    max_total_attempt_time = 120 # Maximum total seconds to try
     
     while time.time() - overall_start_time < max_total_attempt_time:
         try:
