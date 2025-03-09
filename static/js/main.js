@@ -801,17 +801,17 @@ async function checkForUpdates() {
         const data = await response.json();
 
         // Handle updates available logic
-        if (data.updates_available) {
-            const updateButton = document.getElementById('update-software-btn');
-            const updateLinkElement = document.getElementById('update_link');
-            const tagLink = `https://github.com/tuanchris/dune-weaver/releases/tag/${data.latest_remote_tag}`;
+        // if (data.updates_available) {
+        //     const updateButton = document.getElementById('update-software-btn');
+        //     const updateLinkElement = document.getElementById('update_link');
+        //     const tagLink = `https://github.com/tuanchris/dune-weaver/releases/tag/${data.latest_remote_tag}`;
 
-            updateButton.classList.remove('hidden'); // Show the button
-            logMessage("Software Update Available", LOG_TYPE.INFO, 'open-settings-button')
+        //     updateButton.classList.remove('hidden'); // Show the button
+        //     logMessage("Software Update Available", LOG_TYPE.INFO, 'open-settings-button')
 
-            updateLinkElement.innerHTML = `<a href="${tagLink}" target="_blank">View Release Notes </a>`;
-            updateLinkElement.classList.remove('hidden'); // Show the link
-        }
+        //     updateLinkElement.innerHTML = `<a href="${tagLink}" target="_blank">View Release Notes </a>`;
+        //     updateLinkElement.classList.remove('hidden'); // Show the link
+        // }
 
         // Update current and latest version in the UI
         const currentVersionElem = document.getElementById('current_git_version');
