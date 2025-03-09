@@ -288,6 +288,10 @@ async def run_theta_rho_file(file_path, is_playlist=False):
         # Give WebSocket a chance to send the final update
         await asyncio.sleep(0.1)
         
+        if not state.conn:
+            logger.error("Connection is not disconnected. Stopping pattern execution.")
+            return
+            
         connection_manager.check_idle()
         
         # Only clear state if not part of a playlist

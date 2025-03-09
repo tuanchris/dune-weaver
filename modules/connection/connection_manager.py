@@ -218,84 +218,150 @@ def parse_machine_position(response: str):
 def send_grbl_coordinates(x, y, speed=600, timeout=2, home=False):
     """
     Send a G-code command to FluidNC and wait for an 'ok' response.
+    If no response after 5 seconds total, sets state to stop and disconnects.
     """
     logger.debug(f"Sending G-code: X{x} Y{y} at F{speed}")
-    while True:
+    
+    # Track overall attempt time
+    overall_start_time = time.time()
+    max_total_attempt_time = 10 # Maximum total seconds to try
+    
+    while time.time() - overall_start_time < max_total_attempt_time:
         try:
             gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 X{x} Y{y} F{speed}"
             state.conn.send(gcode + "\n")
             logger.debug(f"Sent command: {gcode}")
             start_time = time.time()
-            while time.time() - start_time < timeout:
+            while time.time() - start_time < timeout and time.time() - overall_start_time < max_total_attempt_time:
                 response = state.conn.readline()
                 logger.debug(f"Response: {response}")
                 if response.lower() == "ok":
                     logger.debug("Command execution confirmed.")
                     return
         except Exception as e:
-            logger.warning(f"No 'ok' received for X{x} Y{y}, speed {speed}. Retrying in 1s...")
+            logger.warning(f"Error sending command: {str(e)}")
+            
+        # Check if we've exceeded our overall timeout
+        if time.time() - overall_start_time >= max_total_attempt_time:
+            break
+            
+        logger.warning(f"No 'ok' received for X{x} Y{y}, speed {speed}. Retrying...")
         time.sleep(0.1)
+    
+    # If we reach here, the 5-second timeout has occurred
+    logger.error(f"Failed to receive 'ok' response after {max_total_attempt_time} seconds. Stopping and disconnecting.")
+    
+    # Set state to stop
+    state.stop_requested = True
+    
+    # Set connection status to disconnected
+    state.conn = None
         
+    # Update the state connection status
+    state.is_connected = False
+    logger.info("Connection marked as disconnected due to timeout")
+    return False
 
 def get_machine_steps(timeout=10):
     """
-    Send "$$" to retrieve machine settings and update state.
-    Returns True if the expected configuration is received, or False if it times out.
+    Get machine steps/mm from the GRBL controller.
+    Returns True if successful, False otherwise.
     """
-    if not (state.conn.is_connected() if state.conn else False):
-        logger.error("Connection is not established.")
+    if not state.conn or not state.conn.is_connected():
+        logger.error("Cannot get machine steps: No connection available")
         return False
 
-    # Send the command once
-    state.conn.send("$$\n")
+    x_steps_per_mm = None
+    y_steps_per_mm = None
+    gear_ratio = None
     start_time = time.time()
-    x_steps_per_mm = y_steps_per_mm = gear_ratio = None
 
-    while time.time() - start_time < timeout:
+    # Clear any pending data in the buffer
+    try:
+        while state.conn.in_waiting() > 0:
+            state.conn.readline()
+    except Exception as e:
+        logger.warning(f"Error clearing buffer: {e}")
+
+    # Send the command to request all settings
+    try:
+        logger.info("Requesting GRBL settings with $$ command")
+        state.conn.send("$$\n")
+        time.sleep(0.5)  # Give GRBL a moment to process and respond
+    except Exception as e:
+        logger.error(f"Error sending $$ command: {e}")
+        return False
+
+    # Wait for and process responses
+    settings_complete = False
+    while time.time() - start_time < timeout and not settings_complete:
         try:
             # Attempt to read a line from the connection
-            response = state.conn.readline()
-            logger.debug(response)
-            for line in response.splitlines():
-                logger.debug(f"Config response: {line}")
-                if line.startswith("$100="):
-                    x_steps_per_mm = float(line.split("=")[1])
-                    state.x_steps_per_mm = x_steps_per_mm
-                elif line.startswith("$101="):
-                    y_steps_per_mm = float(line.split("=")[1])
-                    state.y_steps_per_mm = y_steps_per_mm
-                elif line.startswith("$131="):
-                    gear_ratio = float(line.split("=")[1])
-                    state.gear_ratio = gear_ratio
-                elif line.startswith("$22="):
-                    # $22 reports if the homing cycle is enabled
-                    # returns 0 if disabled, 1 if enabled
-                    homing = int(line.split('=')[1])
-                    state.homing = homing
-            
-            # If all parameters are received, exit early
-            if x_steps_per_mm is not None and y_steps_per_mm is not None and gear_ratio is not None:
-                if y_steps_per_mm == 180:
-                    state.table_type = 'dune_weaver_mini'
-                elif y_steps_per_mm == 320:
-                    state.table_type = 'dune_weaver_pro'
-                elif y_steps_per_mm == 287:
-                    state.table_type = 'dune_weaver'
-                else:
-                    state.table_type = None
-                    logger.warning(f"Unknown table type. Check connection_manager.py")
-                logger.info(f"Machine type: {state.table_type}")
-                return True
+            if state.conn.in_waiting() > 0:
+                response = state.conn.readline()
+                logger.debug(f"Raw response: {response}")
+                
+                # Process the line
+                if response.strip():  # Only process non-empty lines
+                    for line in response.splitlines():
+                        line = line.strip()
+                        logger.debug(f"Config response: {line}")
+                        if line.startswith("$100="):
+                            x_steps_per_mm = float(line.split("=")[1])
+                            state.x_steps_per_mm = x_steps_per_mm
+                            logger.info(f"X steps per mm: {x_steps_per_mm}")
+                        elif line.startswith("$101="):
+                            y_steps_per_mm = float(line.split("=")[1])
+                            state.y_steps_per_mm = y_steps_per_mm
+                            logger.info(f"Y steps per mm: {y_steps_per_mm}")
+                        elif line.startswith("$131="):
+                            gear_ratio = float(line.split("=")[1])
+                            state.gear_ratio = gear_ratio
+                            logger.info(f"Gear ratio: {gear_ratio}")
+                        elif line.startswith("$22="):
+                            # $22 reports if the homing cycle is enabled
+                            # returns 0 if disabled, 1 if enabled
+                            homing = int(line.split('=')[1])
+                            state.homing = homing
+                            logger.info(f"Homing enabled: {homing}")
+                
+                # Check if we've received all the settings we need
+                if x_steps_per_mm is not None and y_steps_per_mm is not None and gear_ratio is not None:
+                    settings_complete = True
+            else:
+                # No data waiting, small sleep to prevent CPU thrashing
+                time.sleep(0.1)
+                
+                # If it's taking too long, try sending the command again after 3 seconds
+                elapsed = time.time() - start_time
+                if elapsed > 3 and elapsed < 4:
+                    logger.warning("No response yet, sending $$ command again")
+                    state.conn.send("$$\n")
 
         except Exception as e:
             logger.error(f"Error getting machine steps: {e}")
-            return False
-
-        # Use a smaller sleep to poll more frequently
-        time.sleep(0.1)
-
-    logger.error("Timeout reached waiting for machine steps")
-    return False
+            time.sleep(0.5)
+    
+    # Process results and determine table type
+    if settings_complete:
+        if y_steps_per_mm == 180:
+            state.table_type = 'dune_weaver_mini'
+        elif y_steps_per_mm == 320:
+            state.table_type = 'dune_weaver_pro'
+        elif y_steps_per_mm == 287:
+            state.table_type = 'dune_weaver'
+        else:
+            state.table_type = None
+            logger.warning(f"Unknown table type with Y steps/mm: {y_steps_per_mm}")
+        logger.info(f"Machine type detected: {state.table_type}")
+        return True
+    else:
+        missing = []
+        if x_steps_per_mm is None: missing.append("X steps/mm")
+        if y_steps_per_mm is None: missing.append("Y steps/mm")
+        if gear_ratio is None: missing.append("gear ratio")
+        logger.error(f"Failed to get all machine parameters after {timeout}s. Missing: {', '.join(missing)}")
+        return False
 
 def home():
     """
