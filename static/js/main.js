@@ -248,17 +248,39 @@ async function runThetaRho() {
     const preExecutionAction = document.getElementById('pre_execution').value;
 
     logMessage(`Running file: ${selectedFile} with pre-execution action: ${preExecutionAction}...`);
-    const response = await fetch('/run_theta_rho', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_name: selectedFile, pre_execution: preExecutionAction })
-    });
+    try {
+        const response = await fetch('/run_theta_rho', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                file_name: selectedFile, 
+                pre_execution: preExecutionAction 
+            })
+        });
 
-    const result = await response.json();
-    if (result.success) {
-        logMessage(`Pattern running: ${selectedFile}`, LOG_TYPE.SUCCESS);
-    } else {
-        logMessage(`Failed to run file: ${selectedFile}`,LOG_TYPE.ERROR);
+        const result = await response.json();
+        if (response.ok) {
+            // Connect WebSocket when starting a pattern
+            connectStatusWebSocket();
+            
+            // Show the currently playing UI immediately
+            document.body.classList.add('playing');
+            const currentlyPlayingFile = document.getElementById('currently-playing-file');
+            if (currentlyPlayingFile) {
+                currentlyPlayingFile.textContent = selectedFile.replace('./patterns/', '');
+            }
+            // Show initial preview
+            previewPattern(selectedFile.replace('./patterns/', ''), 'currently-playing-container');
+            logMessage(`Pattern running: ${selectedFile}`, LOG_TYPE.SUCCESS);
+        } else {
+            if (response.status === 409) {
+                logMessage("Cannot start pattern: Another pattern is already running", LOG_TYPE.WARNING);
+            } else {
+                logMessage(`Failed to run file: ${result.detail || 'Unknown error'}`, LOG_TYPE.ERROR);
+            }
+        }
+    } catch (error) {
+        logMessage(`Error running pattern: ${error.message}`, LOG_TYPE.ERROR);
     }
 }
 
@@ -364,7 +386,13 @@ async function previewPattern(fileName, containerId = 'pattern-preview-container
 
         const result = await response.json();
         if (result.success) {
-            const coordinates = result.coordinates;
+            // Mirror the theta values in the coordinates
+            const coordinates = result.coordinates.map(coord => [
+                (coord[0] < Math.PI) ? 
+                    Math.PI - coord[0] : // For first half
+                    3 * Math.PI - coord[0], // For second half
+                coord[1]
+            ]);
 
             // Render the pattern in the specified container
             const canvasId = containerId === 'currently-playing-container'
@@ -378,14 +406,14 @@ async function previewPattern(fileName, containerId = 'pattern-preview-container
 
             if (firstCoordElement) {
                 const firstCoord = coordinates[0];
-                firstCoordElement.textContent = `First Coordinate: θ=${firstCoord[0]}, ρ=${firstCoord[1]}`;
+                firstCoordElement.textContent = `First Coordinate: θ=${firstCoord[0].toFixed(2)}, ρ=${firstCoord[1].toFixed(2)}`;
             } else {
                 logMessage('First coordinate element not found.', LOG_TYPE.WARNING);
             }
 
             if (lastCoordElement) {
                 const lastCoord = coordinates[coordinates.length - 1];
-                lastCoordElement.textContent = `Last Coordinate: θ=${lastCoord[0]}, ρ=${lastCoord[1]}`;
+                lastCoordElement.textContent = `Last Coordinate: θ=${lastCoord[0].toFixed(2)}, ρ=${lastCoord[1].toFixed(2)}`;
             } else {
                 logMessage('Last coordinate element not found.', LOG_TYPE.WARNING);
             }
@@ -510,15 +538,102 @@ async function sendHomeCommand() {
 }
 
 async function runClearIn() {
-    await runFile('clear_from_in.thr');
+    logMessage('Running clear from center pattern...', LOG_TYPE.INFO);
+    try {
+        const response = await fetch('/run_theta_rho', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                file_name: 'clear_from_in.thr',
+                pre_execution: 'none'
+            })
+        });
+        
+        if (!response.ok) {
+            if (response.status === 409) {
+                logMessage('Cannot start pattern: Another pattern is already running', LOG_TYPE.WARNING);
+                return;
+            }
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (result.success) {
+            connectStatusWebSocket();
+            document.body.classList.add('playing');
+            logMessage('Clear from center pattern started', LOG_TYPE.SUCCESS);
+        } else {
+            logMessage('Failed to run clear pattern', LOG_TYPE.ERROR);
+        }
+    } catch (error) {
+        logMessage(`Error running clear pattern: ${error}`, LOG_TYPE.ERROR);
+    }
 }
 
 async function runClearOut() {
-    await runFile('clear_from_out.thr');
+    logMessage('Running clear from perimeter pattern...', LOG_TYPE.INFO);
+    try {
+        const response = await fetch('/run_theta_rho', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                file_name: 'clear_from_out.thr',
+                pre_execution: 'none'
+            })
+        });
+        
+        if (!response.ok) {
+            if (response.status === 409) {
+                logMessage('Cannot start pattern: Another pattern is already running', LOG_TYPE.WARNING);
+                return;
+            }
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (result.success) {
+            connectStatusWebSocket();
+            document.body.classList.add('playing');
+            logMessage('Clear from perimeter pattern started', LOG_TYPE.SUCCESS);
+        } else {
+            logMessage('Failed to run clear pattern', LOG_TYPE.ERROR);
+        }
+    } catch (error) {
+        logMessage(`Error running clear pattern: ${error}`, LOG_TYPE.ERROR);
+    }
 }
 
 async function runClearSide() {
-    await runFile('clear_sideway.thr');
+    logMessage('Running clear sideways pattern...', LOG_TYPE.INFO);
+    try {
+        const response = await fetch('/run_theta_rho', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                file_name: 'clear_sideway.thr',
+                pre_execution: 'none'
+            })
+        });
+        
+        if (!response.ok) {
+            if (response.status === 409) {
+                logMessage('Cannot start pattern: Another pattern is already running', LOG_TYPE.WARNING);
+                return;
+            }
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (result.success) {
+            connectStatusWebSocket();
+            document.body.classList.add('playing');
+            logMessage('Clear sideways pattern started', LOG_TYPE.SUCCESS);
+        } else {
+            logMessage('Failed to run clear pattern', LOG_TYPE.ERROR);
+        }
+    } catch (error) {
+        logMessage(`Error running clear pattern: ${error}`, LOG_TYPE.ERROR);
+    }
 }
 
 let scrollPosition = 0;
@@ -558,12 +673,12 @@ async function runFile(fileName) {
     }
 }
 
-// Serial Connection Status
+// Connection Status
 async function checkSerialStatus() {
     const response = await fetch('/serial_status');
     const status = await response.json();
     const statusElement = document.getElementById('serial_status');
-    const statusHeaderElement = document.getElementById('serial_status_header');
+    const statusHeaderElement = document.getElementById('connection_status_header');
     const serialPortsContainer = document.getElementById('serial_ports_container');
     const selectElement = document.getElementById('serial_ports');
 
@@ -598,7 +713,7 @@ async function checkSerialStatus() {
         statusElement.textContent = 'Not connected';
         statusElement.classList.add('not-connected');
         statusElement.classList.remove('connected');
-        logMessage('No active serial connection.');
+        logMessage('No active connection.');
 
         // Update header status
         statusHeaderElement.classList.add('not-connected');
@@ -631,7 +746,7 @@ async function loadSerialPorts() {
 
 async function connectSerial() {
     const port = document.getElementById('serial_ports').value;
-    const response = await fetch('/connect_serial', {
+    const response = await fetch('/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ port })
@@ -648,7 +763,7 @@ async function connectSerial() {
 }
 
 async function disconnectSerial() {
-    const response = await fetch('/disconnect_serial', { method: 'POST' });
+    const response = await fetch('/disconnect', { method: 'POST' });
     const result = await response.json();
     if (result.success) {
         logMessage('Serial port disconnected.', LOG_TYPE.SUCCESS);
@@ -661,7 +776,7 @@ async function disconnectSerial() {
 
 async function restartSerial() {
     const port = document.getElementById('serial_ports').value;
-    const response = await fetch('/restart_serial', {
+    const response = await fetch('/restart_connection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ port })
@@ -669,167 +784,34 @@ async function restartSerial() {
     const result = await response.json();
     if (result.success) {
         document.getElementById('serial_status').textContent = `Restarted connection to ${port}`;
-        logMessage('Serial connection restarted.', LOG_TYPE.SUCCESS);
+        logMessage('Connection restarted.', LOG_TYPE.SUCCESS);
 
         // No need to change visibility for restart
     } else {
-        logMessage(`Error restarting serial connection: ${result.error}`, LOG_TYPE.ERROR);
+        logMessage(`Error restarting Connection: ${result.error}`, LOG_TYPE.ERROR);
     }
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //  Firmware / Software Updater
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-async function fetchFirmwareInfo(motorType = null) {
-    const checkButton = document.getElementById("check_updates_button");
-    const motorTypeElement = document.getElementById("motor_type");
-    const currentVersionElement = document.getElementById("current_firmware_version");
-    const newVersionElement = document.getElementById("new_firmware_version");
-    const motorSelectionDiv = document.getElementById("motor_selection");
-    const updateButtonElement = document.getElementById("update_firmware_button");
-
-    try {
-        // Disable the button while fetching
-        checkButton.disabled = true;
-        checkButton.textContent = "Checking...";
-
-        // Prepare fetch options
-        const options = motorType
-            ? {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ motorType }),
-            }
-            : { method: "GET" };
-
-        const response = await fetch("/get_firmware_info", options);
-        const data = await response.json();
-        if (data.success) {
-            const { installedVersion, installedType, inoVersion, updateAvailable } = data;
-
-            // Handle unknown motor type
-            if (!installedType || installedType === "Unknown") {
-                motorSelectionDiv.style.display = "flex"; // Show the dropdown
-                updateButtonElement.style.display = "none"; // Hide update button
-                checkButton.style.display = "none";
-            } else {
-                // Display motor type
-                motorTypeElement.textContent = `Type: ${installedType || "Unknown"}`;
-                // Pre-select the correct motor type in the dropdown
-                const motorSelect = document.getElementById("manual_motor_type");
-                if (motorSelect) {
-                    Array.from(motorSelect.options).forEach(option => {
-                        option.selected = option.value === installedType;
-                    });
-                }
-
-                // Display firmware versions
-                currentVersionElement.textContent = `Current version: ${installedVersion || "Unknown"}`;
-
-                if (updateAvailable) {
-                    newVersionElement.textContent = `Latest version: ${inoVersion}`;
-                    updateButtonElement.style.display = "block";
-                    checkButton.style.display = "none";
-                } else {
-                    newVersionElement.textContent = "You are up to date!";
-                    updateButtonElement.style.display = "none";
-                    checkButton.style.display = "none";
-                }
-            }
-        } else {
-            logMessage("Could not fetch firmware info.", LOG_TYPE.WARNING);
-            logMessage(data.error, LOG_TYPE.DEBUG);
-        }
-    } catch (error) {
-        logMessage("Could not fetch firmware info.", LOG_TYPE.WARNING);
-        logMessage(error.message, LOG_TYPE.DEBUG);
-    } finally {
-        // Re-enable the button after fetching
-        checkButton.disabled = false;
-        checkButton.textContent = "Check for Updates";
-    }
-}
-
-function setMotorType() {
-    const selectElement = document.getElementById("manual_motor_type");
-    const selectedMotorType = selectElement.value;
-
-    if (!selectedMotorType) {
-        logMessage("Please select a motor type before proceeding.", LOG_TYPE.WARNING);
-        return;
-    }
-
-    const motorSelectionDiv = document.getElementById("motor_selection");
-    motorSelectionDiv.style.display = "none";
-
-    // Call fetchFirmwareInfo with the selected motor type
-    fetchFirmwareInfo(selectedMotorType);
-}
-
-async function updateFirmware() {
-    const button = document.getElementById("update_firmware_button");
-    const motorTypeDropdown = document.getElementById("manual_motor_type");
-    const motorType = motorTypeDropdown ? motorTypeDropdown.value : null;
-
-    if (!motorType) {
-        logMessage("Motor type is not set. Please select a motor type.", LOG_TYPE.WARNING);
-        return;
-    }
-
-    button.disabled = true;
-    button.textContent = "Updating...";
-
-    try {
-        logMessage("Firmware update started...", LOG_TYPE.INFO);
-
-        const response = await fetch("/flash_firmware", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ motorType }),
-        });
-
-        const data = await response.json();
-        if (data.success) {
-            logMessage("Firmware updated successfully!", LOG_TYPE.SUCCESS);
-            // Refresh the firmware info to update current version
-            logMessage("Refreshing firmware info...");
-            await fetchFirmwareInfo();
-
-            // Display "You're up to date" message if versions match
-            const newVersionElement = document.getElementById("new_firmware_version");
-            const currentVersionElement = document.getElementById("current_firmware_version");
-            currentVersionElement.textContent = newVersionElement.innerHTML
-            newVersionElement.textContent = "You are up to date!";
-            const motorSelectionDiv = document.getElementById("motor_selection");
-            motorSelectionDiv.style.display = "none";
-        } else {
-            logMessage(`Firmware update failed: ${data.error}`, LOG_TYPE.ERROR);
-        }
-    } catch (error) {
-        logMessage(`Error during firmware update: ${error.message}`, LOG_TYPE.ERROR);
-    } finally {
-        button.disabled = false; // Re-enable button
-        button.textContent = "Update Firmware";
-    }
-}
-
 async function checkForUpdates() {
     try {
         const response = await fetch('/check_software_update');
         const data = await response.json();
 
         // Handle updates available logic
-        if (data.updates_available) {
-            const updateButton = document.getElementById('update-software-btn');
-            const updateLinkElement = document.getElementById('update_link');
-            const tagLink = `https://github.com/tuanchris/dune-weaver/releases/tag/${data.latest_remote_tag}`;
+        // if (data.updates_available) {
+        //     const updateButton = document.getElementById('update-software-btn');
+        //     const updateLinkElement = document.getElementById('update_link');
+        //     const tagLink = `https://github.com/tuanchris/dune-weaver/releases/tag/${data.latest_remote_tag}`;
 
-            updateButton.classList.remove('hidden'); // Show the button
-            logMessage("Software Update Available", LOG_TYPE.INFO, 'open-settings-button')
+        //     updateButton.classList.remove('hidden'); // Show the button
+        //     logMessage("Software Update Available", LOG_TYPE.INFO, 'open-settings-button')
 
-            updateLinkElement.innerHTML = `<a href="${tagLink}" target="_blank">View Release Notes </a>`;
-            updateLinkElement.classList.remove('hidden'); // Show the link
-        }
+        //     updateLinkElement.innerHTML = `<a href="${tagLink}" target="_blank">View Release Notes </a>`;
+        //     updateLinkElement.classList.remove('hidden'); // Show the link
+        // }
 
         // Update current and latest version in the UI
         const currentVersionElem = document.getElementById('current_git_version');
@@ -960,82 +942,49 @@ function clearSchedule() {
 // Function to run the selected playlist with specified parameters
 async function runPlaylist() {
     const playlistName = document.getElementById('playlist_name_display').textContent;
-
     if (!playlistName) {
-        logMessage("No playlist selected to run.");
+        logMessage('No playlist selected', 'error');
         return;
     }
 
-    const pauseTimeInput = document.getElementById('pause_time').value;
-    const clearPatternSelect = document.getElementById('clear_pattern').value;
+    const pauseTime = parseFloat(document.getElementById('pause_time').value) || 0;
+    const clearPattern = document.getElementById('clear_pattern').value;
     const runMode = document.querySelector('input[name="run_mode"]:checked').value;
     const shuffle = document.getElementById('shuffle_playlist').checked;
-    const startTimeInput = document.getElementById('start_time').value.trim();
-    const endTimeInput = document.getElementById('end_time').value.trim();
-
-    const pauseTime = parseFloat(pauseTimeInput);
-    if (isNaN(pauseTime) || pauseTime < 0) {
-        logMessage("Invalid pause time. Please enter a non-negative number.", LOG_TYPE.WARNING);
-        return;
-    }
-
-    // Validate start and end time format and logic
-    let startTime = startTimeInput || null;
-    let endTime = endTimeInput || null;
-
-    // Ensure that if one time is filled, the other must be as well
-    if ((startTime && !endTime) || (!startTime && endTime)) {
-        logMessage("Both start and end times must be provided together or left blank.", LOG_TYPE.WARNING);
-        return;
-    }
-
-    // If both are provided, validate format and ensure start_time < end_time
-    if (startTime && endTime) {
-        try {
-            const startDateTime = new Date(`1970-01-01T${startTime}:00`);
-            const endDateTime = new Date(`1970-01-01T${endTime}:00`);
-
-            if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
-                logMessage("Invalid time format. Please use HH:MM format (e.g., 09:30).", LOG_TYPE.WARNING);
-                return;
-            }
-
-            if (startDateTime >= endDateTime) {
-                logMessage("Start time must be earlier than end time.", LOG_TYPE.WARNING);
-                return;
-            }
-        } catch (error) {
-            logMessage("Error parsing start or end time. Ensure correct HH:MM format.", LOG_TYPE.ERROR);
-            return;
-        }
-    }
-
-    logMessage(`Running playlist: ${playlistName} with pause_time=${pauseTime}, clear_pattern=${clearPatternSelect}, run_mode=${runMode}, shuffle=${shuffle}.`);
 
     try {
         const response = await fetch('/run_playlist', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+            },
             body: JSON.stringify({
                 playlist_name: playlistName,
                 pause_time: pauseTime,
-                clear_pattern: clearPatternSelect,
+                clear_pattern: clearPattern,
                 run_mode: runMode,
-                shuffle: shuffle,
-                start_time: startTimeInput,
-                end_time: endTimeInput
+                shuffle: shuffle
             })
         });
 
-        const result = await response.json();
-
-        if (result.success) {
-            logMessage(`Playlist "${playlistName}" is now running.`, LOG_TYPE.SUCCESS);
-        } else {
-            logMessage(`Failed to run playlist "${playlistName}": ${result.error}`, LOG_TYPE.ERROR);
+        if (!response.ok) {
+            if (response.status === 409) {
+                logMessage('Another pattern is already running', 'warning');
+            } else {
+                const errorData = await response.json();
+                logMessage(errorData.detail || 'Failed to run playlist', 'error');
+            }
+            return;
         }
+
+        // Connect WebSocket when starting a playlist
+        connectStatusWebSocket();
+        
+        logMessage(`Started playlist: ${playlistName}`, 'success');
+        // Close the playlist editor container after successfully starting the playlist
+        closeStickySection('playlist-editor');
     } catch (error) {
-        logMessage(`Error running playlist "${playlistName}": ${error.message}`, LOG_TYPE.ERROR);
+        logMessage('Error running playlist: ' + error, 'error');
     }
 }
 
@@ -1072,7 +1021,7 @@ async function loadPlaylist(playlistName) {
 //  PART B: Creating or Saving (Overwriting) a Playlist
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Instead of separate create/modify functions, we’ll unify them:
+// Instead of separate create/modify functions, we'll unify them:
 async function savePlaylist() {
     const name =  document.getElementById('playlist_name_display').textContent
     if (!name) {
@@ -1093,7 +1042,7 @@ async function savePlaylist() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                name: name,
+                playlist_name: name,
                 files: playlist
             })
         });
@@ -1185,7 +1134,7 @@ async function confirmAddPlaylist() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                name: playlistName,
+                playlist_name: playlistName,
                 files: [] // New playlist starts empty
             })
         });
@@ -1233,7 +1182,7 @@ async function confirmRenamePlaylist() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                name: newName,
+                playlist_name: newName,
                 files: playlist // Ensure `playlist` contains the current list of files
             })
         });
@@ -1246,7 +1195,7 @@ async function confirmRenamePlaylist() {
             const deleteResponse = await fetch('/delete_playlist', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: currentName })
+                body: JSON.stringify({ playlist_name: currentName })
             });
 
             const deleteResult = await deleteResponse.json();
@@ -1284,7 +1233,7 @@ async function deleteCurrentPlaylist() {
         const response = await fetch('/delete_playlist', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: playlistName })
+            body: JSON.stringify({ playlist_name: playlistName })
         });
 
         const result = await response.json();
@@ -1494,7 +1443,7 @@ async function changeSpeed() {
 
     const result = await response.json();
     if (result.success) {
-        document.getElementById('speed_status').textContent = `Current Speed: ${speed}`;
+        document.getElementById('current_speed_display').textContent = `Current Speed: ${speed}`;
         logMessage(`Speed set to: ${speed}`, LOG_TYPE.SUCCESS);
     } else {
         logMessage(`Failed to set speed: ${result.error}`, LOG_TYPE.ERROR);
@@ -1551,7 +1500,7 @@ function attachFullScreenListeners() {
             const stickySection = this.closest('.sticky'); // Find the closest sticky section
             if (stickySection) {
                 // Close all other sections
-                document.querySelectorAll('.sticky:not(#currently-playing-container)').forEach(section => {
+                document.querySelectorAll('.sticky:not(#currently-playing-container):not(#image-converter)').forEach(section => {
                     if (section !== stickySection) {
                         section.classList.remove('fullscreen');
                         section.classList.remove('visible');
@@ -1582,66 +1531,7 @@ function attachFullScreenListeners() {
 
 let lastPreviewedFile = null; // Track the last previewed file
 
-let updateInterval = null;
 
-async function updateCurrentlyPlaying() {
-    try {
-        if (!document.hasFocus()) return; // Stop execution if the page is not visible
-
-        const response = await fetch('/status');
-        const data = await response.json();
-
-        const currentlyPlayingSection = document.getElementById('currently-playing-container');
-        if (!currentlyPlayingSection) {
-            logMessage('Currently Playing section not found.', LOG_TYPE.ERROR);
-            return;
-        }
-
-        if (data.current_playing_file && !data.stop_requested) {
-            const { current_playing_file, execution_progress, pause_requested } = data;
-
-            // Strip './patterns/' prefix from the file name
-            const fileName = current_playing_file.replace('./patterns/', '');
-
-            if (!document.body.classList.contains('playing')) {
-                closeStickySection('pattern-preview-container')
-            }
-
-            // Show "Currently Playing" section
-            document.body.classList.add('playing');
-
-            // Update pattern preview only if the file is different
-            if (current_playing_file !== lastPreviewedFile) {
-                previewPattern(fileName, 'currently-playing-container');
-                lastPreviewedFile = current_playing_file;
-            }
-
-            // Update the filename display
-            const fileNameDisplay = document.getElementById('currently-playing-file');
-            if (fileNameDisplay) fileNameDisplay.textContent = fileName;
-
-            // Update progress bar
-            const progressBar = document.getElementById('play_progress');
-            const progressText = document.getElementById('play_progress_text');
-            if (execution_progress) {
-                const progressPercentage = (execution_progress[0] / execution_progress[1]) * 100;
-                progressBar.value = progressPercentage;
-                progressText.textContent = `${Math.round(progressPercentage)}% (${formatSecondsToHMS(execution_progress[2])})`;
-            } else {
-                progressBar.value = 0;
-                progressText.textContent = '0%';
-            }
-
-            // Update play/pause button
-            const pausePlayButton = document.getElementById('pausePlayCurrent');
-            if (pausePlayButton) pausePlayButton.innerHTML = pause_requested ? '<i class="fa-solid fa-play"></i>' : '<i class="fa-solid fa-pause"></i>';
-        } else {
-            document.body.classList.remove('playing');
-        }
-    } catch (error) {
-        logMessage(`Error updating "Currently Playing" section: ${error.message}`);
-    }
-}
 
 function formatSecondsToHMS(seconds) {
     const hrs = Math.floor(seconds / 3600);
@@ -1651,20 +1541,6 @@ function formatSecondsToHMS(seconds) {
 }
 
 // Function to start or stop updates based on visibility
-function handleVisibilityChange() {
-    if (document.hasFocus()) {
-        // User is active, start updating
-        if (!updateInterval) {
-            updateCurrentlyPlaying(); // Run immediately
-            updateInterval = setInterval(updateCurrentlyPlaying, 5000); // Update every 5s
-        }
-    } else {
-        // User is inactive, stop updating
-        clearInterval(updateInterval);
-        updateInterval = null;
-    }
-}
-
 function toggleSettings() {
     const settingsContainer = document.getElementById('settings-container');
     if (settingsContainer) {
@@ -1693,79 +1569,59 @@ function getCookie(name) {
 
 // Save settings to cookies
 function saveSettingsToCookies() {
-    // Save the pause time
     const pauseTime = document.getElementById('pause_time').value;
-    setCookie('pause_time', pauseTime, 365);
-
-    // Save the clear pattern
     const clearPattern = document.getElementById('clear_pattern').value;
-    setCookie('clear_pattern', clearPattern, 365);
-
-    // Save the run mode
     const runMode = document.querySelector('input[name="run_mode"]:checked').value;
+    const shuffle = document.getElementById('shuffle_playlist').checked;
+    const apiKey = document.getElementById('api-key').value;
+
+    setCookie('pause_time', pauseTime, 365);
+    setCookie('clear_pattern', clearPattern, 365);
     setCookie('run_mode', runMode, 365);
-
-    // Save shuffle playlist checkbox state
-    const shufflePlaylist = document.getElementById('shuffle_playlist').checked;
-    setCookie('shuffle_playlist', shufflePlaylist, 365);
-
-    // Save pre-execution action
-    const preExecution = document.getElementById('pre_execution').value;
-    setCookie('pre_execution', preExecution, 365);
-
-    // Save start and end times
-    const startTime = document.getElementById('start_time').value;
-    const endTime = document.getElementById('end_time').value;
-    setCookie('start_time', startTime, 365);
-    setCookie('end_time', endTime, 365);
-
-    logMessage('Settings saved.');
+    setCookie('shuffle', shuffle, 365);
+    setCookie('api_key', apiKey, 365);
 }
 
 // Load settings from cookies
 function loadSettingsFromCookies() {
-    // Load the pause time
     const pauseTime = getCookie('pause_time');
-    if (pauseTime !== null) {
-        document.getElementById('pause_time').value = pauseTime;
+    if (pauseTime !== '') {
+        const pauseTimeElement = document.getElementById('pause_time');
+        if (pauseTimeElement) {
+            pauseTimeElement.value = pauseTime;
+        }
     }
 
-    // Load the clear pattern
     const clearPattern = getCookie('clear_pattern');
-    if (clearPattern !== null) {
-        document.getElementById('clear_pattern').value = clearPattern;
+    if (clearPattern !== '') {
+        const clearPatternElement = document.getElementById('clear_pattern');
+        if (clearPatternElement) {
+            clearPatternElement.value = clearPattern;
+        }
     }
 
-    // Load the run mode
     const runMode = getCookie('run_mode');
-    if (runMode !== null) {
-        document.querySelector(`input[name="run_mode"][value="${runMode}"]`).checked = true;
+    if (runMode !== '') {
+        const runModeElement = document.querySelector(`input[name="run_mode"][value="${runMode}"]`);
+        if (runModeElement) {
+            runModeElement.checked = true;
+        }
     }
 
-    // Load the shuffle playlist checkbox state
-    const shufflePlaylist = getCookie('shuffle_playlist');
-    if (shufflePlaylist !== null) {
-        document.getElementById('shuffle_playlist').checked = shufflePlaylist === 'true';
+    const shuffle = getCookie('shuffle');
+    if (shuffle !== '') {
+        const shuffleElement = document.getElementById('shuffle_playlist');
+        if (shuffleElement) {
+            shuffleElement.checked = shuffle === 'true';
+        }
     }
 
-    // Load the pre-execution action
-    const preExecution = getCookie('pre_execution');
-    if (preExecution !== null) {
-        document.getElementById('pre_execution').value = preExecution;
-    }
-
-    // Load start and end times
-    const startTime = getCookie('start_time');
-    if (startTime !== null) {
-        document.getElementById('start_time').value = startTime;
-    }
-    const endTime = getCookie('end_time');
-    if (endTime !== null) {
-        document.getElementById('end_time').value = endTime;
-    }
-
-    if (startTime && endTime ) {
-        document.getElementById('clear_time').style.display = 'block';
+    const apiKey = getCookie('api_key');
+    if (apiKey !== '') {
+        const apiKeyElement = document.getElementById('api-key');
+        if (apiKeyElement) {
+            apiKeyElement.value = apiKey;
+        }
     }
 
     logMessage('Settings loaded from cookies.');
@@ -1774,25 +1630,23 @@ function loadSettingsFromCookies() {
 // Call this function to save settings when a value is changed
 function attachSettingsSaveListeners() {
     // Add event listeners to inputs
-    document.getElementById('pause_time').addEventListener('input', saveSettingsToCookies);
+    document.getElementById('pause_time').addEventListener('change', saveSettingsToCookies);
     document.getElementById('clear_pattern').addEventListener('change', saveSettingsToCookies);
     document.querySelectorAll('input[name="run_mode"]').forEach(input => {
         input.addEventListener('change', saveSettingsToCookies);
     });
     document.getElementById('shuffle_playlist').addEventListener('change', saveSettingsToCookies);
-    document.getElementById('pre_execution').addEventListener('change', saveSettingsToCookies);
-    document.getElementById('start_time').addEventListener('change', saveSettingsToCookies);
-    document.getElementById('end_time').addEventListener('change', saveSettingsToCookies);
+    document.getElementById('api-key').addEventListener('change', saveSettingsToCookies);
 }
 
 
 // Tab switching logic with cookie storage
-function switchTab(tabName) {
-    // Store the active tab in a cookie
-    setCookie('activeTab', tabName, 365); // Store for 7 days
+function switchTab(tabName, tabGroup = 'main') {
+    // Store the active tab in a cookie (per tab group)
+    setCookie(`activeTab-${tabGroup}`, tabName, 365);
 
-    // Deactivate all tab content
-    document.querySelectorAll('.tab-content').forEach(tab => {
+    // Deactivate all tab content in the specific group
+    document.querySelectorAll(`.tab-content[data-group="${tabGroup}"]`).forEach(tab => {
         tab.classList.remove('active');
     });
 
@@ -1804,8 +1658,8 @@ function switchTab(tabName) {
         console.error(`Error: Tab "${tabName}" not found.`);
     }
 
-    // Deactivate all nav buttons
-    document.querySelectorAll('.bottom-nav .tab-button').forEach(button => {
+    // Deactivate all buttons in this group
+    document.querySelectorAll(`.tab-button[data-group="${tabGroup}"]`).forEach(button => {
         button.classList.remove('active');
     });
 
@@ -1818,22 +1672,389 @@ function switchTab(tabName) {
     }
 }
 
-document.addEventListener("visibilitychange", handleVisibilityChange);
+// Update the small UI segment to show the IP or hide it if none
+function updateWledUI() {
+    const wledIp = localStorage.getItem('wled_ip');
+    const wledContainer = document.getElementById('wled-container');
+    const wledFrame = document.getElementById('wled-frame');
+    const wledStatus = document.getElementById('wled-status');
 
-// Initialization
+    if (!wledIp) {
+        wledContainer.classList.add('hidden');
+        return;
+    }
+
+    // Show the container and load WLED UI
+    wledContainer.classList.remove('hidden');
+    wledFrame.src = `http://${wledIp}`;
+
+}
+
+// Save or clear the WLED IP, updating both the browser and backend
+async function saveWledIp() {
+    const ipInput = document.getElementById('wled_ip');
+    const saveButton = document.querySelector('.wled-settings button.cta');
+    const currentIp = localStorage.getItem('wled_ip');
+
+    if (currentIp) {
+        // Clear the saved IP if one is already set
+        localStorage.removeItem('wled_ip');
+        ipInput.disabled = false;
+        ipInput.value = '';
+        saveButton.innerHTML = '<i class="fa-solid fa-save"></i><span>Save</span>';
+        logMessage('WLED IP cleared.', LOG_TYPE.INFO);
+
+        // Also clear the IP on the backend
+        try {
+            const response = await fetch('/set_wled_ip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ wled_ip: null })
+            });
+            const data = await response.json();
+            if (data.success) {
+                logMessage('Backend IP cleared successfully.', LOG_TYPE.INFO);
+            } else {
+                logMessage('Failed to clear backend IP.', LOG_TYPE.ERROR);
+            }
+        } catch (error) {
+            logMessage(`Error clearing backend IP: ${error.message}`, LOG_TYPE.ERROR);
+        }
+    } else {
+        // Validate and save the new IP
+        const ip = ipInput.value.trim();
+        if (!validateIp(ip)) {
+            logMessage('Invalid IP address format.', LOG_TYPE.ERROR);
+            return;
+        }
+        localStorage.setItem('wled_ip', ip);
+        ipInput.disabled = true;
+        saveButton.innerHTML = '<i class="fa-solid fa-xmark"></i><span>Clear</span>';
+        logMessage(`WLED IP saved: ${ip}`, LOG_TYPE.SUCCESS);
+
+        // Also save the IP to the backend
+        try {
+            const response = await fetch('/set_wled_ip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ wled_ip: ip })
+            });
+            const data = await response.json();
+            if (data.success) {
+                logMessage('Backend IP saved successfully.', LOG_TYPE.SUCCESS);
+            } else {
+                logMessage('Failed to save backend IP.', LOG_TYPE.ERROR);
+            }
+        } catch (error) {
+            logMessage(`Error saving backend IP: ${error.message}`, LOG_TYPE.ERROR);
+        }
+    }
+    
+    updateWledUI(); // Refresh any UI elements that depend on the IP
+}
+
+// Load the WLED IP from localStorage; if not available, retrieve it from the backend
+async function loadWledIp() {
+    const ipInput = document.getElementById('wled_ip');
+    const saveButton = document.querySelector('.wled-settings button.cta');
+    let savedIp = localStorage.getItem('wled_ip');
+
+    if (!savedIp) {
+        // Attempt to load from the backend if not found in localStorage
+        try {
+            const response = await fetch('/get_wled_ip');
+            const data = await response.json();
+            if (data.wled_ip) {
+                savedIp = data.wled_ip;
+                localStorage.setItem('wled_ip', savedIp);
+            }
+        } catch (error) {
+            logMessage(`Error fetching WLED IP from backend: ${error.message}`, LOG_TYPE.ERROR);
+        }
+    }
+
+    if (savedIp) {
+        ipInput.value = savedIp;
+        ipInput.disabled = true;
+        saveButton.innerHTML = '<i class="fa-solid fa-xmark"></i><span>Clear</span>';
+    } else {
+        ipInput.disabled = false;
+        saveButton.innerHTML = '<i class="fa-solid fa-save"></i><span>Save</span>';
+    }
+    
+    updateWledUI(); // Update any dependent UI segments
+}
+
+function validateIp(ip) {
+    const ipRegex = /^(25[0-5]|2[0-4]\d|1\d\d|\d?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|\d?\d)){3}$/;
+    return ipRegex.test(ip);
+  }
+
+// Theme toggle functionality
+const themeToggle = document.getElementById('theme-toggle');
+const themeIcon = themeToggle.querySelector('i');
+
+themeToggle.addEventListener('click', () => {
+    const root = document.documentElement;
+    const currentTheme = root.getAttribute('data-theme');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    
+    root.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+    
+    // Toggle the icon
+    themeIcon.className = newTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+});
+
+// Set initial theme and icon based on saved theme
+const savedTheme = localStorage.getItem('theme') || 'light';
+document.documentElement.setAttribute('data-theme', savedTheme);
+themeIcon.className = savedTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+
+
+// Add WebSocket connection for status updates
+let statusSocket = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
+let statusUpdateInterval = null;
+let wsConnected = false;
+
+function connectStatusWebSocket() {
+    // Don't create a new connection if one already exists
+    if (wsConnected) {
+        console.log('WebSocket already connected');
+        return;
+    }
+
+    // Close existing connection and clear interval if any
+    if (statusSocket) {
+        statusSocket.close();
+    }
+    if (statusUpdateInterval) {
+        clearInterval(statusUpdateInterval);
+    }
+
+    // Create WebSocket connection
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    statusSocket = new WebSocket(`${protocol}//${window.location.host}/ws/status`);
+
+    statusSocket.onopen = () => {
+        console.log('Status WebSocket connected');
+        wsConnected = true;
+        reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+    };
+
+    statusSocket.onmessage = (event) => {
+        try {
+            const message = JSON.parse(event.data);
+            if (message.type === 'status_update' && message.data) {
+                updateCurrentlyPlayingUI(message.data);
+                
+                // Disconnect WebSocket if no pattern is running
+                if (!message.data.is_running) {
+                    console.log('No pattern running, disconnecting WebSocket');
+                    disconnectStatusWebSocket();
+                }
+            }
+        } catch (error) {
+            console.error('Error processing status update:', error);
+            console.error('Raw data that caused error:', event.data);
+        }
+    };
+
+    statusSocket.onclose = () => {
+        console.log('Status WebSocket disconnected');
+        wsConnected = false;
+        clearInterval(statusUpdateInterval);
+        
+        // Only attempt to reconnect if we're supposed to be connected
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS && document.body.classList.contains('playing')) {
+            reconnectAttempts++;
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+            console.log(`Reconnecting in ${delay/1000}s (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+            setTimeout(connectStatusWebSocket, delay);
+        }
+    };
+
+    statusSocket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+    };
+}
+
+function disconnectStatusWebSocket() {
+    if (statusSocket && wsConnected) {
+        wsConnected = false;
+        statusSocket.close();
+        statusSocket = null;
+        reconnectAttempts = 0;
+    }
+}
+
+// Replace the polling mechanism with WebSocket
 document.addEventListener('DOMContentLoaded', () => {
-    const activeTab = getCookie('activeTab') || 'patterns'; // Default to 'patterns' tab
-    switchTab(activeTab); // Load the active tab
-    checkSerialStatus(); // Check serial connection status
+    const activeMainTab = getCookie('activeTab-main') || 'patterns';
+    switchTab(activeMainTab, 'main');
+    const activeImageConverterTab = getCookie('activeTab-image-converter') || 'dot';
+    switchTab(activeImageConverterTab, 'image-converter');
+    checkSerialStatus(); // Check connection status
     loadThetaRhoFiles(); // Load files on page load
     loadAllPlaylists(); // Load all playlists on page load
     attachSettingsSaveListeners(); // Attach event listeners to save changes
     attachFullScreenListeners();
+    loadWledIp();
+    updateWledUI();
 
-    // Periodically check for currently playing status
-    if (document.hasFocus()) {
-        updateInterval = setInterval(updateCurrentlyPlaying, 5000);
-    }
+    // Initialize WebSocket connection for status updates
+    connectStatusWebSocket();
+
+    // Handle visibility change
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && statusSocket && statusSocket.readyState !== WebSocket.OPEN) {
+            connectStatusWebSocket();
+        }
+    });
+
     checkForUpdates();
-    fetchFirmwareInfo();
 });
+
+// Track the last time we had a file playing
+let lastPlayingTime = 0;
+const HIDE_DELAY = 5000; // 1 second delay before hiding
+
+// Update the updateCurrentlyPlayingUI function to handle WebSocket updates
+// Track the last played file to detect when a new pattern starts
+let lastPlayedFile = null;
+
+function updateCurrentlyPlayingUI(status) {
+    // Get all required DOM elements once
+    const container = document.getElementById('currently-playing-container');
+    const fileNameElement = document.getElementById('currently-playing-file');
+    const progressBar = document.getElementById('play_progress');
+    const progressText = document.getElementById('play_progress_text');
+    const pausePlayButton = document.getElementById('pausePlayCurrent');
+    const speedDisplay = document.getElementById('current_speed_display');
+
+    // Check if all required elements exist
+    if (!container || !fileNameElement || !progressBar || !progressText) {
+        console.log('Required DOM elements not found:', {
+            container: !!container,
+            fileNameElement: !!fileNameElement,
+            progressBar: !!progressBar,
+            progressText: !!progressText
+        });
+        setTimeout(() => updateCurrentlyPlayingUI(status), 100);
+        return;
+    }
+
+    // Update container visibility based on status
+    if (status.current_file && status.is_running) {
+        document.body.classList.add('playing');
+        container.style.display = 'flex';
+        
+        // Hide the preview container when a pattern is playing
+        const previewContainer = document.getElementById('pattern-preview-container');
+        if (previewContainer) {
+            // Clear any selected file highlights
+            document.querySelectorAll('#theta_rho_files .file-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+        }
+    } else {
+        document.body.classList.remove('playing');
+        container.style.display = 'none';
+    }
+
+    // Update file name display
+    if (status.current_file) {
+        const fileName = status.current_file.replace('./patterns/', '');
+        fileNameElement.textContent = fileName;
+    } else {
+        fileNameElement.textContent = 'No pattern playing';
+    }
+
+    // Update next file display
+    const nextFileElement = document.getElementById('next-file');
+    if (nextFileElement) {
+        if (status.playlist && status.playlist.next_file) {
+            const nextFileName = status.playlist.next_file.replace('./patterns/', '');
+            nextFileElement.textContent = `(Next: ${nextFileName})`;
+            nextFileElement.style.display = 'block';
+        } else {
+            nextFileElement.style.display = 'none';
+        }
+    }
+
+    // Update speed display if it exists
+    if (speedDisplay && status.speed) {
+        speedDisplay.textContent = `Current Speed: ${status.speed}`;
+    }
+
+    // Update pattern preview if it's a new pattern
+    if (status.current_file && lastPlayedFile !== status.current_file) {
+        lastPlayedFile = status.current_file;
+        const cleanFileName = status.current_file.replace('./patterns/', '');
+        previewPattern(cleanFileName, 'currently-playing-container');
+    }
+
+    // Update progress information
+    if (status.progress) {
+        const { percentage, remaining_time, elapsed_time } = status.progress;
+        const formattedPercentage = percentage.toFixed(1);
+        const remainingText = remaining_time === null ? 'calculating...' : formatSecondsToHMS(remaining_time);
+        const elapsedText = formatSecondsToHMS(elapsed_time);
+
+        progressBar.value = formattedPercentage;
+        progressText.textContent = `${formattedPercentage}% (Elapsed: ${elapsedText} | Remaining: ${remainingText})`;
+    } else {
+        progressBar.value = 0;
+        progressText.textContent = '0%';
+    }
+
+    // Update pause/play button if it exists
+    if (pausePlayButton) {
+        pausePlayButton.innerHTML = status.is_paused ? 
+            '<i class="fa-solid fa-play"></i>' : 
+            '<i class="fa-solid fa-pause"></i>';
+    }
+
+    // Update playlist UI if the function exists
+    if (typeof updatePlaylistUI === 'function') {
+        updatePlaylistUI(status);
+    }
+
+    // Update skip button visibility based on playlist status
+    updateSkipButtonVisibility(status);
+}
+
+// Add these functions to handle the skip button
+
+function updateSkipButtonVisibility(status) {
+    const skipButton = document.getElementById('skipCurrent');
+    if (skipButton) {
+        // Check if a playlist is playing using the correct status properties
+        console.log('status', status);
+        const isPlaylistPlaying = status && status.playlist && status.playlist.next_file;
+        if (isPlaylistPlaying) {
+            skipButton.classList.remove('hidden');
+        } else {
+            skipButton.classList.add('hidden');
+        }
+    }
+}
+
+async function skipPattern() {
+    try {
+        const response = await fetch('/skip_pattern', {
+            method: 'POST',
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            logMessage('Skipping to next pattern', LOG_TYPE.INFO);
+        } else {
+            logMessage(data.message, LOG_TYPE.ERROR);
+        }
+    } catch (error) {
+        logMessage('Error skipping pattern', 'error');
+    }
+}

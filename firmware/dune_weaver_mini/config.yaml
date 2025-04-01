@@ -1,0 +1,44 @@
+name: Dune Weaver Mini
+meta: By Tuan Nguyen (2025-02-11)
+board: ESP32
+kinematics: {}
+stepping:
+  engine: RMT
+  idle_ms: 250
+  dir_delay_us: 1
+  pulse_us: 10
+  disable_delay_us: 0
+axes:
+  shared_stepper_disable_pin: gpio.13
+  x:
+    steps_per_mm: 256
+    max_rate_mm_per_min: 200
+    acceleration_mm_per_sec2: 10
+    max_travel_mm: 4000
+    motor0:
+      hard_limits: false
+      unipolar:
+        phase0_pin: gpio.14
+        phase1_pin: gpio.12
+        phase2_pin: gpio.26
+        phase3_pin: gpio.27
+        half_step: false
+      limit_neg_pin: NO_PIN
+      limit_pos_pin: NO_PIN
+      limit_all_pin: NO_PIN
+  y:
+    steps_per_mm: 180
+    max_rate_mm_per_min: 200
+    acceleration_mm_per_sec2: 10
+    max_travel_mm: 6.25
+    motor0:
+      hard_limits: false
+      unipolar:
+        phase0_pin: gpio.16
+        phase1_pin: gpio.17
+        phase2_pin: gpio.18
+        phase3_pin: gpio.19
+        half_step: false
+      limit_neg_pin: NO_PIN
+      limit_pos_pin: NO_PIN
+      limit_all_pin: NO_PIN

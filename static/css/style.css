@@ -1,15 +1,37 @@
 :root {
-    --background-primary: #f9f9f9;
-    --background-secondary: #fff;
-    --background-tertiary: #ddd;
-    --background-accent: #4e453fbf;
-    --background-info: var(--color-info);
-    --background-success: var(--color-success);
-    --background-warning: var(--color-warning);
-    --background-error: var( --color-error);
+    /* Light theme variables */
+    --background-primary-light: #f9f9f9;
+    --background-secondary-light: #fff;
+    --background-tertiary-light: #ddd;
+    --background-accent-light: #4e453fbf;
+    --background-translucent-light: #ffffffcc;
+    --text-primary-light: #333;
+    --text-secondary-light: #fff;
+    --border-primary-light: #ddd;
+    --border-secondary-light: grey;
 
+    /* Dark theme variables */
+    --background-primary-dark: #121212;
+    --background-secondary-dark: #1e1e1e;
+    --background-tertiary-dark: #2d2d2d;
+    --background-accent-dark: #4e453fef;
+    --background-translucent-dark: rgba(18, 18, 18, 0.75);
+    --text-primary-dark: #eeeeee;
+    --text-secondary-dark: #fff;
+    --border-primary-dark: #404040;
+    --border-secondary-dark: #666;
+
+    /* Add form-specific colors for dark theme */
+    --input-background-dark: #2d2d2d;
+    --input-text-dark: #e0e0e0;
+    --input-border-dark: #404040;
+    --input-background-light: #ffffff;
+    --input-text-light: #333333;
+    --input-border-light: var(--border-primary-light);
+
+    /* Common theme variables that don't change */
     --theme-primary: #6A9AD9;
-    --theme-primary-hover: #A0CCF2;
+    --theme-primary-hover: #6a9ad9ca;
     --theme-secondary: #C4B4A0;
     --theme-secondary-hover: #4E453F;
 
@@ -18,19 +40,92 @@
     --color-warning: #FF9800CC;
     --color-error: #E53935CC;
 
-    --text-primary: #333;
-    --text-secondary: #fff;
+    --color-success-dark: #4CAF50CC;
 
-    --border-primary: var(--background-tertiary);
-    --border-secondary: grey;
+    /* Default to light theme */
+    --background-primary: var(--background-primary-light);
+    --background-secondary: var(--background-secondary-light);
+    --background-tertiary: var(--background-tertiary-light);
+    --background-accent: var(--background-accent-light);
+    --background-translucent: var(--background-translucent-light);
+    --text-primary: var(--text-primary-light);
+    --text-secondary: var(--text-secondary-light);
+    --border-primary: var(--border-primary-light);
+    --border-secondary: var(--border-secondary-light);
+
+    --background-info: var(--color-info);
+    --background-success: var(--color-success);
+    --background-warning: var(--color-warning);
+    --background-error: var(--color-error);
+    
     --border-accent: var(--theme-primary);
     --border-hover: var(--theme-primary-hover);
-
+    
     --shadow-primary: 0 0 20px var(--border-secondary);
-
+    
     --transition-fast: 0.1s ease-in-out;
     --transition-medium: 0.250s ease;
     --transition-slow: 1s ease;
+
+    /* Add to default theme variables */
+    --input-background: var(--input-background-light);
+    --input-text: var(--input-text-light);
+    --input-border: var(--input-border-light);
+
+    /* Add dark theme specific colors */
+    --theme-primary-dark: #585858;          /* Main button color in dark mode */
+    --theme-primary-hover-dark: #686868;    /* Button hover color in dark mode */
+}
+
+/* Dark theme class */
+:root[data-theme="dark"] {
+    --background-primary: var(--background-primary-dark);
+    --background-secondary: var(--background-secondary-dark);
+    --background-tertiary: var(--background-tertiary-dark);
+    --background-accent: var(--background-accent-dark);
+    --background-translucent: var(--background-translucent-dark);
+    --text-primary: var(--text-primary-dark);
+    --text-secondary: var(--text-secondary-dark);
+    --border-primary: var(--border-primary-dark);
+    --border-secondary: var(--border-secondary-dark);
+    
+    --input-background: var(--input-background-dark);
+    --input-text: var(--input-text-dark);
+    --input-border: var(--input-border-dark);
+
+    /* Update text colors for common elements */
+    --theme-secondary-hover: var(--text-primary-dark);  /* Updates h1, h2 colors */
+
+    /* Override theme colors for dark mode */
+    --theme-primary: var(--theme-primary-dark);
+    --theme-primary-hover: var(--theme-primary-hover-dark);
+
+    --color-info: #6A9AD9;
+    --color-success: #4CAF50;
+    --color-warning: #FF9800;
+    --color-error: #E53935;
+}
+
+:root[data-theme="dark"] {
+    color: var(--text-primary-dark);
+}
+
+/* Fix selection container text in dark mode */
+:root[data-theme="dark"] .selection-container {
+    color: var(--text-primary-dark);
+    background: var(--theme-primary-dark);
+}
+
+/* Ensure custom inputs have proper contrast */
+:root[data-theme="dark"] .custom-input {
+    color: var(--text-primary-dark);
+}
+
+/* Add smooth transitions for theme switching */
+body * {
+    transition: background-color var(--transition-fast),
+                color var(--transition-fast),
+                border-color var(--transition-fast);
 }
 
 @font-face {
@@ -66,7 +161,7 @@ header {
     position: sticky;
     height: 50px;
     top: 0;
-    z-index: 10;
+    z-index: 20;
     background: var(--background-primary);
     display: flex;
     justify-content: center;
@@ -84,14 +179,16 @@ h3 {
 
 
 /* Inputs */
-input, select {
+input, select, textarea {
     display: block;
     width: 100%;
     padding: 10px;
     margin-bottom: 10px;
-    border: 1px solid var(--border-primary);
+    border: 1px solid var(--input-border);
     border-radius: 5px;
     font-size: 1rem;
+    background-color: var(--input-background);
+    color: var(--input-text);
 }
 
 /* Custom Input Wrapper */
@@ -288,7 +385,7 @@ button.cancel:hover {
 }
 
 button.cta:hover {
-    background: var(--color-success);
+    background: var(--theme-primary-hover);
 }
 
 button.warn:hover {
@@ -313,12 +410,14 @@ button.warning:hover{}
     display: none;
     flex: 1;
     overflow-y: auto;
+}
+
+.app > .tab-content {
     background: var(--background-secondary);
 }
 
 .tab-content.active {
     display: flex;
-    position: relative;
     flex-direction: column;
 }
 
@@ -349,7 +448,6 @@ section#settings-container > section{
     padding-right: 0;
 }
 
-
 .version .header {
     width: 100%;
 }
@@ -373,7 +471,7 @@ section#settings-container > section{
 
 section.sticky {
     position: fixed;
-    background-color: rgba(255, 255, 255, 0.5);
+    background-color: var(--background-translucent);
     backdrop-filter: blur(10px);
     bottom: 60px;
     border-top: 1px solid var(--border-primary);
@@ -388,7 +486,7 @@ section.sticky {
 
 section.sticky.fullscreen {
     position: fixed;
-    top: 0;
+    top: 50px;
     left: 0;
     width: 100vw;
     max-height: none;
@@ -543,6 +641,11 @@ section .header .add-button {
     overflow-y: auto;
     background: var(--background-primary);
     flex-grow: 1;
+}
+
+.file-list#playlist_items{
+    margin-bottom: 10px;
+    max-height: 20vh;
 }
 
 .file-list li {
@@ -732,7 +835,7 @@ button#debug_button.active {
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: #FFFFFF80;
+    background-color: var(--background-translucent);
     backdrop-filter: blur(10px);
     z-index: 1000;
     overflow-y: auto;
@@ -751,7 +854,14 @@ button#debug_button.active {
 #open-settings-button span {
     order: -1;
     margin-right: 5px;
+}
 
+#theme-toggle .fa-sun:not(:hover) {
+    color: #ffd700;
+}
+
+#theme-toggle .fa-moon:not(:hover) {
+    color: var(--color-info);
 }
 
 /* Preview Canvas */
@@ -849,10 +959,6 @@ body.playing #currently-playing-container .header .open-button {
     margin: 0;
 }
 
-body.playing #currently-playing-preview #currentlyPlayingCanvas {
-    max-width:100px;
-    padding: 5px;
-}
 
 body.playing #currently-playing-container:not(.open) .header .fullscreen-button,
 body.playing #currently-playing-container:not(.open) .header .close-button,
@@ -871,7 +977,7 @@ body.playing #currently-playing-container:not(.open) #currently-playing-details{
 body.playing #currently-playing-container:not(.open) .play-buttons button {
     width: 50px;
     height: 50px;
-    font-size: 1.5rem;
+    font-size: 1.5rem;/* Center within flex container */
 }
 
 body.playing #currently-playing-container:not(.open) #progress-container {
@@ -880,8 +986,7 @@ body.playing #currently-playing-container:not(.open) #progress-container {
 
 
 #currentlyPlayingCanvas {
-    width: 100%;
-    max-width: 300px;
+    width: 100px;
     aspect-ratio: 1/1;
     border: 1px solid var(--border-primary);
     background: var(--theme-secondary);
@@ -901,6 +1006,15 @@ body.playing #currently-playing-container:not(.open) #progress-container {
     font-size: 1rem;
 }
 
+#currently-playing-file,
+#next-file {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
+}
+
+
 #progress-container {
     display: flex;
     align-items: center;
@@ -917,8 +1031,16 @@ body.playing #currently-playing-container:not(.open) #progress-container {
     background-color: var(--border-primary);
     border-radius: 4px;
     overflow: hidden;
+    margin-right: 20px !important;  /* Add forced margin to ensure spacing */
 }
 
+#play_progress_text {
+    font-size: 0.9rem;
+    min-width: 45px;  /* Ensure consistent spacing for different percentages */
+    flex-shrink: 0;   /* Prevent text from shrinking */
+}
+
+/* Progress Bar Styles */
 #play_progress::-webkit-progress-bar {
     background-color: var(--border-primary);
 }
@@ -928,14 +1050,29 @@ body.playing #currently-playing-container:not(.open) #progress-container {
     transition: width 0.25s ease;
 }
 
-#play_progress_text {
-    font-size: 0.9rem;
-    margin-left: 10px;
+/* Add dark mode specific styles */
+:root[data-theme="dark"] #play_progress {
+    background-color: var(--background-tertiary-dark);
+}
+
+:root[data-theme="dark"] #play_progress::-webkit-progress-bar {
+    background-color: var(--background-tertiary-dark);
+}
+
+:root[data-theme="dark"] #play_progress::-webkit-progress-value {
+    background-color: var(--color-success);  /* Using success color for better visibility */
+}
+
+/* Progress text color in dark mode */
+:root[data-theme="dark"] #play_progress_text {
+    color: var(--text-secondary-dark);
 }
 
 .play-buttons {
     display: flex;
     gap: 20px;
+    justify-content: flex-end;
+    width: 100%;
 }
 
 .play-buttons button {
@@ -951,6 +1088,33 @@ body.playing #currently-playing-container:not(.open) #progress-container {
 
 #pausePlayCurrent {
     border-radius: 50%;
+}
+
+body.playing #currently-playing-container.open {
+    position: absolute;
+    bottom: 0;
+}
+
+body.playing #currently-playing-container:not(.open) #currently-playing-details {
+    flex-direction: row;
+    align-items: center;
+}
+
+#currently-playing-container h3 {
+    flex-grow: 1;
+}
+
+body.playing #currently-playing-container.open .header {
+    display: none;
+}
+
+#open-settings-button span {
+    opacity: 0;
+    transition: var(--transition-medium) opacity;
+}
+
+#open-settings-button:hover span {
+    opacity: 1;
 }
 
 /* Debug Log */
@@ -1027,7 +1191,7 @@ body.playing #currently-playing-container:not(.open) #progress-container {
     margin-bottom: 10px;
 }
 
-#serial_status_header::before {
+#connection_status_header::before {
     content: '';
     width: 20px;
     height: 20px;
@@ -1038,11 +1202,11 @@ body.playing #currently-playing-container:not(.open) #progress-container {
     transition: var(--transition-slow) background-color;
 }
 
-#serial_status_header.connected::before {
+#connection_status_header.connected::before {
     background-color: var(--color-success);
 }
 
-#serial_status_header.not-connected::before {
+#connection_status_header.not-connected::before {
     background-color: var(--color-error);
 }
 
@@ -1106,6 +1270,23 @@ input[type="number"]:focus {
 #serial_ports {
     width: auto;
     min-width: 200px;
+}
+
+
+#wled-container {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+}
+
+#wled_ip {
+    margin-right: 10px;
+}
+
+#wled-frame {
+    flex: 1 1 auto;
+    width: 100%;
+    border: none;
 }
 
 /* Notification Styles */
@@ -1177,28 +1358,6 @@ input[type="number"]:focus {
         display: none;
     }
 
-    button.cancel {
-        background: var(--color-error);
-    }
-
-    button.cta {
-        background: var(--color-success);
-    }
-
-    button.warn {
-        background: var(--color-warning);
-    }
-
-    button.cancel:hover,
-    button.warn:hover,
-    button.cta:hover {
-        background: var(--theme-primary);
-    }
-
-    body.playing section.sticky{
-        bottom: 200px;
-    }
-
 }
 
 /* On larger screens, display all tabs in a 3-column grid */
@@ -1232,14 +1391,17 @@ input[type="number"]:focus {
 
     /* Show all tabs in grid layout */
     .tab-content {
-        display: flex !important; /* Always display tab-content */
         flex-direction: column;
-        border: 1px solid var(--border-primary);
-        background-color: var(--background-primary);
-        border-radius: 8px;
         overflow-y: auto;
         overflow-x: hidden;
         position: relative;
+    }
+
+    .app > .tab-content {
+        display: flex !important; /* Always display main tab-content */
+        border-radius: 8px;
+        background-color: var(--background-primary);
+        border: 1px solid var(--border-primary);
     }
 
     body.playing .app {
@@ -1255,31 +1417,136 @@ input[type="number"]:focus {
         display: none;
     }
 
-    body.playing #currently-playing-container.open {
-        position: absolute;
-        bottom: 0;
-    }
+}
 
-    body.playing #currently-playing-container:not(.open) #currently-playing-details {
-        flex-direction: row;
-        align-items: center;
-    }
+/* Add specific styles for dark mode inputs */
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] select::placeholder,
+:root[data-theme="dark"] textarea::placeholder {
+    color: #999;
+}
 
-    #currently-playing-container h3 {
-        flex-grow: 1;
-    }
+/* Style the file list items in dark mode */
+:root[data-theme="dark"] .file-list {
+    background: var(--background-secondary-dark);
+}
 
-    body.playing #currently-playing-container.open .header {
+:root[data-theme="dark"] .file-list li {
+    color: var(--text-primary-dark);
+}
+
+:root[data-theme="dark"] .file-list .filename {
+    color: var(--text-primary-dark);
+}
+
+:root[data-theme="dark"] .file-list li:hover {
+    background-color: var(--background-tertiary-dark);
+}
+
+:root[data-theme="dark"] .file-list button {
+    color: var(--text-primary-dark);
+}
+
+/* Update status log colors for dark mode */
+:root[data-theme="dark"] #status_log {
+    background: #000000;
+    border-color: var(--border-primary-dark);
+}
+
+/* Update notification backgrounds for dark mode */
+:root[data-theme="dark"] .notification {
+    /* Remove this line to keep original colors */
+    /* background-color: var(--background-secondary-dark); */
+}
+
+/* Notification Types - Update opacity for better visibility in dark mode */
+:root[data-theme="dark"] .notification.success { background-color: var(--color-success); }
+:root[data-theme="dark"] .notification.warning { background-color: var(--color-warning); }
+:root[data-theme="dark"] .notification.error { background-color: var(--color-error); }
+:root[data-theme="dark"] .notification.info { background-color: var(--color-info); }
+
+/* Make notification text white for better contrast */
+:root[data-theme="dark"] .notification {
+    color: white;
+}
+
+/* Update button colors for better visibility in dark mode */
+:root[data-theme="dark"] button.no-bg:not(:hover) {
+    color: var(--text-primary-dark);
+}
+
+:root[data-theme="dark"] .file-list button:hover:not(:focus) {
+    background: var(--background-tertiary-dark);
+    box-shadow: inset 0 0 4px var(--border-secondary-dark);
+}
+
+/* Update custom checkbox/radio colors in dark mode */
+:root[data-theme="dark"] .custom-checkbox,
+:root[data-theme="dark"] .custom-radio {
+    border-color: var(--theme-primary-dark);
+}
+
+:root[data-theme="dark"] .custom-checkbox::after,
+:root[data-theme="dark"] .custom-radio::after {
+    background-color: var(--theme-primary-dark);
+}
+
+:root[data-theme="dark"] .custom-input input:checked + .custom-checkbox,
+:root[data-theme="dark"] .custom-input input:checked + .custom-radio {
+    background-color: var(--theme-primary-dark);
+    border-color: var(--theme-primary-hover-dark);
+}
+
+/* Update scroll arrow hover in dark mode */
+:root[data-theme="dark"] .scroll-arrow:hover {
+    background: var(--theme-primary-hover-dark);
+}
+
+/* Update tab button hover in dark mode */
+:root[data-theme="dark"] .tab-button {
+    background: var(--color-success);
+    color: var(--text-secondary);
+}
+:root[data-theme="dark"] .tab-button:hover {
+    background: var(--color-success);
+}
+
+:root[data-theme="dark"] .tab-button.active {
+    background: var(--background-secondary);
+    color: var(--text-secondary);
+}
+
+/* Override specific button hover states in dark mode */
+:root[data-theme="dark"] button.cancel:hover {
+    background: var(--color-error) !important;
+}
+
+:root[data-theme="dark"] button.cta:hover {
+    background: var(--color-success-dark) !important;
+}
+
+:root[data-theme="dark"] button.warn:hover {
+    background: var(--color-warning) !important;
+}
+
+/* Update selection container button hover in dark mode */
+:root[data-theme="dark"] .selection-container .nav-items > button:hover {
+    background: var(--text-secondary);
+    color: var(--theme-primary-dark);
+}
+
+:root[data-theme="dark"] .header #open-settings-button:hover {
+    background: var(--color-success-dark);
+    color: var(--text-primary-dark);
+}
+
+/* Make sure on mobile screens that only active tab content is shown */
+@media screen and (max-width: 1023px) {
+    .app > .tab-content {
         display: none;
     }
-
-    #open-settings-button span {
-        opacity: 0;
-        transition: var(--transition-medium) opacity;
+    
+    .app > .tab-content.active {
+        display: flex;
     }
-
-    #open-settings-button:hover span {
-        opacity: 1;
-    }
-
 }

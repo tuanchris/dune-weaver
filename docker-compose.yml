@@ -6,7 +6,7 @@ services:
     ports:
       - "80:8080" # Map port 8080 of the container to 80 of the host
     volumes:
-      - ./patterns:/app/patterns # Map host folder to container folder
+      - .:/app
     devices:
       - "/dev/ttyACM0:/dev/ttyACM0"
     privileged: true
