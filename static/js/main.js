@@ -244,9 +244,14 @@ function displayFiles(files) {
 
 // Filter files by search input
 function searchPatternFiles() {
-    const searchInput = document.getElementById('search_pattern').value.toLowerCase();
-    const filteredFiles = allFiles.filter(file => file.toLowerCase().includes(searchInput));
-    displayFiles(filteredFiles);
+  const term = document.getElementById('search_pattern').value.trim().toLowerCase();
+
+  // loop every file-item that's already in the DOM
+  document.querySelectorAll('#theta_rho_files .file-item').forEach(li => {
+    const name = li.querySelector('span').textContent.toLowerCase();
+    // toggle its inline display
+    li.style.display = name.includes(term) ? '' : 'none';
+  });
 }
 
 // Upload a new Theta-Rho file
@@ -428,56 +433,54 @@ async function previewPattern(fileName, containerId = 'pattern-preview-container
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ file_name: fileName })
         });
-
         const result = await response.json();
-        if (result.success) {
-            // Mirror the theta values in the coordinates
-            const coordinates = result.coordinates.map(coord => [
-                (coord[0] < Math.PI) ? 
-                    Math.PI - coord[0] : // For first half
-                    3 * Math.PI - coord[0], // For second half
-                coord[1]
-            ]);
 
-            // Render the pattern in the specified container
-            const canvasId = containerId === 'currently-playing-container'
-                ? 'currentlyPlayingCanvas'
-                : 'patternPreviewCanvas';
-            renderPattern(coordinates, canvasId);
-
-            // Update coordinate display
-            const firstCoordElement = document.getElementById('first_coordinate');
-            const lastCoordElement = document.getElementById('last_coordinate');
-
-            if (firstCoordElement) {
-                const firstCoord = coordinates[0];
-                firstCoordElement.textContent = `First Coordinate: θ=${firstCoord[0].toFixed(2)}, ρ=${firstCoord[1].toFixed(2)}`;
-            } else {
-                logMessage('First coordinate element not found.', LOG_TYPE.WARNING);
-            }
-
-            if (lastCoordElement) {
-                const lastCoord = coordinates[coordinates.length - 1];
-                lastCoordElement.textContent = `Last Coordinate: θ=${lastCoord[0].toFixed(2)}, ρ=${lastCoord[1].toFixed(2)}`;
-            } else {
-                logMessage('Last coordinate element not found.', LOG_TYPE.WARNING);
-            }
-
-            // Show the preview container
-            const previewContainer = document.getElementById(containerId);
-            if (previewContainer) {
-                previewContainer.classList.remove('hidden');
-                previewContainer.classList.add('visible');
-            } else {
-                logMessage(`Preview container not found: ${containerId}`, LOG_TYPE.ERROR);
-            }
-        } else {
+        if (!result.success) {
             logMessage(`Failed to fetch preview for file: ${fileName}`, LOG_TYPE.WARNING);
+            return;
+        }
+
+        // Read rotation angle (degrees) and convert to radians
+        const deg = parseFloat(document.getElementById('rotation_angle').value) || 0;
+        const rotRad = deg * Math.PI / 180;
+
+        // Mirror + rotate θ, leave ρ unchanged
+        const coordinates = result.coordinates.map(([θ, ρ]) => {
+            // mirror
+            let mθ = θ < Math.PI
+                ? Math.PI - θ
+                : 3 * Math.PI - θ;
+            // then rotate
+            mθ += rotRad;
+            return [mθ, ρ];
+        });
+
+        // Choose which canvas to draw into
+        const canvasId = (containerId === 'currently-playing-container')
+            ? 'currentlyPlayingCanvas'
+            : 'patternPreviewCanvas';
+        renderPattern(coordinates, canvasId);
+
+        // Update first/last coordinate displays
+        const first = coordinates[0], last = coordinates[coordinates.length - 1];
+        const fcEl = document.getElementById('first_coordinate');
+        const lcEl = document.getElementById('last_coordinate');
+        if (fcEl) fcEl.textContent = `First Coordinate: θ=${first[0].toFixed(2)}, ρ=${first[1].toFixed(2)}`;
+        if (lcEl) lcEl.textContent = `Last Coordinate:  θ=${last[0].toFixed(2)}, ρ=${last[1].toFixed(2)}`;
+
+        // Show the preview container
+        const previewContainer = document.getElementById(containerId);
+        if (previewContainer) {
+            previewContainer.classList.remove('hidden');
+            previewContainer.classList.add('visible');
+        } else {
+            logMessage(`Preview container not found: ${containerId}`, LOG_TYPE.ERROR);
         }
     } catch (error) {
         logMessage(`Error previewing pattern: ${error.message}`, LOG_TYPE.ERROR);
     }
 }
+
 
 // Render the pattern on a canvas
 function renderPattern(coordinates, canvasId) {
@@ -1935,6 +1938,30 @@ function disconnectStatusWebSocket() {
         reconnectAttempts = 0;
     }
 }
+/**
+ * Called whenever the user types into the search box.
+ * Shows/hides the little × and reruns the filter.
+ */
+function onSearchInput() {
+  const input = document.getElementById('search_pattern');
+  const clearBtn = document.getElementById('clear_search');
+
+  // toggle visibility of the clear “×”
+  clearBtn.classList.toggle('hidden', input.value.trim() === '');
+
+  // your existing filter logic
+  searchPatternFiles();
+}
+
+/**
+ * Clear the search box and re-filter.
+ */
+function clearSearch() {
+  const input = document.getElementById('search_pattern');
+  input.value = '';
+  document.getElementById('clear_search').classList.add('hidden');
+  searchPatternFiles();
+}
 
 // Replace the polling mechanism with WebSocket
 document.addEventListener('DOMContentLoaded', () => {
@@ -1959,8 +1986,17 @@ document.addEventListener('DOMContentLoaded', () => {
             connectStatusWebSocket();
         }
     });
-
+     document
+    .getElementById('clear_search')
+    .addEventListener('click', clearSearch);
     checkForUpdates();
+
+    const rotInput = document.getElementById('rotation_angle');
+  rotInput.addEventListener('input', () => {
+    if (selectedFile) {
+      previewPattern(selectedFile);
+    }
+  });
 });
 
 // Track the last time we had a file playing
@@ -2125,3 +2161,4 @@ function downloadCurrentFile() {
   a.click();
   document.body.removeChild(a);
 }
+

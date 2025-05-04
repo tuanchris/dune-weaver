@@ -1155,7 +1155,37 @@ body.playing #currently-playing-container.open .header {
 .control-group input {
     margin-bottom: 0;
 }
+.search-container {
+  position: relative;
+  width: 100%;
+  margin-bottom: 10px;
 
+}
+
+.search-container input {
+  width: 100%;
+  padding-right: 2em; /* make room for the clear icon */
+  margin-bottom: 0px;
+}
+
+.clear-icon {
+  position: absolute;
+  right: 0.6em;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  font-size: 1em;
+  color: var(--text-primary);
+  transition: color 0.2s ease;
+}
+
+.clear-icon:hover {
+  color: var(--border-secondary);
+}
+
+.hidden {
+  display: none !important;
+}
 .control-group h3 {
     width: 100%;
 }

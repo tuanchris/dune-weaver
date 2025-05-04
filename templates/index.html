@@ -61,7 +61,20 @@
                     </div>
                 </div>
             </div>
-            <input type="text" id="search_pattern" placeholder="Search files..." oninput="searchPatternFiles()">
+              <div class="search-container">
+    <input
+      type="text"
+      id="search_pattern"
+      placeholder="Search files..."
+      oninput="onSearchInput()"
+    >
+    <i
+      id="clear_search"
+      class="fa fa-times clear-icon hidden"
+      title="Clear"
+      onclick="clearSearch()"
+    ></i>
+  </div>
             <ul id="theta_rho_files" class="file-list"></ul>
         </section>
 
@@ -426,6 +439,13 @@
                     <button onclick="sendCoordinate()" class="cta">
                         <i class="fa-solid fa-map-pin"></i><span class="small">Send</span>
                     </button>
+                </div>
+            </div>
+            <div class="control-group">
+                 <h3>Rotation (°)</h3>
+                <div class="item column">
+
+                <input type="number" id="rotation_angle" step="0.1" value="0" placeholder="degrees">
                 </div>
             </div>
             <div class="control-group">
