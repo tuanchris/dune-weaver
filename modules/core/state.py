@@ -46,6 +46,8 @@ class AppState:
         self._pause_time = 0
         self._clear_pattern = "none"
         self.load()
+        # rotation to apply (radians). 0 = no rotation
+        self.rotation_angle = 0.0
 
     @property
     def current_playing_file(self):
@@ -157,7 +159,8 @@ class AppState:
             "pause_time": self._pause_time,
             "clear_pattern": self._clear_pattern,
             "port": self.port,
-            "wled_ip": self.wled_ip
+            "wled_ip": self.wled_ip,
+            "rotation_angle": self.rotation_angle
         }
 
     def from_dict(self, data):
@@ -184,6 +187,7 @@ class AppState:
         self._clear_pattern = data.get("clear_pattern", "none")
         self.port = data.get("port", None)
         self.wled_ip = data.get('wled_ip', None)
+        self.rotation_angle = data.get("rotation_angle", 0.0)
 
     def save(self):
         """Save the current state to a JSON file."""

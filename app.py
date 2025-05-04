@@ -21,6 +21,7 @@ import sys
 import asyncio
 from contextlib import asynccontextmanager
 from modules.led.led_controller import LEDController, effect_idle
+import math
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -224,6 +225,7 @@ async def upload_theta_rho(file: UploadFile = File(...)):
 class ThetaRhoRequest(BaseModel):
     file_name: str
     pre_execution: Optional[str] = "none"
+    rotation_angle: Optional[float] = 0.0
 
 @app.post("/run_theta_rho")
 async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTasks):
@@ -564,7 +566,21 @@ async def skip_pattern():
         raise HTTPException(status_code=400, detail="No playlist is currently running")
     state.skip_requested = True
     return {"success": True}
-
+class RotationResponse(BaseModel):
+    rotation_angle: float  # degrees
+@app.get("/get_rotation", response_model=RotationResponse)
+async def get_rotation():
+    # read the radians value from state, convert to degrees
+    deg = math.degrees(getattr(state, "rotation_angle", 0.0) or 0.0)
+    return {"rotation_angle": deg}
+class RotationRequest(BaseModel):
+    rotation_deg: float
+@app.post("/set_rotation")
+async def set_rotation(req: RotationRequest):
+    state.rotation_angle = math.radians(req.rotation_deg)
+    state.save()
+    logger.info(f"Rotation set to {req.rotation_deg}° ({state.rotation_angle:.3f} rad)")
+    return {"success": True}
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully but forcefully."""
     logger.info("Received shutdown signal, cleaning up...")

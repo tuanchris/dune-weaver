@@ -134,7 +134,11 @@ def parse_theta_rho_file(file_path):
         normalized = [(theta - first_theta, rho) for theta, rho in coordinates]
         coordinates = normalized
         logger.debug(f"Parsed {len(coordinates)} coordinates from {file_path}")
-
+        # Apply the user-requested rotation (in radians):
+        rot = getattr(state, 'rotation_angle', 0.0)
+        if rot:
+            coordinates = [(theta + rot, rho) for theta, rho in coordinates]
+            logger.debug(f"Applied rotation {rot:.3f} rad to all θ")
     return coordinates
 
 def get_clear_pattern_file(clear_pattern_mode, path=None):

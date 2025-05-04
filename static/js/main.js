@@ -297,12 +297,14 @@ async function runThetaRho() {
 
     logMessage(`Running file: ${selectedFile} with pre-execution action: ${preExecutionAction}...`);
     try {
+        const rotationDeg = parseFloat(document.getElementById('rotation_angle').value) || 0;
         const response = await fetch('/run_theta_rho', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
                 file_name: selectedFile, 
-                pre_execution: preExecutionAction 
+                pre_execution: preExecutionAction ,
+                rotation_deg:  rotationDeg
             })
         });
 
@@ -433,54 +435,57 @@ async function previewPattern(fileName, containerId = 'pattern-preview-container
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ file_name: fileName })
         });
+
         const result = await response.json();
+        if (result.success) {
+            // Mirror the theta values in the coordinates
+            const coordinates = result.coordinates.map(coord => [
+                (coord[0] < Math.PI) ?
+                    Math.PI - coord[0] : // For first half
+                    3 * Math.PI - coord[0], // For second half
+                coord[1]
+            ]);
+            // Show the preview container
+            const previewContainer = document.getElementById(containerId);
 
-        if (!result.success) {
-            logMessage(`Failed to fetch preview for file: ${fileName}`, LOG_TYPE.WARNING);
-            return;
-        }
+            if (previewContainer) {
+                previewContainer.classList.remove('hidden');
+                previewContainer.classList.add('visible');
+            } else {
+                logMessage(`Preview container not found: ${containerId}`, LOG_TYPE.ERROR);
+            }
+            // Render the pattern in the specified container
+            const canvasId = containerId === 'currently-playing-container'
+                ? 'currentlyPlayingCanvas'
+                : 'patternPreviewCanvas';
+            renderPattern(coordinates, canvasId);
 
-        // Read rotation angle (degrees) and convert to radians
-        const deg = parseFloat(document.getElementById('rotation_angle').value) || 0;
-        const rotRad = deg * Math.PI / 180;
+            // Update coordinate display
+            const firstCoordElement = document.getElementById('first_coordinate');
+            const lastCoordElement = document.getElementById('last_coordinate');
 
-        // Mirror + rotate θ, leave ρ unchanged
-        const coordinates = result.coordinates.map(([θ, ρ]) => {
-            // mirror
-            let mθ = θ < Math.PI
-                ? Math.PI - θ
-                : 3 * Math.PI - θ;
-            // then rotate
-            mθ += rotRad;
-            return [mθ, ρ];
-        });
+            if (firstCoordElement) {
+                const firstCoord = coordinates[0];
+                firstCoordElement.textContent = `First Coordinate: θ=${firstCoord[0].toFixed(2)}, ρ=${firstCoord[1].toFixed(2)}`;
+            } else {
+                logMessage('First coordinate element not found.', LOG_TYPE.WARNING);
+            }
 
-        // Choose which canvas to draw into
-        const canvasId = (containerId === 'currently-playing-container')
-            ? 'currentlyPlayingCanvas'
-            : 'patternPreviewCanvas';
-        renderPattern(coordinates, canvasId);
+            if (lastCoordElement) {
+                const lastCoord = coordinates[coordinates.length - 1];
+                lastCoordElement.textContent = `Last Coordinate: θ=${lastCoord[0].toFixed(2)}, ρ=${lastCoord[1].toFixed(2)}`;
+            } else {
+                logMessage('Last coordinate element not found.', LOG_TYPE.WARNING);
+            }
 
-        // Update first/last coordinate displays
-        const first = coordinates[0], last = coordinates[coordinates.length - 1];
-        const fcEl = document.getElementById('first_coordinate');
-        const lcEl = document.getElementById('last_coordinate');
-        if (fcEl) fcEl.textContent = `First Coordinate: θ=${first[0].toFixed(2)}, ρ=${first[1].toFixed(2)}`;
-        if (lcEl) lcEl.textContent = `Last Coordinate:  θ=${last[0].toFixed(2)}, ρ=${last[1].toFixed(2)}`;
 
-        // Show the preview container
-        const previewContainer = document.getElementById(containerId);
-        if (previewContainer) {
-            previewContainer.classList.remove('hidden');
-            previewContainer.classList.add('visible');
         } else {
-            logMessage(`Preview container not found: ${containerId}`, LOG_TYPE.ERROR);
+            logMessage(`Failed to fetch preview for file: ${fileName}`, LOG_TYPE.WARNING);
         }
     } catch (error) {
         logMessage(`Error previewing pattern: ${error.message}`, LOG_TYPE.ERROR);
     }
 }
-
 
 // Render the pattern on a canvas
 function renderPattern(coordinates, canvasId) {
@@ -529,6 +534,21 @@ function renderPattern(coordinates, canvasId) {
 }
 
 
+// Get the current rotation
+async function refreshRotationDisplay() {
+  try {
+    const resp = await fetch('/get_rotation');
+    if (!resp.ok) throw new Error(resp.statusText);
+    const { rotation_angle } = await resp.json();
+    const disp = document.getElementById('current_rotation_display');
+    if (disp) disp.textContent = `Current Rotation: ${rotation_angle.toFixed(1)}`;
+    // also update the input box so it matches
+    const inp = document.getElementById('rotation_angle');
+    if (inp) inp.value = rotation_angle;
+  } catch (e) {
+    console.error('Could not fetch rotation:', e);
+  }
+}
 async function moveToCenter() {
     logMessage('Moving to center...', LOG_TYPE.INFO);
     const response = await fetch('/move_to_center', { method: 'POST' });
@@ -1965,6 +1985,7 @@ function clearSearch() {
 
 // Replace the polling mechanism with WebSocket
 document.addEventListener('DOMContentLoaded', () => {
+
     const activeMainTab = getCookie('activeTab-main') || 'patterns';
     switchTab(activeMainTab, 'main');
     const activeImageConverterTab = getCookie('activeTab-image-converter') || 'dot';
@@ -1989,14 +2010,40 @@ document.addEventListener('DOMContentLoaded', () => {
      document
     .getElementById('clear_search')
     .addEventListener('click', clearSearch);
+
+    // initialize the rotation display from server
+
+    refreshRotationDisplay();
+
+    let rotationTimeout;
+    const rotationInput = document.getElementById('rotation_angle');
+
+    rotationInput.addEventListener('input', e => {
+    const deg = parseFloat(e.target.value) || 0;
+
+    // 1) immediate UI update
+    const disp = document.getElementById('current_rotation_display');
+    if (disp) disp.textContent = `Current Rotation: ${deg.toFixed(1)}`;
+
+    // 2) debounce the POST + preview redraw
+    clearTimeout(rotationTimeout);
+    rotationTimeout = setTimeout(async () => {
+        try {
+          await fetch('/set_rotation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rotation_deg: deg })
+          });
+        } catch (err) {
+          console.error('Failed to set rotation:', err);
+        }
+
+        // live‐update preview once
+        if (selectedFile) previewPattern(selectedFile);
+    }, 300); // <— wait 300ms after last input
+    });
     checkForUpdates();
 
-    const rotInput = document.getElementById('rotation_angle');
-  rotInput.addEventListener('input', () => {
-    if (selectedFile) {
-      previewPattern(selectedFile);
-    }
-  });
 });
 
 // Track the last time we had a file playing
@@ -2015,7 +2062,7 @@ function updateCurrentlyPlayingUI(status) {
     const progressText = document.getElementById('play_progress_text');
     const pausePlayButton = document.getElementById('pausePlayCurrent');
     const speedDisplay = document.getElementById('current_speed_display');
-
+    const rotationDisplay = document.getElementById('current_rotation_display');
     // Check if all required elements exist
     if (!container || !fileNameElement || !progressBar || !progressText) {
         console.log('Required DOM elements not found:', {
@@ -2114,7 +2161,6 @@ function updateSkipButtonVisibility(status) {
     const skipButton = document.getElementById('skipCurrent');
     if (skipButton) {
         // Check if a playlist is playing using the correct status properties
-        console.log('status', status);
         const isPlaylistPlaying = status && status.playlist && status.playlist.next_file;
         if (isPlaylistPlaying) {
             skipButton.classList.remove('hidden');
