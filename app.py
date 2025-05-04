@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from pathlib import Path
 from typing import List, Optional, Tuple, Dict, Any, Union
 import atexit
 import os
@@ -14,6 +15,7 @@ from modules.core import playlist_manager
 from modules.update import update_manager
 from modules.core.state import state
 from modules import mqtt
+from modules.core.thumbnail import generate_thumbnail
 import signal
 import sys
 import asyncio
@@ -54,7 +56,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
+app.mount("/thumbs", StaticFiles(directory="thumbs"), name="thumbs")
 # Pydantic models for request/response validation
 class ConnectRequest(BaseModel):
     port: Optional[str] = None
@@ -189,7 +191,18 @@ async def restart(request: ConnectRequest):
 async def list_theta_rho_files():
     logger.debug("Listing theta-rho files")
     files = pattern_manager.list_theta_rho_files()
-    return sorted(files)
+    result = []
+    patterns_dir = Path(pattern_manager.THETA_RHO_DIR)
+    for name in sorted(files):
+        thr_path = patterns_dir / name
+        print(thr_path)
+        thumb_path = generate_thumbnail(thr_path)
+        result.append({
+            "name": name,
+            "thumb": f"/thumbs/{thumb_path.name}"
+        })
+
+    return result
 
 @app.post("/upload_theta_rho")
 async def upload_theta_rho(file: UploadFile = File(...)):

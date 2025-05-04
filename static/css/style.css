@@ -654,8 +654,12 @@ section .header .add-button {
     border-bottom: 1px solid var(--border-primary);
     cursor: pointer;
     transition: background-color var(--transition-medium);
+    gap: 10px;
+    align-items: center;
 }
-
+.file-list .file-thumb {
+    border-radius: 15px;
+}
 .file-list li:hover {
     background-color: var(--background-tertiary);
 }

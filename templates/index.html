@@ -86,6 +86,7 @@
             <div class="action-buttons">
                 <div class="pre-execution">
                     <h3>Pre-Execution Action</h3>
+
                     <div class="control-group">
                         <select id="pre_execution" name="pre_execution">
                             <option value="none" selected>None</option>
@@ -100,10 +101,20 @@
                     <i class="fa-solid fa-play"></i>
                     <span>Play</span>
                 </button>
+                <!-- New download button -->
+                  <button
+                    id="download-button"
+                    onclick="downloadCurrentFile()"
+                    class="cta download-button hidden"
+                  >
+                    <i class="fa-solid fa-download"></i>
+                    <span class="small">Download</span>
+                  </button>
                 <button id="toggle-playlist-button" onclick="toggleSecondaryButtons('add-to-playlist-container', populatePlaylistDropdown)">
                     <i class="fa-solid fa-list-ul"></i>
                     <span class="small">Add to Playlist</span>
                 </button>
+
                 <button onclick="removeCurrentPattern()" class="cancel remove-button hidden">
                     <i class="fa-solid fa-trash"></i>
                     <span class="small">Delete</span>

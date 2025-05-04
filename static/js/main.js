@@ -131,7 +131,6 @@ function toggleDebugLog() {
 // File selection logic
 async function selectFile(file, listItem) {
     selectedFile = file;
-
     // Highlight the selected file
     document.querySelectorAll('#theta_rho_files li').forEach(li => li.classList.remove('selected'));
     listItem.classList.add('selected');
@@ -143,57 +142,71 @@ async function selectFile(file, listItem) {
     } else {
         removeButton.classList.add('hidden');
     }
+     // Show download button
+    const dlBtn = document.getElementById('download-button');
+    dlBtn.classList.remove('hidden');
 
     logMessage(`Selected file: ${file}`);
     await previewPattern(file);
 
     // Populate the playlist dropdown after selecting a pattern
     await populatePlaylistDropdown();
+
 }
 
 // Fetch and display Theta-Rho files
 async function loadThetaRhoFiles() {
     try {
         logMessage('Loading Theta-Rho files...');
-        const response = await fetch('/list_theta_rho_files');
-        let files = await response.json();
+        const list = await fetch('/list_theta_rho_files').then(r => r.json());
 
-        files = files.filter(file => file.endsWith('.thr'));
-        // Sort files with custom_patterns on top and all alphabetically sorted
-        const sortedFiles = files.sort((a, b) => {
-            const isCustomA = a.startsWith('custom_patterns/');
-            const isCustomB = b.startsWith('custom_patterns/');
-
-            if (isCustomA && !isCustomB) return -1; // a comes first
-            if (!isCustomA && isCustomB) return 1;  // b comes first
-            return a.localeCompare(b);             // Alphabetical comparison
+        // Sort custom patterns first, then alphabetically by name
+        list.sort((a, b) => {
+            const isCustomA = a.name.startsWith('custom_patterns/');
+            const isCustomB = b.name.startsWith('custom_patterns/');
+            if (isCustomA && !isCustomB) return -1;
+            if (!isCustomA && isCustomB) return 1;
+            return a.name.localeCompare(b.name);
         });
 
-        allFiles = sortedFiles; // Update global files
-        displayFiles(sortedFiles); // Display sorted files
+        allFiles = list;      // store full objects
+        displayFiles(list);   // render them
 
         logMessage('Theta-Rho files loaded and sorted successfully.');
     } catch (error) {
-        logMessage(`Error loading Theta-Rho files: ${error.message}`, 'error');
+        logMessage(`Error loading Theta-Rho files: ${error.message}`, LOG_TYPE.ERROR);
     }
 }
 
-// Display files in the UI
+// Render the list with thumbnails
 function displayFiles(files) {
     const ul = document.getElementById('theta_rho_files');
     if (!ul) {
-        logMessage('Error: File list container not found');
+        logMessage('Error: File list container not found', LOG_TYPE.ERROR);
         return;
     }
-    ul.innerHTML = ''; // Clear existing list
+    ul.innerHTML = '';
 
-    files.forEach(file => {
+    files.forEach(({ name, thumb }) => {
         const li = document.createElement('li');
-        li.textContent = file;
         li.classList.add('file-item');
 
-        // Attach file selection handler
-        li.onclick = () => selectFile(file, li);
+        // thumbnail
+        const img = document.createElement('img');
+        img.src = thumb;
+        img.alt = '';
+        img.width = 32;
+        img.height = 32;
+        img.classList.add('file-thumb');
+        li.appendChild(img);
+
+        // filename
+        const span = document.createElement('span');
+        span.textContent = name;
+        li.appendChild(span);
+
+        // click handler
+        li.onclick = () => selectFile(name, li);
 
         ul.appendChild(li);
     });
@@ -337,6 +350,8 @@ function removeCurrentPattern() {
     }
 
     removeCustomPattern(selectedFile);
+    selectedFile = null;
+
 }
 
 // Delete the selected file
@@ -1472,6 +1487,7 @@ function closeStickySection(sectionId) {
         }
 
         if(sectionId === 'pattern-preview-container') {
+            document.getElementById('download-button').classList.add('hidden');
             document.querySelectorAll('#theta_rho_files .file-item').forEach(item => {
                 item.classList.remove('selected');
             });
@@ -2057,4 +2073,25 @@ async function skipPattern() {
     } catch (error) {
         logMessage('Error skipping pattern', 'error');
     }
+}
+
+function downloadCurrentFile() {
+  if (!selectedFile) {
+    logMessage('No file selected to download.', LOG_TYPE.WARNING);
+    return;
+  }
+
+  // Build the download URL
+  const url = '/download/' + encodeURIComponent(selectedFile);
+
+  // Create a temporary <a> so we can set download attribute
+  const a = document.createElement('a');
+  a.href = url;
+  // Use only the filename (strip any path prefixes):
+  a.download = selectedFile.split('/').pop();
+
+  // Append, click, and remove
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
