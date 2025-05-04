@@ -657,6 +657,9 @@ section .header .add-button {
     gap: 10px;
     align-items: center;
 }
+.file-list .folder-contents {
+    padding: 0px;
+}
 .file-list .file-thumb {
     border-radius: 15px;
 }

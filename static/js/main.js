@@ -180,37 +180,67 @@ async function loadThetaRhoFiles() {
 
 // Render the list with thumbnails
 function displayFiles(files) {
-    const ul = document.getElementById('theta_rho_files');
-    if (!ul) {
-        logMessage('Error: File list container not found', LOG_TYPE.ERROR);
-        return;
-    }
-    ul.innerHTML = '';
+  const ul = document.getElementById('theta_rho_files');
+  if (!ul) return;
 
-    files.forEach(({ name, thumb }) => {
-        const li = document.createElement('li');
-        li.classList.add('file-item');
+  ul.innerHTML = '';
 
-        // thumbnail
-        const img = document.createElement('img');
-        img.src = thumb;
-        img.alt = '';
-        img.width = 32;
-        img.height = 32;
-        img.classList.add('file-thumb');
-        li.appendChild(img);
+  // split into two groups
+  const custom   = files.filter(f => f.name.startsWith('custom_patterns/'));
+  const builtIn  = files.filter(f => !f.name.startsWith('custom_patterns/'));
 
-        // filename
-        const span = document.createElement('span');
-        span.textContent = name;
-        li.appendChild(span);
+  // render both folders
+  renderFolder('Custom Patterns', custom);
+  renderFolder('Built-in Patterns', builtIn);
 
-        // click handler
-        li.onclick = () => selectFile(name, li);
+  function renderFolder(title, items) {
+    // folder header
+    const header = document.createElement('li');
+    header.className = 'folder-header';
+    header.innerHTML = `
+      <i class="fa-solid fa-chevron-right toggle-icon"></i>
+      <span class="folder-title">${title}</span>
+    `;
+    ul.appendChild(header);
 
-        ul.appendChild(li);
+    // container for this folder’s items
+    const container = document.createElement('ul');
+    container.className = 'folder-contents';
+    container.style.display = 'none';
+    ul.appendChild(container);
+
+    // toggle open/closed on click
+    header.addEventListener('click', () => {
+      const isOpen = container.style.display === 'block';
+      container.style.display = isOpen ? 'none' : 'block';
+      header.querySelector('.toggle-icon').className =
+        isOpen
+          ? 'fa-solid fa-chevron-right toggle-icon'
+          : 'fa-solid fa-chevron-down toggle-icon';
     });
+
+    // render each file under here
+    if (items.length === 0) {
+      const emptyLi = document.createElement('li');
+      emptyLi.className = 'empty-placeholder';
+      emptyLi.textContent = '(no patterns)';
+      container.appendChild(emptyLi);
+    } else {
+      items.forEach(({ name, thumb }) => {
+        const li = document.createElement('li');
+        li.className = 'file-item';
+        li.innerHTML = `
+          <img src="${thumb}" class="file-thumb" width="32" height="32" alt="">
+          <span class="filename">${name}</span>
+        `;
+        li.addEventListener('click', () => selectFile(name, li));
+        container.appendChild(li);
+      });
+    }
+  }
 }
+
+
 
 // Filter files by search input
 function searchPatternFiles() {
