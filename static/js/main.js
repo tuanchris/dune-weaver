@@ -383,10 +383,18 @@ async function removeCustomPattern(fileName) {
     }
 }
 
-// Preview a Theta-Rho file
-async function previewPattern(fileName, containerId = 'pattern-preview-container') {
+// SVG Cache
+const svgCache = new Map();
+
+// Function to get SVG from cache or fetch it
+async function getSVG(fileName) {
+    // Check if SVG is in cache
+    if (svgCache.has(fileName)) {
+        return svgCache.get(fileName);
+    }
+
+    // If not in cache, fetch it
     try {
-        logMessage(`Fetching data to preview file: ${fileName}...`);
         const response = await fetch('/preview_thr', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -398,6 +406,26 @@ async function previewPattern(fileName, containerId = 'pattern-preview-container
         }
 
         const data = await response.json();
+        
+        // Store in cache
+        svgCache.set(fileName, data);
+        return data;
+    } catch (error) {
+        logMessage(`Error fetching SVG: ${error.message}`, LOG_TYPE.ERROR);
+        throw error;
+    }
+}
+
+// Function to clear SVG cache
+function clearSVGCache() {
+    svgCache.clear();
+}
+
+// Update previewPattern function to use cache
+async function previewPattern(fileName, containerId = 'pattern-preview-container') {
+    try {
+        logMessage(`Fetching data to preview file: ${fileName}...`);
+        const data = await getSVG(fileName);
         
         // Get the preview container
         const previewContainer = document.getElementById(containerId);
@@ -435,33 +463,19 @@ async function previewPattern(fileName, containerId = 'pattern-preview-container
             coordDisplay.innerHTML = 'No coordinates available';
         }
 
-        // Add elements to the preview
+        // Add elements to preview
         patternPreview.appendChild(svgContainer);
         patternPreview.appendChild(coordDisplay);
-
-        // Show the preview container
-        previewContainer.classList.remove('hidden');
-        previewContainer.classList.add('visible');
 
     } catch (error) {
         logMessage(`Error previewing pattern: ${error.message}`, LOG_TYPE.ERROR);
     }
 }
 
-// Function to update the currently playing pattern
+// Update updateCurrentlyPlayingPattern function to use cache
 async function updateCurrentlyPlayingPattern(fileName) {
     try {
-        const response = await fetch('/preview_thr', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ file_name: fileName })
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
+        const data = await getSVG(fileName);
         
         // Get the currently playing container
         const container = document.getElementById('currently-playing-container');
