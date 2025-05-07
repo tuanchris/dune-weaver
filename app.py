@@ -1,5 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -19,6 +19,8 @@ import sys
 import asyncio
 from contextlib import asynccontextmanager
 from modules.led.led_controller import LEDController, effect_idle
+import math
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -353,7 +355,38 @@ async def preview_thr(request: DeleteFileRequest):
 
     try:
         coordinates = pattern_manager.parse_theta_rho_file(file_path)
-        return {"success": True, "coordinates": coordinates}
+        
+        # Convert polar coordinates to SVG path
+        svg_path = []
+        for i, (theta, rho) in enumerate(coordinates):
+            # Convert polar to cartesian coordinates
+            # Use a larger viewBox (200x200) for better resolution
+            x = 100 + rho * 90 * math.cos(theta)  # Scale and center
+            y = 100 - rho * 90 * math.sin(theta)  # Scale and center, flip y-axis
+            
+            if i == 0:
+                svg_path.append(f"M {x:.2f} {y:.2f}")
+            else:
+                svg_path.append(f"L {x:.2f} {y:.2f}")
+        
+        # Create SVG with larger viewBox and preserveAspectRatio
+        svg = f'''<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="100%" height="100%" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+    <path d="{' '.join(svg_path)}" 
+          fill="none" 
+          stroke="currentColor" 
+          stroke-width="0.5"/>
+</svg>'''
+        
+        # Get first and last coordinates
+        first_coord = coordinates[0] if coordinates else None
+        last_coord = coordinates[-1] if coordinates else None
+        
+        return {
+            "svg": svg,
+            "first_coordinate": first_coord,
+            "last_coordinate": last_coord
+        }
     except Exception as e:
         logger.error(f"Failed to generate preview for {request.file_name}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
