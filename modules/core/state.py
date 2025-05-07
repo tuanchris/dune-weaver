@@ -11,7 +11,7 @@ class AppState:
         # Private variables for properties
         self._current_playing_file = None
         self._pause_requested = False
-        self._speed = 150
+        self._speed = 130
         self._current_playlist = None
         self._current_playlist_name = None  # New variable for playlist name
         
