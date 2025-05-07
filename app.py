@@ -361,8 +361,8 @@ async def preview_thr(request: DeleteFileRequest):
         for i, (theta, rho) in enumerate(coordinates):
             # Convert polar to cartesian coordinates
             # Use a larger viewBox (200x200) for better resolution
-            x = 100 + rho * 90 * math.cos(theta)  # Scale and center
-            y = 100 - rho * 90 * math.sin(theta)  # Scale and center, flip y-axis
+            x = 100 - rho * 90 * math.cos(theta)  # Scale and center, rotate 180 degrees
+            y = 100 - rho * 90 * math.sin(theta)  # Scale and center, rotate 180 degrees
             
             if i == 0:
                 svg_path.append(f"M {x:.2f} {y:.2f}")
