@@ -279,7 +279,7 @@ async function runThetaRho() {
                 currentlyPlayingFile.textContent = selectedFile.replace('./patterns/', '');
             }
             // Show initial preview
-            previewPattern(selectedFile.replace('./patterns/', ''), 'currently-playing-container');
+            updateCurrentlyPlayingPattern(selectedFile.replace('./patterns/', ''));
             logMessage(`Pattern running: ${selectedFile}`, LOG_TYPE.SUCCESS);
         } else {
             if (response.status === 409) {
@@ -445,6 +445,51 @@ async function previewPattern(fileName, containerId = 'pattern-preview-container
 
     } catch (error) {
         logMessage(`Error previewing pattern: ${error.message}`, LOG_TYPE.ERROR);
+    }
+}
+
+// Function to update the currently playing pattern
+async function updateCurrentlyPlayingPattern(fileName) {
+    try {
+        const response = await fetch('/preview_thr', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file_name: fileName })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        // Get the currently playing container
+        const container = document.getElementById('currently-playing-container');
+        if (!container) {
+            logMessage('Currently playing container not found', LOG_TYPE.ERROR);
+            return;
+        }
+
+        // Get the currently playing preview div
+        const previewDiv = container.querySelector('#currently-playing-preview');
+        if (!previewDiv) {
+            logMessage('Currently playing preview div not found', LOG_TYPE.ERROR);
+            return;
+        }
+
+        // Clear existing content
+        previewDiv.innerHTML = '';
+
+        // Create SVG container
+        const svgContainer = document.createElement('div');
+        svgContainer.className = 'svg-container';
+        svgContainer.innerHTML = data.svg;
+
+        // Add SVG to the preview div
+        previewDiv.appendChild(svgContainer);
+
+    } catch (error) {
+        logMessage(`Error updating currently playing pattern: ${error.message}`, LOG_TYPE.ERROR);
     }
 }
 
@@ -1964,15 +2009,6 @@ function updateCurrentlyPlayingUI(status) {
     if (status.current_file && status.is_running) {
         document.body.classList.add('playing');
         container.style.display = 'flex';
-        
-        // Hide the preview container when a pattern is playing
-        const previewContainer = document.getElementById('pattern-preview-container');
-        if (previewContainer) {
-            // Clear any selected file highlights
-            document.querySelectorAll('#theta_rho_files .file-item').forEach(item => {
-                item.classList.remove('selected');
-            });
-        }
     } else {
         document.body.classList.remove('playing');
         container.style.display = 'none';
@@ -2007,7 +2043,7 @@ function updateCurrentlyPlayingUI(status) {
     if (status.current_file && lastPlayedFile !== status.current_file) {
         lastPlayedFile = status.current_file;
         const cleanFileName = status.current_file.replace('./patterns/', '');
-        previewPattern(cleanFileName, 'currently-playing-container');
+        updateCurrentlyPlayingPattern(cleanFileName);
     }
 
     // Update progress information
