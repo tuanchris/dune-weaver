@@ -145,6 +145,15 @@ async function selectFile(file, listItem) {
     }
 
     logMessage(`Selected file: ${file}`);
+    
+    // Show the preview container
+    const previewContainer = document.getElementById('pattern-preview-container');
+    if (previewContainer) {
+        previewContainer.classList.remove('hidden');
+        previewContainer.classList.add('visible');
+    }
+    
+    // Update the preview
     await previewPattern(file);
 
     // Populate the playlist dropdown after selecting a pattern
@@ -270,7 +279,7 @@ async function runThetaRho() {
                 currentlyPlayingFile.textContent = selectedFile.replace('./patterns/', '');
             }
             // Show initial preview
-            previewPattern(selectedFile.replace('./patterns/', ''), 'currently-playing-container');
+            updateCurrentlyPlayingPattern(selectedFile.replace('./patterns/', ''));
             logMessage(`Pattern running: ${selectedFile}`, LOG_TYPE.SUCCESS);
         } else {
             if (response.status === 409) {
@@ -374,63 +383,127 @@ async function removeCustomPattern(fileName) {
     }
 }
 
-// Preview a Theta-Rho file
-async function previewPattern(fileName, containerId = 'pattern-preview-container') {
+// SVG Cache
+const svgCache = new Map();
+
+// Function to get SVG from cache or fetch it
+async function getSVG(fileName) {
+    // Check if SVG is in cache
+    if (svgCache.has(fileName)) {
+        return svgCache.get(fileName);
+    }
+
+    // If not in cache, fetch it
     try {
-        logMessage(`Fetching data to preview file: ${fileName}...`);
         const response = await fetch('/preview_thr', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ file_name: fileName })
         });
 
-        const result = await response.json();
-        if (result.success) {
-            // Mirror the theta values in the coordinates
-            const coordinates = result.coordinates.map(coord => [
-                (coord[0] < Math.PI) ? 
-                    Math.PI - coord[0] : // For first half
-                    3 * Math.PI - coord[0], // For second half
-                coord[1]
-            ]);
-
-            // Render the pattern in the specified container
-            const canvasId = containerId === 'currently-playing-container'
-                ? 'currentlyPlayingCanvas'
-                : 'patternPreviewCanvas';
-            renderPattern(coordinates, canvasId);
-
-            // Update coordinate display
-            const firstCoordElement = document.getElementById('first_coordinate');
-            const lastCoordElement = document.getElementById('last_coordinate');
-
-            if (firstCoordElement) {
-                const firstCoord = coordinates[0];
-                firstCoordElement.textContent = `First Coordinate: θ=${firstCoord[0].toFixed(2)}, ρ=${firstCoord[1].toFixed(2)}`;
-            } else {
-                logMessage('First coordinate element not found.', LOG_TYPE.WARNING);
-            }
-
-            if (lastCoordElement) {
-                const lastCoord = coordinates[coordinates.length - 1];
-                lastCoordElement.textContent = `Last Coordinate: θ=${lastCoord[0].toFixed(2)}, ρ=${lastCoord[1].toFixed(2)}`;
-            } else {
-                logMessage('Last coordinate element not found.', LOG_TYPE.WARNING);
-            }
-
-            // Show the preview container
-            const previewContainer = document.getElementById(containerId);
-            if (previewContainer) {
-                previewContainer.classList.remove('hidden');
-                previewContainer.classList.add('visible');
-            } else {
-                logMessage(`Preview container not found: ${containerId}`, LOG_TYPE.ERROR);
-            }
-        } else {
-            logMessage(`Failed to fetch preview for file: ${fileName}`, LOG_TYPE.WARNING);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
+
+        const data = await response.json();
+        
+        // Store in cache
+        svgCache.set(fileName, data);
+        return data;
+    } catch (error) {
+        logMessage(`Error fetching SVG: ${error.message}`, LOG_TYPE.ERROR);
+        throw error;
+    }
+}
+
+// Function to clear SVG cache
+function clearSVGCache() {
+    svgCache.clear();
+}
+
+// Update previewPattern function to use cache
+async function previewPattern(fileName, containerId = 'pattern-preview-container') {
+    try {
+        logMessage(`Fetching data to preview file: ${fileName}...`);
+        const data = await getSVG(fileName);
+        
+        // Get the preview container
+        const previewContainer = document.getElementById(containerId);
+        if (!previewContainer) {
+            logMessage(`Preview container not found: ${containerId}`, LOG_TYPE.ERROR);
+            return;
+        }
+
+        // Get the pattern preview section
+        const patternPreview = previewContainer.querySelector('#pattern-preview');
+        if (!patternPreview) {
+            logMessage('Pattern preview section not found', LOG_TYPE.ERROR);
+            return;
+        }
+
+        // Clear existing content
+        patternPreview.innerHTML = '';
+
+        // Create SVG container
+        const svgContainer = document.createElement('div');
+        svgContainer.className = 'svg-container';
+        svgContainer.innerHTML = data.svg;
+
+        // Create coordinate display
+        const coordDisplay = document.createElement('div');
+        coordDisplay.className = 'coordinate-display';
+
+        // Update coordinate text
+        if (data.first_coordinate && data.last_coordinate) {
+            coordDisplay.innerHTML = `
+                <div>First Coordinate: θ=${data.first_coordinate[0].toFixed(2)}, ρ=${data.first_coordinate[1].toFixed(2)}</div>
+                <div>Last Coordinate: θ=${data.last_coordinate[0].toFixed(2)}, ρ=${data.last_coordinate[1].toFixed(2)}</div>
+            `;
+        } else {
+            coordDisplay.innerHTML = 'No coordinates available';
+        }
+
+        // Add elements to preview
+        patternPreview.appendChild(svgContainer);
+        patternPreview.appendChild(coordDisplay);
+
     } catch (error) {
         logMessage(`Error previewing pattern: ${error.message}`, LOG_TYPE.ERROR);
+    }
+}
+
+// Update updateCurrentlyPlayingPattern function to use cache
+async function updateCurrentlyPlayingPattern(fileName) {
+    try {
+        const data = await getSVG(fileName);
+        
+        // Get the currently playing container
+        const container = document.getElementById('currently-playing-container');
+        if (!container) {
+            logMessage('Currently playing container not found', LOG_TYPE.ERROR);
+            return;
+        }
+
+        // Get the currently playing preview div
+        const previewDiv = container.querySelector('#currently-playing-preview');
+        if (!previewDiv) {
+            logMessage('Currently playing preview div not found', LOG_TYPE.ERROR);
+            return;
+        }
+
+        // Clear existing content
+        previewDiv.innerHTML = '';
+
+        // Create SVG container
+        const svgContainer = document.createElement('div');
+        svgContainer.className = 'svg-container';
+        svgContainer.innerHTML = data.svg;
+
+        // Add SVG to the preview div
+        previewDiv.appendChild(svgContainer);
+
+    } catch (error) {
+        logMessage(`Error updating currently playing pattern: ${error.message}`, LOG_TYPE.ERROR);
     }
 }
 
@@ -1950,15 +2023,6 @@ function updateCurrentlyPlayingUI(status) {
     if (status.current_file && status.is_running) {
         document.body.classList.add('playing');
         container.style.display = 'flex';
-        
-        // Hide the preview container when a pattern is playing
-        const previewContainer = document.getElementById('pattern-preview-container');
-        if (previewContainer) {
-            // Clear any selected file highlights
-            document.querySelectorAll('#theta_rho_files .file-item').forEach(item => {
-                item.classList.remove('selected');
-            });
-        }
     } else {
         document.body.classList.remove('playing');
         container.style.display = 'none';
@@ -1993,7 +2057,7 @@ function updateCurrentlyPlayingUI(status) {
     if (status.current_file && lastPlayedFile !== status.current_file) {
         lastPlayedFile = status.current_file;
         const cleanFileName = status.current_file.replace('./patterns/', '');
-        previewPattern(cleanFileName, 'currently-playing-container');
+        updateCurrentlyPlayingPattern(cleanFileName);
     }
 
     // Update progress information

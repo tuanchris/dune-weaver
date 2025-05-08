@@ -224,15 +224,14 @@ def send_grbl_coordinates(x, y, speed=600, timeout=2, home=False):
     
     # Track overall attempt time
     overall_start_time = time.time()
-    max_total_attempt_time = 120 # Maximum total seconds to try
     
-    while time.time() - overall_start_time < max_total_attempt_time:
+    while True:
         try:
             gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 X{x} Y{y} F{speed}"
             state.conn.send(gcode + "\n")
             logger.debug(f"Sent command: {gcode}")
             start_time = time.time()
-            while time.time() - start_time < timeout and time.time() - overall_start_time < max_total_attempt_time:
+            while True:
                 response = state.conn.readline()
                 logger.debug(f"Response: {response}")
                 if response.lower() == "ok":
@@ -251,10 +250,7 @@ def send_grbl_coordinates(x, y, speed=600, timeout=2, home=False):
                 state.is_connected = False
                 logger.info("Connection marked as disconnected due to device error")
                 return False
-            
-        # Check if we've exceeded our overall timeout
-        if time.time() - overall_start_time >= max_total_attempt_time:
-            break
+
             
         logger.warning(f"No 'ok' received for X{x} Y{y}, speed {speed}. Retrying...")
         time.sleep(0.1)
@@ -362,7 +358,7 @@ def get_machine_steps(timeout=10):
     if settings_complete:
         if y_steps_per_mm == 180:
             state.table_type = 'dune_weaver_mini'
-        elif y_steps_per_mm == 320:
+        elif y_steps_per_mm >= 320:
             state.table_type = 'dune_weaver_pro'
         elif y_steps_per_mm == 287:
             state.table_type = 'dune_weaver'

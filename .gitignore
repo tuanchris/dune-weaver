@@ -6,3 +6,4 @@ __pycache__/
 .idea
 *.json
 .venv/
+patterns/cached_svg/
