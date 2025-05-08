@@ -20,6 +20,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from modules.led.led_controller import LEDController, effect_idle
 import math
+from modules.core.svg_cache_manager import generate_all_svg_previews, get_cache_path, generate_svg_preview
 
 # Configure logging
 logging.basicConfig(
@@ -49,6 +50,13 @@ async def lifespan(app: FastAPI):
         mqtt_handler = mqtt.init_mqtt()
     except Exception as e:
         logger.warning(f"Failed to initialize MQTT: {str(e)}")
+    
+    # Generate SVG previews for all patterns
+    try:
+        logger.info("Starting SVG cache generation...")
+        await generate_all_svg_previews()
+    except Exception as e:
+        logger.warning(f"Failed to generate SVG cache: {str(e)}")
 
     yield  # This separates startup from shutdown code
 
@@ -195,20 +203,20 @@ async def list_theta_rho_files():
 
 @app.post("/upload_theta_rho")
 async def upload_theta_rho(file: UploadFile = File(...)):
-    custom_patterns_dir = os.path.join(pattern_manager.THETA_RHO_DIR, 'custom_patterns')
-    os.makedirs(custom_patterns_dir, exist_ok=True)
-    logger.debug(f'Ensuring custom patterns directory exists: {custom_patterns_dir}')
-
-    if file:
-        file_path = os.path.join(custom_patterns_dir, file.filename)
-        contents = await file.read()
+    """Upload a theta-rho file."""
+    try:
+        # Save the file
+        file_path = os.path.join(pattern_manager.THETA_RHO_DIR, "custom_patterns", file.filename)
         with open(file_path, "wb") as f:
-            f.write(contents)
-        logger.info(f'Successfully uploaded theta-rho file: {file.filename}')
-        return {"success": True}
-    
-    logger.warning('Upload theta-rho request received without file')
-    return {"success": False}
+            f.write(await file.read())
+        
+        # Generate SVG preview for the new file
+        await generate_svg_preview(os.path.join("custom_patterns", file.filename))
+        
+        return {"success": True, "message": f"File {file.filename} uploaded successfully"}
+    except Exception as e:
+        logger.error(f"Error uploading file: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 class ThetaRhoRequest(BaseModel):
     file_name: str
@@ -354,22 +362,37 @@ async def preview_thr(request: DeleteFileRequest):
         raise HTTPException(status_code=404, detail="File not found")
 
     try:
+        # Check if cached SVG exists
+        cache_path = get_cache_path(request.file_name)
+        if os.path.exists(cache_path):
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                svg_content = f.read()
+                
+            # Parse coordinates for first and last points
+            coordinates = pattern_manager.parse_theta_rho_file(file_path)
+            first_coord = coordinates[0] if coordinates else None
+            last_coord = coordinates[-1] if coordinates else None
+            
+            return {
+                "svg": svg_content,
+                "first_coordinate": first_coord,
+                "last_coordinate": last_coord
+            }
+        
+        # If not cached, generate SVG as before
         coordinates = pattern_manager.parse_theta_rho_file(file_path)
         
         # Convert polar coordinates to SVG path
         svg_path = []
         for i, (theta, rho) in enumerate(coordinates):
-            # Convert polar to cartesian coordinates
-            # Use a larger viewBox (200x200) for better resolution
-            x = 100 - rho * 90 * math.cos(theta)  # Scale and center, rotate 180 degrees
-            y = 100 - rho * 90 * math.sin(theta)  # Scale and center, rotate 180 degrees
+            x = 100 - rho * 90 * math.cos(theta)
+            y = 100 - rho * 90 * math.sin(theta)
             
             if i == 0:
                 svg_path.append(f"M {x:.2f} {y:.2f}")
             else:
                 svg_path.append(f"L {x:.2f} {y:.2f}")
         
-        # Create SVG with larger viewBox and preserveAspectRatio
         svg = f'''<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg width="100%" height="100%" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
     <path d="{' '.join(svg_path)}" 
@@ -378,14 +401,14 @@ async def preview_thr(request: DeleteFileRequest):
           stroke-width="0.5"/>
 </svg>'''
         
-        # Get first and last coordinates
-        first_coord = coordinates[0] if coordinates else None
-        last_coord = coordinates[-1] if coordinates else None
+        # Cache the SVG for future use
+        with open(cache_path, 'w', encoding='utf-8') as f:
+            f.write(svg)
         
         return {
             "svg": svg,
-            "first_coordinate": first_coord,
-            "last_coordinate": last_coord
+            "first_coordinate": coordinates[0] if coordinates else None,
+            "last_coordinate": coordinates[-1] if coordinates else None
         }
     except Exception as e:
         logger.error(f"Failed to generate preview for {request.file_name}: {str(e)}")
@@ -596,7 +619,6 @@ def entrypoint():
     import uvicorn
     logger.info("Starting FastAPI server on port 8080...")
     uvicorn.run(app, host="0.0.0.0", port=8080, workers=1)  # Set workers to 1 to avoid multiple signal handlers
-
 
 if __name__ == "__main__":
     entrypoint()
