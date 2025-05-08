@@ -1,3 +1,4 @@
+# pattern_manager.py
 import os
 import threading
 import time
@@ -211,261 +212,154 @@ def is_clear_pattern(file_path):
     # Check if the file path matches any clear pattern path
     return normalized_path in normalized_clear_patterns
 
-async def run_theta_rho_file(file_path, is_playlist=False):
-    """Run a theta-rho file by sending data in optimized batches with tqdm ETA tracking."""
+async def run_theta_rho_file(file_path, is_playlist=False, preset: int = None):
+    """Run a single .thr file, applying the correct WLED preset at start & resume."""
     if pattern_lock.locked():
         logger.warning("Another pattern is already running. Cannot start a new one.")
         return
 
-    async with pattern_lock:  # This ensures only one pattern can run at a time
-        # Start progress update task only if not part of a playlist
+    async with pattern_lock:
         global progress_update_task
+        # start progress updater if this isn’t part of a playlist
         if not is_playlist and not progress_update_task:
             progress_update_task = asyncio.create_task(broadcast_progress())
-        
-        coordinates = parse_theta_rho_file(file_path)
-        total_coordinates = len(coordinates)
 
-        if total_coordinates < 2:
+        coords = parse_theta_rho_file(file_path)
+        total = len(coords)
+        if total < 2:
             logger.warning("Not enough coordinates for interpolation")
             if not is_playlist:
                 state.current_playing_file = None
                 state.execution_progress = None
             return
 
-        state.execution_progress = (0, total_coordinates, None, 0)
-        
-        # stop actions without resetting the playlist
+        # prepare state
+        state.execution_progress = (0, total, None, 0)
         stop_actions(clear_playlist=False)
-
         state.current_playing_file = file_path
         state.stop_requested = False
-        logger.info(f"Starting pattern execution: {file_path}")
-        logger.info(f"t: {state.current_theta}, r: {state.current_rho}")
         reset_theta()
-        
         start_time = time.time()
 
-        if state.led_controller:
-            entries = state.current_playlist_entries or []
-            presets = 2
+        # decide which preset to use
+        logger.info(f"Preset passed is: {preset} for '{file_path}'")
+        if preset is None:
+            chosen = 2
+        else:
+            chosen = preset
+        logger.info(f"Applying preset {chosen} for '{file_path}'")
+        state.led_controller.set_preset(chosen)
 
-            if is_clear_pattern(file_path):
-                # clear patterns inherit the next real-pattern’s preset
-                next_i = state.current_playlist_index + 1
-                if 0 <= next_i < len(entries):
-                    presets = int(entries[next_i].get("preset", 2))
-            else:
-                # normal patterns use their own preset
-                i = state.current_playlist_index
-                if 0 <= i < len(entries):
-                    presets = int(entries[i].get("preset", 2))
-
-            logger.debug(
-                f"{'clear' if is_clear_pattern(file_path) else 'main'} "
-                f"pattern at idx={state.current_playlist_index} → preset={presets}"
-            )
-            state.led_controller.set_preset(presets)
-
-        with tqdm(
-                total=total_coordinates,
-                unit="coords",
-                desc=f"Executing Pattern {file_path}",
-                dynamic_ncols=True,
-                disable=False,
-                mininterval=1.0
-        ) as pbar:
-            for i, coordinate in enumerate(coordinates):
-                theta, rho = coordinate
-                if state.stop_requested:
-                    logger.info("Execution stopped by user")
+        # run all points
+        with tqdm(total=total, unit="coords", desc=f"Executing {file_path}") as pbar:
+            for i, (theta, rho) in enumerate(coords):
+                if state.stop_requested or state.skip_requested:
                     if state.led_controller:
                         effect_idle(state.led_controller)
                     break
 
-                if state.skip_requested:
-                    logger.info("Skipping pattern...")
-                    connection_manager.check_idle()
-                    if state.led_controller:
-                        effect_idle(state.led_controller)
-                    break
-
-                # Wait for resume if paused
+                # handle pause/resume
                 if state.pause_requested:
-                    logger.info("Execution paused...")
                     if state.led_controller:
                         effect_idle(state.led_controller)
-
                     await pause_event.wait()
-
-                    logger.info("Execution resumed...")
-                    if state.led_controller:
-                        entries = state.current_playlist_entries or []
-                        presets = 2
-
-                        if is_clear_pattern(file_path):
-                            next_i = state.current_playlist_index + 1
-                            if 0 <= next_i < len(entries):
-                                presets = int(entries[next_i].get("preset", 2))
-                        else:
-                            i_idx = state.current_playlist_index
-                            if 0 <= i_idx < len(entries):
-                                presets = int(entries[i_idx].get("preset", 2))
-
-                        state.led_controller.set_preset(presets)
+                    # re-apply preset after resume
+                    state.led_controller.set_preset(chosen)
 
                 move_polar(theta, rho)
-                
-                # Update progress for all coordinates including the first one
                 pbar.update(1)
-                elapsed_time = time.time() - start_time
-                estimated_remaining_time = (total_coordinates - (i + 1)) / pbar.format_dict['rate'] if pbar.format_dict['rate'] and total_coordinates else 0
-                state.execution_progress = (i + 1, total_coordinates, estimated_remaining_time, elapsed_time)
-                
-                # Add a small delay to allow other async operations
+
+                # update progress
+                elapsed = time.time() - start_time
+                rate = pbar.format_dict.get("rate") or 1
+                remaining = (total - (i+1)) / rate
+                state.execution_progress = (i+1, total, remaining, elapsed)
                 await asyncio.sleep(0.001)
 
-        # Update progress one last time to show 100%
-        elapsed_time = time.time() - start_time
-        state.execution_progress = (total_coordinates, total_coordinates, 0, elapsed_time)
-        # Give WebSocket a chance to send the final update
+        # final cleanup
+        state.execution_progress = (total, total, 0, time.time() - start_time)
         await asyncio.sleep(0.1)
-        
-        if not state.conn:
-            logger.error("Device is not connected. Stopping pattern execution.")
-            return
-            
         connection_manager.check_idle()
-        
-        # Only clear state if not part of a playlist
+
         if not is_playlist:
             state.current_playing_file = None
             state.execution_progress = None
-            logger.info("Pattern execution completed and state cleared")
         else:
-            logger.info("Pattern execution completed, maintaining state for playlist")
-        
-        # Only cancel progress update task if not part of a playlist
+            logger.info("Playlist step complete; keeping state for next item")
+
         if not is_playlist and progress_update_task:
             progress_update_task.cancel()
-            try:
-                await progress_update_task
-            except asyncio.CancelledError:
-                pass
+            try: await progress_update_task
+            except asyncio.CancelledError: pass
             progress_update_task = None
-            
+
 
 async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
-    """Run multiple .thr files in sequence with options."""
+    """Run a full playlist, injecting clear patterns (with next‐item preset) automatically."""
     state.stop_requested = False
-    
-    # Set initial playlist state
     state.playlist_mode = run_mode
     state.current_playlist_index = 0
-    # Start progress update task for the playlist
+
+    # build a flat sequence of (path, preset) pairs
+    entries = state.current_playlist_entries or []
+    seq = []
+    for e in entries:
+        # inject clear-pattern step if requested
+        if clear_pattern and clear_pattern != "none":
+            cp = get_clear_pattern_file(clear_pattern, os.path.join(THETA_RHO_DIR, e["pattern"]))
+            if cp:
+                seq.append((cp, e["preset"]))
+        # then the real pattern
+        seq.append((os.path.join(THETA_RHO_DIR, e["pattern"]), e["preset"]))
+    logger.info(f"Playlist sequence: {seq}")
+    if shuffle:
+        random.shuffle(seq)
+
     global progress_update_task
     if not progress_update_task:
         progress_update_task = asyncio.create_task(broadcast_progress())
-    
-    
-    if shuffle:
-        random.shuffle(file_paths)
-        logger.info("Playlist shuffled")
-
-
-    if shuffle:
-        random.shuffle(file_paths)
-        logger.info("Playlist shuffled")
 
     try:
-        while True:
-            # Construct the complete pattern sequence
-            pattern_sequence = []
-            for path in file_paths:
-                # Add clear pattern if specified
-                if clear_pattern and clear_pattern != 'none':
-                    clear_file_path = get_clear_pattern_file(clear_pattern, path)
-                    if clear_file_path:
-                        pattern_sequence.append(clear_file_path)
-                
-                # Add main pattern
-                pattern_sequence.append(path)
-
-            # Shuffle if requested
-            if shuffle:
-                # Get pairs of patterns (clear + main) to keep them together
-                pairs = [pattern_sequence[i:i+2] for i in range(0, len(pattern_sequence), 2)]
-                random.shuffle(pairs)
-                # Flatten the pairs back into a single list
-                pattern_sequence = [pattern for pair in pairs for pattern in pair]
-                logger.info("Playlist shuffled")
-
-            # Set the playlist to the first pattern
-            state.current_playlist = pattern_sequence
-            # Execute the pattern sequence
-            for idx, file_path in enumerate(pattern_sequence):
-                state.current_playlist_index = idx
-                if state.stop_requested:
-                    logger.info("Execution stopped")
-                    return
-
-                # Update state for main patterns only
-                logger.info(f"Running pattern {file_path}")
-                
-                # Execute the pattern
-                await run_theta_rho_file(file_path, is_playlist=True)
-
-                # Handle pause between patterns
-                if idx < len(pattern_sequence) - 1 and not state.stop_requested and pause_time > 0 and not state.skip_requested:
-                    # Check if current pattern is a clear pattern
-                    if is_clear_pattern(file_path):
-                        logger.info("Skipping pause after clear pattern")
-                    else:
-                        logger.info(f"Pausing for {pause_time} seconds")
-                        pause_start = time.time()
-                        while time.time() - pause_start < pause_time:
-                            if state.skip_requested:
-                                logger.info("Pause interrupted by stop/skip request")
-                                break
-                            await asyncio.sleep(1)  # Check every 100ms
-                    
-                state.skip_requested = False
-
-            if run_mode == "indefinite":
-                logger.info("Playlist completed. Restarting as per 'indefinite' run mode")
-                if pause_time > 0:
-                    logger.debug(f"Pausing for {pause_time} seconds before restarting")
-                    await asyncio.sleep(pause_time)
-                continue
-            else:
-                logger.info("Playlist completed")
+        for idx, (path, preset) in enumerate(seq):
+            state.current_playlist_index = idx
+            if state.stop_requested:
                 break
 
+            logger.info(f"Playlist idx={idx}: running {path} with preset {preset}")
+
+            await run_theta_rho_file(path, is_playlist=True, preset=preset)
+
+            # pause between main patterns only
+            if idx + 1 < len(seq) and pause_time > 0 and not state.skip_requested:
+                prev = seq[idx][0]
+                # skip pause after a clear‐pattern step
+                if not is_clear_pattern(prev):
+                    await asyncio.sleep(pause_time)
+
+            state.skip_requested = False
+
+        # if indefinite, loop again
+        if run_mode == "indefinite" and not state.stop_requested:
+            return await run_theta_rho_files(file_paths, pause_time, clear_pattern, run_mode, shuffle)
+
     finally:
-        # Clean up progress update task
+        # final cleanup
         if progress_update_task:
             progress_update_task.cancel()
-            try:
-                await progress_update_task
-            except asyncio.CancelledError:
-                pass
+            try: await progress_update_task
+            except asyncio.CancelledError: pass
             progress_update_task = None
-            
-        # Clear all state variables
+
         state.current_playing_file = None
         state.execution_progress = None
-        state.current_playlist = None
         state.current_playlist_index = None
         state.playlist_mode = None
         state.current_playlist_entries = None
         state.current_playlist_name = None
-        state.current_playlist_index = None
         if state.led_controller:
             effect_idle(state.led_controller)
-        
-        logger.info("All requested patterns completed (or stopped) and state cleared")
-
-def stop_actions(clear_playlist = True):
+        logger.info("Playlist fully completed")
+def stop_actions(clear_playlist=True):
     """Stop all current actions."""
     try:
         with state.pause_condition:
@@ -474,24 +368,25 @@ def stop_actions(clear_playlist = True):
             state.current_playing_file = None
             state.execution_progress = None
             state.is_clearing = False
-            
+
             if clear_playlist:
-                # Clear playlist state
-                state.current_playlist = None
+                # Clear out entries & name instead of the old playlist array
+                state.current_playlist_entries = None
+                state.current_playlist_name = None
                 state.current_playlist_index = None
                 state.playlist_mode = None
-                
-                # Cancel progress update task if we're clearing the playlist
+
+                # Cancel the progress task
                 global progress_update_task
                 if progress_update_task and not progress_update_task.done():
                     progress_update_task.cancel()
-                
+
             state.pause_condition.notify_all()
             connection_manager.update_machine_position()
     except Exception as e:
         logger.error(f"Error during stop_actions: {e}")
-        # Ensure we still update machine position even if there's an error
         connection_manager.update_machine_position()
+
 
 def move_polar(theta, rho):
     """
@@ -583,28 +478,34 @@ def get_status():
         "playlist": None,
         "speed": state.speed
     }
-    
-    # Add playlist information if available
-    if state.current_playlist and state.current_playlist_index is not None:
-        next_index = state.current_playlist_index + 1
+
+    # Use the entries list, not current_playlist
+    entries = state.current_playlist_entries or []
+    idx = state.current_playlist_index
+    total = len(entries)
+    if total > 0 and idx is not None:
+        next_file = None
+        if idx + 1 < total:
+            next_file = entries[idx + 1]["pattern"]
         status["playlist"] = {
-            "current_index": state.current_playlist_index,
-            "total_files": len(state.current_playlist),
+            "current_index": idx,
+            "total_files": total,
             "mode": state.playlist_mode,
-            "next_file": state.current_playlist[next_index] if next_index < len(state.current_playlist) else None
+            "next_file": next_file
         }
-    
+
     if state.execution_progress:
-        current, total, remaining_time, elapsed_time = state.execution_progress
+        current, total_coords, remaining_time, elapsed_time = state.execution_progress
         status["progress"] = {
             "current": current,
-            "total": total,
+            "total": total_coords,
             "remaining_time": remaining_time,
             "elapsed_time": elapsed_time,
-            "percentage": (current / total * 100) if total > 0 else 0
+            "percentage": (current / total_coords * 100) if total_coords > 0 else 0
         }
-    
+
     return status
+
 
 async def broadcast_progress():
     """Background task to broadcast progress updates."""

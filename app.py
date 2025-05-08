@@ -1,3 +1,4 @@
+# app.py
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -570,7 +571,7 @@ async def get_wled_ip():
 
 @app.post("/skip_pattern")
 async def skip_pattern():
-    if not state.current_playlist:
+    if not state.current_playlist_entries:
         raise HTTPException(status_code=400, detail="No playlist is currently running")
     state.skip_requested = True
     return {"success": True}

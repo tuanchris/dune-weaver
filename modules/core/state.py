@@ -12,7 +12,7 @@ class AppState:
         self._current_playing_file = None
         self._pause_requested = False
         self._speed = 150
-        self._current_playlist = None
+        # self._current_playlist = None
         self._current_playlist_name = None  # New variable for playlist name
         self._current_playlist_entries = None  # NEW: store full [{pattern,preset},…] list
         # Regular state variables
@@ -85,23 +85,23 @@ class AppState:
         if self.mqtt_handler and self.mqtt_handler.is_enabled:
             self.mqtt_handler.client.publish(f"{self.mqtt_handler.speed_topic}/state", value, retain=True)
 
-    @property
-    def current_playlist(self):
-        return self._current_playlist
-
-    @current_playlist.setter
-    def current_playlist(self, value):
-        self._current_playlist = value
-        
-        # force an empty string (and not None) if we need to unset
-        if value == None:
-            value = ""
-            # Also clear the playlist name when playlist is cleared
-            self._current_playlist_name = None
-            # Clear the entries too
-            self._current_playlist_entries = None
-        if self.mqtt_handler:
-            self.mqtt_handler.update_state(playlist=value, playlist_name=None)
+    # @property
+    # def current_playlist(self):
+    #     return self._current_playlist
+    #
+    # @current_playlist.setter
+    # def current_playlist(self, value):
+    #     self._current_playlist = value
+    #
+    #     # force an empty string (and not None) if we need to unset
+    #     if value == None:
+    #         value = ""
+    #         # Also clear the playlist name when playlist is cleared
+    #         self._current_playlist_name = None
+    #         # Clear the entries too
+    #         self._current_playlist_entries = None
+    #     if self.mqtt_handler:
+    #         self.mqtt_handler.update_state(playlist=value, playlist_name=None)
 
     @property
     def current_playlist_entries(self):
@@ -111,7 +111,14 @@ class AppState:
     @current_playlist_entries.setter
     def current_playlist_entries(self, value):
         self._current_playlist_entries = value
-        # we don’t send this over MQTT—only the name/index matte
+        if value == None:
+            value = ""
+            # Also clear the playlist name when playlist is cleared
+            self._current_playlist_name = None
+            # Clear the entries too
+            self._current_playlist_entries = None
+        if self.mqtt_handler:
+            self.mqtt_handler.update_state(playlist=value, playlist_name=None)
     @property
     def current_playlist_name(self):
         return self._current_playlist_name
@@ -163,7 +170,7 @@ class AppState:
             "y_steps_per_mm": self.y_steps_per_mm,
             "gear_ratio": self.gear_ratio,
             "homing": self.homing,
-            "current_playlist": self._current_playlist,
+            # "current_playlist": self._current_playlist,
             "current_playlist_name": self._current_playlist_name,
             "current_playlist_entries": self._current_playlist_entries,
             "current_playlist_index": self.current_playlist_index,
@@ -191,7 +198,7 @@ class AppState:
         self.y_steps_per_mm = data.get("y_steps_per_mm", 0.0)
         self.gear_ratio = data.get('gear_ratio', 10)
         self.homing = data.get('homing', 0)
-        self._current_playlist = data.get("current_playlist")
+        # self._current_playlist = data.get("current_playlist")
         self._current_playlist_name = data.get("current_playlist_name")
         self._current_playlist_entries = data.get("current_playlist_entries")
         self.current_playlist_index = data.get("current_playlist_index")

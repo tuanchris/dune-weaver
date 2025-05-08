@@ -1,4 +1,4 @@
-# modules/core/thumbnail.py
+# thumbnail.py
 from pathlib import Path
 from PIL import Image, ImageDraw
 import math
