@@ -63,8 +63,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
+SVG_CACHE_DIR = os.path.dirname(get_cache_path("placeholder.thr"))
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
+# serve that directory at /svg_cache/*
+app.mount(
+    "/svg_cache",
+    StaticFiles(directory=SVG_CACHE_DIR),
+    name="svg_cache",
+)
 # Pydantic models for request/response validation
 class ConnectRequest(BaseModel):
     port: Optional[str] = None
@@ -197,9 +203,20 @@ async def restart(request: ConnectRequest):
 
 @app.get("/list_theta_rho_files")
 async def list_theta_rho_files():
-    logger.debug("Listing theta-rho files")
     files = pattern_manager.list_theta_rho_files()
-    return sorted(files)
+    result = []
+    for name in sorted(files):
+        # get the cache filename
+        cache_path = get_cache_path(name)
+        svg_fname = os.path.basename(cache_path)
+        # build the URL
+        thumb_url = f"/svg_cache/{svg_fname}"
+        result.append({
+            "name": name,
+            "thumb": thumb_url
+        })
+    logger.info(f"Returning {len(result)} patterns with SVG thumbs")
+    return result
 
 @app.post("/upload_theta_rho")
 async def upload_theta_rho(file: UploadFile = File(...)):

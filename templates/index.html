@@ -61,7 +61,20 @@
                     </div>
                 </div>
             </div>
-            <input type="text" id="search_pattern" placeholder="Search files..." oninput="searchPatternFiles()">
+             <div class="search-container">
+    <input
+      type="text"
+      id="search_pattern"
+      placeholder="Search files..."
+      oninput="onSearchInput()"
+    >
+    <i
+      id="clear_search"
+      class="fa fa-times clear-icon hidden"
+      title="Clear"
+      onclick="clearSearch()"
+    ></i>
+  </div>
             <ul id="theta_rho_files" class="file-list"></ul>
         </section>
 
@@ -100,6 +113,15 @@
                     <i class="fa-solid fa-play"></i>
                     <span>Play</span>
                 </button>
+                  <!-- New download button -->
+                  <button
+                    id="download-button"
+                    onclick="downloadCurrentFile()"
+                    class="cta download-button hidden"
+                  >
+                    <i class="fa-solid fa-download"></i>
+                    <span class="small">Download</span>
+                  </button>
                 <button id="toggle-playlist-button" onclick="toggleSecondaryButtons('add-to-playlist-container', populatePlaylistDropdown)">
                     <i class="fa-solid fa-list-ul"></i>
                     <span class="small">Add to Playlist</span>
