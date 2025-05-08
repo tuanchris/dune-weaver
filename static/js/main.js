@@ -2106,9 +2106,18 @@ function updateCurrentlyPlayingUI(status) {
     const nextFileElement = document.getElementById('next-file');
     if (nextFileElement) {
         if (status.playlist && status.playlist.next_file) {
-            const nextFileName = status.playlist.next_file.replace('./patterns/', '');
-            nextFileElement.textContent = `(Next: ${nextFileName})`;
-            nextFileElement.style.display = 'block';
+            if (Array.isArray(status.playlist.next_file)) {
+                // next is ["./patterns/0-1-hubcap.thr", 2]
+                const nextFileName = status.playlist.next_file[0].replace('./patterns/', '');
+                nextFileElement.textContent = `(Next: ${nextFileName})`;
+                nextFileElement.style.display = 'block';
+
+            } else {
+                const nextFileName = status.playlist.next_file.replace('./patterns/', '');
+                nextFileElement.textContent = `(Next: ${nextFileName})`;
+                nextFileElement.style.display = 'block';
+            }
+
         } else {
             nextFileElement.style.display = 'none';
         }
