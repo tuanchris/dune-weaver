@@ -11,10 +11,10 @@ class AppState:
         # Private variables for properties
         self._current_playing_file = None
         self._pause_requested = False
-        self._speed = 150
-        # self._current_playlist = None
+        self._speed = 130
+        self._current_playlist = None
         self._current_playlist_name = None  # New variable for playlist name
-        self._current_playlist_entries = None  # NEW: store full [{pattern,preset},…] list
+        
         # Regular state variables
         self.stop_requested = False
         self.pause_condition = threading.Condition()
@@ -46,8 +46,6 @@ class AppState:
         self._pause_time = 0
         self._clear_pattern = "none"
         self.load()
-        # rotation to apply (radians). 0 = no rotation
-        self.rotation_angle = 0.0
 
     @property
     def current_playing_file(self):
@@ -85,40 +83,22 @@ class AppState:
         if self.mqtt_handler and self.mqtt_handler.is_enabled:
             self.mqtt_handler.client.publish(f"{self.mqtt_handler.speed_topic}/state", value, retain=True)
 
-    # @property
-    # def current_playlist(self):
-    #     return self._current_playlist
-    #
-    # @current_playlist.setter
-    # def current_playlist(self, value):
-    #     self._current_playlist = value
-    #
-    #     # force an empty string (and not None) if we need to unset
-    #     if value == None:
-    #         value = ""
-    #         # Also clear the playlist name when playlist is cleared
-    #         self._current_playlist_name = None
-    #         # Clear the entries too
-    #         self._current_playlist_entries = None
-    #     if self.mqtt_handler:
-    #         self.mqtt_handler.update_state(playlist=value, playlist_name=None)
-
     @property
-    def current_playlist_entries(self):
-        """The raw list of {'pattern':..., 'preset':...} dicts for the active playlist."""
-        return self._current_playlist_entries
+    def current_playlist(self):
+        return self._current_playlist
 
-    @current_playlist_entries.setter
-    def current_playlist_entries(self, value):
-        self._current_playlist_entries = value
+    @current_playlist.setter
+    def current_playlist(self, value):
+        self._current_playlist = value
+        
+        # force an empty string (and not None) if we need to unset
         if value == None:
             value = ""
             # Also clear the playlist name when playlist is cleared
             self._current_playlist_name = None
-            # Clear the entries too
-            self._current_playlist_entries = None
         if self.mqtt_handler:
             self.mqtt_handler.update_state(playlist=value, playlist_name=None)
+
     @property
     def current_playlist_name(self):
         return self._current_playlist_name
@@ -170,16 +150,14 @@ class AppState:
             "y_steps_per_mm": self.y_steps_per_mm,
             "gear_ratio": self.gear_ratio,
             "homing": self.homing,
-            # "current_playlist": self._current_playlist,
+            "current_playlist": self._current_playlist,
             "current_playlist_name": self._current_playlist_name,
-            "current_playlist_entries": self._current_playlist_entries,
             "current_playlist_index": self.current_playlist_index,
             "playlist_mode": self._playlist_mode,
             "pause_time": self._pause_time,
             "clear_pattern": self._clear_pattern,
             "port": self.port,
-            "wled_ip": self.wled_ip,
-            "rotation_angle": self.rotation_angle
+            "wled_ip": self.wled_ip
         }
 
     def from_dict(self, data):
@@ -198,16 +176,14 @@ class AppState:
         self.y_steps_per_mm = data.get("y_steps_per_mm", 0.0)
         self.gear_ratio = data.get('gear_ratio', 10)
         self.homing = data.get('homing', 0)
-        # self._current_playlist = data.get("current_playlist")
+        self._current_playlist = data.get("current_playlist")
         self._current_playlist_name = data.get("current_playlist_name")
-        self._current_playlist_entries = data.get("current_playlist_entries")
         self.current_playlist_index = data.get("current_playlist_index")
         self._playlist_mode = data.get("playlist_mode", "loop")
         self._pause_time = data.get("pause_time", 0)
         self._clear_pattern = data.get("clear_pattern", "none")
         self.port = data.get("port", None)
         self.wled_ip = data.get('wled_ip', None)
-        self.rotation_angle = data.get("rotation_angle", 0.0)
 
     def save(self):
         """Save the current state to a JSON file."""

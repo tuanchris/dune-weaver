@@ -1,4 +1,3 @@
-# led_controller.py
 import requests
 import json
 from typing import Dict, Optional

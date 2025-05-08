@@ -1,4 +1,3 @@
-# playlist_manager.py
 import json
 import os
 import threading
@@ -20,31 +19,11 @@ if not os.path.isfile(PLAYLISTS_FILE):
         json.dump({}, f, indent=2)
 
 def load_playlists():
-    """Load the entire playlists dictionary, migrating old format automatically."""
-    # 1) read raw JSON
+    """Load the entire playlists dictionary from the JSON file."""
     with open(PLAYLISTS_FILE, "r") as f:
         playlists = json.load(f)
-
-    migrated = False
-
-    # 2) detect old‐style entries (list of strings) and convert them
-    for name, items in playlists.items():
-        if isinstance(items, list) and items and isinstance(items[0], str):
-            logger.info(f"Migrating playlist '{name}' from old format to new format")
-            # build new list of dicts, default preset = 2
-            playlists[name] = [
-                {"pattern": pattern_str, "preset": 2}
-                for pattern_str in items
-            ]
-            migrated = True
-
-    # 3) if we changed anything, write it back
-    if migrated:
-        with open(PLAYLISTS_FILE, "w") as f:
-            json.dump(playlists, f, indent=2)
-        logger.info("Playlists file migrated to new format")
-
-    return playlists
+        logger.debug(f"Loaded {len(playlists)} playlists")
+        return playlists
 
 def save_playlists(playlists_dict):
     """Save the entire playlists dictionary back to the JSON file."""
@@ -95,21 +74,15 @@ def delete_playlist(playlist_name):
     logger.info(f"Deleted playlist: {playlist_name}")
     return True
 
-def add_to_playlist(playlist_name, pattern, preset=2):
+def add_to_playlist(playlist_name, pattern):
     """Add a pattern to an existing playlist."""
     playlists_dict = load_playlists()
     if playlist_name not in playlists_dict:
         logger.warning(f"Cannot add to non-existent playlist: {playlist_name}")
         return False
-    # pattern may be a dict already, or a string + preset passed in
-
-    if isinstance(pattern, dict):
-        entry = pattern
-    else:
-        entry = {"pattern": pattern, "preset": int(preset)}
-        playlists_dict[playlist_name].append(entry)
+    playlists_dict[playlist_name].append(pattern)
     save_playlists(playlists_dict)
-    logger.info(f"Added {entry} to playlist '{playlist_name}'")
+    logger.info(f"Added pattern '{pattern}' to playlist '{playlist_name}'")
     return True
 
 async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
@@ -123,26 +96,17 @@ async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode
         logger.error(f"Cannot run non-existent playlist: {playlist_name}")
         return False, "Playlist not found"
 
-    # ——— MIGRATE INTO APP STATE ———
-    entries = playlists[playlist_name]
-    state.current_playlist_entries = entries
-    state.current_playlist_name = playlist_name
-    state.current_playlist_index = 0
+    file_paths = playlists[playlist_name]
+    file_paths = [os.path.join(pattern_manager.THETA_RHO_DIR, file) for file in file_paths]
 
-    # Build just the file-paths for execution
-    file_paths = [
-        os.path.join(pattern_manager.THETA_RHO_DIR, e["pattern"])
-        for e in entries
-    ]
     if not file_paths:
         logger.warning(f"Cannot run empty playlist: {playlist_name}")
         return False, "Playlist is empty"
 
     try:
         logger.info(f"Starting playlist '{playlist_name}' with mode={run_mode}, shuffle={shuffle}")
+        state.current_playlist = file_paths
         state.current_playlist_name = playlist_name
-        # remember the raw entries so we can know each preset later
-        state.current_playlist_entries = playlists[playlist_name]
         asyncio.create_task(
             pattern_manager.run_theta_rho_files(
                 file_paths,

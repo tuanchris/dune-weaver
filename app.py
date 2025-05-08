@@ -1,10 +1,8 @@
-# app.py
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from pathlib import Path
 from typing import List, Optional, Tuple, Dict, Any, Union
 import atexit
 import os
@@ -16,13 +14,14 @@ from modules.core import playlist_manager
 from modules.update import update_manager
 from modules.core.state import state
 from modules import mqtt
-from modules.core.thumbnail import generate_thumbnail
 import signal
 import sys
 import asyncio
 from contextlib import asynccontextmanager
 from modules.led.led_controller import LEDController, effect_idle
 import math
+from modules.core.svg_cache_manager import generate_all_svg_previews, get_cache_path, generate_svg_preview
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -51,6 +50,13 @@ async def lifespan(app: FastAPI):
         mqtt_handler = mqtt.init_mqtt()
     except Exception as e:
         logger.warning(f"Failed to initialize MQTT: {str(e)}")
+    
+    # Generate SVG previews for all patterns
+    try:
+        logger.info("Starting SVG cache generation...")
+        await generate_all_svg_previews()
+    except Exception as e:
+        logger.warning(f"Failed to generate SVG cache: {str(e)}")
 
     yield  # This separates startup from shutdown code
 
@@ -58,7 +64,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/thumbs", StaticFiles(directory="thumbs"), name="thumbs")
+
 # Pydantic models for request/response validation
 class ConnectRequest(BaseModel):
     port: Optional[str] = None
@@ -66,12 +72,10 @@ class ConnectRequest(BaseModel):
 class CoordinateRequest(BaseModel):
     theta: float
     rho: float
-class PlaylistItem(BaseModel):
-    pattern: str
-    preset: int
+
 class PlaylistRequest(BaseModel):
     playlist_name: str
-    files: List[PlaylistItem] = []
+    files: List[str] = []
     pause_time: float = 0
     clear_pattern: Optional[str] = None
     run_mode: str = "single"
@@ -195,41 +199,28 @@ async def restart(request: ConnectRequest):
 async def list_theta_rho_files():
     logger.debug("Listing theta-rho files")
     files = pattern_manager.list_theta_rho_files()
-    result = []
-    patterns_dir = Path(pattern_manager.THETA_RHO_DIR)
-    for name in sorted(files):
-        thr_path = patterns_dir / name
-        print(thr_path)
-        thumb_path = generate_thumbnail(thr_path)
-        result.append({
-            "name": name,
-            "thumb": f"/thumbs/{thumb_path.name}"
-        })
-
-    return result
+    return sorted(files)
 
 @app.post("/upload_theta_rho")
 async def upload_theta_rho(file: UploadFile = File(...)):
-    custom_patterns_dir = os.path.join(pattern_manager.THETA_RHO_DIR, 'custom_patterns')
-    os.makedirs(custom_patterns_dir, exist_ok=True)
-    logger.debug(f'Ensuring custom patterns directory exists: {custom_patterns_dir}')
-
-    if file:
-        file_path = os.path.join(custom_patterns_dir, file.filename)
-        contents = await file.read()
+    """Upload a theta-rho file."""
+    try:
+        # Save the file
+        file_path = os.path.join(pattern_manager.THETA_RHO_DIR, "custom_patterns", file.filename)
         with open(file_path, "wb") as f:
-            f.write(contents)
-        logger.info(f'Successfully uploaded theta-rho file: {file.filename}')
-        return {"success": True}
-    
-    logger.warning('Upload theta-rho request received without file')
-    return {"success": False}
+            f.write(await file.read())
+        
+        # Generate SVG preview for the new file
+        await generate_svg_preview(os.path.join("custom_patterns", file.filename))
+        
+        return {"success": True, "message": f"File {file.filename} uploaded successfully"}
+    except Exception as e:
+        logger.error(f"Error uploading file: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 class ThetaRhoRequest(BaseModel):
     file_name: str
     pre_execution: Optional[str] = "none"
-    rotation_angle: Optional[float] = 0.0
-    preset_id: Optional[int] = 2
 
 @app.post("/run_theta_rho")
 async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTasks):
@@ -259,11 +250,7 @@ async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTa
             
         files_to_run = [file_path]
         logger.info(f'Running theta-rho file: {request.file_name} with pre_execution={request.pre_execution}')
-        # For a single‐file run we still want the LED preset,
-        # so populate current_playlist_entries with exactly one entry:
-        state.current_playlist_entries = [
-            {"pattern": request.file_name, "preset": request.preset_id}
-           ]
+        
         # Only include clear_pattern if it's not "none"
         kwargs = {}
         if request.pre_execution != "none":
@@ -375,8 +362,54 @@ async def preview_thr(request: DeleteFileRequest):
         raise HTTPException(status_code=404, detail="File not found")
 
     try:
+        # Check if cached SVG exists
+        cache_path = get_cache_path(request.file_name)
+        if os.path.exists(cache_path):
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                svg_content = f.read()
+                
+            # Parse coordinates for first and last points
+            coordinates = pattern_manager.parse_theta_rho_file(file_path)
+            first_coord = coordinates[0] if coordinates else None
+            last_coord = coordinates[-1] if coordinates else None
+            
+            return {
+                "svg": svg_content,
+                "first_coordinate": first_coord,
+                "last_coordinate": last_coord
+            }
+        
+        # If not cached, generate SVG as before
         coordinates = pattern_manager.parse_theta_rho_file(file_path)
-        return {"success": True, "coordinates": coordinates}
+        
+        # Convert polar coordinates to SVG path
+        svg_path = []
+        for i, (theta, rho) in enumerate(coordinates):
+            x = 100 - rho * 90 * math.cos(theta)
+            y = 100 - rho * 90 * math.sin(theta)
+            
+            if i == 0:
+                svg_path.append(f"M {x:.2f} {y:.2f}")
+            else:
+                svg_path.append(f"L {x:.2f} {y:.2f}")
+        
+        svg = f'''<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="100%" height="100%" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+    <path d="{' '.join(svg_path)}" 
+          fill="none" 
+          stroke="currentColor" 
+          stroke-width="0.5"/>
+</svg>'''
+        
+        # Cache the SVG for future use
+        with open(cache_path, 'w', encoding='utf-8') as f:
+            f.write(svg)
+        
+        return {
+            "svg": svg,
+            "first_coordinate": coordinates[0] if coordinates else None,
+            "last_coordinate": coordinates[-1] if coordinates else None
+        }
     except Exception as e:
         logger.error(f"Failed to generate preview for {request.file_name}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -395,21 +428,11 @@ async def send_coordinate(request: CoordinateRequest):
         logger.error(f"Failed to send coordinate: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@app.get("/download/{filepath:path}")
-async def download_file(filepath: str):
-    # Resolve and make sure it’s still under THETA_RHO_DIR
-    base = Path(pattern_manager.THETA_RHO_DIR).resolve()
-    full = (base / filepath).resolve()
-    if not str(full).startswith(str(base)):
-        raise HTTPException(400, "Invalid file path")
-    if not full.is_file():
-        raise HTTPException(404, "File not found")
-
+@app.get("/download/{filename}")
+async def download_file(filename: str):
     return FileResponse(
-        path=full,
-        filename=full.name,
-        media_type="application/octet-stream",
+        os.path.join(pattern_manager.THETA_RHO_DIR, filename),
+        filename=filename
     )
 
 @app.get("/serial_status")
@@ -453,7 +476,7 @@ async def get_playlist(name: str):
 
 @app.post("/create_playlist")
 async def create_playlist(request: PlaylistRequest):
-    success = playlist_manager.create_playlist(request.playlist_name, [item.dict() for item in request.files])
+    success = playlist_manager.create_playlist(request.playlist_name, request.files)
     return {
         "success": success,
         "message": f"Playlist '{request.playlist_name}' created/updated"
@@ -461,7 +484,7 @@ async def create_playlist(request: PlaylistRequest):
 
 @app.post("/modify_playlist")
 async def modify_playlist(request: PlaylistRequest):
-    success = playlist_manager.modify_playlist(request.playlist_name, [item.dict() for item in request.files])
+    success = playlist_manager.modify_playlist(request.playlist_name, request.files)
     return {
         "success": success,
         "message": f"Playlist '{request.playlist_name}' updated"
@@ -484,10 +507,10 @@ async def delete_playlist(request: DeletePlaylistRequest):
 class AddToPlaylistRequest(BaseModel):
     playlist_name: str
     pattern: str
-    preset: int
+
 @app.post("/add_to_playlist")
 async def add_to_playlist(request: AddToPlaylistRequest):
-    success = playlist_manager.add_to_playlist(request.playlist_name, request.pattern, request.preset)
+    success = playlist_manager.add_to_playlist(request.playlist_name, request.pattern)
     if not success:
         raise HTTPException(status_code=404, detail="Playlist not found")
     return {"success": True}
@@ -566,30 +589,15 @@ async def set_wled_ip(request: WLEDRequest):
 async def get_wled_ip():
     if not state.wled_ip:
         raise HTTPException(status_code=404, detail="No WLED IP set")
-
     return {"success": True, "wled_ip": state.wled_ip}
 
 @app.post("/skip_pattern")
 async def skip_pattern():
-    if not state.current_playlist_entries:
+    if not state.current_playlist:
         raise HTTPException(status_code=400, detail="No playlist is currently running")
     state.skip_requested = True
     return {"success": True}
-class RotationResponse(BaseModel):
-    rotation_angle: float  # degrees
-@app.get("/get_rotation", response_model=RotationResponse)
-async def get_rotation():
-    # read the radians value from state, convert to degrees
-    deg = math.degrees(getattr(state, "rotation_angle", 0.0) or 0.0)
-    return {"rotation_angle": deg}
-class RotationRequest(BaseModel):
-    rotation_deg: float
-@app.post("/set_rotation")
-async def set_rotation(req: RotationRequest):
-    state.rotation_angle = math.radians(req.rotation_deg)
-    state.save()
-    logger.info(f"Rotation set to {req.rotation_deg}° ({state.rotation_angle:.3f} rad)")
-    return {"success": True}
+
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully but forcefully."""
     logger.info("Received shutdown signal, cleaning up...")
@@ -611,7 +619,6 @@ def entrypoint():
     import uvicorn
     logger.info("Starting FastAPI server on port 8080...")
     uvicorn.run(app, host="0.0.0.0", port=8080, workers=1)  # Set workers to 1 to avoid multiple signal handlers
-
 
 if __name__ == "__main__":
     entrypoint()

@@ -131,6 +131,7 @@ function toggleDebugLog() {
 // File selection logic
 async function selectFile(file, listItem) {
     selectedFile = file;
+
     // Highlight the selected file
     document.querySelectorAll('#theta_rho_files li').forEach(li => li.classList.remove('selected'));
     listItem.classList.add('selected');
@@ -142,116 +143,76 @@ async function selectFile(file, listItem) {
     } else {
         removeButton.classList.add('hidden');
     }
-     // Show download button
-    const dlBtn = document.getElementById('download-button');
-    dlBtn.classList.remove('hidden');
 
     logMessage(`Selected file: ${file}`);
+    
+    // Show the preview container
+    const previewContainer = document.getElementById('pattern-preview-container');
+    if (previewContainer) {
+        previewContainer.classList.remove('hidden');
+        previewContainer.classList.add('visible');
+    }
+    
+    // Update the preview
     await previewPattern(file);
 
     // Populate the playlist dropdown after selecting a pattern
     await populatePlaylistDropdown();
-
 }
 
 // Fetch and display Theta-Rho files
 async function loadThetaRhoFiles() {
     try {
         logMessage('Loading Theta-Rho files...');
-        const list = await fetch('/list_theta_rho_files').then(r => r.json());
+        const response = await fetch('/list_theta_rho_files');
+        let files = await response.json();
 
-        // Sort custom patterns first, then alphabetically by name
-        list.sort((a, b) => {
-            const isCustomA = a.name.startsWith('custom_patterns/');
-            const isCustomB = b.name.startsWith('custom_patterns/');
-            if (isCustomA && !isCustomB) return -1;
-            if (!isCustomA && isCustomB) return 1;
-            return a.name.localeCompare(b.name);
+        files = files.filter(file => file.endsWith('.thr'));
+        // Sort files with custom_patterns on top and all alphabetically sorted
+        const sortedFiles = files.sort((a, b) => {
+            const isCustomA = a.startsWith('custom_patterns/');
+            const isCustomB = b.startsWith('custom_patterns/');
+
+            if (isCustomA && !isCustomB) return -1; // a comes first
+            if (!isCustomA && isCustomB) return 1;  // b comes first
+            return a.localeCompare(b);             // Alphabetical comparison
         });
 
-        allFiles = list;      // store full objects
-        displayFiles(list);   // render them
+        allFiles = sortedFiles; // Update global files
+        displayFiles(sortedFiles); // Display sorted files
 
         logMessage('Theta-Rho files loaded and sorted successfully.');
     } catch (error) {
-        logMessage(`Error loading Theta-Rho files: ${error.message}`, LOG_TYPE.ERROR);
+        logMessage(`Error loading Theta-Rho files: ${error.message}`, 'error');
     }
 }
 
-// Render the list with thumbnails
+// Display files in the UI
 function displayFiles(files) {
-  const ul = document.getElementById('theta_rho_files');
-  if (!ul) return;
-
-  ul.innerHTML = '';
-
-  // split into two groups
-  const custom   = files.filter(f => f.name.startsWith('custom_patterns/'));
-  const builtIn  = files.filter(f => !f.name.startsWith('custom_patterns/'));
-
-  // render both folders
-  renderFolder('Custom Patterns', custom);
-  renderFolder('Built-in Patterns', builtIn);
-
-  function renderFolder(title, items) {
-    // folder header
-    const header = document.createElement('li');
-    header.className = 'folder-header';
-    header.innerHTML = `
-      <i class="fa-solid fa-chevron-right toggle-icon"></i>
-      <span class="folder-title">${title}</span>
-    `;
-    ul.appendChild(header);
-
-    // container for this folder’s items
-    const container = document.createElement('ul');
-    container.className = 'folder-contents';
-    container.style.display = 'none';
-    ul.appendChild(container);
-
-    // toggle open/closed on click
-    header.addEventListener('click', () => {
-      const isOpen = container.style.display === 'block';
-      container.style.display = isOpen ? 'none' : 'block';
-      header.querySelector('.toggle-icon').className =
-        isOpen
-          ? 'fa-solid fa-chevron-right toggle-icon'
-          : 'fa-solid fa-chevron-down toggle-icon';
-    });
-
-    // render each file under here
-    if (items.length === 0) {
-      const emptyLi = document.createElement('li');
-      emptyLi.className = 'empty-placeholder';
-      emptyLi.textContent = '(no patterns)';
-      container.appendChild(emptyLi);
-    } else {
-      items.forEach(({ name, thumb }) => {
-        const li = document.createElement('li');
-        li.className = 'file-item';
-        li.innerHTML = `
-          <img src="${thumb}" class="file-thumb" width="32" height="32" alt="">
-          <span class="filename">${name}</span>
-        `;
-        li.addEventListener('click', () => selectFile(name, li));
-        container.appendChild(li);
-      });
+    const ul = document.getElementById('theta_rho_files');
+    if (!ul) {
+        logMessage('Error: File list container not found');
+        return;
     }
-  }
+    ul.innerHTML = ''; // Clear existing list
+
+    files.forEach(file => {
+        const li = document.createElement('li');
+        li.textContent = file;
+        li.classList.add('file-item');
+
+        // Attach file selection handler
+        li.onclick = () => selectFile(file, li);
+
+        ul.appendChild(li);
+    });
 }
-
-
 
 // Filter files by search input
 function searchPatternFiles() {
-  const term = document.getElementById('search_pattern').value.trim().toLowerCase();
-
-  // loop every file-item that's already in the DOM
-  document.querySelectorAll('#theta_rho_files .file-item').forEach(li => {
-    const name = li.querySelector('span').textContent.toLowerCase();
-    // toggle its inline display
-    li.style.display = name.includes(term) ? '' : 'none';
-  });
+    const searchInput = document.getElementById('search_pattern').value.toLowerCase();
+    const filteredFiles = allFiles.filter(file => file.toLowerCase().includes(searchInput));
+    displayFiles(filteredFiles);
 }
 
 // Upload a new Theta-Rho file
@@ -294,20 +255,15 @@ async function runThetaRho() {
 
     // Get the selected pre-execution action
     const preExecutionAction = document.getElementById('pre_execution').value;
-    // Read the chosen preset from your dropdown
-    const preset = parseInt(
-    document.getElementById('wled_presets_dropdown').value,10);
+
     logMessage(`Running file: ${selectedFile} with pre-execution action: ${preExecutionAction}...`);
     try {
-        const rotationDeg = parseFloat(document.getElementById('rotation_angle').value) || 0;
         const response = await fetch('/run_theta_rho', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
                 file_name: selectedFile, 
-                pre_execution: preExecutionAction ,
-                rotation_deg:  rotationDeg,
-                preset_id: preset
+                pre_execution: preExecutionAction 
             })
         });
 
@@ -323,7 +279,7 @@ async function runThetaRho() {
                 currentlyPlayingFile.textContent = selectedFile.replace('./patterns/', '');
             }
             // Show initial preview
-            previewPattern(selectedFile.replace('./patterns/', ''), 'currently-playing-container');
+            updateCurrentlyPlayingPattern(selectedFile.replace('./patterns/', ''));
             logMessage(`Pattern running: ${selectedFile}`, LOG_TYPE.SUCCESS);
         } else {
             if (response.status === 409) {
@@ -390,8 +346,6 @@ function removeCurrentPattern() {
     }
 
     removeCustomPattern(selectedFile);
-    selectedFile = null;
-
 }
 
 // Delete the selected file
@@ -429,64 +383,127 @@ async function removeCustomPattern(fileName) {
     }
 }
 
-// Preview a Theta-Rho file
-async function previewPattern(fileName, containerId = 'pattern-preview-container') {
+// SVG Cache
+const svgCache = new Map();
+
+// Function to get SVG from cache or fetch it
+async function getSVG(fileName) {
+    // Check if SVG is in cache
+    if (svgCache.has(fileName)) {
+        return svgCache.get(fileName);
+    }
+
+    // If not in cache, fetch it
     try {
-        logMessage(`Fetching data to preview file: ${fileName}...`);
         const response = await fetch('/preview_thr', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ file_name: fileName })
         });
 
-        const result = await response.json();
-        if (result.success) {
-            // Mirror the theta values in the coordinates
-            const coordinates = result.coordinates.map(coord => [
-                (coord[0] < Math.PI) ?
-                    Math.PI - coord[0] : // For first half
-                    3 * Math.PI - coord[0], // For second half
-                coord[1]
-            ]);
-            // Show the preview container
-            const previewContainer = document.getElementById(containerId);
-
-            if (previewContainer) {
-                previewContainer.classList.remove('hidden');
-                previewContainer.classList.add('visible');
-            } else {
-                logMessage(`Preview container not found: ${containerId}`, LOG_TYPE.ERROR);
-            }
-            // Render the pattern in the specified container
-            const canvasId = containerId === 'currently-playing-container'
-                ? 'currentlyPlayingCanvas'
-                : 'patternPreviewCanvas';
-            renderPattern(coordinates, canvasId);
-
-            // Update coordinate display
-            const firstCoordElement = document.getElementById('first_coordinate');
-            const lastCoordElement = document.getElementById('last_coordinate');
-
-            if (firstCoordElement) {
-                const firstCoord = coordinates[0];
-                firstCoordElement.textContent = `First Coordinate: θ=${firstCoord[0].toFixed(2)}, ρ=${firstCoord[1].toFixed(2)}`;
-            } else {
-                logMessage('First coordinate element not found.', LOG_TYPE.WARNING);
-            }
-
-            if (lastCoordElement) {
-                const lastCoord = coordinates[coordinates.length - 1];
-                lastCoordElement.textContent = `Last Coordinate: θ=${lastCoord[0].toFixed(2)}, ρ=${lastCoord[1].toFixed(2)}`;
-            } else {
-                logMessage('Last coordinate element not found.', LOG_TYPE.WARNING);
-            }
-
-
-        } else {
-            logMessage(`Failed to fetch preview for file: ${fileName}`, LOG_TYPE.WARNING);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
+
+        const data = await response.json();
+        
+        // Store in cache
+        svgCache.set(fileName, data);
+        return data;
+    } catch (error) {
+        logMessage(`Error fetching SVG: ${error.message}`, LOG_TYPE.ERROR);
+        throw error;
+    }
+}
+
+// Function to clear SVG cache
+function clearSVGCache() {
+    svgCache.clear();
+}
+
+// Update previewPattern function to use cache
+async function previewPattern(fileName, containerId = 'pattern-preview-container') {
+    try {
+        logMessage(`Fetching data to preview file: ${fileName}...`);
+        const data = await getSVG(fileName);
+        
+        // Get the preview container
+        const previewContainer = document.getElementById(containerId);
+        if (!previewContainer) {
+            logMessage(`Preview container not found: ${containerId}`, LOG_TYPE.ERROR);
+            return;
+        }
+
+        // Get the pattern preview section
+        const patternPreview = previewContainer.querySelector('#pattern-preview');
+        if (!patternPreview) {
+            logMessage('Pattern preview section not found', LOG_TYPE.ERROR);
+            return;
+        }
+
+        // Clear existing content
+        patternPreview.innerHTML = '';
+
+        // Create SVG container
+        const svgContainer = document.createElement('div');
+        svgContainer.className = 'svg-container';
+        svgContainer.innerHTML = data.svg;
+
+        // Create coordinate display
+        const coordDisplay = document.createElement('div');
+        coordDisplay.className = 'coordinate-display';
+
+        // Update coordinate text
+        if (data.first_coordinate && data.last_coordinate) {
+            coordDisplay.innerHTML = `
+                <div>First Coordinate: θ=${data.first_coordinate[0].toFixed(2)}, ρ=${data.first_coordinate[1].toFixed(2)}</div>
+                <div>Last Coordinate: θ=${data.last_coordinate[0].toFixed(2)}, ρ=${data.last_coordinate[1].toFixed(2)}</div>
+            `;
+        } else {
+            coordDisplay.innerHTML = 'No coordinates available';
+        }
+
+        // Add elements to preview
+        patternPreview.appendChild(svgContainer);
+        patternPreview.appendChild(coordDisplay);
+
     } catch (error) {
         logMessage(`Error previewing pattern: ${error.message}`, LOG_TYPE.ERROR);
+    }
+}
+
+// Update updateCurrentlyPlayingPattern function to use cache
+async function updateCurrentlyPlayingPattern(fileName) {
+    try {
+        const data = await getSVG(fileName);
+        
+        // Get the currently playing container
+        const container = document.getElementById('currently-playing-container');
+        if (!container) {
+            logMessage('Currently playing container not found', LOG_TYPE.ERROR);
+            return;
+        }
+
+        // Get the currently playing preview div
+        const previewDiv = container.querySelector('#currently-playing-preview');
+        if (!previewDiv) {
+            logMessage('Currently playing preview div not found', LOG_TYPE.ERROR);
+            return;
+        }
+
+        // Clear existing content
+        previewDiv.innerHTML = '';
+
+        // Create SVG container
+        const svgContainer = document.createElement('div');
+        svgContainer.className = 'svg-container';
+        svgContainer.innerHTML = data.svg;
+
+        // Add SVG to the preview div
+        previewDiv.appendChild(svgContainer);
+
+    } catch (error) {
+        logMessage(`Error updating currently playing pattern: ${error.message}`, LOG_TYPE.ERROR);
     }
 }
 
@@ -537,21 +554,6 @@ function renderPattern(coordinates, canvasId) {
 }
 
 
-// Get the current rotation
-async function refreshRotationDisplay() {
-  try {
-    const resp = await fetch('/get_rotation');
-    if (!resp.ok) throw new Error(resp.statusText);
-    const { rotation_angle } = await resp.json();
-    const disp = document.getElementById('current_rotation_display');
-    if (disp) disp.textContent = `Current Rotation: ${rotation_angle.toFixed(1)}`;
-    // also update the input box so it matches
-    const inp = document.getElementById('rotation_angle');
-    if (inp) inp.value = rotation_angle;
-  } catch (e) {
-    console.error('Could not fetch rotation:', e);
-  }
-}
 async function moveToCenter() {
     logMessage('Moving to center...', LOG_TYPE.INFO);
     const response = await fetch('/move_to_center', { method: 'POST' });
@@ -1074,8 +1076,8 @@ async function loadPlaylist(playlistName) {
         if (!data.name) {
             throw new Error('Playlist name is missing in the response.');
         }
+
         // Populate playlist items and set original state
-        // data.files is now [{ pattern, preset }, …]
         playlist = data.files || [];
         originalPlaylist = [...playlist]; // Clone the playlist as the original
         isPlaylistChanged = false; // Reset change tracking
@@ -1335,38 +1337,33 @@ function refreshPlaylistUI() {
     ul.innerHTML = ''; // Clear existing items
 
     if (playlist.length === 0) {
+        // Add a placeholder if the playlist is empty
         const emptyLi = document.createElement('li');
         emptyLi.textContent = 'No items in the playlist.';
-        emptyLi.classList.add('empty-placeholder');
+        emptyLi.classList.add('empty-placeholder'); // Optional: Add a class for styling
         ul.appendChild(emptyLi);
         return;
     }
 
-    playlist.forEach((item, index) => {
+    playlist.forEach((file, index) => {
         const li = document.createElement('li');
 
-        // Filename
+        // Add filename in a span
         const filenameSpan = document.createElement('span');
-        filenameSpan.textContent = item.pattern;
-        filenameSpan.classList.add('filename');
+        filenameSpan.textContent = file;
+        filenameSpan.classList.add('filename'); // Add a class for styling
         li.appendChild(filenameSpan);
-
-        // Preset badge
-        const presetSpan = document.createElement('span');
-        presetSpan.textContent = `Preset #${item.preset}`;
-        presetSpan.classList.add('preset-badge');
-        // e.g. add some CSS:
-        // .preset-badge { margin-left: 0.5em; font-size: 0.9em; color: #666; }
-        li.appendChild(presetSpan);
 
         // Move Up button
         const moveUpBtn = document.createElement('button');
-        moveUpBtn.innerHTML = '<i class="fa-solid fa-turn-up"></i>';
+        moveUpBtn.innerHTML = '<i class="fa-solid fa-turn-up"></i>'; // Up arrow symbol
         moveUpBtn.classList.add('move-button');
         moveUpBtn.onclick = () => {
             if (index > 0) {
-                [ playlist[index - 1], playlist[index] ] = [ playlist[index], playlist[index - 1] ];
-                detectPlaylistChanges();
+                const temp = playlist[index - 1];
+                playlist[index - 1] = playlist[index];
+                playlist[index] = temp;
+                detectPlaylistChanges(); // Check for changes
                 refreshPlaylistUI();
             }
         };
@@ -1374,12 +1371,14 @@ function refreshPlaylistUI() {
 
         // Move Down button
         const moveDownBtn = document.createElement('button');
-        moveDownBtn.innerHTML = '<i class="fa-solid fa-turn-down"></i>';
+        moveDownBtn.innerHTML = '<i class="fa-solid fa-turn-down"></i>'; // Down arrow symbol
         moveDownBtn.classList.add('move-button');
         moveDownBtn.onclick = () => {
             if (index < playlist.length - 1) {
-                [ playlist[index + 1], playlist[index] ] = [ playlist[index], playlist[index + 1] ];
-                detectPlaylistChanges();
+                const temp = playlist[index + 1];
+                playlist[index + 1] = playlist[index];
+                playlist[index] = temp;
+                detectPlaylistChanges(); // Check for changes
                 refreshPlaylistUI();
             }
         };
@@ -1391,7 +1390,7 @@ function refreshPlaylistUI() {
         removeBtn.classList.add('remove-button');
         removeBtn.onclick = () => {
             playlist.splice(index, 1);
-            detectPlaylistChanges();
+            detectPlaylistChanges(); // Check for changes
             refreshPlaylistUI();
         };
         li.appendChild(removeBtn);
@@ -1399,7 +1398,6 @@ function refreshPlaylistUI() {
         ul.appendChild(li);
     });
 }
-
 
 // Toggle the visibility of the save and cancel buttons
 function toggleSaveCancelButtons(show) {
@@ -1477,15 +1475,11 @@ async function saveToPlaylist() {
 
     try {
         logMessage(`Adding pattern "${selectedFile}" to playlist "${playlist}"...`);
-        const selectedPlaylist = document.getElementById('select-playlist').value;
-        // get both pattern and preset
-        const preset = parseInt(document.getElementById('wled_presets_dropdown').value, 10) || 2;
-        logMessage(`Adding pattern "${selectedFile}" (preset ${preset}) to playlist "${selectedPlaylist}"…`);
         const response = await fetch('/add_to_playlist', {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ playlist_name: playlist, pattern: selectedFile,preset })
-            });
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ playlist_name: playlist, pattern: selectedFile })
+        });
 
         const result = await response.json();
         if (result.success) {
@@ -1551,7 +1545,6 @@ function closeStickySection(sectionId) {
         }
 
         if(sectionId === 'pattern-preview-container') {
-            document.getElementById('download-button').classList.add('hidden');
             document.querySelectorAll('#theta_rho_files .file-item').forEach(item => {
                 item.classList.remove('selected');
             });
@@ -1767,8 +1760,6 @@ function updateWledUI() {
     // Show the container and load WLED UI
     wledContainer.classList.remove('hidden');
     wledFrame.src = `http://${wledIp}`;
-    //Refresh dropdown
-    loadPresets();
 
 }
 
@@ -1971,91 +1962,9 @@ function disconnectStatusWebSocket() {
         reconnectAttempts = 0;
     }
 }
-/**
- * Called whenever the user types into the search box.
- * Shows/hides the little × and reruns the filter.
- */
-function onSearchInput() {
-  const input = document.getElementById('search_pattern');
-  const clearBtn = document.getElementById('clear_search');
 
-  // toggle visibility of the clear “×”
-  clearBtn.classList.toggle('hidden', input.value.trim() === '');
-
-  // your existing filter logic
-  searchPatternFiles();
-}
-
-/**
- * Clear the search box and re-filter.
- */
-function clearSearch() {
-  const input = document.getElementById('search_pattern');
-  input.value = '';
-  document.getElementById('clear_search').classList.add('hidden');
-  searchPatternFiles();
-}
-// Call this once on page load or when you open your WLED panel
-async function loadPresets() {
-  const wledIp = localStorage.getItem('wled_ip');
-
-  if (!wledIp) {
-    logMessage('No WLED IP configured; presets unavailable.', LOG_TYPE.WARNING);
-    return;
-  }
-
-  const url = `http://${wledIp}/presets.json`;
-  try {
-    const resp = await fetch(url);
-    if (!resp.ok) {
-      throw new Error(`HTTP ${resp.status}`);
-    }
-    const data = await resp.json();
-
-    // Build sorted array of {id, name}
-    const presets = Object
-      .keys(data)
-      .map(key => parseInt(key, 10))       // convert "1" → 1
-      .sort((a, b) => a - b)               // numeric order
-      .map(id => {
-        const entry = data[id];
-        return entry.n
-          ? { id, name: entry.n }
-          : null;                           // skip blanks
-      })
-      .filter(p => p !== null);
-
-    // Now send it off to your UI layer
-    displayPresets(presets);
-
-  } catch (err) {
-    logMessage(`Failed to load WLED presets: ${err.message}`, LOG_TYPE.ERROR);
-  }
-}
-function displayPresets(presets) {
-  const select = document.getElementById('wled_presets_dropdown');
-  if (!select) return;
-
-  select.innerHTML = '';  // clear old
-  presets.forEach(({id, name}) => {
-    const opt = document.createElement('option');
-    opt.value = id;
-    opt.textContent = `#${id}: ${name}`;
-    // if there's a preset with id === 2, make it selected by default
-    if (id === 2) {
-      opt.selected = true;
-    }
-    select.appendChild(opt);
-  });
-
-  // (Optional) ensure the <select> value is actually "2" even if no option had selected=true
-  if (select.querySelector('option[value="2"]')) {
-    select.value = "2";
-  }
-}
 // Replace the polling mechanism with WebSocket
 document.addEventListener('DOMContentLoaded', () => {
-
     const activeMainTab = getCookie('activeTab-main') || 'patterns';
     switchTab(activeMainTab, 'main');
     const activeImageConverterTab = getCookie('activeTab-image-converter') || 'dot';
@@ -2067,6 +1976,7 @@ document.addEventListener('DOMContentLoaded', () => {
     attachFullScreenListeners();
     loadWledIp();
     updateWledUI();
+
     // Initialize WebSocket connection for status updates
     connectStatusWebSocket();
 
@@ -2076,43 +1986,8 @@ document.addEventListener('DOMContentLoaded', () => {
             connectStatusWebSocket();
         }
     });
-     document
-    .getElementById('clear_search')
-    .addEventListener('click', clearSearch);
 
-    // initialize the rotation display from server
-
-    refreshRotationDisplay();
-
-    let rotationTimeout;
-    const rotationInput = document.getElementById('rotation_angle');
-
-    rotationInput.addEventListener('input', e => {
-    const deg = parseFloat(e.target.value) || 0;
-
-    // 1) immediate UI update
-    const disp = document.getElementById('current_rotation_display');
-    if (disp) disp.textContent = `Current Rotation: ${deg.toFixed(1)}`;
-
-    // 2) debounce the POST + preview redraw
-    clearTimeout(rotationTimeout);
-    rotationTimeout = setTimeout(async () => {
-        try {
-          await fetch('/set_rotation', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ rotation_deg: deg })
-          });
-        } catch (err) {
-          console.error('Failed to set rotation:', err);
-        }
-
-        // live‐update preview once
-        if (selectedFile) previewPattern(selectedFile);
-    }, 300); // <— wait 300ms after last input
-    });
     checkForUpdates();
-
 });
 
 // Track the last time we had a file playing
@@ -2131,7 +2006,7 @@ function updateCurrentlyPlayingUI(status) {
     const progressText = document.getElementById('play_progress_text');
     const pausePlayButton = document.getElementById('pausePlayCurrent');
     const speedDisplay = document.getElementById('current_speed_display');
-    const rotationDisplay = document.getElementById('current_rotation_display');
+
     // Check if all required elements exist
     if (!container || !fileNameElement || !progressBar || !progressText) {
         console.log('Required DOM elements not found:', {
@@ -2148,15 +2023,6 @@ function updateCurrentlyPlayingUI(status) {
     if (status.current_file && status.is_running) {
         document.body.classList.add('playing');
         container.style.display = 'flex';
-        
-        // Hide the preview container when a pattern is playing
-        const previewContainer = document.getElementById('pattern-preview-container');
-        if (previewContainer) {
-            // Clear any selected file highlights
-            document.querySelectorAll('#theta_rho_files .file-item').forEach(item => {
-                item.classList.remove('selected');
-            });
-        }
     } else {
         document.body.classList.remove('playing');
         container.style.display = 'none';
@@ -2191,7 +2057,7 @@ function updateCurrentlyPlayingUI(status) {
     if (status.current_file && lastPlayedFile !== status.current_file) {
         lastPlayedFile = status.current_file;
         const cleanFileName = status.current_file.replace('./patterns/', '');
-        previewPattern(cleanFileName, 'currently-playing-container');
+        updateCurrentlyPlayingPattern(cleanFileName);
     }
 
     // Update progress information
@@ -2230,6 +2096,7 @@ function updateSkipButtonVisibility(status) {
     const skipButton = document.getElementById('skipCurrent');
     if (skipButton) {
         // Check if a playlist is playing using the correct status properties
+        console.log('status', status);
         const isPlaylistPlaying = status && status.playlist && status.playlist.next_file;
         if (isPlaylistPlaying) {
             skipButton.classList.remove('hidden');
@@ -2254,25 +2121,4 @@ async function skipPattern() {
     } catch (error) {
         logMessage('Error skipping pattern', 'error');
     }
-}
-
-function downloadCurrentFile() {
-  if (!selectedFile) {
-    logMessage('No file selected to download.', LOG_TYPE.WARNING);
-    return;
-  }
-
-  // Build the download URL
-  const url = '/download/' + encodeURIComponent(selectedFile);
-
-  // Create a temporary <a> so we can set download attribute
-  const a = document.createElement('a');
-  a.href = url;
-  // Use only the filename (strip any path prefixes):
-  a.download = selectedFile.split('/').pop();
-
-  // Append, click, and remove
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
 }
