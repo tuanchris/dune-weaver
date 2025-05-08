@@ -1,1 +1,12 @@
-{}
+{
+  "test": [
+    {
+      "pattern": "1-1-alien-sludge.thr",
+      "preset": 2
+    },
+    {
+      "pattern": "1-1-alien-sludge.thr",
+      "preset": 3
+    }
+  ]
+}
