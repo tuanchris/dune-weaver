@@ -1,0 +1,9 @@
+gcode_files/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.idea
+*.json
+.venv/
+patterns/cached_svg/
