@@ -12,8 +12,31 @@ logger = logging.getLogger(__name__)
 CACHE_DIR = os.path.join(THETA_RHO_DIR, "cached_svg")
 
 def ensure_cache_dir():
-    """Ensure the cache directory exists."""
-    Path(CACHE_DIR).mkdir(parents=True, exist_ok=True)
+    """Ensure the cache directory exists with proper permissions."""
+    try:
+        Path(CACHE_DIR).mkdir(parents=True, exist_ok=True)
+        
+        # Walk through the cache directory and set permissions for all files and subdirectories
+        for root, dirs, files in os.walk(CACHE_DIR):
+            try:
+                # Set 777 for directories
+                os.chmod(root, 0o777)
+                
+                # Set 666 for files
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    try:
+                        os.chmod(file_path, 0o666)
+                    except Exception as e:
+                        logger.error(f"Failed to set permissions for file {file_path}: {str(e)}")
+            except Exception as e:
+                logger.error(f"Failed to set permissions for directory {root}: {str(e)}")
+                continue
+                
+    except Exception as e:
+        logger.error(f"Failed to set cache directory permissions: {str(e)}")
+        # Continue even if permissions can't be set
+        pass
 
 def get_cache_path(pattern_file):
     """Get the cache path for a pattern file."""
@@ -37,6 +60,14 @@ async def generate_svg_preview(pattern_file):
         cache_path = get_cache_path(pattern_file)
         with open(cache_path, 'w', encoding='utf-8') as f:
             f.write(svg_content)
+        
+        # Set file permissions to 666 to allow any user to read/write
+        try:
+            os.chmod(cache_path, 0o666)
+        except Exception as e:
+            logger.error(f"Failed to set cache file permissions for {pattern_file}: {str(e)}")
+            # Continue even if permissions can't be set
+            pass
         
         return True
     except Exception as e:
