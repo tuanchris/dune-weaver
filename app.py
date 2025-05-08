@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from pathlib import Path
 from typing import List, Optional, Tuple, Dict, Any, Union
 import atexit
 import os
@@ -40,17 +41,17 @@ async def lifespan(app: FastAPI):
     # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    
+
     try:
         connection_manager.connect_device()
     except Exception as e:
         logger.warning(f"Failed to auto-connect to serial port: {str(e)}")
-        
+
     try:
         mqtt_handler = mqtt.init_mqtt()
     except Exception as e:
         logger.warning(f"Failed to initialize MQTT: {str(e)}")
-    
+
     # Generate SVG previews for all patterns
     try:
         logger.info("Starting SVG cache generation...")
@@ -147,7 +148,7 @@ async def broadcast_status_update(status: dict):
             disconnected.add(websocket)
         except RuntimeError:
             disconnected.add(websocket)
-    
+
     active_status_connections.difference_update(disconnected)
 
 # FastAPI routes
@@ -226,10 +227,10 @@ async def upload_theta_rho(file: UploadFile = File(...)):
         file_path = os.path.join(pattern_manager.THETA_RHO_DIR, "custom_patterns", file.filename)
         with open(file_path, "wb") as f:
             f.write(await file.read())
-        
+
         # Generate SVG preview for the new file
         await generate_svg_preview(os.path.join("custom_patterns", file.filename))
-        
+
         return {"success": True, "message": f"File {file.filename} uploaded successfully"}
     except Exception as e:
         logger.error(f"Error uploading file: {str(e)}")
@@ -244,7 +245,7 @@ async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTa
     if not request.file_name:
         logger.warning('Run theta-rho request received without file name')
         raise HTTPException(status_code=400, detail="No file name provided")
-    
+
     file_path = None
     if 'clear' in request.file_name:
         logger.info(f'Clear pattern file: {request.file_name.split(".")[0]}')
@@ -260,19 +261,19 @@ async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTa
         if not (state.conn.is_connected() if state.conn else False):
             logger.warning("Attempted to run a pattern without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
-        
+
         if pattern_manager.pattern_lock.locked():
             logger.warning("Attempted to run a pattern while another is already running")
             raise HTTPException(status_code=409, detail="Another pattern is already running")
-            
+
         files_to_run = [file_path]
         logger.info(f'Running theta-rho file: {request.file_name} with pre_execution={request.pre_execution}')
-        
+
         # Only include clear_pattern if it's not "none"
         kwargs = {}
         if request.pre_execution != "none":
             kwargs['clear_pattern'] = request.pre_execution
-        
+
         # Pass arguments properly
         background_tasks.add_task(
             pattern_manager.run_theta_rho_files,
@@ -309,7 +310,7 @@ async def run_specific_theta_rho_file(file_name: str):
     file_path = os.path.join(pattern_manager.THETA_RHO_DIR, file_name)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
-        
+
     if not (state.conn.is_connected() if state.conn else False):
         logger.warning("Attempted to run a pattern without a connection")
         raise HTTPException(status_code=400, detail="Connection not established")
@@ -384,32 +385,32 @@ async def preview_thr(request: DeleteFileRequest):
         if os.path.exists(cache_path):
             with open(cache_path, 'r', encoding='utf-8') as f:
                 svg_content = f.read()
-                
+
             # Parse coordinates for first and last points
             coordinates = pattern_manager.parse_theta_rho_file(file_path)
             first_coord = coordinates[0] if coordinates else None
             last_coord = coordinates[-1] if coordinates else None
-            
+
             return {
                 "svg": svg_content,
                 "first_coordinate": first_coord,
                 "last_coordinate": last_coord
             }
-        
+
         # If not cached, generate SVG as before
         coordinates = pattern_manager.parse_theta_rho_file(file_path)
-        
+
         # Convert polar coordinates to SVG path
         svg_path = []
         for i, (theta, rho) in enumerate(coordinates):
             x = 100 - rho * 90 * math.cos(theta)
             y = 100 - rho * 90 * math.sin(theta)
-            
+
             if i == 0:
                 svg_path.append(f"M {x:.2f} {y:.2f}")
             else:
                 svg_path.append(f"L {x:.2f} {y:.2f}")
-        
+
         svg = f'''<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg width="100%" height="100%" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
     <path d="{' '.join(svg_path)}" 
@@ -417,11 +418,11 @@ async def preview_thr(request: DeleteFileRequest):
           stroke="currentColor" 
           stroke-width="0.5"/>
 </svg>'''
-        
+
         # Cache the SVG for future use
         with open(cache_path, 'w', encoding='utf-8') as f:
             f.write(svg)
-        
+
         return {
             "svg": svg,
             "first_coordinate": coordinates[0] if coordinates else None,
@@ -445,11 +446,20 @@ async def send_coordinate(request: CoordinateRequest):
         logger.error(f"Failed to send coordinate: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/download/{filename}")
-async def download_file(filename: str):
+@app.get("/download/{filepath:path}")
+async def download_file(filepath: str):
+    # Resolve and make sure it’s still under THETA_RHO_DIR
+    base = Path(pattern_manager.THETA_RHO_DIR).resolve()
+    full = (base / filepath).resolve()
+    if not str(full).startswith(str(base)):
+        raise HTTPException(400, "Invalid file path")
+    if not full.is_file():
+        raise HTTPException(404, "File not found")
+
     return FileResponse(
-        os.path.join(pattern_manager.THETA_RHO_DIR, filename),
-        filename=filename
+        path=full,
+        filename=full.name,
+        media_type="application/octet-stream",
     )
 
 @app.get("/serial_status")
@@ -559,11 +569,11 @@ async def set_speed(request: SpeedRequest):
         if not (state.conn.is_connected() if state.conn else False):
             logger.warning("Attempted to change speed without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
-        
+
         if request.speed <= 0:
             logger.warning(f"Invalid speed value received: {request.speed}")
             raise HTTPException(status_code=400, detail="Invalid speed value")
-        
+
         state.speed = request.speed
         return {"success": True, "speed": request.speed}
     except Exception as e:
@@ -579,7 +589,7 @@ async def check_updates():
 async def update_software():
     logger.info("Starting software update process")
     success, error_message, error_log = update_manager.update_software()
-    
+
     if success:
         logger.info("Software update completed successfully")
         return {"success": True}
@@ -624,7 +634,7 @@ def signal_handler(signum, frame):
         # Run cleanup operations synchronously to ensure completion
         pattern_manager.stop_actions()
         state.save()
-        
+
         logger.info("Cleanup completed")
     except Exception as e:
         logger.error(f"Error during cleanup: {str(e)}")
