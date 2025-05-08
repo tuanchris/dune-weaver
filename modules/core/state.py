@@ -14,7 +14,7 @@ class AppState:
         self._speed = 150
         self._current_playlist = None
         self._current_playlist_name = None  # New variable for playlist name
-        
+        self._current_playlist_entries = None  # NEW: store full [{pattern,preset},…] list
         # Regular state variables
         self.stop_requested = False
         self.pause_condition = threading.Condition()
@@ -98,9 +98,20 @@ class AppState:
             value = ""
             # Also clear the playlist name when playlist is cleared
             self._current_playlist_name = None
+            # Clear the entries too
+            self._current_playlist_entries = None
         if self.mqtt_handler:
             self.mqtt_handler.update_state(playlist=value, playlist_name=None)
 
+    @property
+    def current_playlist_entries(self):
+        """The raw list of {'pattern':..., 'preset':...} dicts for the active playlist."""
+        return self._current_playlist_entries
+
+    @current_playlist_entries.setter
+    def current_playlist_entries(self, value):
+        self._current_playlist_entries = value
+        # we don’t send this over MQTT—only the name/index matte
     @property
     def current_playlist_name(self):
         return self._current_playlist_name
@@ -154,6 +165,7 @@ class AppState:
             "homing": self.homing,
             "current_playlist": self._current_playlist,
             "current_playlist_name": self._current_playlist_name,
+            "current_playlist_entries": self._current_playlist_entries,
             "current_playlist_index": self.current_playlist_index,
             "playlist_mode": self._playlist_mode,
             "pause_time": self._pause_time,
@@ -181,6 +193,7 @@ class AppState:
         self.homing = data.get('homing', 0)
         self._current_playlist = data.get("current_playlist")
         self._current_playlist_name = data.get("current_playlist_name")
+        self._current_playlist_entries = data.get("current_playlist_entries")
         self.current_playlist_index = data.get("current_playlist_index")
         self._playlist_mode = data.get("playlist_mode", "loop")
         self._pause_time = data.get("pause_time", 0)

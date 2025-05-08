@@ -294,7 +294,9 @@ async function runThetaRho() {
 
     // Get the selected pre-execution action
     const preExecutionAction = document.getElementById('pre_execution').value;
-
+    // Read the chosen preset from your dropdown
+    const preset = parseInt(
+    document.getElementById('wled_presets_dropdown').value,10);
     logMessage(`Running file: ${selectedFile} with pre-execution action: ${preExecutionAction}...`);
     try {
         const rotationDeg = parseFloat(document.getElementById('rotation_angle').value) || 0;
@@ -304,7 +306,8 @@ async function runThetaRho() {
             body: JSON.stringify({ 
                 file_name: selectedFile, 
                 pre_execution: preExecutionAction ,
-                rotation_deg:  rotationDeg
+                rotation_deg:  rotationDeg,
+                preset_id: preset
             })
         });
 
@@ -1071,8 +1074,8 @@ async function loadPlaylist(playlistName) {
         if (!data.name) {
             throw new Error('Playlist name is missing in the response.');
         }
-
         // Populate playlist items and set original state
+        // data.files is now [{ pattern, preset }, …]
         playlist = data.files || [];
         originalPlaylist = [...playlist]; // Clone the playlist as the original
         isPlaylistChanged = false; // Reset change tracking
@@ -1332,33 +1335,38 @@ function refreshPlaylistUI() {
     ul.innerHTML = ''; // Clear existing items
 
     if (playlist.length === 0) {
-        // Add a placeholder if the playlist is empty
         const emptyLi = document.createElement('li');
         emptyLi.textContent = 'No items in the playlist.';
-        emptyLi.classList.add('empty-placeholder'); // Optional: Add a class for styling
+        emptyLi.classList.add('empty-placeholder');
         ul.appendChild(emptyLi);
         return;
     }
 
-    playlist.forEach((file, index) => {
+    playlist.forEach((item, index) => {
         const li = document.createElement('li');
 
-        // Add filename in a span
+        // Filename
         const filenameSpan = document.createElement('span');
-        filenameSpan.textContent = file;
-        filenameSpan.classList.add('filename'); // Add a class for styling
+        filenameSpan.textContent = item.pattern;
+        filenameSpan.classList.add('filename');
         li.appendChild(filenameSpan);
+
+        // Preset badge
+        const presetSpan = document.createElement('span');
+        presetSpan.textContent = `Preset #${item.preset}`;
+        presetSpan.classList.add('preset-badge');
+        // e.g. add some CSS:
+        // .preset-badge { margin-left: 0.5em; font-size: 0.9em; color: #666; }
+        li.appendChild(presetSpan);
 
         // Move Up button
         const moveUpBtn = document.createElement('button');
-        moveUpBtn.innerHTML = '<i class="fa-solid fa-turn-up"></i>'; // Up arrow symbol
+        moveUpBtn.innerHTML = '<i class="fa-solid fa-turn-up"></i>';
         moveUpBtn.classList.add('move-button');
         moveUpBtn.onclick = () => {
             if (index > 0) {
-                const temp = playlist[index - 1];
-                playlist[index - 1] = playlist[index];
-                playlist[index] = temp;
-                detectPlaylistChanges(); // Check for changes
+                [ playlist[index - 1], playlist[index] ] = [ playlist[index], playlist[index - 1] ];
+                detectPlaylistChanges();
                 refreshPlaylistUI();
             }
         };
@@ -1366,14 +1374,12 @@ function refreshPlaylistUI() {
 
         // Move Down button
         const moveDownBtn = document.createElement('button');
-        moveDownBtn.innerHTML = '<i class="fa-solid fa-turn-down"></i>'; // Down arrow symbol
+        moveDownBtn.innerHTML = '<i class="fa-solid fa-turn-down"></i>';
         moveDownBtn.classList.add('move-button');
         moveDownBtn.onclick = () => {
             if (index < playlist.length - 1) {
-                const temp = playlist[index + 1];
-                playlist[index + 1] = playlist[index];
-                playlist[index] = temp;
-                detectPlaylistChanges(); // Check for changes
+                [ playlist[index + 1], playlist[index] ] = [ playlist[index], playlist[index + 1] ];
+                detectPlaylistChanges();
                 refreshPlaylistUI();
             }
         };
@@ -1385,7 +1391,7 @@ function refreshPlaylistUI() {
         removeBtn.classList.add('remove-button');
         removeBtn.onclick = () => {
             playlist.splice(index, 1);
-            detectPlaylistChanges(); // Check for changes
+            detectPlaylistChanges();
             refreshPlaylistUI();
         };
         li.appendChild(removeBtn);
@@ -1393,6 +1399,7 @@ function refreshPlaylistUI() {
         ul.appendChild(li);
     });
 }
+
 
 // Toggle the visibility of the save and cancel buttons
 function toggleSaveCancelButtons(show) {
@@ -1470,11 +1477,15 @@ async function saveToPlaylist() {
 
     try {
         logMessage(`Adding pattern "${selectedFile}" to playlist "${playlist}"...`);
+        const selectedPlaylist = document.getElementById('select-playlist').value;
+        // get both pattern and preset
+        const preset = parseInt(document.getElementById('wled_presets_dropdown').value, 10) || 2;
+        logMessage(`Adding pattern "${selectedFile}" (preset ${preset}) to playlist "${selectedPlaylist}"…`);
         const response = await fetch('/add_to_playlist', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ playlist_name: playlist, pattern: selectedFile })
-        });
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ playlist_name: playlist, pattern: selectedFile,preset })
+            });
 
         const result = await response.json();
         if (result.success) {
@@ -1756,6 +1767,8 @@ function updateWledUI() {
     // Show the container and load WLED UI
     wledContainer.classList.remove('hidden');
     wledFrame.src = `http://${wledIp}`;
+    //Refresh dropdown
+    loadPresets();
 
 }
 
@@ -1982,7 +1995,64 @@ function clearSearch() {
   document.getElementById('clear_search').classList.add('hidden');
   searchPatternFiles();
 }
+// Call this once on page load or when you open your WLED panel
+async function loadPresets() {
+  const wledIp = localStorage.getItem('wled_ip');
 
+  if (!wledIp) {
+    logMessage('No WLED IP configured; presets unavailable.', LOG_TYPE.WARNING);
+    return;
+  }
+
+  const url = `http://${wledIp}/presets.json`;
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}`);
+    }
+    const data = await resp.json();
+
+    // Build sorted array of {id, name}
+    const presets = Object
+      .keys(data)
+      .map(key => parseInt(key, 10))       // convert "1" → 1
+      .sort((a, b) => a - b)               // numeric order
+      .map(id => {
+        const entry = data[id];
+        return entry.n
+          ? { id, name: entry.n }
+          : null;                           // skip blanks
+      })
+      .filter(p => p !== null);
+
+    // Now send it off to your UI layer
+    displayPresets(presets);
+
+  } catch (err) {
+    logMessage(`Failed to load WLED presets: ${err.message}`, LOG_TYPE.ERROR);
+  }
+}
+function displayPresets(presets) {
+  const select = document.getElementById('wled_presets_dropdown');
+  if (!select) return;
+
+  select.innerHTML = '';  // clear old
+  presets.forEach(({id, name}) => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = `#${id}: ${name}`;
+    // if there's a preset with id === 2, make it selected by default
+    if (id === 2) {
+      opt.selected = true;
+    }
+    select.appendChild(opt);
+  });
+
+  // (Optional) ensure the <select> value is actually "2" even if no option had selected=true
+  if (select.querySelector('option[value="2"]')) {
+    select.value = "2";
+  }
+}
 // Replace the polling mechanism with WebSocket
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -1997,7 +2067,6 @@ document.addEventListener('DOMContentLoaded', () => {
     attachFullScreenListeners();
     loadWledIp();
     updateWledUI();
-
     // Initialize WebSocket connection for status updates
     connectStatusWebSocket();
 
@@ -2207,4 +2276,3 @@ function downloadCurrentFile() {
   a.click();
   document.body.removeChild(a);
 }
-

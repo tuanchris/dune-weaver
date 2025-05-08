@@ -65,10 +65,12 @@ class ConnectRequest(BaseModel):
 class CoordinateRequest(BaseModel):
     theta: float
     rho: float
-
+class PlaylistItem(BaseModel):
+    pattern: str
+    preset: int
 class PlaylistRequest(BaseModel):
     playlist_name: str
-    files: List[str] = []
+    files: List[PlaylistItem] = []
     pause_time: float = 0
     clear_pattern: Optional[str] = None
     run_mode: str = "single"
@@ -226,6 +228,7 @@ class ThetaRhoRequest(BaseModel):
     file_name: str
     pre_execution: Optional[str] = "none"
     rotation_angle: Optional[float] = 0.0
+    preset_id: Optional[int] = 2
 
 @app.post("/run_theta_rho")
 async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTasks):
@@ -255,7 +258,11 @@ async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTa
             
         files_to_run = [file_path]
         logger.info(f'Running theta-rho file: {request.file_name} with pre_execution={request.pre_execution}')
-        
+        # For a single‐file run we still want the LED preset,
+        # so populate current_playlist_entries with exactly one entry:
+        state.current_playlist_entries = [
+            {"pattern": request.file_name, "preset": request.preset_id}
+           ]
         # Only include clear_pattern if it's not "none"
         kwargs = {}
         if request.pre_execution != "none":
@@ -445,7 +452,7 @@ async def get_playlist(name: str):
 
 @app.post("/create_playlist")
 async def create_playlist(request: PlaylistRequest):
-    success = playlist_manager.create_playlist(request.playlist_name, request.files)
+    success = playlist_manager.create_playlist(request.playlist_name, [item.dict() for item in request.files])
     return {
         "success": success,
         "message": f"Playlist '{request.playlist_name}' created/updated"
@@ -453,7 +460,7 @@ async def create_playlist(request: PlaylistRequest):
 
 @app.post("/modify_playlist")
 async def modify_playlist(request: PlaylistRequest):
-    success = playlist_manager.modify_playlist(request.playlist_name, request.files)
+    success = playlist_manager.modify_playlist(request.playlist_name, [item.dict() for item in request.files])
     return {
         "success": success,
         "message": f"Playlist '{request.playlist_name}' updated"
@@ -476,10 +483,10 @@ async def delete_playlist(request: DeletePlaylistRequest):
 class AddToPlaylistRequest(BaseModel):
     playlist_name: str
     pattern: str
-
+    preset: int
 @app.post("/add_to_playlist")
 async def add_to_playlist(request: AddToPlaylistRequest):
-    success = playlist_manager.add_to_playlist(request.playlist_name, request.pattern)
+    success = playlist_manager.add_to_playlist(request.playlist_name, request.pattern, request.preset)
     if not success:
         raise HTTPException(status_code=404, detail="Playlist not found")
     return {"success": True}
@@ -558,6 +565,7 @@ async def set_wled_ip(request: WLEDRequest):
 async def get_wled_ip():
     if not state.wled_ip:
         raise HTTPException(status_code=404, detail="No WLED IP set")
+
     return {"success": True, "wled_ip": state.wled_ip}
 
 @app.post("/skip_pattern")

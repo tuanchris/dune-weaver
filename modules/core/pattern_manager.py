@@ -245,16 +245,35 @@ async def run_theta_rho_file(file_path, is_playlist=False):
         reset_theta()
         
         start_time = time.time()
+
         if state.led_controller:
-            effect_playing(state.led_controller)
-            
+            entries = state.current_playlist_entries or []
+            presets = 2
+
+            if is_clear_pattern(file_path):
+                # clear patterns inherit the next real-pattern’s preset
+                next_i = state.current_playlist_index + 1
+                if 0 <= next_i < len(entries):
+                    presets = int(entries[next_i].get("preset", 2))
+            else:
+                # normal patterns use their own preset
+                i = state.current_playlist_index
+                if 0 <= i < len(entries):
+                    presets = int(entries[i].get("preset", 2))
+
+            logger.debug(
+                f"{'clear' if is_clear_pattern(file_path) else 'main'} "
+                f"pattern at idx={state.current_playlist_index} → preset={presets}"
+            )
+            state.led_controller.set_preset(presets)
+
         with tqdm(
-            total=total_coordinates,
-            unit="coords",
-            desc=f"Executing Pattern {file_path}",
-            dynamic_ncols=True,
-            disable=False,
-            mininterval=1.0
+                total=total_coordinates,
+                unit="coords",
+                desc=f"Executing Pattern {file_path}",
+                dynamic_ncols=True,
+                disable=False,
+                mininterval=1.0
         ) as pbar:
             for i, coordinate in enumerate(coordinates):
                 theta, rho = coordinate
@@ -263,7 +282,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                     if state.led_controller:
                         effect_idle(state.led_controller)
                     break
-                
+
                 if state.skip_requested:
                     logger.info("Skipping pattern...")
                     connection_manager.check_idle()
@@ -276,10 +295,24 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                     logger.info("Execution paused...")
                     if state.led_controller:
                         effect_idle(state.led_controller)
+
                     await pause_event.wait()
+
                     logger.info("Execution resumed...")
                     if state.led_controller:
-                        effect_playing(state.led_controller)
+                        entries = state.current_playlist_entries or []
+                        presets = 2
+
+                        if is_clear_pattern(file_path):
+                            next_i = state.current_playlist_index + 1
+                            if 0 <= next_i < len(entries):
+                                presets = int(entries[next_i].get("preset", 2))
+                        else:
+                            i_idx = state.current_playlist_index
+                            if 0 <= i_idx < len(entries):
+                                presets = int(entries[i_idx].get("preset", 2))
+
+                        state.led_controller.set_preset(presets)
 
                 move_polar(theta, rho)
                 
@@ -424,7 +457,9 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
         state.current_playlist = None
         state.current_playlist_index = None
         state.playlist_mode = None
-        
+        state.current_playlist_entries = None
+        state.current_playlist_name = None
+        state.current_playlist_index = None
         if state.led_controller:
             effect_idle(state.led_controller)
         
