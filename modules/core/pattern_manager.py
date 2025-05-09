@@ -96,9 +96,15 @@ async def cleanup_pattern_manager():
 def list_theta_rho_files():
     files = []
     for root, _, filenames in os.walk(THETA_RHO_DIR):
-        for file in filenames:
-            relative_path = os.path.relpath(os.path.join(root, file), THETA_RHO_DIR)
+        for fname in filenames:
+            # only include .thr files
+            if not fname.lower().endswith('.thr'):
+                continue
+
+            full_path = os.path.join(root, fname)
+            relative_path = os.path.relpath(full_path, THETA_RHO_DIR)
             files.append(relative_path)
+
     logger.debug(f"Found {len(files)} theta-rho files")
     return files
 
@@ -201,7 +207,7 @@ def is_clear_pattern(file_path):
     # Check if the file path matches any clear pattern path
     return normalized_path in normalized_clear_patterns
 
-async def run_theta_rho_file(file_path, is_playlist=False):
+async def run_theta_rho_file(file_path, is_playlist=False, preset: int = None):
     """Run a theta-rho file by sending data in optimized batches with tqdm ETA tracking."""
     if pattern_lock.locked():
         logger.warning("Another pattern is already running. Cannot start a new one.")
@@ -236,7 +242,14 @@ async def run_theta_rho_file(file_path, is_playlist=False):
         
         start_time = time.time()
         if state.led_controller:
-            effect_playing(state.led_controller)
+            # decide which preset to use
+            logger.info(f"Preset passed is: {preset} for '{file_path}'")
+            if preset is None:
+                chosen = 2
+            else:
+                chosen = preset
+            logger.info(f"Applying preset {chosen} for '{file_path}'")
+            state.led_controller.set_preset(chosen)
             
         with tqdm(
             total=total_coordinates,
@@ -315,7 +328,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
 async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
     """Run multiple .thr files in sequence with options."""
     state.stop_requested = False
-    
+
     # Set initial playlist state
     state.playlist_mode = run_mode
     state.current_playlist_index = 0
@@ -323,8 +336,8 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
     global progress_update_task
     if not progress_update_task:
         progress_update_task = asyncio.create_task(broadcast_progress())
-    
-    
+
+
     if shuffle:
         random.shuffle(file_paths)
         logger.info("Playlist shuffled")
@@ -338,15 +351,16 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
         while True:
             # Construct the complete pattern sequence
             pattern_sequence = []
-            for path in file_paths:
+            for path, preset in file_paths:
+                logger.info(path)
                 # Add clear pattern if specified
                 if clear_pattern and clear_pattern != 'none':
                     clear_file_path = get_clear_pattern_file(clear_pattern, path)
                     if clear_file_path:
-                        pattern_sequence.append(clear_file_path)
-                
+                        pattern_sequence.append((clear_file_path, preset))
+
                 # Add main pattern
-                pattern_sequence.append(path)
+                pattern_sequence.append((path, preset))
 
             # Shuffle if requested
             if shuffle:
@@ -359,18 +373,19 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
 
             # Set the playlist to the first pattern
             state.current_playlist = pattern_sequence
+            logger.info(f"Starting sequence {pattern_sequence}")
             # Execute the pattern sequence
-            for idx, file_path in enumerate(pattern_sequence):
+            for idx, (file_path, preset) in enumerate(pattern_sequence):
                 state.current_playlist_index = idx
                 if state.stop_requested:
                     logger.info("Execution stopped")
                     return
 
                 # Update state for main patterns only
-                logger.info(f"Running pattern {file_path}")
-                
+                logger.info(f"Running pattern {file_path} with preset {preset}")
+
                 # Execute the pattern
-                await run_theta_rho_file(file_path, is_playlist=True)
+                await run_theta_rho_file(file_path, is_playlist=True, preset=preset)
 
                 # Handle pause between patterns
                 if idx < len(pattern_sequence) - 1 and not state.stop_requested and pause_time > 0 and not state.skip_requested:
@@ -385,7 +400,7 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                                 logger.info("Pause interrupted by stop/skip request")
                                 break
                             await asyncio.sleep(1)  # Check every 100ms
-                    
+
                 state.skip_requested = False
 
             if run_mode == "indefinite":
@@ -407,17 +422,17 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
             except asyncio.CancelledError:
                 pass
             progress_update_task = None
-            
+
         # Clear all state variables
         state.current_playing_file = None
         state.execution_progress = None
         state.current_playlist = None
         state.current_playlist_index = None
         state.playlist_mode = None
-        
+
         if state.led_controller:
             effect_idle(state.led_controller)
-        
+
         logger.info("All requested patterns completed (or stopped) and state cleared")
 
 def stop_actions(clear_playlist = True):
