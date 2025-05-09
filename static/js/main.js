@@ -155,9 +155,6 @@ async function selectFile(file, listItem) {
     
     // Update the preview
     await previewPattern(file);
-
-    // Populate the playlist dropdown after selecting a pattern
-    await populatePlaylistDropdown();
 }
 
 // Fetch and display Theta-Rho files
@@ -383,14 +380,14 @@ async function removeCustomPattern(fileName) {
     }
 }
 
-// SVG Cache
-const svgCache = new Map();
+// Preview Cache
+const previewCache = new Map();
 
-// Function to get SVG from cache or fetch it
-async function getSVG(fileName) {
-    // Check if SVG is in cache
-    if (svgCache.has(fileName)) {
-        return svgCache.get(fileName);
+// Function to get preview from cache or fetch it
+async function getPreview(fileName) {
+    // Check if preview is in cache
+    if (previewCache.has(fileName)) {
+        return previewCache.get(fileName);
     }
 
     // If not in cache, fetch it
@@ -408,24 +405,24 @@ async function getSVG(fileName) {
         const data = await response.json();
         
         // Store in cache
-        svgCache.set(fileName, data);
+        previewCache.set(fileName, data);
         return data;
     } catch (error) {
-        logMessage(`Error fetching SVG: ${error.message}`, LOG_TYPE.ERROR);
+        logMessage(`Error fetching preview: ${error.message}`, LOG_TYPE.ERROR);
         throw error;
     }
 }
 
-// Function to clear SVG cache
-function clearSVGCache() {
-    svgCache.clear();
+// Function to clear preview cache
+function clearPreviewCache() {
+    previewCache.clear();
 }
 
-// Update previewPattern function to use cache
+// Update previewPattern function to handle PNG
 async function previewPattern(fileName, containerId = 'pattern-preview-container') {
     try {
         logMessage(`Fetching data to preview file: ${fileName}...`);
-        const data = await getSVG(fileName);
+        const data = await getPreview(fileName);
         
         // Get the preview container
         const previewContainer = document.getElementById(containerId);
@@ -444,10 +441,22 @@ async function previewPattern(fileName, containerId = 'pattern-preview-container
         // Clear existing content
         patternPreview.innerHTML = '';
 
-        // Create SVG container
-        const svgContainer = document.createElement('div');
-        svgContainer.className = 'svg-container';
-        svgContainer.innerHTML = data.svg;
+        // Create image container
+        const imgContainer = document.createElement('div');
+        imgContainer.className = 'preview-container';
+        
+        // Create and set up the image
+        const img = document.createElement('img');
+        img.src = data.preview_url;
+        img.alt = `Preview of ${fileName}`;
+        img.className = 'pattern-preview-image';
+        
+        // Add loading state
+        img.onload = () => {
+            img.classList.add('loaded');
+        };
+        
+        imgContainer.appendChild(img);
 
         // Create coordinate display
         const coordDisplay = document.createElement('div');
@@ -464,7 +473,7 @@ async function previewPattern(fileName, containerId = 'pattern-preview-container
         }
 
         // Add elements to preview
-        patternPreview.appendChild(svgContainer);
+        patternPreview.appendChild(imgContainer);
         patternPreview.appendChild(coordDisplay);
 
     } catch (error) {
@@ -472,10 +481,10 @@ async function previewPattern(fileName, containerId = 'pattern-preview-container
     }
 }
 
-// Update updateCurrentlyPlayingPattern function to use cache
+// Update the currently playing preview to use PNG
 async function updateCurrentlyPlayingPattern(fileName) {
     try {
-        const data = await getSVG(fileName);
+        const data = await getPreview(fileName);
         
         // Get the currently playing container
         const container = document.getElementById('currently-playing-container');
@@ -494,13 +503,25 @@ async function updateCurrentlyPlayingPattern(fileName) {
         // Clear existing content
         previewDiv.innerHTML = '';
 
-        // Create SVG container
-        const svgContainer = document.createElement('div');
-        svgContainer.className = 'svg-container';
-        svgContainer.innerHTML = data.svg;
+        // Create image container
+        const imgContainer = document.createElement('div');
+        imgContainer.className = 'preview-container';
+        
+        // Create and set up the image
+        const img = document.createElement('img');
+        img.src = data.preview_url;
+        img.alt = `Currently playing: ${fileName}`;
+        img.className = 'pattern-preview-image';
+        
+        // Add loading state
+        img.onload = () => {
+            img.classList.add('loaded');
+        };
+        
+        imgContainer.appendChild(img);
 
-        // Add SVG to the preview div
-        previewDiv.appendChild(svgContainer);
+        // Add image to the preview div
+        previewDiv.appendChild(imgContainer);
 
     } catch (error) {
         logMessage(`Error updating currently playing pattern: ${error.message}`, LOG_TYPE.ERROR);

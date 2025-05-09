@@ -7,3 +7,4 @@ __pycache__/
 *.json
 .venv/
 patterns/cached_svg/
+patterns/cached_images/custom_*
