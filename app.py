@@ -208,17 +208,20 @@ async def list_theta_rho_files():
     files = pattern_manager.list_theta_rho_files()
     result = []
     for name in sorted(files):
-        # get the cache filename
-        cache_path = get_cache_path(name)
-        svg_fname = os.path.basename(cache_path)
-        # build the URL
-        thumb_url = f"/svg_cache/{svg_fname}"
+        # if it's a custom pattern (i.e. contains a slash), swap '/' → '--'
+        safe_name = name
+        if "/" in name:
+            safe_name = name.replace("/", "--")
+
+        thumb_url = f"/preview/{safe_name}"
         result.append({
             "name": name,
             "thumb": thumb_url
         })
+
     logger.info(f"Returning {len(result)} patterns with SVG thumbs")
     return result
+
 
 @app.post("/upload_theta_rho")
 async def upload_theta_rho(file: UploadFile = File(...)):
