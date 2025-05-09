@@ -1552,6 +1552,11 @@ input[type="number"]:focus {
     }
 }
 
+/* Invert pattern preview images in dark mode */
+:root[data-theme="dark"] .pattern-preview-image {
+    filter: invert(1);
+}
+
 #pattern-preview-container .svg-container {
     width: 300px;
     height: 300px;
@@ -1601,3 +1606,4 @@ input[type="number"]:focus {
     max-width: 100%;
     max-height: 100%;
 }
+
