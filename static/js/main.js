@@ -155,9 +155,6 @@ async function selectFile(file, listItem) {
     
     // Update the preview
     await previewPattern(file);
-
-    // Populate the playlist dropdown after selecting a pattern
-    await populatePlaylistDropdown();
 }
 
 // Fetch and display Theta-Rho files
