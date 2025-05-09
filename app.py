@@ -10,6 +10,7 @@ import logging
 from datetime import datetime, time
 from modules.connection import connection_manager
 from modules.core import pattern_manager
+from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR
 from modules.core import playlist_manager
 from modules.update import update_manager
 from modules.core.state import state
@@ -20,7 +21,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from modules.led.led_controller import LEDController, effect_idle
 import math
-from modules.core.svg_cache_manager import generate_all_svg_previews, get_cache_path, generate_svg_preview
+from modules.core.cache_manager import generate_all_image_previews, get_cache_path, generate_image_preview
 
 # Configure logging
 logging.basicConfig(
@@ -51,12 +52,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to initialize MQTT: {str(e)}")
     
-    # Generate SVG previews for all patterns
+    # Generate image previews for all patterns
     try:
-        logger.info("Starting SVG cache generation...")
-        await generate_all_svg_previews()
+        logger.info("Starting image cache generation...")
+        await generate_all_image_previews()
     except Exception as e:
-        logger.warning(f"Failed to generate SVG cache: {str(e)}")
+        logger.warning(f"Failed to generate image cache: {str(e)}")
 
     yield  # This separates startup from shutdown code
 
@@ -208,12 +209,18 @@ async def upload_theta_rho(file: UploadFile = File(...)):
     """Upload a theta-rho file."""
     try:
         # Save the file
-        file_path = os.path.join(pattern_manager.THETA_RHO_DIR, "custom_patterns", file.filename)
-        with open(file_path, "wb") as f:
+        # Ensure custom_patterns directory exists
+        custom_patterns_dir = os.path.join(pattern_manager.THETA_RHO_DIR, "custom_patterns")
+        os.makedirs(custom_patterns_dir, exist_ok=True)
+        
+        file_path_in_patterns_dir = os.path.join("custom_patterns", file.filename)
+        full_file_path = os.path.join(pattern_manager.THETA_RHO_DIR, file_path_in_patterns_dir)
+        
+        with open(full_file_path, "wb") as f:
             f.write(await file.read())
         
-        # Generate SVG preview for the new file
-        await generate_svg_preview(os.path.join("custom_patterns", file.filename))
+        # Generate image preview for the new file
+        await generate_image_preview(file_path_in_patterns_dir)
         
         return {"success": True, "message": f"File {file.filename} uploaded successfully"}
     except Exception as e:
@@ -359,63 +366,55 @@ async def preview_thr(request: DeleteFileRequest):
         logger.warning("Preview theta-rho request received without filename")
         raise HTTPException(status_code=400, detail="No file name provided")
 
-    file_path = os.path.join(pattern_manager.THETA_RHO_DIR, request.file_name)
-    if not os.path.exists(file_path):
-        logger.error(f"Attempted to preview non-existent file: {file_path}")
-        raise HTTPException(status_code=404, detail="File not found")
+    # Construct the full path to the pattern file to check existence
+    pattern_file_path = os.path.join(pattern_manager.THETA_RHO_DIR, request.file_name)
+    if not os.path.exists(pattern_file_path):
+        logger.error(f"Attempted to preview non-existent pattern file: {pattern_file_path}")
+        raise HTTPException(status_code=404, detail="Pattern file not found")
 
     try:
-        # Check if cached SVG exists
         cache_path = get_cache_path(request.file_name)
-        if os.path.exists(cache_path):
-            with open(cache_path, 'r', encoding='utf-8') as f:
-                svg_content = f.read()
-                
-            # Parse coordinates for first and last points
-            coordinates = pattern_manager.parse_theta_rho_file(file_path)
-            first_coord = coordinates[0] if coordinates else None
-            last_coord = coordinates[-1] if coordinates else None
-            
-            return {
-                "svg": svg_content,
-                "first_coordinate": first_coord,
-                "last_coordinate": last_coord
-            }
         
-        # If not cached, generate SVG as before
-        coordinates = pattern_manager.parse_theta_rho_file(file_path)
-        
-        # Convert polar coordinates to SVG path
-        svg_path = []
-        for i, (theta, rho) in enumerate(coordinates):
-            x = 100 - rho * 90 * math.cos(theta)
-            y = 100 - rho * 90 * math.sin(theta)
-            
-            if i == 0:
-                svg_path.append(f"M {x:.2f} {y:.2f}")
-            else:
-                svg_path.append(f"L {x:.2f} {y:.2f}")
-        
-        svg = f'''<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<svg width="100%" height="100%" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
-    <path d="{' '.join(svg_path)}" 
-          fill="none" 
-          stroke="currentColor" 
-          stroke-width="0.5"/>
-</svg>'''
-        
-        # Cache the SVG for future use
-        with open(cache_path, 'w', encoding='utf-8') as f:
-            f.write(svg)
-        
+        if not os.path.exists(cache_path):
+            logger.info(f"Cache miss for {request.file_name}. Generating preview...")
+            # Attempt to generate the preview if it's missing
+            success = await generate_image_preview(request.file_name)
+            if not success or not os.path.exists(cache_path):
+                logger.error(f"Failed to generate or find preview for {request.file_name} after attempting generation.")
+                raise HTTPException(status_code=500, detail="Failed to generate preview image.")
+
+        # Get the coordinates for display
+        coordinates = parse_theta_rho_file(pattern_file_path)
+        first_coord = coordinates[0] if coordinates else None
+        last_coord = coordinates[-1] if coordinates else None
+
+        # Return JSON with preview URL and coordinates
+        # URL encode the file_name for the preview URL
+        encoded_filename = request.file_name.replace('/', '--')
         return {
-            "svg": svg,
-            "first_coordinate": coordinates[0] if coordinates else None,
-            "last_coordinate": coordinates[-1] if coordinates else None
+            "preview_url": f"/preview/{encoded_filename}",
+            "first_coordinate": first_coord,
+            "last_coordinate": last_coord
         }
+
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Failed to generate preview for {request.file_name}: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Failed to generate or serve preview for {request.file_name}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to serve preview image: {str(e)}")
+
+@app.get("/preview/{encoded_filename}")
+async def serve_preview(encoded_filename: str):
+    """Serve a preview image for a pattern file."""
+    # Decode the filename by replacing -- with /
+    file_name = encoded_filename.replace('--', '/')
+    cache_path = get_cache_path(file_name)
+    
+    if not os.path.exists(cache_path):
+        logger.error(f"Preview image not found for {file_name}")
+        raise HTTPException(status_code=404, detail="Preview image not found")
+        
+    return FileResponse(cache_path, media_type="image/png")
 
 @app.post("/send_coordinate")
 async def send_coordinate(request: CoordinateRequest):
