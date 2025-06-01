@@ -1,0 +1,48 @@
+{% extends "base.html" %} {% block title %}WLED - Kinetic Sand Table{% endblock %} {% block content %}
+<div class="layout-content-container flex flex-col w-full max-w-4xl gap-0 sm:gap-8">
+  <div class="flex flex-wrap justify-between items-center gap-4 p-4 bg-white rounded-xl shadow-sm hidden sm:flex">
+    <h1 class="text-slate-900 tracking-tight text-2xl sm:text-3xl font-bold leading-tight hidden sm:block">
+      WLED Control
+    </h1>
+  </div>
+  <section class="bg-white rounded-xl shadow-sm overflow-hidden pt-4 sm:pt-0">
+    <div class="flex flex-col items-center px-0 py-0">
+      <div class="w-full max-w-5xl flex flex-col overflow-hidden">
+        <iframe id="wled-frame"
+          src=""
+          class="h-[70vh] w-full rounded-lg border border-slate-200"
+          frameborder="0"
+          allowfullscreen
+        ></iframe>
+        <p id="wled-status" class="text-center text-slate-500 mt-2"></p>
+      </div>
+    </div>
+  </section>
+</div>
+<script>
+  async function loadWledIframe() {
+    let wledIp = localStorage.getItem('wled_ip');
+    const status = document.getElementById('wled-status');
+    const frame = document.getElementById('wled-frame');
+    if (!wledIp) {
+      // Try to fetch from server if not in localStorage
+      try {
+        const resp = await fetch('/get_wled_ip');
+        if (resp.ok) {
+          const data = await resp.json();
+          wledIp = data.wled_ip;
+          localStorage.setItem('wled_ip', wledIp);
+        }
+      } catch (e) {}
+    }
+    if (wledIp) {
+      frame.src = `http://${wledIp}`;
+      status.textContent = '';
+    } else {
+      frame.src = '';
+      status.textContent = 'No WLED IP set. Please set it in Settings.';
+    }
+  }
+  document.addEventListener('DOMContentLoaded', loadWledIframe);
+</script>
+{% endblock %}

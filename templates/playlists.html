@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Playlists - Kinetic Sand Table{% endblock %}
+
+{% block content %}
+<div class="layout-content-container flex flex-col w-full max-w-4xl gap-8">
+  <div class="flex flex-wrap justify-between items-center gap-4 p-4 bg-white rounded-xl shadow-sm">
+    <h1 class="text-slate-900 tracking-tight text-2xl sm:text-3xl font-bold leading-tight">
+      Playlists
+    </h1>
+  </div>
+  <section class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <div class="px-6 py-5 space-y-4">
+      <div class="flex justify-end">
+        <button
+          class="flex items-center justify-center gap-2 min-w-[100px] max-w-[480px] cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors"
+        >
+          <span class="material-icons text-lg">add</span>
+          <span class="truncate">New Playlist</span>
+        </button>
+      </div>
+      <div class="grid grid-cols-1 gap-4">
+        <!-- Playlist items will be populated here -->
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/playlists.js"></script>
+{% endblock %} 

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -22,6 +22,7 @@ from contextlib import asynccontextmanager
 from modules.led.led_controller import LEDController, effect_idle
 import math
 from modules.core.cache_manager import generate_all_image_previews, get_cache_path, generate_image_preview
+import json
 
 # Configure logging
 logging.basicConfig(
@@ -151,8 +152,12 @@ async def index():
     return templates.TemplateResponse("index.html", {"request": {}})
 
 @app.get("/home")
-async def home():
-    return templates.TemplateResponse("home.html", {"request": {}})
+async def home(request: Request):
+    return templates.TemplateResponse("home.html", {"request": request})
+
+@app.get("/settings")
+async def settings(request: Request):
+    return templates.TemplateResponse("settings.html", {"request": request})
 
 @app.get("/list_serial_ports")
 async def list_ports():
@@ -389,13 +394,17 @@ async def preview_thr(request: DeleteFileRequest):
         first_coord = coordinates[0] if coordinates else None
         last_coord = coordinates[-1] if coordinates else None
 
+        # Format coordinates as objects with x and y properties
+        first_coord_obj = {"x": first_coord[0], "y": first_coord[1]} if first_coord else None
+        last_coord_obj = {"x": last_coord[0], "y": last_coord[1]} if last_coord else None
+
         # Return JSON with preview URL and coordinates
         # URL encode the file_name for the preview URL
         encoded_filename = request.file_name.replace('/', '--')
         return {
             "preview_url": f"/preview/{encoded_filename}",
-            "first_coordinate": first_coord,
-            "last_coordinate": last_coord
+            "first_coordinate": first_coord_obj,
+            "last_coordinate": last_coord_obj
         }
 
     except HTTPException:
@@ -638,12 +647,16 @@ async def preview_thr_batch(request: dict):
             first_coord = coordinates[0] if coordinates else None
             last_coord = coordinates[-1] if coordinates else None
 
+            # Format coordinates as objects with x and y properties
+            first_coord_obj = {"x": first_coord[0], "y": first_coord[1]} if first_coord else None
+            last_coord_obj = {"x": last_coord[0], "y": last_coord[1]} if last_coord else None
+
             # URL encode the file_name for the preview URL
             encoded_filename = file_name.replace('/', '--')
             results[file_name] = {
                 "preview_url": f"/preview/{encoded_filename}",
-                "first_coordinate": first_coord,
-                "last_coordinate": last_coord
+                "first_coordinate": first_coord_obj,
+                "last_coordinate": last_coord_obj
             }
 
         except Exception as e:
@@ -651,6 +664,19 @@ async def preview_thr_batch(request: dict):
             results[file_name] = {"error": str(e)}
 
     return results
+
+@app.get("/playlists")
+async def playlists(request: Request):
+    logger.debug("Rendering playlists page")
+    return templates.TemplateResponse("playlists.html", {"request": request})
+
+@app.get("/wled")
+async def wled(request: Request):
+    return templates.TemplateResponse("wled.html", {"request": request})
+
+@app.get("/table_control")
+async def table_control(request: Request):
+    return templates.TemplateResponse("table_control.html", {"request": request})
 
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully but forcefully."""

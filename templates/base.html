@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link crossorigin="" href="https://fonts.gstatic.com/" rel="preconnect" />
+    <link
+      as="style"
+      href="https://fonts.googleapis.com/css2?display=swap&amp;family=Noto+Sans%3Awght%40400%3B500%3B700%3B900&amp;family=Plus+Jakarta+Sans%3Awght%40400%3B500%3B700%3B800"
+      onload="this.rel='stylesheet'"
+      rel="stylesheet"
+    />
+    <title>{% block title %}Kinetic Sand Table{% endblock %}</title>
+    <link href="data:image/x-icon;base64," rel="icon" type="image/x-icon" />
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+      href="https://fonts.googleapis.com/icon?family=Material+Icons"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined"
+      rel="stylesheet"
+    />
+    <style>
+      .material-icons {
+        font-family: "Material Icons";
+        font-weight: normal;
+        font-style: normal;
+        font-size: 24px;
+        display: inline-block;
+        line-height: 1;
+        text-transform: none;
+        letter-spacing: normal;
+        word-wrap: normal;
+        white-space: nowrap;
+        direction: ltr;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+        -moz-osx-font-smoothing: grayscale;
+        font-feature-settings: "liga";
+      }
+      .active-tab {
+        color: #0c7ff2;
+        border-color: #0c7ff2;
+      }
+      .active-tab .material-icons {
+        color: #0c7ff2;
+      }
+      .inactive-tab {
+        color: #6b7280;
+      }
+      .inactive-tab:hover {
+        color: #374151;
+      }
+      #status-message {
+        transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+      }
+
+      /* Switch toggle styles */
+      .switch {
+        position: relative;
+        display: inline-block;
+        width: 40px;
+        height: 20px;
+      }
+
+      .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+
+      .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #ccc;
+        transition: .4s;
+        border-radius: 20px;
+      }
+
+      .slider:before {
+        position: absolute;
+        content: "";
+        height: 16px;
+        width: 16px;
+        left: 2px;
+        bottom: 2px;
+        background-color: white;
+        transition: .4s;
+        border-radius: 50%;
+      }
+
+      input:checked + .slider {
+        background-color: #0c7ff2;
+      }
+
+      input:checked + .slider:before {
+        transform: translateX(20px);
+      }
+
+      /* Shadow for top of status bar */
+      .shadow-lg-top {
+        box-shadow: 0 -4px 6px -1px rgb(0 0 0 / 0.1), 0 -2px 4px -2px rgb(0 0 0 / 0.1);
+      }
+
+      /* Marquee animation for pattern name on small screens */
+      @keyframes marquee {
+        0%   { transform: translateX(0%); }
+        50% { transform: translateX(-50%); }
+      }
+      .pattern-marquee {
+        display: inline-block;
+        min-width: 100%;
+        animation: marquee 8s linear infinite;
+      }
+      @media (min-width: 640px) { /* sm: and up, disable marquee */
+        .pattern-marquee {
+          animation: none !important;
+          transform: none !important;
+        }
+      }
+
+      {% block additional_styles %}{% endblock %}
+    </style>
+    {% block additional_head %}{% endblock %}
+  </head>
+  <body
+    class="bg-gray-50"
+    style="font-family: 'Plus Jakarta Sans', 'Noto Sans', sans-serif"
+  >
+    <div
+      class="relative flex size-full min-h-screen flex-col group/design-root overflow-x-hidden"
+    >
+      <div class="layout-container flex h-full grow flex-col">
+        <header
+          class="fixed top-0 left-0 right-0 z-10 flex items-center justify-between whitespace-nowrap border-b border-solid border-b-gray-200 bg-white px-6 py-4 shadow-sm md:px-10"
+        >
+          <div class="flex items-center gap-3 text-gray-800">
+            <div class="text-blue-600">
+              <svg
+                class="size-7"
+                fill="none"
+                viewBox="0 0 48 48"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  clip-rule="evenodd"
+                  d="M24 4H42V17.3333V30.6667H24V44H6V30.6667V17.3333H24V4Z"
+                  fill="currentColor"
+                  fill-rule="evenodd"
+                ></path>
+              </svg>
+            </div>
+            <h1
+              class="text-gray-800 text-xl font-bold leading-tight tracking-tight flex items-center gap-2"
+            >
+              Dune Weaver
+              <span
+                id="connectionStatusDot"
+                class="inline-block size-2 rounded-full bg-red-500 ml-2 align-middle"
+              ></span>
+            </h1>
+          </div>
+          <div
+            class="mt-2 w-full text-center px-4"
+            id="status-message-container"
+          >
+            <p
+              class="text-base font-semibold opacity-0 transform -translate-y-2 transition-all duration-300 ease-in-out px-10 py-2 rounded-lg shadow-lg"
+              id="status-message"
+            ></p>
+          </div>
+          <div class="flex items-center gap-4">
+            <button
+              aria-label="Menu"
+              class="flex h-10 w-10 cursor-pointer items-center justify-center overflow-hidden rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200"
+            >
+              <span class="material-icons text-gray-700">menu</span>
+            </button>
+            <div
+              class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 border-2 border-gray-200"
+              style="
+                background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuA63dnnEnB0DGmWaDEovpAVfp3qOOHDrqQxF9SZtdMPiAfBn_If7Q97nZgk9By6QF0VV3kSSIpFbh5dgziTptrxTNsIA22cvyw2k5ZYZcSARYRQZ8odqTptzxWZkoO6bDYE6KkEGUKqm1EUGjVlyEnYrFitUx18AsVnyKCsyh6DdljR6mtA-p5sXjlQiC5VkmpwbOkykpHJeGfnW7zltvWwdH7Jp47tgdBlBmY-jv548q98pubuD7-s46s6XMat8w20MXePFVxC4_f4');
+              "
+            ></div>
+          </div>
+        </header>
+        <main class="flex flex-1 justify-center px-4 sm:px-6 lg:px-8 mt-16">
+          {% block content %}{% endblock %}
+        </main>
+        <footer
+          class="fixed bottom-0 left-0 right-0 z-10 bg-white border-t border-gray-200 shadow-t-sm"
+        >
+          <!-- Player Status Bar -->
+          <div
+            class="fixed bottom-16 left-0 right-0 z-20 bg-gray-100 text-gray-800 shadow-lg-top px-2 sm:px-0"
+            id="player-status-bar-container"
+          >
+            <div class="max-w-5xl mx-auto w-full">
+              <div class="flex items-stretch">
+                <div class="py-4 flex-shrink-0">
+                  <div
+                    class="bg-center bg-no-repeat bg-contain w-32 sm:w-48 aspect-square rounded-md"
+                    id="player-pattern-preview"
+                  ></div>
+                </div>
+                <div class="flex-1 p-4 sm:p-6 flex flex-col justify-between">
+                  <div class="flex items-center justify-between mb-4">
+                    <div class="min-w-0 max-w-[35vw] sm:max-w-full">
+                      <div class="overflow-hidden relative">
+                        <p
+                          class="pattern-marquee text-lg sm:text-xl font-semibold whitespace-nowrap"
+                          id="player-pattern-name"
+                        >
+                          No pattern playing
+                        </p>
+                      </div>
+                      <p
+                        class="text-base sm:text-lg text-gray-500"
+                        id="player-eta"
+                      >
+                        ETA: --:--
+                      </p>
+                    </div>
+                    <div
+                      class="flex items-center gap-2 sm:gap-4 flex-shrink-0 relative z-10"
+                    >
+                      <button
+                        aria-label="Next"
+                        class="w-12 aspect-square rounded-full flex items-center justify-center hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-gray-100"
+                        id="player-skip-button"
+                      >
+                        <span class="material-icons text-gray-700"
+                          >skip_next</span
+                        >
+                      </button>
+                      <button
+                        aria-label="Pause"
+                        class="w-12 aspect-square rounded-full flex items-center justify-center hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-gray-100"
+                        id="player-pause-button"
+                      >
+                        <span class="material-icons text-gray-700">pause</span>
+                      </button>
+                      <button
+                        aria-label="Stop"
+                        class="w-12 aspect-square rounded-full flex items-center justify-center hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-gray-100"
+                        id="player-stop-button"
+                      >
+                        <span class="material-icons text-gray-700">stop</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="w-full bg-gray-300 rounded-full h-2.5 mb-4">
+                    <div
+                      class="bg-blue-600 h-2.5 rounded-full"
+                      id="player-progress-bar"
+                      style="width: 0%"
+                    ></div>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <div
+                      class="text-base sm:text-lg text-gray-500 hidden sm:block"
+                    >
+                      Next:
+                      <span
+                        class="text-gray-700 font-medium"
+                        id="player-next-pattern"
+                        >None</span
+                      >
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <nav class="mx-auto flex max-w-5xl justify-around">
+            <a
+              class="{% if request.url.path == '/home' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
+              href="/home"
+            >
+              <span class="material-icons">search</span> Browse
+            </a>
+            <a
+              class="{% if request.url.path == '/playlists' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] border-transparent py-3 text-xs font-medium sm:text-sm"
+              href="/playlists"
+            >
+              <span class="material-icons">list_alt</span> Playlists
+            </a>
+            <a
+              class="{% if request.url.path == '/table_control' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] border-transparent py-3 text-xs font-medium sm:text-sm"
+              href="/table_control"
+            >
+              <span class="material-icons">table_chart</span> Table Control
+            </a>
+            <a
+              class="{% if request.url.path == '/wled' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] border-transparent py-3 text-xs font-medium sm:text-sm"
+              href="/wled"
+            >
+              <span class="material-icons">lightbulb</span> WLED
+            </a>
+            <a
+              class="{% if request.url.path == '/settings' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] border-transparent py-3 text-xs font-medium sm:text-sm"
+              href="/settings"
+            >
+              <span class="material-icons">settings</span> Settings
+            </a>
+          </nav>
+        </footer>
+      </div>
+    </div>
+    {% block scripts %}{% endblock %}
+    <script src="/static/js/player.js"></script>
+    <script>
+      // Function to show status message
+      function showStatusMessage(message, type = "success") {
+        const statusContainer = document.getElementById(
+          "status-message-container"
+        );
+        const statusMessage = document.getElementById("status-message");
+
+        if (!statusContainer || !statusMessage) return;
+
+        // Set message and color based on type
+        statusMessage.textContent = message;
+        statusMessage.className = `text-base font-semibold opacity-0 transform -translate-y-2 transition-all duration-300 ease-in-out px-4 py-2 rounded-lg shadow-lg ${
+          type === "success"
+            ? "bg-green-50 text-green-700 border border-green-200"
+            : type === "error"
+            ? "bg-red-50 text-red-700 border border-red-200"
+            : type === "warning"
+            ? "bg-yellow-50 text-yellow-700 border border-yellow-200"
+            : "bg-blue-50 text-blue-700 border border-blue-200"
+        }`;
+
+        // Show message with animation
+        requestAnimationFrame(() => {
+          statusMessage.classList.remove("opacity-0", "-translate-y-2");
+          statusMessage.classList.add("opacity-100", "translate-y-0");
+        });
+
+        // Hide message after 5 seconds
+        setTimeout(() => {
+          statusMessage.classList.remove("opacity-100", "translate-y-0");
+          statusMessage.classList.add("opacity-0", "-translate-y-2");
+        }, 5000);
+      }
+
+      // Initial connection status check
+      async function checkInitialConnectionStatus() {
+        try {
+          const response = await fetch("/serial_status");
+          if (response.ok) {
+            const data = await response.json();
+            const statusDot = document.getElementById("connectionStatusDot");
+            if (statusDot) {
+              statusDot.className = `inline-block size-2 rounded-full ml-2 align-middle ${
+                data.connected ? "bg-green-500" : "bg-red-500"
+              }`;
+            }
+          }
+        } catch (error) {
+          console.error("Error checking initial connection status:", error);
+        }
+      }
+
+      // Check initial status on page load
+      document.addEventListener("DOMContentLoaded", checkInitialConnectionStatus);
+    </script>
+  </body>
+</html>

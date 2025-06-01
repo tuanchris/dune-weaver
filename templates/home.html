@@ -1,304 +1,333 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <link crossorigin="" href="https://fonts.gstatic.com/" rel="preconnect" />
-    <link
-      as="style"
-      href="https://fonts.googleapis.com/css2?display=swap&amp;family=Noto+Sans%3Awght%40400%3B500%3B700%3B900&amp;family=Plus+Jakarta+Sans%3Awght%40400%3B500%3B700%3B800"
-      onload="this.rel='stylesheet'"
-      rel="stylesheet"
-    />
-    <title>Kinetic Sand Table</title>
-    <link href="data:image/x-icon;base64," rel="icon" type="image/x-icon" />
-    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-    <link
-      href="https://fonts.googleapis.com/icon?family=Material+Icons"
-      rel="stylesheet"
-    />
-    <style>
-      .material-icons {
-        font-family: "Material Icons";
-        font-weight: normal;
-        font-style: normal;
-        font-size: 24px;
-        display: inline-block;
-        line-height: 1;
-        text-transform: none;
-        letter-spacing: normal;
-        word-wrap: normal;
-        white-space: nowrap;
-        direction: ltr;
-        -webkit-font-smoothing: antialiased;
-        text-rendering: optimizeLegibility;
-        -moz-osx-font-smoothing: grayscale;
-        font-feature-settings: "liga";
-      }
-      .active-tab {
-        color: #0c7ff2;
-        border-color: #0c7ff2;
-      }
-      .active-tab .material-icons {
-        color: #0c7ff2;
-      }
-      .inactive-tab {
-        color: #6b7280;
-      }
-      .inactive-tab:hover {
-        color: #374151;
-      }
-      .pattern-card {
-        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-        cursor: pointer;
-      }
-      .pattern-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
-          0 4px 6px -2px rgba(0, 0, 0, 0.05);
-      }
-      .pattern-card.selected {
-        border: 2px solid #0c7ff2;
-      }
-      @media (min-width: 1024px) {
-        .preview-open .layout-content-container {
-          margin-right: 28rem;
-        }
-        #patternPreviewPanel {
-          transform: translateX(0);
-        }
-      }
-    </style>
-  </head>
-  <body
-    class="bg-gray-50"
-    style="font-family: 'Plus Jakarta Sans', 'Noto Sans', sans-serif"
-  >
-    <div
-      class="relative flex size-full min-h-screen flex-col group/design-root overflow-x-hidden"
-    >
-      <div class="layout-container flex h-full grow flex-col">
-        <header
-          class="fixed top-0 left-0 right-0 z-10 flex items-center justify-between whitespace-nowrap border-b border-solid border-b-gray-200 bg-white px-6 py-4 shadow-sm md:px-10"
-        >
-          <div class="flex items-center gap-3 text-gray-800">
-            <div class="text-blue-600">
-              <svg
-                class="size-7"
-                fill="none"
-                viewBox="0 0 48 48"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  clip-rule="evenodd"
-                  d="M24 4H42V17.3333V30.6667H24V44H6V30.6667V17.3333H24V4Z"
-                  fill="currentColor"
-                  fill-rule="evenodd"
-                ></path>
-              </svg>
+{% extends "base.html" %}
+
+{% block additional_styles %}
+.pattern-card {
+  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  cursor: pointer;
+}
+.pattern-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+.pattern-card.selected {
+  border: 2px solid #0c7ff2;
+}
+@media (min-width: 1024px) {
+  .preview-open .layout-content-container {
+    margin-right: 28rem;
+  }
+  #patternPreviewPanel {
+    transform: translateX(0);
+  }
+}
+.delete-button-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+  background-color: #f3f4f6 !important;
+  border-color: #d1d5db !important;
+  color: #9ca3af !important;
+}
+{% endblock %}
+
+{% block content %}
+<div class="layout-content-container flex flex-col w-full max-w-5xl h-[calc(100vh-8rem)]">
+  <div class="flex-none bg-gray-50 py-4">
+    <div class="flex flex-wrap items-center justify-between gap-4 mt-8">
+      <h2 class="text-gray-900 text-3xl font-bold leading-tight tracking-tight">
+        Browse Patterns
+      </h2>
+      <div class="relative w-full sm:w-auto">
+        <div class="flex gap-2">
+          <div class="relative flex-1">
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+              <span class="material-icons text-gray-400">search</span>
             </div>
-            <h1
-              class="text-gray-800 text-xl font-bold leading-tight tracking-tight"
-            >
-              Dune Weaver
-            </h1>
+            <input
+              id="patternSearch"
+              class="form-input block w-full rounded-lg border-gray-300 bg-gray-50 py-2.5 pl-10 pr-3 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm"
+              placeholder="Search patterns..."
+              type="search"
+            />
           </div>
-          <div class="flex items-center gap-4">
-            <button
-              aria-label="Menu"
-              class="flex h-10 w-10 cursor-pointer items-center justify-center overflow-hidden rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200"
-            >
-              <span class="material-icons text-gray-700">menu</span>
-            </button>
-            <div
-              class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 border-2 border-gray-200"
-              style="
-                background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuA63dnnEnB0DGmWaDEovpAVfp3qOOHDrqQxF9SZtdMPiAfBn_If7Q97nZgk9By6QF0VV3kSSIpFbh5dgziTptrxTNsIA22cvyw2k5ZYZcSARYRQZ8odqTptzxWZkoO6bDYE6KkEGUKqm1EUGjVlyEnYrFitUx18AsVnyKCsyh6DdljR6mtA-p5sXjlQiC5VkmpwbOkykpHJeGfnW7zltvWwdH7Jp47tgdBlBmY-jv548q98pubuD7-s46s6XMat8w20MXePFVxC4_f4');
-              "
-            ></div>
-          </div>
-        </header>
-        <main class="flex flex-1 justify-center px-4 sm:px-6 lg:px-8 mt-16">
-          <div class="layout-content-container flex flex-col w-full max-w-5xl h-[calc(100vh-8rem)]">
-            <div class="flex-none bg-gray-50 py-4">
-              <div class="flex flex-wrap items-center justify-between gap-4">
-              <h2
-                class="text-gray-900 text-3xl font-bold leading-tight tracking-tight"
-              >
-                Browse Patterns
-              </h2>
-              <div class="relative w-full sm:w-auto">
-                <div
-                  class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"
-                >
-                  <span class="material-icons text-gray-400">search</span>
-                </div>
-                <input
-                  class="form-input block w-full rounded-lg border-gray-300 bg-gray-50 py-2.5 pl-10 pr-3 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm"
-                  placeholder="Search patterns..."
-                  type="search"
-                />
-              </div>
-            </div>
-              <div class="mt-4">
-              <div class="flex flex-wrap gap-4">
-                <div class="relative">
-                  <label
-                    class="block text-sm font-medium text-gray-700 mb-1"
-                    for="category-filter"
-                    >Category</label
-                  >
-                  <select
-                    class="form-select block w-full sm:w-48 rounded-lg border-gray-300 bg-white py-2 pl-3 pr-10 text-gray-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm"
-                    id="category-filter"
-                    name="category-filter"
-                  >
-                    <option>All Categories</option>
-                    <option>Abstract</option>
-                    <option>Geometric</option>
-                    <option>Nature</option>
-                    <option>Cosmic</option>
-                    <option>Zen</option>
-                  </select>
-                </div>
-                <div class="relative">
-                  <label
-                    class="block text-sm font-medium text-gray-700 mb-1"
-                    for="tag-filter"
-                    >Tag</label
-                  >
-                  <select
-                    class="form-select block w-full sm:w-48 rounded-lg border-gray-300 bg-white py-2 pl-3 pr-10 text-gray-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm"
-                    id="tag-filter"
-                    name="tag-filter"
-                  >
-                    <option>All Tags</option>
-                    <option>Swirls</option>
-                    <option>Maze</option>
-                    <option>Waves</option>
-                    <option>Flow</option>
-                    <option>Garden</option>
-                    <option>Mountains</option>
-                    <option>Forest</option>
-                    <option>Galaxy</option>
-                    <option>Dunes</option>
-                    <option>City</option>
-                    <option>Floral</option>
-                    <option>Mandala</option>
-                    <option>Tribal</option>
-                    <option>Liquid</option>
-                    <option>Ripples</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-                </div>
-            <section class="flex-1 overflow-y-auto px-4 py-6">
-              <div
-                class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-5 md:gap-6"
-              >
-                <!-- All patterns will be populated here -->
-              </div>
-            </section>
-            <div class="fixed bottom-16 right-6 sm:bottom-20 sm:right-10 z-20">
-              <button
-                aria-label="Add new pattern"
-                class="flex items-center justify-center rounded-full h-14 w-14 bg-blue-600 text-white shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-              >
-                <span class="material-icons text-3xl">add</span>
-              </button>
-            </div>
-          </div>
-        </main>
-        <footer
-          class="fixed bottom-0 left-0 right-0 z-10 bg-white border-t border-gray-200 shadow-t-sm"
-        >
-          <nav class="mx-auto flex max-w-5xl justify-around">
-            <a
-              class="active-tab flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
-              href="#"
-            >
-              <span class="material-icons">search</span> Browse
-            </a>
-            <a
-              class="inactive-tab flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] border-transparent py-3 text-xs font-medium sm:text-sm"
-              href="#"
-            >
-              <span class="material-icons">list_alt</span> Playlists
-            </a>
-            <a
-              class="inactive-tab flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] border-transparent py-3 text-xs font-medium sm:text-sm"
-              href="#"
-            >
-              <span class="material-icons">settings</span> Settings
-            </a>
-          </nav>
-        </footer>
-      </div>
-    </div>
-    <script src="/static/js/patterns.js"></script>
-    
-    <!-- Pattern Preview Panel -->
-    <div id="patternPreviewPanel" class="fixed top-16 bottom-16 right-0 w-full max-w-md transform translate-x-full transition-transform duration-300 ease-in-out z-40 lg:translate-x-0 lg:opacity-0 lg:pointer-events-none">
-      <div class="h-full bg-white shadow-xl">
-        <header class="flex items-center justify-between border-b border-solid border-b-[#f0f2f5] px-6 py-4">
-          <div class="flex items-center gap-3 text-[#111518]">
-            <h2 id="patternPreviewTitle" class="text-[#111518] text-lg font-semibold leading-tight">Pattern Details</h2>
-          </div>
-          <button id="closePreviewPanel" class="flex cursor-pointer items-center justify-center rounded-full p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0b80ee]">
-            <span class="material-icons text-2xl">close</span>
+          <button
+            id="searchButton"
+            class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          >
+            Search
           </button>
-        </header>
-        <div class="p-6 overflow-y-auto h-[calc(100%-4rem)]">
-          <div class="mb-6 aspect-square w-full overflow-hidden rounded-full bg-slate-200">
-            <img id="patternPreviewImage" alt="Pattern Preview" class="h-full w-full object-cover rounded-full" src=""/>
-          </div>
-          <div class="mb-4 flex justify-between text-sm">
-            <div class="flex items-center gap-2">
-              <span class="text-slate-500">First:</span>
-              <span id="firstCoordinate" class="font-semibold text-[#111518]">(0, 0)</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="text-slate-500">Last:</span>
-              <span id="lastCoordinate" class="font-semibold text-[#111518]">(0, 0)</span>
-            </div>
-          </div>
-          <div class="mb-4">
-            <h3 class="mb-2 text-sm font-semibold text-slate-700">Pre-Execution Action</h3>
-            <div class="grid grid-cols-2 gap-2">
-              <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
-                Adaptive
-                <input checked="" class="peer sr-only" name="preExecutionAction" type="radio"/>
-              </label>
-              <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
-                Clear From Center
-                <input class="peer sr-only" name="preExecutionAction" type="radio"/>
-              </label>
-              <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
-                Clear From Perimeter
-                <input class="peer sr-only" name="preExecutionAction" type="radio"/>
-              </label>
-              <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
-                Clear Sideway
-                <input class="peer sr-only" name="preExecutionAction" type="radio"/>
-              </label>
-              <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
-                None
-                <input class="peer sr-only" name="preExecutionAction" type="radio"/>
-              </label>
-            </div>
-          </div>
-          <div class="space-y-3">
-            <button id="playPattern" class="flex w-full items-center justify-center gap-2 rounded-lg bg-[#0b80ee] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-opacity-90 focus:outline-none focus:ring-2 focus:ring-[#0b80ee] focus:ring-offset-2">
-              <span class="material-icons text-lg">play_arrow</span>
-              Play
-            </button>
-            <button id="deletePattern" class="flex w-full items-center justify-center gap-2 rounded-lg border border-red-500 px-4 py-2.5 text-sm font-semibold text-red-500 shadow-sm transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
-              <span class="material-icons text-lg">delete</span>
-              Delete
-            </button>
-          </div>
         </div>
       </div>
     </div>
-  </body>
-</html>
+    <div class="mt-4">
+      <div class="flex flex-wrap gap-4">
+        <div class="relative">
+          <label class="block text-sm font-medium text-gray-700 mb-1" for="category-filter">Category</label>
+          <select
+            class="form-select block w-full sm:w-48 rounded-lg border-gray-300 bg-white py-2 pl-3 pr-10 text-gray-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm"
+            id="category-filter"
+            name="category-filter"
+          >
+            <option>All Categories</option>
+            <option>Abstract</option>
+            <option>Geometric</option>
+            <option>Nature</option>
+            <option>Cosmic</option>
+            <option>Zen</option>
+          </select>
+        </div>
+        <div class="relative">
+          <label class="block text-sm font-medium text-gray-700 mb-1" for="tag-filter">Tag</label>
+          <select
+            class="form-select block w-full sm:w-48 rounded-lg border-gray-300 bg-white py-2 pl-3 pr-10 text-gray-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm"
+            id="tag-filter"
+            name="tag-filter"
+          >
+            <option>All Tags</option>
+            <option>Swirls</option>
+            <option>Maze</option>
+            <option>Waves</option>
+            <option>Flow</option>
+            <option>Garden</option>
+            <option>Mountains</option>
+            <option>Forest</option>
+            <option>Galaxy</option>
+            <option>Dunes</option>
+            <option>City</option>
+            <option>Floral</option>
+            <option>Mandala</option>
+            <option>Tribal</option>
+            <option>Liquid</option>
+            <option>Ripples</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+  <section class="flex-1 overflow-y-auto px-4 py-6">
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-5 md:gap-6">
+      <!-- All patterns will be populated here -->
+    </div>
+  </section>
+  <div class="fixed bottom-16 right-6 sm:bottom-20 sm:right-10 z-20">
+    <!-- Hidden file input -->
+    <input
+      type="file"
+      id="patternFileInput"
+      accept=".thr"
+      class="hidden"
+    />
+    <button
+      aria-label="Add new pattern"
+      class="flex items-center justify-center rounded-full h-14 w-14 bg-blue-600 text-white shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+      onclick="document.getElementById('patternFileInput').click()"
+    >
+      <span class="material-icons text-3xl">add</span>
+    </button>
+  </div>
+</div>
+
+<!-- Pattern Preview Panel -->
+<div id="patternPreviewPanel" class="fixed top-0 bottom-0 right-0 w-full max-w-md transform translate-x-full transition-transform duration-300 ease-in-out z-40 lg:translate-x-0 lg:opacity-0 lg:pointer-events-none">
+  <div class="h-full bg-white shadow-xl">
+    <header class="flex items-center justify-between border-b border-solid border-b-[#f0f2f5] px-6 py-4">
+      <div class="flex items-center gap-3 text-[#111518]">
+        <h2 id="patternPreviewTitle" class="text-[#111518] text-lg font-semibold leading-tight">Pattern Details</h2>
+      </div>
+      <button id="closePreviewPanel" class="flex cursor-pointer items-center justify-center rounded-full p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0b80ee]">
+        <span class="material-icons text-2xl">close</span>
+      </button>
+    </header>
+    <div class="p-6 overflow-y-auto h-[calc(100%-4rem)]">
+      <div class="mb-6 aspect-square w-full overflow-hidden rounded-full bg-slate-200">
+        <img id="patternPreviewImage" alt="Pattern Preview" class="h-full w-full object-cover rounded-full" src=""/>
+      </div>
+      <div class="mb-4 flex justify-between text-sm">
+        <div class="flex items-center gap-2">
+          <span class="text-slate-500">First:</span>
+          <span id="firstCoordinate" class="font-semibold text-[#111518]">(0, 0)</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-slate-500">Last:</span>
+          <span id="lastCoordinate" class="font-semibold text-[#111518]">(0, 0)</span>
+        </div>
+      </div>
+      <div class="mb-4">
+        <h3 class="mb-2 text-sm font-semibold text-slate-700">Pre-Execution Action</h3>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
+            Adaptive
+            <input checked="" class="peer sr-only" name="preExecutionAction" type="radio"/>
+          </label>
+          <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
+            Clear From Center
+            <input class="peer sr-only" name="preExecutionAction" type="radio"/>
+          </label>
+          <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
+            Clear From Perimeter
+            <input class="peer sr-only" name="preExecutionAction" type="radio"/>
+          </label>
+          <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
+            Clear Sideway
+            <input class="peer sr-only" name="preExecutionAction" type="radio"/>
+          </label>
+          <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
+            None
+            <input class="peer sr-only" name="preExecutionAction" type="radio"/>
+          </label>
+        </div>
+      </div>
+      <div class="space-y-3">
+        <button id="playPattern" class="flex w-full items-center justify-center gap-2 rounded-lg bg-[#0b80ee] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-opacity-90 focus:outline-none focus:ring-2 focus:ring-[#0b80ee] focus:ring-offset-2">
+          <span class="material-icons text-lg">play_arrow</span>
+          Play
+        </button>
+        <button id="deletePattern" class="flex w-full items-center justify-center gap-2 rounded-lg border border-red-500 px-4 py-2.5 text-sm font-semibold text-red-500 shadow-sm transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+          <span class="material-icons text-lg">delete</span>
+          Delete
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/patterns.js"></script>
+<script>
+// Add event listener for file input change
+document.getElementById('patternFileInput').addEventListener('change', async function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch('/upload_theta_rho', {
+      method: 'POST',
+      body: formData
+    });
+
+    const result = await response.json();
+    if (result.success) {
+      // Refresh the pattern list
+      loadPatterns();
+      // Clear the file input
+      e.target.value = '';
+    } else {
+      console.error('Failed to upload pattern:', result.error);
+    }
+  } catch (error) {
+    console.error('Error uploading pattern:', error);
+  }
+});
+
+// Handle pattern deletion
+document.getElementById('deletePattern').addEventListener('click', async function() {
+  const selectedPattern = document.querySelector('.pattern-card.selected');
+  if (!selectedPattern) {
+    console.log('No pattern selected');
+    return;
+  }
+
+  const patternName = selectedPattern.dataset.pattern;
+  if (!patternName) {
+    console.log('No pattern name found');
+    return;
+  }
+
+  // Check if it's a custom pattern
+  if (!patternName.startsWith('custom_patterns/')) {
+    console.log('Cannot delete built-in patterns');
+    return;
+  }
+
+  if (!confirm(`Are you sure you want to delete the pattern "${patternName}"?`)) {
+    return;
+  }
+
+  try {
+    console.log('Deleting pattern:', patternName);
+    const response = await fetch('/delete_theta_rho_file', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ file_name: patternName })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    if (result.success) {
+      console.log('Pattern deleted successfully');
+      // Remove the pattern card
+      selectedPattern.remove();
+      // Close the preview panel
+      document.getElementById('patternPreviewPanel').classList.add('translate-x-full');
+      // Clear the preview panel content
+      document.getElementById('patternPreviewImage').src = '';
+      document.getElementById('patternPreviewTitle').textContent = 'Pattern Details';
+      document.getElementById('firstCoordinate').textContent = '(0, 0)';
+      document.getElementById('lastCoordinate').textContent = '(0, 0)';
+      // Refresh the pattern list
+      await loadPatterns();
+    } else {
+      console.error('Failed to delete pattern:', result.error || 'Unknown error');
+      alert('Failed to delete pattern: ' + (result.error || 'Unknown error'));
+    }
+  } catch (error) {
+    console.error('Error deleting pattern:', error);
+    alert('Error deleting pattern: ' + error.message);
+  }
+});
+
+// Update delete button state when pattern is selected
+function updateDeleteButtonState(patternName) {
+  const deleteButton = document.getElementById('deletePattern');
+  if (!deleteButton) return;
+  
+  if (patternName && patternName.startsWith('custom_patterns/')) {
+    deleteButton.classList.remove('delete-button-disabled');
+    deleteButton.disabled = false;
+  } else {
+    deleteButton.classList.add('delete-button-disabled');
+    deleteButton.disabled = true;
+  }
+}
+
+// Override the selectPattern function to update delete button state
+const originalSelectPattern = window.selectPattern;
+window.selectPattern = function(pattern, card) {
+  originalSelectPattern(pattern, card);
+  updateDeleteButtonState(pattern);
+};
+
+// Initialize delete button state when the page loads
+document.addEventListener('DOMContentLoaded', function() {
+  // Initially disable the delete button
+  const deleteButton = document.getElementById('deletePattern');
+  if (deleteButton) {
+    deleteButton.classList.add('delete-button-disabled');
+    deleteButton.disabled = true;
+  }
+});
+
+// Override the loadPatterns function to update delete button state after loading
+const originalLoadPatterns = window.loadPatterns;
+window.loadPatterns = async function() {
+  await originalLoadPatterns();
+  // Update delete button state based on currently selected pattern
+  const selectedPattern = document.querySelector('.pattern-card.selected');
+  if (selectedPattern) {
+    updateDeleteButtonState(selectedPattern.dataset.pattern);
+  } else {
+    updateDeleteButtonState(null);
+  }
+};
+</script>
+{% endblock %}

@@ -16,6 +16,35 @@ const LOG_TYPE = {
     DEBUG: 'debug'
 };
 
+// Function to show status message
+function showStatusMessage(message, type = 'success') {
+    const statusContainer = document.getElementById('status-message-container');
+    const statusMessage = document.getElementById('status-message');
+    
+    if (!statusContainer || !statusMessage) return;
+    
+    // Set message and color based on type
+    statusMessage.textContent = message;
+    statusMessage.className = `text-base font-semibold opacity-0 transform -translate-y-2 transition-all duration-300 ease-in-out px-4 py-2 rounded-lg shadow-lg ${
+        type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' :
+        type === 'error' ? 'bg-red-50 text-red-700 border border-red-200' :
+        type === 'warning' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
+        'bg-blue-50 text-blue-700 border border-blue-200'
+    }`;
+    
+    // Show message with animation
+    requestAnimationFrame(() => {
+        statusMessage.classList.remove('opacity-0', '-translate-y-2');
+        statusMessage.classList.add('opacity-100', 'translate-y-0');
+    });
+    
+    // Hide message after 5 seconds
+    setTimeout(() => {
+        statusMessage.classList.remove('opacity-100', 'translate-y-0');
+        statusMessage.classList.add('opacity-0', '-translate-y-2');
+    }, 5000);
+}
+
 // Function to log messages
 function logMessage(message, type = LOG_TYPE.DEBUG) {
     console.log(`[${type}] ${message}`);
@@ -43,6 +72,10 @@ async function preloadImages(urls) {
 
 // Initialize Intersection Observer for lazy loading
 function initPreviewObserver() {
+    if (previewObserver) {
+        previewObserver.disconnect();
+    }
+
     previewObserver = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
             if (entry.isIntersecting) {
@@ -64,15 +97,29 @@ function initPreviewObserver() {
         rootMargin: '50px 0px',
         threshold: 0.1
     });
+
+    // Observe all existing preview containers
+    document.querySelectorAll('[data-pattern]').forEach(container => {
+        previewObserver.observe(container);
+    });
 }
 
 // Load batch of pattern previews
 async function loadPatternPreviewsBatch(patterns) {
     try {
+        // Filter out patterns that already have previews in cache
+        const patternsToLoad = patterns.filter(pattern => !previewCache.has(pattern));
+        
+        if (patternsToLoad.length === 0) {
+            // If all patterns are cached, just update the display
+            updatePatternPreviews(patterns);
+            return;
+        }
+
         const response = await fetch('/preview_thr_batch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ file_names: patterns })
+            body: JSON.stringify({ file_names: patternsToLoad })
         });
 
         if (!response.ok) {
@@ -94,22 +141,27 @@ async function loadPatternPreviewsBatch(patterns) {
             .map(data => data.preview_url);
         await preloadImages(urlsToPreload);
 
-        // Update visible previews
-        patterns.forEach(pattern => {
-            const previewContainer = document.querySelector(`[data-pattern="${pattern}"]`);
-            if (previewContainer && !previewContainer.style.backgroundImage) {
-                const data = results[pattern];
-                if (data && !data.error) {
-                    const img = imageCache.get(data.preview_url);
-                    if (img) {
-                        previewContainer.style.backgroundImage = `url('${data.preview_url}')`;
-                    }
-                }
-            }
-        });
+        // Update all pattern previews
+        updatePatternPreviews(patterns);
     } catch (error) {
         logMessage(`Error fetching batch previews: ${error.message}`, LOG_TYPE.ERROR);
     }
+}
+
+// Update pattern previews display
+function updatePatternPreviews(patterns) {
+    patterns.forEach(pattern => {
+        const previewContainer = document.querySelector(`[data-pattern="${pattern}"]`);
+        if (previewContainer && !previewContainer.style.backgroundImage) {
+            const data = previewCache.get(pattern);
+            if (data && !data.error) {
+                const img = imageCache.get(data.preview_url);
+                if (img) {
+                    previewContainer.style.backgroundImage = `url('${data.preview_url}')`;
+                }
+            }
+        }
+    });
 }
 
 // Load and display patterns
@@ -266,8 +318,17 @@ async function showPatternPreview(pattern) {
         // Set pattern name in the preview panel
         const patternName = pattern.replace('.thr', '').split('/').pop();
         document.getElementById('patternPreviewTitle').textContent = patternName;
-        document.getElementById('firstCoordinate').textContent = `(${data.first_coordinate?.x || 0}, ${data.first_coordinate?.y || 0})`;
-        document.getElementById('lastCoordinate').textContent = `(${data.last_coordinate?.x || 0}, ${data.last_coordinate?.y || 0})`;
+
+        // Format and display coordinates
+        const formatCoordinate = (coord) => {
+            if (!coord) return '(0, 0)';
+            const x = coord.x !== undefined ? coord.x.toFixed(1) : '0.0';
+            const y = coord.y !== undefined ? coord.y.toFixed(1) : '0.0';
+            return `(${x}, ${y})`;
+        };
+
+        document.getElementById('firstCoordinate').textContent = formatCoordinate(data.first_coordinate);
+        document.getElementById('lastCoordinate').textContent = formatCoordinate(data.last_coordinate);
         
         // Show preview panel
         previewPanel.classList.remove('translate-x-full');
@@ -292,10 +353,10 @@ function hidePatternPreview() {
     const layoutContainer = document.querySelector('.layout-content-container');
     
     previewPanel.classList.add('translate-x-full');
-    layoutContainer.parentElement.classList.remove('preview-open');
     if (window.innerWidth >= 1024) {
         previewPanel.classList.add('lg:opacity-0', 'lg:pointer-events-none');
     }
+    layoutContainer.parentElement.classList.remove('preview-open');
 }
 
 // Add window resize handler
@@ -324,7 +385,7 @@ function setupPreviewPanelEvents(pattern) {
 
     // Close panel when clicking the close button
     closeButton.onclick = () => {
-        panel.classList.add('translate-x-full');
+        hidePatternPreview();
         // Remove selected state from all cards when closing
         document.querySelectorAll('.pattern-card').forEach(c => {
             c.classList.remove('selected');
@@ -332,17 +393,100 @@ function setupPreviewPanelEvents(pattern) {
     };
 
     // Handle play button click
-    playButton.onclick = () => {
-        const selectedAction = document.querySelector('input[name="preExecutionAction"]:checked').parentElement.textContent.trim();
-        logMessage(`Playing pattern: ${pattern} with action: ${selectedAction}`, LOG_TYPE.INFO);
-        // TODO: Implement play functionality
+    playButton.onclick = async () => {
+        if (!pattern) {
+            showStatusMessage('No pattern selected', 'error');
+            return;
+        }
+
+        try {
+            // Get the selected pre-execution action
+            const preExecutionInput = document.querySelector('input[name="preExecutionAction"]:checked');
+            const preExecution = preExecutionInput ? preExecutionInput.parentElement.textContent.trim().toLowerCase() : 'none';
+
+            const response = await fetch('/run_theta_rho', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    file_name: pattern,
+                    pre_execution: preExecution
+                })
+            });
+
+            const data = await response.json();
+            if (response.ok) {
+                showStatusMessage(`Running pattern: ${pattern.split('/').pop()}`, 'success');
+                hidePatternPreview();
+                
+            } else {
+                throw new Error(data.detail || 'Failed to run pattern');
+            }
+        } catch (error) {
+            console.error('Error running pattern:', error);
+            if (error.message.includes('409')) {
+                showStatusMessage('Another pattern is already running', 'error');
+            } else {
+                showStatusMessage('Failed to run pattern', 'error');
+            }
+        }
     };
 
     // Handle delete button click
-    deleteButton.onclick = () => {
+    deleteButton.onclick = async () => {
+        if (!pattern.startsWith('custom_patterns/')) {
+            logMessage('Cannot delete built-in patterns', LOG_TYPE.WARNING);
+            showStatusMessage('Cannot delete built-in patterns', 'warning');
+            return;
+        }
+
         if (confirm('Are you sure you want to delete this pattern?')) {
-            logMessage(`Deleting pattern: ${pattern}`, LOG_TYPE.INFO);
-            // TODO: Implement delete functionality
+            try {
+                logMessage(`Deleting pattern: ${pattern}`, LOG_TYPE.INFO);
+                const response = await fetch('/delete_theta_rho_file', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ file_name: pattern })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                if (result.success) {
+                    logMessage(`Pattern deleted successfully: ${pattern}`, LOG_TYPE.SUCCESS);
+                    showStatusMessage(`Pattern "${pattern.split('/').pop()}" deleted successfully`);
+                    // Remove the pattern card
+                    const selectedCard = document.querySelector('.pattern-card.selected');
+                    if (selectedCard) {
+                        selectedCard.remove();
+                    }
+                    // Close the preview panel
+                    const previewPanel = document.getElementById('patternPreviewPanel');
+                    const layoutContainer = document.querySelector('.layout-content-container');
+                    previewPanel.classList.add('translate-x-full');
+                    if (window.innerWidth >= 1024) {
+                        previewPanel.classList.add('lg:opacity-0', 'lg:pointer-events-none');
+                    }
+                    layoutContainer.parentElement.classList.remove('preview-open');
+                    // Clear the preview panel content
+                    document.getElementById('patternPreviewImage').src = '';
+                    document.getElementById('patternPreviewTitle').textContent = 'Pattern Details';
+                    document.getElementById('firstCoordinate').textContent = '(0, 0)';
+                    document.getElementById('lastCoordinate').textContent = '(0, 0)';
+                    // Refresh the pattern list
+                    await loadPatterns();
+                } else {
+                    throw new Error(result.error || 'Unknown error');
+                }
+            } catch (error) {
+                logMessage(`Failed to delete pattern: ${error.message}`, LOG_TYPE.ERROR);
+                showStatusMessage(`Failed to delete pattern: ${error.message}`, 'error');
+            }
         }
     };
 
@@ -357,11 +501,41 @@ function setupPreviewPanelEvents(pattern) {
 
 // Search patterns
 function searchPatterns(query) {
+    if (!query) {
+        // If search is empty, show all patterns
+        displayPatternBatch();
+        return;
+    }
+
     const searchInput = query.toLowerCase();
+    const patternGrid = document.querySelector('.grid');
+    if (!patternGrid) {
+        logMessage('Pattern grid not found in the DOM', LOG_TYPE.ERROR);
+        return;
+    }
+
+    // Clear existing patterns
+    patternGrid.innerHTML = '';
+    
+    // Filter patterns
     const filteredPatterns = allPatterns.filter(pattern => 
         pattern.toLowerCase().includes(searchInput)
     );
-    displayPatterns(filteredPatterns);
+
+    // Display filtered patterns
+    filteredPatterns.forEach(pattern => {
+        const patternCard = createPatternCard(pattern);
+        patternGrid.appendChild(patternCard);
+    });
+
+    // Reinitialize preview observer for new cards
+    if (previewObserver) {
+        previewObserver.disconnect();
+    }
+    initPreviewObserver();
+
+    // Load previews only for filtered patterns
+    loadPatternPreviewsBatch(filteredPatterns);
 }
 
 // Filter patterns by category
@@ -383,13 +557,54 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Load patterns
     loadPatterns();
+
+    // Fetch initial speed value
+    fetch('/get_speed')
+        .then(response => response.json())
+        .then(data => {
+            if (data.speed) {
+                const speedInput = document.getElementById('speedInput');
+                if (speedInput) {
+                    speedInput.value = data.speed;
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching initial speed:', error);
+        });
     
     // Add search input handler
-    const searchInput = document.querySelector('input[type="search"]');
+    const searchInput = document.getElementById('patternSearch');
+    const searchButton = document.getElementById('searchButton');
+    
     if (searchInput) {
-        searchInput.addEventListener('input', (e) => {
-            searchPatterns(e.target.value);
+        // Handle Enter key
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                searchPatterns(searchInput.value);
+            }
         });
+
+        // Handle search input clearing
+        searchInput.addEventListener('input', (e) => {
+            if (e.target.value === '') {
+                // Reset to initial state
+                currentBatch = 0;
+                const patternGrid = document.querySelector('.grid');
+                if (patternGrid) {
+                    patternGrid.innerHTML = '';
+                }
+                displayPatternBatch();
+            }
+        });
+
+        // Handle search button click
+        if (searchButton) {
+            searchButton.addEventListener('click', () => {
+                searchPatterns(searchInput.value);
+            });
+        }
     }
     
     // Add category filter handler
@@ -407,4 +622,99 @@ document.addEventListener('DOMContentLoaded', () => {
             filterPatternsByTag(e.target.value);
         });
     }
-}); 
+
+    // Update the file input change handler
+    document.getElementById('patternFileInput').addEventListener('change', async function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch('/upload_theta_rho', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                showStatusMessage(`Pattern "${file.name}" uploaded successfully`);
+                // Refresh the pattern list
+                loadPatterns();
+                // Clear the file input
+                e.target.value = '';
+            } else {
+                showStatusMessage(`Failed to upload pattern: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error uploading pattern:', error);
+            showStatusMessage(`Error uploading pattern: ${error.message}`, 'error');
+        }
+    });
+});
+
+function updateCurrentlyPlayingUI(status) {
+    // Get all required DOM elements once
+    const container = document.getElementById('currently-playing-container');
+    const fileNameElement = document.getElementById('currently-playing-file');
+    const progressBar = document.getElementById('play_progress');
+    const progressText = document.getElementById('play_progress_text');
+    const pausePlayButton = document.getElementById('pausePlayCurrent');
+    const speedDisplay = document.getElementById('current_speed_display');
+    const speedInput = document.getElementById('speedInput');
+
+    // Check if all required elements exist
+    if (!container || !fileNameElement || !progressBar || !progressText) {
+        console.log('Required DOM elements not found:', {
+            container: !!container,
+            fileNameElement: !!fileNameElement,
+            progressBar: !!progressBar,
+            progressText: !!progressText
+        });
+        setTimeout(() => updateCurrentlyPlayingUI(status), 100);
+        return;
+    }
+
+    // Update container visibility based on status
+    if (status.current_file && status.is_running) {
+        document.body.classList.add('playing');
+        container.style.display = 'flex';
+    } else {
+        document.body.classList.remove('playing');
+        container.style.display = 'none';
+    }
+
+    // Update file name display
+    if (status.current_file) {
+        const fileName = status.current_file.replace('./patterns/', '');
+        fileNameElement.textContent = fileName;
+    } else {
+        fileNameElement.textContent = 'No pattern playing';
+    }
+
+    // Update next file display
+    const nextFileElement = document.getElementById('next-file');
+    if (nextFileElement) {
+        if (status.playlist && status.playlist.next_file) {
+            const nextFileName = status.playlist.next_file.replace('./patterns/', '');
+            nextFileElement.textContent = `(Next: ${nextFileName})`;
+            nextFileElement.style.display = 'block';
+        } else {
+            nextFileElement.style.display = 'none';
+        }
+    }
+
+    // Update speed display and input if they exist
+    if (status.speed) {
+        if (speedDisplay) {
+            speedDisplay.textContent = `Current Speed: ${status.speed}`;
+        }
+        if (speedInput) {
+            speedInput.value = status.speed;
+        }
+    }
+
+    // Update pattern preview if it's a new pattern
+    // ... existing code ...
+} 

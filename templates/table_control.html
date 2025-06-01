@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Table Control - Kinetic Sand Table{% endblock %}
+
+{% block content %}
+<div class="layout-content-container flex flex-col w-full max-w-4xl gap-8">
+  <div class="flex flex-wrap justify-between items-center gap-4 p-4 bg-white rounded-xl shadow-sm mt-8">
+    <h1 class="text-slate-900 tracking-tight text-2xl sm:text-3xl font-bold leading-tight">
+      Table Control
+    </h1>
+  </div>
+
+  <section class="bg-white p-6 rounded-xl shadow-lg">
+    <h2 class="text-xl font-semibold text-slate-800 mb-5 border-b border-slate-200 pb-3">
+      Movement Controls
+    </h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <button
+        id="homeButton"
+        class="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-md hover:bg-blue-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+      >
+        <span class="material-icons-outlined text-lg">home</span>
+        Home
+      </button>
+      <button
+        id="stopButton"
+        class="flex items-center justify-center gap-2 rounded-lg bg-red-500 px-4 py-3 text-sm font-semibold text-white shadow-md hover:bg-red-600 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2"
+      >
+        <span class="material-icons-outlined text-lg">stop_circle</span>
+        Stop
+      </button>
+      <button
+        id="centerButton"
+        class="flex items-center justify-center gap-2 rounded-lg bg-slate-600 px-4 py-3 text-sm font-semibold text-white shadow-md hover:bg-slate-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
+      >
+        <span class="material-icons-outlined text-lg">filter_center_focus</span>
+        Move to Center
+      </button>
+      <button
+        id="perimeterButton"
+        class="flex items-center justify-center gap-2 rounded-lg bg-slate-600 px-4 py-3 text-sm font-semibold text-white shadow-md hover:bg-slate-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
+      >
+        <span class="material-icons-outlined text-lg">all_out</span>
+        Move to Perimeter
+      </button>
+    </div>
+  </section>
+
+  <section class="bg-white p-6 rounded-xl shadow-lg">
+    <h2 class="text-xl font-semibold text-slate-800 mb-5 border-b border-slate-200 pb-3">
+      Speed Control
+    </h2>
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2">
+        <span class="text-sm font-medium text-slate-700">Current:</span>
+        <span id="currentSpeedDisplay" class="text-sm font-semibold text-slate-900">-- mm/s</span>
+      </div>
+      <div class="flex-1">
+        <input
+          type="number"
+          id="speedInput"
+          class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-3 text-sm font-normal leading-normal transition-colors"
+          placeholder="Enter new speed..."
+          min="1"
+          step="1"
+        />
+      </div>
+      <button
+        id="setSpeedButton"
+        class="flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-sky-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 h-10"
+      >
+        <span class="material-icons-outlined text-lg">speed</span>
+        Set Speed
+      </button>
+    </div>
+  </section>
+
+  <section class="bg-white p-6 rounded-xl shadow-lg">
+    <h2 class="text-xl font-semibold text-slate-800 mb-5 border-b border-slate-200 pb-3">
+      Clear Patterns
+    </h2>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <button
+        id="clearCenterButton"
+        class="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+      >
+        <span class="material-icons-outlined text-lg">center_focus_strong</span>
+        Clear from Center
+      </button>
+      <button
+        id="clearPerimeterButton"
+        class="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+      >
+        <span class="material-icons-outlined text-lg">all_out</span>
+        Clear from Perimeter
+      </button>
+      <button
+        id="clearSidewaysButton"
+        class="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+      >
+        <span class="material-icons-outlined text-lg">swap_horiz</span>
+        Clear Sideway
+      </button>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/table_control.js"></script>
+{% endblock %} 
