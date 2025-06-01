@@ -400,6 +400,33 @@ button.warning:hover{}
     display: flex;
     flex-direction: column;
 }
+.search-container {
+  position: relative;
+  width: 100%;
+  margin-bottom: 10px;
+
+}
+
+.search-container input {
+  width: 100%;
+  padding-right: 2em; /* make room for the clear icon */
+  margin-bottom: 0px;
+}
+
+.clear-icon {
+  position: absolute;
+  right: 0.6em;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  font-size: 1em;
+  color: var(--text-primary);
+  transition: color 0.2s ease;
+}
+
+.clear-icon:hover {
+  color: var(--border-secondary);
+}
 
 .hidden:not(.sticky) {
     display: none !important;
@@ -647,13 +674,20 @@ section .header .add-button {
     margin-bottom: 10px;
     max-height: 20vh;
 }
-
+.file-list .folder-contents {
+    padding: 0px;
+}
+.file-list .file-thumb {
+    border-radius: 15px;
+}
 .file-list li {
     display: flex;
     padding: 10px;
     border-bottom: 1px solid var(--border-primary);
     cursor: pointer;
     transition: background-color var(--transition-medium);
+    gap: 10px;
+    align-items: center;
 }
 
 .file-list li:hover {

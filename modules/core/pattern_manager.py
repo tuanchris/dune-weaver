@@ -96,9 +96,15 @@ async def cleanup_pattern_manager():
 def list_theta_rho_files():
     files = []
     for root, _, filenames in os.walk(THETA_RHO_DIR):
-        for file in filenames:
-            relative_path = os.path.relpath(os.path.join(root, file), THETA_RHO_DIR)
+        for fname in filenames:
+            # only include .thr files
+            if not fname.lower().endswith('.thr'):
+                continue
+
+            full_path = os.path.join(root, fname)
+            relative_path = os.path.relpath(full_path, THETA_RHO_DIR)
             files.append(relative_path)
+
     logger.debug(f"Found {len(files)} theta-rho files")
     return files
 
