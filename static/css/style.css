@@ -553,6 +553,14 @@ section .header .add-button {
 }
 
 /* Playlist */
+.preset-badge {
+  margin-left: 0.5em;
+  padding: 0 0.3em;
+  background: #eee;
+  border-radius: 3px;
+  font-size: 0.9em;
+  color: #333;
+}
 .add-to-playlist {
     margin-top: 15px;
 }
