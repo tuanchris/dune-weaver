@@ -558,21 +558,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load patterns
     loadPatterns();
 
-    // Fetch initial speed value
-    fetch('/get_speed')
-        .then(response => response.json())
-        .then(data => {
-            if (data.speed) {
-                const speedInput = document.getElementById('speedInput');
-                if (speedInput) {
-                    speedInput.value = data.speed;
-                }
-            }
-        })
-        .catch(error => {
-            console.error('Error fetching initial speed:', error);
-        });
-    
     // Add search input handler
     const searchInput = document.getElementById('patternSearch');
     const searchButton = document.getElementById('searchButton');

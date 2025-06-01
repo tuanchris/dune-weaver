@@ -1,24 +1,5 @@
 // Button click handlers
 document.addEventListener('DOMContentLoaded', function() {
-    // Fetch initial speed value and populate the input field
-    fetch('/get_speed')
-        .then(response => response.json())
-        .then(data => {
-            if (data.speed) {
-                const speedInput = document.getElementById('speedInput');
-                const currentSpeedDisplay = document.getElementById('currentSpeedDisplay');
-                if (speedInput) {
-                    speedInput.value = data.speed;
-                }
-                if (currentSpeedDisplay) {
-                    currentSpeedDisplay.textContent = `${data.speed} mm/s`;
-                }
-            }
-        })
-        .catch(error => {
-            console.error('Error fetching initial speed:', error);
-        });
-
     // Home button
     const homeButton = document.getElementById('homeButton');
     homeButton.addEventListener('click', async () => {
