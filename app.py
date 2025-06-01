@@ -150,6 +150,10 @@ async def broadcast_status_update(status: dict):
 async def index():
     return templates.TemplateResponse("index.html", {"request": {}})
 
+@app.get("/home")
+async def home():
+    return templates.TemplateResponse("home.html", {"request": {}})
+
 @app.get("/list_serial_ports")
 async def list_ports():
     logger.debug("Listing available serial ports")
@@ -596,6 +600,57 @@ async def skip_pattern():
         raise HTTPException(status_code=400, detail="No playlist is currently running")
     state.skip_requested = True
     return {"success": True}
+
+@app.post("/preview_thr_batch")
+async def preview_thr_batch(request: dict):
+    """Get previews for multiple pattern files in a single request."""
+    if not request.get("file_names"):
+        logger.warning("Batch preview request received without filenames")
+        raise HTTPException(status_code=400, detail="No file names provided")
+
+    file_names = request["file_names"]
+    if not isinstance(file_names, list):
+        raise HTTPException(status_code=400, detail="file_names must be a list")
+
+    results = {}
+    for file_name in file_names:
+        try:
+            # Construct the full path to the pattern file to check existence
+            pattern_file_path = os.path.join(pattern_manager.THETA_RHO_DIR, file_name)
+            if not os.path.exists(pattern_file_path):
+                logger.warning(f"Pattern file not found: {pattern_file_path}")
+                results[file_name] = {"error": "Pattern file not found"}
+                continue
+
+            cache_path = get_cache_path(file_name)
+            
+            if not os.path.exists(cache_path):
+                logger.info(f"Cache miss for {file_name}. Generating preview...")
+                # Attempt to generate the preview if it's missing
+                success = await generate_image_preview(file_name)
+                if not success or not os.path.exists(cache_path):
+                    logger.error(f"Failed to generate or find preview for {file_name}")
+                    results[file_name] = {"error": "Failed to generate preview"}
+                    continue
+
+            # Get the coordinates for display
+            coordinates = parse_theta_rho_file(pattern_file_path)
+            first_coord = coordinates[0] if coordinates else None
+            last_coord = coordinates[-1] if coordinates else None
+
+            # URL encode the file_name for the preview URL
+            encoded_filename = file_name.replace('/', '--')
+            results[file_name] = {
+                "preview_url": f"/preview/{encoded_filename}",
+                "first_coordinate": first_coord,
+                "last_coordinate": last_coord
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing {file_name}: {str(e)}")
+            results[file_name] = {"error": str(e)}
+
+    return results
 
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully but forcefully."""
