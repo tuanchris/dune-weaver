@@ -18,20 +18,21 @@ def ensure_cache_dir():
         
         for root, dirs, files in os.walk(CACHE_DIR):
             try:
-                os.chmod(root, 0o777)
+                os.chmod(root, 0o755)  # More conservative permissions
                 for file in files:
                     file_path = os.path.join(root, file)
                     try:
-                        os.chmod(file_path, 0o666)
-                    except Exception as e:
-                        logger.error(f"Failed to set permissions for file {file_path}: {str(e)}")
-            except Exception as e:
-                logger.error(f"Failed to set permissions for directory {root}: {str(e)}")
+                        os.chmod(file_path, 0o644)  # More conservative permissions
+                    except (OSError, PermissionError) as e:
+                        # Log as debug instead of error since this is not critical
+                        logger.debug(f"Could not set permissions for file {file_path}: {str(e)}")
+            except (OSError, PermissionError) as e:
+                # Log as debug instead of error since this is not critical
+                logger.debug(f"Could not set permissions for directory {root}: {str(e)}")
                 continue
                 
     except Exception as e:
-        logger.error(f"Failed to set cache directory permissions: {str(e)}")
-        pass
+        logger.error(f"Failed to create cache directory: {str(e)}")
 
 def get_cache_path(pattern_file):
     """Get the cache path for a pattern file."""
@@ -42,9 +43,10 @@ def get_cache_path(pattern_file):
     # Ensure the subdirectory exists
     os.makedirs(cache_dir, exist_ok=True)
     try:
-        os.chmod(cache_dir, 0o777)
-    except Exception as e:
-        logger.error(f"Failed to set permissions for cache subdirectory {cache_dir}: {str(e)}")
+        os.chmod(cache_dir, 0o755)  # More conservative permissions
+    except (OSError, PermissionError) as e:
+        # Log as debug instead of error since this is not critical
+        logger.debug(f"Could not set permissions for cache subdirectory {cache_dir}: {str(e)}")
     
     # Use just the filename part for the cache file
     filename = os.path.basename(pattern_file)
@@ -67,10 +69,10 @@ async def generate_image_preview(pattern_file):
             f.write(image_content)
         
         try:
-            os.chmod(cache_path, 0o666)
-        except Exception as e:
-            logger.error(f"Failed to set cache file permissions for {pattern_file}: {str(e)}")
-            pass
+            os.chmod(cache_path, 0o644)  # More conservative permissions
+        except (OSError, PermissionError) as e:
+            # Log as debug instead of error since this is not critical
+            logger.debug(f"Could not set cache file permissions for {pattern_file}: {str(e)}")
         
         return True
     except Exception as e:
