@@ -5,6 +5,7 @@ import logging
 import asyncio
 from modules.core import pattern_manager
 from modules.core.state import state
+from fastapi import HTTPException
 
 # Configure logging
 logger = logging.getLogger(__name__)

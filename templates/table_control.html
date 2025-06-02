@@ -1,8 +1,66 @@
 {% extends "base.html" %}
 {% block title %}Table Control - Kinetic Sand Table{% endblock %}
 
+{% block additional_styles %}
+/* Dark mode styles for table control page */
+.dark .bg-white {
+  background-color: #262626;
+}
+.dark .text-slate-900 {
+  color: #e5e5e5;
+}
+.dark .text-slate-800 {
+  color: #e5e5e5;
+}
+.dark .text-slate-700 {
+  color: #d1d5db;
+}
+.dark .border-slate-200 {
+  border-color: #404040;
+}
+.dark .border-slate-300 {
+  border-color: #404040;
+}
+.dark .bg-slate-50 {
+  background-color: #262626;
+}
+.dark .hover\:bg-slate-50:hover {
+  background-color: #404040;
+}
+.dark .form-input {
+  background-color: #262626;
+  border-color: #404040;
+  color: #e5e5e5;
+}
+.dark .form-input::placeholder {
+  color: #9ca3af;
+}
+.dark .form-input:focus {
+  border-color: #0c7ff2;
+  ring-color: #0c7ff2;
+}
+.dark .focus\:ring-sky-500:focus {
+  ring-color: #0c7ff2;
+}
+.dark .focus\:border-sky-500:focus {
+  border-color: #0c7ff2;
+}
+.dark .focus\:ring-blue-400:focus {
+  ring-color: #0c7ff2;
+}
+.dark .focus\:ring-red-400:focus {
+  ring-color: #ef4444;
+}
+.dark .focus\:ring-slate-400:focus {
+  ring-color: #525252;
+}
+.dark .focus\:ring-offset-2 {
+  ring-offset-color: #262626;
+}
+{% endblock %}
+
 {% block content %}
-<div class="layout-content-container flex flex-col w-full max-w-4xl gap-8">
+<div class="layout-content-container flex flex-col w-full max-w-4xl gap-8 pt-2 pb-[75px]">
   <div class="flex flex-wrap justify-between items-center gap-4 p-4 bg-white rounded-xl shadow-sm mt-8">
     <h1 class="text-slate-900 tracking-tight text-2xl sm:text-3xl font-bold leading-tight">
       Table Control

@@ -2,6 +2,126 @@
 
 {% block title %}Playlists - Kinetic Sand Table{% endblock %}
 
+{% block additional_styles %}
+/* Dark mode styles for playlists page */
+.dark .bg-slate-50 {
+  background-color: #1a1a1a;
+}
+.dark .bg-white {
+  background-color: #262626;
+}
+.dark .border-slate-200 {
+  border-color: #404040;
+}
+.dark .text-slate-900 {
+  color: #e5e5e5;
+}
+.dark .text-slate-700 {
+  color: #d1d5db;
+}
+.dark .text-slate-500 {
+  color: #9ca3af;
+}
+.dark .hover\:bg-slate-100:hover {
+  background-color: #404040;
+}
+.dark .hover\:text-slate-700:hover {
+  color: #e5e5e5;
+}
+.dark .hover\:border-slate-400:hover {
+  border-color: #525252;
+}
+.dark .bg-\[\#dce8f3\] {
+  background-color: #1e3a5f;
+}
+.dark .hover\:bg-\[\#cadbed\]:hover {
+  background-color: #2c5282;
+}
+.dark .text-slate-800 {
+  color: #e5e5e5;
+}
+.dark .form-input {
+  background-color: #262626;
+  border-color: #404040;
+  color: #e5e5e5;
+}
+.dark .form-input::placeholder {
+  color: #9ca3af;
+}
+.dark .form-input:focus {
+  border-color: #0c7ff2;
+  ring-color: #0c7ff2;
+}
+.dark .form-select {
+  background-color: #262626;
+  border-color: #404040;
+  color: #e5e5e5;
+}
+.dark .form-select:focus {
+  border-color: #0c7ff2;
+  ring-color: #0c7ff2;
+}
+.dark .form-checkbox {
+  border-color: #404040;
+  background-color: #262626;
+}
+.dark .form-checkbox:checked {
+  background-color: #0c7ff2;
+  border-color: #0c7ff2;
+}
+.dark .bg-slate-100 {
+  background-color: #404040;
+}
+.dark .hover\:bg-slate-200:hover {
+  background-color: #525252;
+}
+.dark .bg-sky-600 {
+  background-color: #0c7ff2;
+}
+.dark .hover\:bg-sky-700:hover {
+  background-color: #0a6cd6;
+}
+.dark .border-slate-300 {
+  border-color: #404040;
+}
+.dark .focus\:ring-sky-500:focus {
+  ring-color: #0c7ff2;
+}
+.dark .focus\:border-sky-500:focus {
+  border-color: #0c7ff2;
+}
+.dark .border-b-\[\#f0f2f5\] {
+  border-color: #404040;
+}
+
+/* Dark mode pattern preview styles */
+.dark .pattern-preview {
+  background-color: #262626 !important;
+  border-color: #404040 !important;
+}
+.dark .pattern-preview img {
+  filter: invert(1);
+}
+.dark .pattern-preview .absolute {
+  filter: invert(1);
+}
+
+/* Pattern preview container styles */
+.pattern-preview {
+  background-color: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pattern-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+{% endblock %}
+
 {% block content %}
 <div class="flex flex-1 justify-center p-6 gap-6 bg-slate-50" style="min-height: calc(100vh - 72px - 64px);">
   <!-- Sidebar for Playlists -->
@@ -33,7 +153,7 @@
     <div class="flex-1 flex flex-col overflow-hidden">
       <!-- Patterns Grid - Scrollable -->
       <div class="flex-1 overflow-y-auto">
-        <div id="patternsGrid" class="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-x-4 gap-y-6 p-4">
+        <div id="patternsGrid" class="grid grid-cols-[repeat(auto-fill,minmax(128px,1fr))] gap-x-4 gap-y-6 p-4">
           <div class="flex items-center justify-center col-span-full py-12 text-slate-500">
             <span class="text-sm">Select a playlist to view its patterns</span>
           </div>
@@ -101,13 +221,13 @@
 </div>
 
 <!-- Add Playlist Modal -->
-<div id="addPlaylistModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-  <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+<div id="addPlaylistModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden" tabindex="-1" role="dialog" aria-modal="true">
+  <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4" role="document">
     <h3 class="text-lg font-semibold text-slate-900 mb-4">Create New Playlist</h3>
     <div class="space-y-4">
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Playlist Name</label>
-        <input id="newPlaylistName" type="text" class="form-input w-full rounded-lg border-slate-300 focus:border-sky-500 focus:ring-sky-500" placeholder="Enter playlist name">
+        <label for="newPlaylistName" class="block text-sm font-medium text-slate-700 mb-1">Playlist Name</label>
+        <input id="newPlaylistName" type="text" class="form-input w-full rounded-lg border-slate-300 focus:border-sky-500 focus:ring-sky-500" placeholder="Enter playlist name" autofocus>
       </div>
       <div class="flex gap-3 justify-end">
         <button id="cancelPlaylistBtn" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors duration-150">Cancel</button>

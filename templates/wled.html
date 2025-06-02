@@ -1,20 +1,26 @@
-{% extends "base.html" %} {% block title %}WLED - Kinetic Sand Table{% endblock %} {% block content %}
-<div class="layout-content-container flex flex-col w-full max-w-4xl gap-0 sm:gap-8">
-  <div class="flex flex-wrap justify-between items-center gap-4 p-4 bg-white rounded-xl shadow-sm hidden sm:flex">
-    <h1 class="text-slate-900 tracking-tight text-2xl sm:text-3xl font-bold leading-tight hidden sm:block">
-      WLED Control
-    </h1>
-  </div>
-  <section class="bg-white rounded-xl shadow-sm overflow-hidden pt-4 sm:pt-0">
-    <div class="flex flex-col items-center px-0 py-0">
-      <div class="w-full max-w-5xl flex flex-col overflow-hidden">
+{% extends "base.html" %} {% block title %}WLED - Kinetic Sand Table{% endblock %}
+
+{% block additional_styles %}
+/* Dark mode styles for WLED page */
+.dark .bg-white {
+  background-color: #262626;
+}
+.dark .border-slate-200 {
+  border-color: #404040;
+}
+{% endblock %}
+
+{% block content %}
+<div class="layout-content-container flex flex-col w-full max-w-4xl gap-0 pt-2 pb-[75px]">
+  <section class="bg-white rounded-xl shadow-sm overflow-hidden pt-4 sm:pt-0 h-full">
+    <div class="flex flex-col items-center px-0 py-0 h-full">
+      <div class="w-full h-full max-w-5xl flex flex-col overflow-hidden">
         <iframe id="wled-frame"
           src=""
-          class="h-[70vh] w-full rounded-lg border border-slate-200"
+          class="h-full w-full rounded-lg border border-slate-200"
           frameborder="0"
           allowfullscreen
         ></iframe>
-        <p id="wled-status" class="text-center text-slate-500 mt-2"></p>
       </div>
     </div>
   </section>
@@ -35,12 +41,12 @@
         }
       } catch (e) {}
     }
-    if (wledIp) {
+    if (wledIp && frame) {
       frame.src = `http://${wledIp}`;
-      status.textContent = '';
+      if (status) status.textContent = '';
     } else {
-      frame.src = '';
-      status.textContent = 'No WLED IP set. Please set it in Settings.';
+      if (frame) frame.src = '';
+      if (status) status.textContent = 'No WLED IP set. Please set it in Settings.';
     }
   }
   document.addEventListener('DOMContentLoaded', loadWledIframe);

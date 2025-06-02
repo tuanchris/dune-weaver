@@ -10,8 +10,12 @@
       rel="stylesheet"
     />
     <title>{% block title %}Kinetic Sand Table{% endblock %}</title>
-    <link href="data:image/x-icon;base64," rel="icon" type="image/x-icon" />
-    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="manifest" href="/static/site.webmanifest">
+    <link rel="stylesheet" href="/static/css/tailwind.css">
     <link
       href="https://fonts.googleapis.com/icon?family=Material+Icons"
       rel="stylesheet"
@@ -38,6 +42,95 @@
         -moz-osx-font-smoothing: grayscale;
         font-feature-settings: "liga";
       }
+
+      /* Dark mode styles */
+      .dark {
+        color-scheme: dark;
+      }
+      .dark body {
+        background-color: #1a1a1a;
+        color: #e5e5e5;
+      }
+      .dark header {
+        background-color: #262626;
+        border-color: #404040;
+      }
+      .dark footer {
+        background-color: #262626;
+        border-color: #404040;
+      }
+      .dark .inactive-tab {
+        color: #9ca3af;
+      }
+      .dark .inactive-tab:hover {
+        color: #d1d5db;
+      }
+      .dark #player-status-bar-container {
+        background-color: #262626;
+        color: #e5e5e5;
+      }
+      .dark .bg-gray-100 {
+        background-color: #262626;
+      }
+      .dark .bg-gray-200 {
+        background-color: #404040;
+      }
+      .dark .bg-gray-300 {
+        background-color: #525252;
+      }
+      .dark .text-gray-500 {
+        color: #9ca3af;
+      }
+      .dark .text-gray-700 {
+        color: #d1d5db;
+      }
+      .dark .text-gray-800 {
+        color: #e5e5e5;
+      }
+      .dark .border-gray-200 {
+        border-color: #404040;
+      }
+      .dark .hover\:bg-gray-200:hover {
+        background-color: #404040;
+      }
+      .dark .hover\:bg-gray-300:hover {
+        background-color: #525252;
+      }
+      .dark .hover\:border-gray-300:hover {
+        border-color: #525252;
+      }
+      .dark .hover\:bg-gray-50:hover {
+        background-color: #262626;
+      }
+      .dark .bg-white {
+        background-color: #262626;
+      }
+      .dark .bg-gray-50 {
+        background-color: #1a1a1a;
+      }
+      .dark .text-gray-900 {
+        color: #e5e5e5;
+      }
+      .dark .text-gray-400 {
+        color: #9ca3af;
+      }
+      .dark .border-gray-300 {
+        border-color: #404040;
+      }
+      .dark .focus\:ring-offset-2 {
+        --tw-ring-offset-color: #262626;
+      }
+      .dark .shadow-sm {
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+      }
+      .dark .shadow-lg {
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+      }
+      .dark .shadow-xl {
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+      }
+
+      /* Existing styles */
       .active-tab {
         color: #0c7ff2;
         border-color: #0c7ff2;
@@ -139,20 +232,9 @@
           class="fixed top-0 left-0 right-0 z-10 flex items-center justify-between whitespace-nowrap border-b border-solid border-b-gray-200 bg-white px-6 py-4 shadow-sm md:px-10"
         >
           <div class="flex items-center gap-3 text-gray-800">
-            <div class="text-blue-600">
-              <svg
-                class="size-7"
-                fill="none"
-                viewBox="0 0 48 48"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  clip-rule="evenodd"
-                  d="M24 4H42V17.3333V30.6667H24V44H6V30.6667V17.3333H24V4Z"
-                  fill="currentColor"
-                  fill-rule="evenodd"
-                ></path>
-              </svg>
+            <a href="/" class="flex items-center gap-3 text-gray-800 hover:opacity-80 transition-opacity">
+            <div class="text-blue-600 w-9 h-9 rounded-full shadow">
+              <img src="/static/apple-touch-icon.png" alt="Dune Weaver Logo"/>
             </div>
             <h1
               class="text-gray-800 text-xl font-bold leading-tight tracking-tight flex items-center gap-2"
@@ -163,6 +245,7 @@
                 class="inline-block size-2 rounded-full bg-red-500 ml-2 align-middle"
               ></span>
             </h1>
+            </a>
           </div>
           <div
             class="mt-2 w-full text-center px-4"
@@ -175,17 +258,12 @@
           </div>
           <div class="flex items-center gap-4">
             <button
-              aria-label="Menu"
-              class="flex h-10 w-10 cursor-pointer items-center justify-center overflow-hidden rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200"
+              id="theme-toggle"
+              class="p-2 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              aria-label="Toggle dark mode"
             >
-              <span class="material-icons text-gray-700">menu</span>
+              <span class="material-icons" id="theme-toggle-icon">dark_mode</span>
             </button>
-            <div
-              class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 border-2 border-gray-200"
-              style="
-                background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuA63dnnEnB0DGmWaDEovpAVfp3qOOHDrqQxF9SZtdMPiAfBn_If7Q97nZgk9By6QF0VV3kSSIpFbh5dgziTptrxTNsIA22cvyw2k5ZYZcSARYRQZ8odqTptzxWZkoO6bDYE6KkEGUKqm1EUGjVlyEnYrFitUx18AsVnyKCsyh6DdljR6mtA-p5sXjlQiC5VkmpwbOkykpHJeGfnW7zltvWwdH7Jp47tgdBlBmY-jv548q98pubuD7-s46s6XMat8w20MXePFVxC4_f4');
-              "
-            ></div>
           </div>
         </header>
         <main class="flex flex-1 justify-center px-4 sm:px-6 lg:px-8 mt-16">
@@ -213,7 +291,7 @@
               <div class="flex items-stretch">
                 <div class="py-4 flex-shrink-0">
                   <div
-                    class="bg-center bg-no-repeat bg-contain w-32 sm:w-48 aspect-square rounded-md"
+                    class="bg-center bg-no-repeat bg-contain w-32 sm:w-48 aspect-square rounded-md dark:invert"
                     id="player-pattern-preview"
                   ></div>
                 </div>
@@ -311,8 +389,8 @@
           </div>
           <nav class="mx-auto flex max-w-5xl justify-around">
             <a
-              class="{% if request.url.path == '/home' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
-              href="/home"
+              class="{% if request.url.path == '/' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
+              href="/"
             >
               <span class="material-icons">search</span> Browse
             </a>
@@ -345,7 +423,7 @@
       </div>
     </div>
     {% block scripts %}{% endblock %}
-    <script src="/static/js/player.js"></script>
+    <script src="/static/js/base.js"></script>
     <script>
       // Function to show status message
       function showStatusMessage(message, type = "success") {
@@ -402,20 +480,29 @@
       // Check initial status on page load
       document.addEventListener("DOMContentLoaded", checkInitialConnectionStatus);
 
-      // Player bar toggle logic
-      const playerBar = document.getElementById('player-status-bar-container');
-      const toggleBtn = document.getElementById('toggle-player-bar-btn');
-      const toggleIcon = document.getElementById('toggle-player-bar-icon');
-      let playerBarVisible = true;
-      toggleBtn.addEventListener('click', () => {
-        playerBarVisible = !playerBarVisible;
-        if (playerBarVisible) {
-          playerBar.style.display = '';
-          toggleIcon.textContent = 'expand_more';
-        } else {
-          playerBar.style.display = 'none';
-          toggleIcon.textContent = 'expand_less';
-        }
+      // Player bar toggle logic will be handled by base.js
+    </script>
+    <script>
+      // Theme switching functionality
+      const themeToggle = document.getElementById('theme-toggle');
+      const themeToggleIcon = document.getElementById('theme-toggle-icon');
+      
+      // Check for saved theme preference or use system preference
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const savedTheme = localStorage.getItem('theme');
+      const theme = savedTheme || (prefersDark ? 'dark' : 'light');
+      
+      // Apply theme on load
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+        themeToggleIcon.textContent = 'light_mode';
+      }
+      
+      // Theme toggle click handler
+      themeToggle.addEventListener('click', () => {
+        const isDark = document.documentElement.classList.toggle('dark');
+        themeToggleIcon.textContent = isDark ? 'light_mode' : 'dark_mode';
+        localStorage.setItem('theme', isDark ? 'dark' : 'light');
       });
     </script>
   </body>

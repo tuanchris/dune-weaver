@@ -379,6 +379,7 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                         logger.info("Skipping pause after clear pattern")
                     else:
                         logger.info(f"Pausing for {pause_time} seconds")
+                        state.original_pause_time = pause_time
                         pause_start = time.time()
                         while time.time() - pause_start < pause_time:
                             state.pause_time_remaining = pause_start + pause_time - time.time()
@@ -386,6 +387,7 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                                 logger.info("Pause interrupted by stop/skip request")
                                 break
                             await asyncio.sleep(1)
+                        state.pause_time_remaining = 0
                     
                 state.skip_requested = False
 
@@ -400,6 +402,7 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                             logger.info("Pause interrupted by stop/skip request")
                             break
                         await asyncio.sleep(1)
+                    state.pause_time_remaining = 0
                 continue
             else:
                 logger.info("Playlist completed")
@@ -544,7 +547,9 @@ def get_status():
         "progress": None,
         "playlist": None,
         "speed": state.speed,
-        "pause_time_remaining": state.pause_time_remaining
+        "pause_time_remaining": state.pause_time_remaining,
+        "original_pause_time": getattr(state, 'original_pause_time', None),
+        "connection_status": state.conn.is_connected()
     }
     
     # Add playlist information if available

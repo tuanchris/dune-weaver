@@ -1,4 +1,4 @@
-// Player status bar functionality
+// Player status bar functionality - Updated to fix logMessage errors
 let ws = null;
 let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
@@ -22,19 +22,26 @@ function setPlayerBarVisibility(visible, force = false) {
     const playerBar = document.getElementById('player-status-bar-container');
     const toggleBtn = document.getElementById('toggle-player-bar-btn');
     if (!playerBar || !toggleBtn) return;
+    
     playerBarVisible = visible;
     savePlayerBarVisibility(visible);
-    // Only show/hide bar if something is playing (force = true for initial load)
-    if (playerBar.dataset.isPlaying === '1' || force) {
+    
+    // Show/hide bar based on visibility setting and whether something is playing
+    const isPlaying = playerBar.dataset.isPlaying === '1';
+    
+    if (isPlaying) {
+        // If something is playing, respect the visibility setting
         playerBar.style.display = visible ? '' : 'none';
-        toggleBtn.style.display = visible ? 'flex' : 'flex'; // Always show toggle if playing
-        // Change icon
-        const toggleIcon = document.getElementById('toggle-player-bar-icon');
-        if (toggleIcon) toggleIcon.textContent = visible ? 'expand_more' : 'expand_less';
+        toggleBtn.style.display = 'flex'; // Always show toggle if playing
     } else {
+        // If nothing is playing, hide the bar but still show toggle for testing
         playerBar.style.display = 'none';
-        toggleBtn.style.display = 'none';
+        toggleBtn.style.display = force ? 'flex' : 'none'; // Show toggle only on force (initial load)
     }
+    
+    // Change icon
+    const toggleIcon = document.getElementById('toggle-player-bar-icon');
+    if (toggleIcon) toggleIcon.textContent = visible ? 'expand_more' : 'expand_less';
 }
 
 function connectWebSocket() {
@@ -84,10 +91,9 @@ function connectWebSocket() {
                     }
                 }
                 
-                // Only update connection status if the data includes connection information
-                if (data.data.hasOwnProperty('connected')) {
-                    console.log('Connection status from data:', data.data.connected);
-                    updateConnectionStatus(data.data.connected);
+                // Update connection status dot using 'connection_status' or fallback to 'connected'
+                if (data.data.hasOwnProperty('connection_status')) {
+                    updateConnectionStatus(data.data.connection_status);
                 }
             }
         } catch (error) {
@@ -99,21 +105,11 @@ function connectWebSocket() {
 function updateConnectionStatus(isConnected) {
     const statusDot = document.getElementById("connectionStatusDot");
     if (statusDot) {
-        const wasConnected = statusDot.classList.contains("bg-green-500");
-        
         // Update dot color
         statusDot.className = `inline-block size-2 rounded-full ml-2 align-middle ${
             isConnected ? "bg-green-500" : "bg-red-500"
         }`;
-
-        // Show status message if connection state changed
-        if (wasConnected !== isConnected) {
-            if (isConnected) {
-                showStatusMessage("Serial connection established", "success");
-            } else {
-                showStatusMessage("Serial connection lost", "error");
-            }
-        }
+        // Do not update status message
     }
 }
 
@@ -181,12 +177,68 @@ function updatePlayerStatus(status) {
         } else {
             skipButton.classList.add('invisible');
         }
+
+        // Handle pause time remaining
+        if (status.pause_time_remaining && status.pause_time_remaining > 0) {
+            patternName.textContent = 'Pausing...';
+            // Show ETA as pause countdown in 0:00 format
+            if (eta) {
+                const mins = Math.floor(status.pause_time_remaining / 60);
+                const secs = Math.ceil(status.pause_time_remaining % 60);
+                eta.textContent = `ETA: ${mins}:${secs.toString().padStart(2, '0')}`;
+            }
+            // Show preview and name of next pattern if available
+            if (status.playlist && status.playlist.next_file) {
+                const nextFileName = status.playlist.next_file.replace('./patterns/', '').replace('.thr', '');
+                // Update preview image
+                const encodedFilename = status.playlist.next_file.replace('./patterns/', '').replace(/\//g, '--');
+                if (patternPreview) {
+                    patternPreview.style.backgroundImage = `url('/preview/${encodedFilename}')`;
+                }
+                // Update pattern name below preview (if you have such an element)
+                // patternName.textContent = nextFileName; // Uncomment if you want to show next pattern name
+            }
+            // Show progress bar as pause countdown
+            const totalPause = status.original_pause_time || status.pause_time_remaining;
+            const percent = totalPause
+                ? ((totalPause - status.pause_time_remaining) / totalPause) * 100
+                : 100;
+            progressBar.style.width = `${percent}%`;
+            progressBar.style.backgroundColor = '#fbbf24'; // amber-400 for pause
+        } else {
+            if (progressBar) progressBar.style.backgroundColor = '';
+        }
     } else {
         // Mark as not playing
         if (playerBar) playerBar.dataset.isPlaying = '0';
         // Hide both bar and toggle button
         setPlayerBarVisibility(false);
     }
+}
+
+// Button event handlers
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        // Initialize WebSocket connection
+        initializeWebSocket();
+        
+        // Restore player bar visibility
+        restorePlayerBarVisibility();
+        
+        console.log('Player initialized successfully');
+    } catch (error) {
+        console.error(`Error during initialization: ${error.message}`);
+    }
+});
+
+// Initialize WebSocket connection
+function initializeWebSocket() {
+    connectWebSocket();
+}
+
+// Restore player bar visibility
+function restorePlayerBarVisibility() {
+    setPlayerBarVisibility(loadPlayerBarVisibility());
 }
 
 // Button event handlers
@@ -350,7 +402,4 @@ document.addEventListener('DOMContentLoaded', function() {
             setPlayerBarVisibility(playerBarVisible);
         });
     }
-
-    // Connect to WebSocket
-    connectWebSocket();
 }); 

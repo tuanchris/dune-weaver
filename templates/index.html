@@ -1,570 +1,447 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Dune Weaver Controller</title>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../static/css/style.css">
-    <link rel="stylesheet" href="../static/css/all.min.css">
-    <link rel="stylesheet" href="../static/css/image2sand.css">
-    <link rel="apple-touch-icon" sizes="180x180" href="../static/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="../static/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="../static/favicon-16x16.png">
-    <link rel="manifest" href="../static/site.webmanifest">
-</head>
-<body>
-<header>
-    <h1 id="connection_status_header" class="status">Dune Weaver Controller</h1>
-</header>
-<div class="app">
-    <!-- Home Tab -->
-    <main class="tab-content" id="patterns-tab" data-group="main">
-        <section class="main">
-            <div class="header">
-                <h2>Patterns</h2>
-                <button class="add-button cta" onclick="toggleSecondaryButtons('add-pattern-container')">
-                    <i class="fa-solid fa-plus"></i>
-                </button>
-                <button class="gen-button cta" onclick="toggleSecondaryButtons('generate')">
-                    <i class="fa-solid fa-robot"></i>
-                </button>
-            </div>
-            <div id="add-pattern-container" class="add-to-container hidden">
-                <div class="action-buttons">
-                    <label for="upload_file">Upload pattern file (.thr) or image (.jpg, .png, etc.):</label>
-                    <input type="file" id="upload_file" accept=".thr,.jpg,.jpeg,.png,.gif,.bmp,.webp,.svg">
-                    <button class="cta" onclick="uploadThetaRho()">
-                        <i class="fa-solid fa-file-arrow-up"></i>
-                        <span>Upload</span>
-                    </button>
-                    <button class="cancel" onclick="toggleSecondaryButtons('add-pattern-container')">
-                        <i class="fa-solid fa-xmark"></i>
-                        <span>Cancel</span>
-                    </button>
-                </div>
-            </div>
-            <div id="generate" class="add-to-container hidden">
-                <div class="action-buttons">
-                    <div id="api-key-group"></div>
-                    <input type="password" id="api-key" placeholder="Enter a valid OpenAI API key">
-                    <input type="text" id="prompt" placeholder="What do you want to draw?" maxlength="500">
-                    <div class="action-buttons">
-                        <button id="gen-image-button" class="cta">
-                            <i class="fa-solid fa-wand-sparkles"></i>
-                            <span>Create</span>
-                        </button>
-                        <button class="cancel" onclick="toggleSecondaryButtons('generate')">
-                            <i class="fa-solid fa-xmark"></i>
-                            <span>Cancel</span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <input type="text" id="search_pattern" placeholder="Search files..." oninput="searchPatternFiles()">
-            <ul id="theta_rho_files" class="file-list"></ul>
-        </section>
+{% extends "base.html" %}
 
-        <!-- Patterns Preview Section -->
-        <section id="pattern-preview-container" class="sticky hidden">
-            <div class="header">
-                <h2>Preview</h2>
-                <button class="fullscreen-button no-bg">
-                    <i class="fa-solid fa-expand"></i>
-                </button>
-                <button class="close-button no-bg" onclick="closeStickySection('pattern-preview-container')">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            </div>
-            <div id="pattern-preview">
-                <canvas id="patternPreviewCanvas"></canvas>
-                <div id="first_coordinate"></div>
-                <div id="last_coordinate"></div>
-            </div>
+{% block additional_styles %}
+.pattern-card {
+  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  cursor: pointer;
+}
+.pattern-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+.pattern-card.selected {
+  border: 2px solid #0c7ff2;
+}
+@media (min-width: 1024px) {
+  .preview-open .layout-content-container {
+    margin-right: 28rem;
+  }
+  #patternPreviewPanel {
+    transform: translateX(0);
+  }
+}
+.delete-button-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+  background-color: #f3f4f6 !important;
+  border-color: #d1d5db !important;
+  color: #9ca3af !important;
+}
 
-            <!-- Action Buttons -->
-            <div class="action-buttons">
-                <div class="pre-execution">
-                    <h3>Pre-Execution Action</h3>
-                    <div class="control-group">
-                        <select id="pre_execution" name="pre_execution">
-                            <option value="none" selected>None</option>
-                            <option value="adaptive">Adaptive</option>
-                            <option value="clear_from_in">Clear From Center</option>
-                            <option value="clear_from_out">Clear From Perimeter</option>
-                            <option value="clear_sideway">Clear Sideway</option>
-                        </select>
-                    </div>
-                </div>
-                <button onclick="runThetaRho()" class="cta" >
-                    <i class="fa-solid fa-play"></i>
-                    <span>Play</span>
-                </button>
-                <button id="toggle-playlist-button" onclick="toggleSecondaryButtons('add-to-playlist-container', populatePlaylistDropdown)">
-                    <i class="fa-solid fa-list-ul"></i>
-                    <span class="small">Add to Playlist</span>
-                </button>
-                <button onclick="removeCurrentPattern()" class="cancel remove-button hidden">
-                    <i class="fa-solid fa-trash"></i>
-                    <span class="small">Delete</span>
-                </button>
-            </div>
+/* Pattern preview styles */
+.pattern-preview {
+  background-color: #f3f4f6;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e5e7eb;
+}
+.pattern-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
 
-            <!-- Add to Playlist Section -->
-            <div id="add-to-playlist-container" class="hidden">
-                <h3>Select Playlist</h3>
-                <select id="select-playlist"></select>
-                <div class="action-buttons">
-                    <button onclick="saveToPlaylist()" class="cta">
-                        <i class="fa-solid fa-floppy-disk"></i>
-                        <span>Save</span>
-                    </button>
-                    <button onclick="toggleSecondaryButtons('add-to-playlist-container')" class="cancel">
-                        <i class="fa-solid fa-xmark"></i>
-                        <span class="small">Cancel</span>
-                    </button>
-                </div>
-            </div>
-        </section>
+/* Pattern preview panel styles */
+#patternPreviewPanel .bg-slate-200 {
+  background-color: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+#patternPreviewPanel img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
 
-        <section id="image-converter" class="sticky hidden fullscreen">
-            <div class="header">
-                <h2>Convert Image to Pattern</h2>
-                <button class="close-button no-bg" onclick="closeImageConverter()">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            </div>
-            <div class="image-converter-content grid">
-                <div id="processing-status" class="processing-indicator">
-                    <div class="spinner"></div>
-                    <span id="processing-message">Processing image...</span>
-                </div>
-                <div class="image-converter-steps">
-                    <div class="tab-content" id="original-tab" data-group="image-converter">
-                        <canvas id="original-image"></canvas>
-                    </div>
+/* Dark mode styles for index page */
+.dark .pattern-card {
+  background-color: #262626;
+  border-color: #404040;
+}
+.dark .pattern-card:hover {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3),
+    0 4px 6px -2px rgba(0, 0, 0, 0.2);
+}
+.dark .pattern-card.selected {
+  border-color: #0c7ff2;
+}
+.dark .delete-button-disabled {
+  background-color: #262626 !important;
+  border-color: #404040 !important;
+  color: #6b7280 !important;
+}
+.dark #patternPreviewPanel {
+  background-color: #262626;
+}
+.dark #patternPreviewPanel header {
+  border-color: #404040;
+}
+.dark #patternPreviewPanel h2 {
+  color: #e5e5e5;
+}
+.dark #patternPreviewPanel .text-slate-500 {
+  color: #9ca3af;
+}
+.dark #patternPreviewPanel .text-slate-700 {
+  color: #d1d5db;
+}
+.dark #patternPreviewPanel .border-slate-300 {
+  border-color: #404040;
+}
+.dark #patternPreviewPanel .bg-slate-200 {
+  background-color: #262626;
+  border-color: #404040;
+}
+.dark #patternPreviewPanel .hover\:bg-slate-100:hover {
+  background-color: #404040;
+}
+.dark #patternPreviewPanel .hover\:text-slate-700:hover {
+  color: #e5e5e5;
+}
+.dark .form-input {
+  background-color: #262626;
+  border-color: #404040;
+  color: #e5e5e5;
+}
+.dark .form-input::placeholder {
+  color: #9ca3af;
+}
+.dark .form-input:focus {
+  border-color: #0c7ff2;
+  ring-color: #0c7ff2;
+}
+.dark .bg-gray-50 {
+  background-color: #1a1a1a;
+}
+.dark .bg-white {
+  background-color: #262626;
+}
+.dark .text-gray-900 {
+  color: #e5e5e5;
+}
+.dark .text-gray-500 {
+  color: #9ca3af;
+}
+.dark .text-gray-400 {
+  color: #9ca3af;
+}
+.dark .border-gray-300 {
+  border-color: #404040;
+}
+.dark .hover\:bg-red-50:hover {
+  background-color: #2d1a1a;
+}
+.dark .focus\:ring-offset-2 {
+  --tw-ring-offset-color: #262626;
+}
+.dark .text-\[\#111518\] {
+  color: #e5e5e5;
+}
+.dark .border-b-\[\#f0f2f5\] {
+  border-color: #404040;
+}
+.dark .hover\:bg-slate-100:hover {
+  background-color: #404040;
+}
+.dark .hover\:text-slate-700:hover {
+  color: #e5e5e5;
+}
+.dark .has-\[\:checked\]\:bg-\[\#0b80ee\]:has(:checked) {
+  background-color: #0c7ff2;
+}
+.dark .has-\[\:checked\]\:border-\[\#0b80ee\]:has(:checked) {
+  border-color: #0c7ff2;
+}
+.dark .has-\[\:checked\]\:ring-\[\#0b80ee\]:has(:checked) {
+  --tw-ring-color: #0c7ff2;
+}
+.dark .has-\[\:checked\]\:ring-offset-2:has(:checked) {
+  --tw-ring-offset-color: #262626;
+}
 
-                    <div class="tab-content" id="edge-tab" data-group="image-converter">
-                        <canvas id="edge-image"></canvas>
-                    </div>
+/* Dark mode pattern preview styles */
+.dark .pattern-preview {
+  background-color: #262626;
+  border-color: #404040;
+}
+.dark .pattern-preview img {
+  filter: invert(1);
+}
+.dark #patternPreviewPanel img {
+  filter: invert(1);
+}
+.dark .pattern-card img {
+  filter: invert(1);
+  background-color:rgb(229, 229, 229);
+}
 
-                    <div class="tab-content" id="dot-tab" data-group="image-converter">
-                        <canvas id="dot-image"></canvas>
-                    </div>
 
-                    <div class="tab-container">
-                        <button class="tab-button" onclick="switchTab('original', 'image-converter')" id="nav-original" data-group="image-converter">Original Image</button>
-                        <button class="tab-button" onclick="switchTab('edge', 'image-converter')" id="nav-edge" data-group="image-converter">Detected Edges</button>
-                        <button class="tab-button" onclick="switchTab('dot', 'image-converter')" id="nav-dot" data-group="image-converter">Identified Points</button>
-                    </div>
 
-                </div>
+{% endblock %}
 
-                <div class="image-converter-settings">
-                    <div class="setting-item">
-                        <label for="epsilon-slider">Detail Level</label>
-                        <div class="slider-container">
-                            <input type="range" id="epsilon-slider" min="0.1" max="1" step="0.05" value="0.3">
-                            <div class="slider-labels">
-                                <small>Fine</small>
-                                <small id="epsilon-value-display">0.5</small>
-                                <small>Coarse</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="setting-item">
-                        <label for="dot-number">Point Limit</label>
-                        <select id="dot-number">
-                            <option value="100">100 points</option>
-                            <option value="200">200 points</option>
-                            <option value="300">300 points</option>
-                            <option value="400">400 points</option>
-                            <option value="500" selected>500 points</option>
-                            <option value="1000">1000 points</option>
-                        </select>
-                    </div>
-                    <div class="setting-item">
-                        <label for="contour-mode">Contour Mode</label>
-                        <select id="contour-mode">
-                            <option value="External">External Only</option>
-                            <option value="Tree" selected>External + Internal</option>
-                        </select>
-                    </div>
-                    <div class="control-group">
-                        <label class="custom-input">
-                            <input type="checkbox" id="is-loop">
-                            <span class="custom-checkbox"></span>
-                            Loop Drawing
-                        </label>
-                        <label class="custom-input">
-                            <input type="checkbox" id="no-shortcuts" checked>
-                            <span class="custom-checkbox"></span>
-                            No Shortcuts
-                        </label>
-                    </div>
-                    <input type="hidden" id="output-type" value="2">
-                    <div class="generate-button-container">
-                        <button id="generate-button" class="cta" onclick="regeneratePattern()">
-                            <i class="fa-solid fa-wand-magic-sparkles"></i>
-                            <span>Regenerate Pattern</span>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="dune-weaver-preview">
-                    <h3>Dune Weaver Preview</h3>
-                    <canvas id="connect-image"></canvas>
-                    <div id="total-points"></div>
-                    <div style="display: none;">
-                        <h4>contours</h4>
-                        <canvas id="plotcontours" width="400" height="400" style="border:1px solid #000000;"></canvas>
-                        <button id="plotButton">Plot Next Contour</button>
-                    </div>
-                </div>
-
-                <div style="display: none;">
-                    <!-- hidden inputs for image2sand compatibility. -->
-                    <label id="generation-status" style="display: none;">Image is generating - please wait...</label>
-                    <textarea id="polar-coordinates-textarea"></textarea>
-                    <div id="simple-coords"></div>
-                    <div id="simple-coords-title"></div>
-                    <input type="checkbox" id="gaussian-blur-toggle">
-                    <div>
-                        <input type="file" id="file-input">
-                        <button id="file-button"></button>
-                        <span id="file-name"></span>
-                    </div>
-                </div>
+{% block content %}
+<div class="layout-content-container flex flex-col w-full max-w-5xl h-[calc(100vh-8rem)]">
+  <div class="flex-none bg-gray-50 py-4">
+    <div class="flex flex-wrap items-center justify-between gap-4 mt-8">
+      <h2 class="text-gray-900 text-3xl font-bold leading-tight tracking-tight">
+        Browse Patterns
+      </h2>
+      <div class="relative w-full sm:w-auto flex gap-2 items-center">
+        <div class="flex gap-2 flex-1">
+          <div class="relative flex-1">
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+              <span class="material-icons text-gray-400">search</span>
             </div>
-            <div class="image-converter-actions">
-                <button class="cancel" onclick="closeImageConverter()">
-                    <i class="fa-solid fa-xmark"></i>
-                    <span>Cancel</span>
-                </button>
-                <button class="cta" id="save-pattern-button" onclick="saveConvertedPattern()">
-                    <i class="fa-solid fa-floppy-disk"></i>
-                    <span>Save Pattern</span>
-                </button>
-            </div>
-        </section>
-    </main>
-
-    <!-- Playlists Tab -->
-    <main class="tab-content" id="playlists-tab" data-group="main">
-        <section>
-            <div class="header">
-                <h2>Playlists</h2>
-                <button class="cta add-button" onclick="toggleSecondaryButtons('add-playlist-container')">
-                    <i class="fa-solid fa-plus"></i>
-                </button>
-            </div>
-            <div id="add-playlist-container" class="add-to-container hidden">
-                <input type="text" id="new_playlist_name" placeholder="Enter new playlist name" />
-                <div class="action-buttons">
-                    <button onclick="confirmAddPlaylist()" class="cta">
-                        <i class="fa-solid fa-floppy-disk"></i>
-                        <span>Save</span>
-                    </button>
-                    <button onclick="toggleSecondaryButtons('add-playlist-container')" class="cancel">
-                        <i class="fa-solid fa-xmark"></i>
-                        <span>Cancel</span>
-                    </button>
-                </div>
-            </div>
-            <ul id="all_playlists" class="file-list">
-                <!-- Playlists will be dynamically inserted here -->
-            </ul>
-        </section>
-
-        <!-- Playlist Parameters -->
-        <section class="main">
-            <h2>Playlist Settings</h2>
-            <div class="playlist-parameters">
-                <h3>Run Playlist:</h3>
-                <div class="control-group">
-                    <label class="custom-input">
-                        <input type="radio" id="run_single" name="run_mode" value="single" checked>
-                        <span class="custom-radio"></span>
-                        Once
-                    </label>
-                    <label class="custom-input">
-                        <input type="radio" id="run_indefinite" name="run_mode" value="indefinite">
-                        <span class="custom-radio"></span>
-                        Indefinitely
-                    </label>
-                    <label class="custom-input">
-                        <input type="checkbox" id="shuffle_playlist">
-                        <span class="custom-checkbox"></span>
-                        Shuffle
-                    </label>
-                </div>
-                <h3>Between patterns:</h3>
-                <div class="control-group">
-                    <div class="item column">
-                        <label for="pause_time">Pause Time (seconds):</label>
-                        <input type="number" id="pause_time" min="0" step="0.1" value="0">
-                    </div>
-                    <div class="item column">
-                        <label for="clear_pattern">Clear Pattern:</label>
-                        <select id="clear_pattern">
-                            <option value="none">None</option>
-                            <option value="adaptive">Adaptive</option>
-                            <option value="clear_from_in">Clear From Center</option>
-                            <option value="clear_from_out">Clear From Perimeter</option>
-                            <option value="clear_sideway">Clear Sideways</option>
-                            <option value="random">Random</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Playlist View/Edit Section -->
-        <section id="playlist-editor" class="sticky hidden">
-            <div class="header">
-                <h2 id="playlist_title">Playlist: <span id="playlist_name_display"></span></h2>
-                <button class="fullscreen-button no-bg">
-                    <i class="fa-solid fa-expand"></i>
-                </button>
-                <button class="close-button no-bg" onclick="closeStickySection('playlist-editor')">
-                    <i class="fa-solid fa-xmark" ></i>
-                </button>
-            </div>
-            <ul id="playlist_items" class="file-list">
-            </ul>
-            <div class="action-buttons">
-                <button onclick="runPlaylist()" class="cta">
-                    <i class="fa-solid fa-play"></i>
-                    <span>Play</span>
-                </button>
-                <button onclick="toggleSecondaryButtons('rename-playlist-container')">
-                    <i class="fa-solid fa-pencil"></i>
-                    <span class="small">Rename</span>
-                </button>
-                <button onclick="deleteCurrentPlaylist()" class="cancel">
-                    <i class="fa-solid fa-trash"></i>
-                    <span class="small">Delete</span>
-                </button>
-                <!-- Save and Cancel buttons -->
-                <button onclick="savePlaylist()" class="save-cancel cta" style="display: none;">
-                    <i class="fa-solid fa-floppy-disk"></i>
-                    <span>Save</span>
-                </button>
-                <button onclick="cancelPlaylistChanges()" class="save-cancel cancel" style="display: none;">
-                    <i class="fa-solid fa-xmark"></i>
-                    <span class="small">Cancel</span>
-                </button>
-            </div>
-            <!-- Playlist Rename Section -->
-            <div id="rename-playlist-container" class="hidden">
-                <input type="text" id="playlist_name_input" placeholder="Enter new playlist name">
-                <div class="action-buttons">
-                    <button onclick="confirmRenamePlaylist()" class="cta">
-                        <i class="fa-solid fa-floppy-disk"></i>
-                        <span>Save</span>
-                    </button>
-                    <button onclick="toggleSecondaryButtons('rename-playlist-container')" class="cancel">
-                        <i class="fa-solid fa-xmark"></i>
-                        <span>Cancel</span>
-                    </button>
-                </div>
-            </div>
-        </section>
-    </main>
-
-    <!-- Device / Settings Tab -->
-    <main class="tab-content" id="settings-tab" data-group="main">
-        <section class="main">
-            <div class="header">
-                <h2>Device Controls</h2>
-                <button id="open-settings-button" class="no-bg" onclick="toggleSettings()">
-                    <i class="fa-solid fa-gears"></i>
-                    <span class="small">Settings</span>
-                </button>
-            </div>
-            <div class="action-buttons square">
-                <button onclick="stopExecution()" class="cancel"><i class="fa-solid fa-stop"></i><span class="small">Stop</span></button>
-                <button onclick="moveToCenter()" class="cta"><i class="fa-regular fa-circle-dot"></i><span class="small">Move to Center</span></button>
-                <button onclick="moveToPerimeter()" class="cta"><i class="fa-solid fa-circle-notch"></i><span class="small">Move to Perimeter</span></button>
-                <button onclick="sendHomeCommand()" class="warn"><i class="fa-solid fa-house"></i><span class="small">Home</span></button>
-                <div class="scrollable-selection">
-                    <div class="selection-container">
-                        <div id="clear_selection" class="selection-items">
-                            <div id="runClearIn" class="selection-item" onclick="executeClearAction('runClearIn')">Clear From Center</div>
-                            <div id="runClearOut" class="selection-item" onclick="executeClearAction('runClearOut')">Clear From Perimeter</div>
-                            <div id="runClearSide" class="selection-item" onclick="executeClearAction('runClearSide')">Clear Sideways</div>
-                        </div>
-                        <div class="nav-items">
-                            <button class="scroll-arrow up-arrow" onclick="scrollSelection(-1)">▲</button>
-                            <button class="scroll-arrow down-arrow" onclick="scrollSelection(1)">▼</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <h3>Send to Coordinate</h3>
-            <div class="control-group">
-                <div class="item">
-                    <label for="theta_input">θ:</label>
-                    <input type="number" id="theta_input" placeholder="Theta">
-                </div>
-                <div class="item">
-                    <label for="rho_input">ρ:</label>
-                    <input type="number" id="rho_input" placeholder="Rho">
-                </div>
-                <div class="item cta">
-                    <button onclick="sendCoordinate()" class="cta">
-                        <i class="fa-solid fa-map-pin"></i><span class="small">Send</span>
-                    </button>
-                </div>
-            </div>
-            <div class="control-group">
-                <h3>Speed</h3>
-                <div class="item">
-                    <span id="current_speed_display">Current Speed: 0</span>
-                </div>
-                <div class="item">
-                    <input type="number" id="speed_input" placeholder="1-1000" min="1" step="1" max="1000">
-                </div>
-                <div class="item cta">
-                    <button class="small-button cta" onclick="changeSpeed()">
-                        <i class="fa-solid fa-gauge-high"></i>
-                        <span class="small">Set Speed</span>
-                    </button>
-                </div>
-            </div>
-            <!-- LED Control Panel -->
-            <div id="wled-container" class="hidden">
-                <h3>WLED Controller</h3>
-                <iframe id="wled-frame" src="" width="100%" height="400px" frameborder="0"></iframe>
-                <p id="wled-status"></p>
-            </div>
-        </section>
-
-        <section id="settings-container">
-            <div class="header">
-                <h2>Settings</h2>
-                <button id="theme-toggle" class="no-bg">
-                    <i class="fas fa-moon"></i>
-                </button>
-                <button class="close-button no-bg" onclick="toggleSettings()">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            </div>
-            <section>
-                <div class="header">
-                    <h2>Device Connection</h2>
-                </div>
-                <div id="serial_status_container">Status: <span id="serial_status" class="status"> Not connected</span></div>
-                <div id="serial_ports_container">
-                    <label for="serial_ports">Available Ports:</label>
-                    <select id="serial_ports"></select>
-                    <button onclick="connectSerial()" class="cta">
-                        <i class="fa-solid fa-link"></i>
-                        <span>Connect</span>
-                    </button>
-                </div>
-                <div id="serial_ports_buttons" class="button-group">
-                    <button onclick="disconnectSerial()" class="cancel">
-                        <i class="fa-solid fa-link-slash"></i><span>Disconnect</span></button>
-                    <button onclick="restartSerial()" class="warn">
-                        <i class="fa-solid fa-rotate-left"></i><span>Restart</span></button>
-                </div>
-            </section>
-
-            <section class="wled-settings">
-                <div class="header">
-                    <h2>WLED Configuration</h2>
-                </div>
-                <div class="control-group">
-                    <div class="item">
-                        <input type="text" id="wled_ip" placeholder="WLED IP Address">
-                        <button class="cta" onclick="saveWledIp()">
-                            <i class="fa-solid fa-save"></i>
-                            <span>Save</span>
-                        </button>
-                    </div>
-                </div>
-            </section>
-
-            <section class="software version">
-                <div class="header">
-                    <h2>Software Version</h2>
-                </div>
-                <div id="git_version_info">
-                    <div id="current_git_version">Current Version: Unknown</div>
-                    <div id="latest_git_version">Latest Version: Unknown</div>
-                    <div id="update_link" class="hidden"></div>
-                </div>
-                <div class="button-group">
-                    <button id="update-software-btn" class="hidden cta" onclick="updateSoftware()">
-                        <i class="fa-solid fa-download"></i>
-                        <span>Update Software</span>
-                    </button>
-                </div>
-            </section>
-
-            <section class="debug main">
-                <div id="github">
-                <span>Help us improve! <a href="https://github.com/tuanchris/dune-weaver/pulls" target="_blank">Submit a Pull Request</a> or <a
-                        href="https://github.com/tuanchris/dune-weaver/issues/new"
-                        target="_blank">Report a Bug</a>.</span>
-                    <a href="https://github.com/tuanchris/dune-weaver/issues" target="_blank">
-                        <img src="https://img.shields.io/github/issues/tuanchris/dune-weaver?style=flat-square"
-                             alt="GitHub Issues">
-                    </a>
-                </div>
-                <button id="debug_button" onclick="toggleDebugLog()">
-                    <i class="fa-solid fa-bug"></i>
-                </button>
-            </section>
-        </section>
-    </main>
+            <input
+              id="patternSearch"
+              class="form-input block w-full rounded-lg border-gray-300 bg-gray-50 py-2.5 pl-10 pr-3 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm"
+              placeholder="Search patterns..."
+              type="search"
+            />
+          </div>
+          <button
+            id="searchButton"
+            class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          >
+            Search
+          </button>
+        </div>
+        <!-- Add Pattern Button -->
+        <input
+          type="file"
+          id="patternFileInput"
+          accept=".thr"
+          class="hidden"
+        />
+        <button
+          aria-label="Add new pattern"
+          class="inline-flex items-center justify-center rounded-lg h-11 w-11 bg-blue-600 text-white shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ml-2 text-xl font-bold"
+          onclick="document.getElementById('patternFileInput').click()"
+        >
+          <span class="material-icons">add</span>
+        </button>
+      </div>
+    </div>
+  </div>
+  <section class="flex-1 overflow-y-auto px-4 py-6">
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-5 md:gap-6">
+      <!-- All patterns will be populated here -->
+    </div>
+  </section>
 </div>
 
-<!-- Tab Navigation -->
-<nav class="bottom-nav">
-    <section id="currently-playing-container" class="sticky">
-        <div class="header">
-<!--            <button class="open-button no-bg" onclick="openStickySection('currently-playing-container')">^</button>-->
-        </div>
-        <div id="currently-playing-preview">
-            <canvas id="currentlyPlayingCanvas"></canvas>
-        </div>
-        <div id="currently-playing-details">
-            <div class="file-info">
-                <h3 id="currently-playing-file"></h3>
-                <h4 id="next-file"></h4>
-            </div>
-            <p id="currently-playing-position"></p>
-            <div class="play-buttons">
-                <button id="skipCurrent" onclick="skipPattern()" class="cta">
-                    <i class="fa-solid fa-step-forward"></i>
-                </button>
-                <button id="stopCurrent" onclick="stopExecution()" class="cancel">
-                    <i class="fa-solid fa-stop"></i>
-                </button>
-                <button id="pausePlayCurrent" class="cta" onclick="togglePausePlay()">
-                    <i class="fa-solid fa-pause"></i>
-                </button>
-            </div>
-        </div>
-        <div id="progress-container">
-            <progress id="play_progress" value="0" max="100"></progress>
-            <div id="play_progress_text">0%</div>
-        </div>
-    </section>
-    <button class="tab-button" onclick="switchTab('patterns')" id="nav-patterns" data-group="main">Patterns</button>
-    <button class="tab-button" onclick="switchTab('playlists')" id="nav-playlists" data-group="main">Playlists</button>
-    <button class="tab-button" onclick="switchTab('settings')" id="nav-settings" data-group="main">Device</button>
-</nav>
-
-<div id="status_log">
-    <!-- Messages will be appended here -->
+<!-- Status Message Container -->
+<div id="status-message-container" class="fixed top-4 right-4 z-50">
+  <div id="status-message" class="opacity-0 transform -translate-y-2 transition-all duration-300 ease-in-out"></div>
 </div>
 
-<script src="../static/js/main.js"></script>
-<script src="../static/js/image2sand.js"></script>
-<script src="../static/js/image2sand-init.js"></script>
-<script async src="../static/js/opencv.js" onload="console.log('OpenCV.js loaded successfully')"></script>
-</body>
-</html>
+<!-- Pattern Preview Panel -->
+<div id="patternPreviewPanel" class="fixed top-0 bottom-0 right-0 w-full max-w-md transform translate-x-full transition-transform duration-300 ease-in-out z-40 lg:translate-x-0 lg:opacity-0 lg:pointer-events-none">
+  <div class="h-full bg-white shadow-xl">
+    <header class="flex items-center justify-between border-b border-solid border-b-[#f0f2f5] px-6 py-4">
+      <div class="flex items-center gap-3 text-[#111518]">
+        <h2 id="patternPreviewTitle" class="text-[#111518] text-lg font-semibold leading-tight">Pattern Details</h2>
+      </div>
+      <button id="closePreviewPanel" class="flex cursor-pointer items-center justify-center rounded-full p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0b80ee]">
+        <span class="material-icons text-2xl">close</span>
+      </button>
+    </header>
+    <div class="p-6 overflow-y-auto h-[calc(100%-4rem)]">
+      <div class="mb-6 aspect-square w-full overflow-hidden bg-slate-200">
+        <img id="patternPreviewImage" alt="Pattern Preview" class="h-full w-full object-cover" src=""/>
+      </div>
+      <div class="mb-4 flex justify-between text-sm">
+        <div class="flex items-center gap-2">
+          <span class="text-slate-500">First:</span>
+          <span id="firstCoordinate" class="font-semibold text-[#111518]">(0, 0)</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-slate-500">Last:</span>
+          <span id="lastCoordinate" class="font-semibold text-[#111518]">(0, 0)</span>
+        </div>
+      </div>
+      <div class="mb-4">
+        <h3 class="mb-2 text-sm font-semibold text-slate-700">Pre-Execution Action</h3>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
+            Adaptive
+            <input checked="" class="peer sr-only" name="preExecutionAction" type="radio"/>
+          </label>
+          <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
+            Clear From Center
+            <input class="peer sr-only" name="preExecutionAction" type="radio"/>
+          </label>
+          <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
+            Clear From Perimeter
+            <input class="peer sr-only" name="preExecutionAction" type="radio"/>
+          </label>
+          <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
+            Clear Sideway
+            <input class="peer sr-only" name="preExecutionAction" type="radio"/>
+          </label>
+          <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
+            None
+            <input class="peer sr-only" name="preExecutionAction" type="radio"/>
+          </label>
+        </div>
+      </div>
+      <div class="space-y-3">
+        <button id="playPattern" class="flex w-full items-center justify-center gap-2 rounded-lg bg-[#0b80ee] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-opacity-90 focus:outline-none focus:ring-2 focus:ring-[#0b80ee] focus:ring-offset-2">
+          <span class="material-icons text-lg">play_arrow</span>
+          Play
+        </button>
+        <button id="deletePattern" class="flex w-full items-center justify-center gap-2 rounded-lg border border-red-500 px-4 py-2.5 text-sm font-semibold text-red-500 shadow-sm transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+          <span class="material-icons text-lg">delete</span>
+          Delete
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/index.js"></script>
+<script>
+// Add event listener for file input change
+document.getElementById('patternFileInput').addEventListener('change', async function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch('/upload_theta_rho', {
+      method: 'POST',
+      body: formData
+    });
+
+    const result = await response.json();
+    if (result.success) {
+      // Refresh the pattern list
+      loadPatterns();
+      // Clear the file input
+      e.target.value = '';
+    } else {
+      console.error('Failed to upload pattern:', result.error);
+    }
+  } catch (error) {
+    console.error('Error uploading pattern:', error);
+  }
+});
+
+// Handle pattern deletion
+document.getElementById('deletePattern').addEventListener('click', async function() {
+  const selectedPattern = document.querySelector('.pattern-card.selected');
+  if (!selectedPattern) {
+    console.log('No pattern selected');
+    return;
+  }
+
+  const patternName = selectedPattern.dataset.pattern;
+  if (!patternName) {
+    console.log('No pattern name found');
+    return;
+  }
+
+  // Check if it's a custom pattern
+  if (!patternName.startsWith('custom_patterns/')) {
+    console.log('Cannot delete built-in patterns');
+    return;
+  }
+
+  if (!confirm(`Are you sure you want to delete the pattern "${patternName}"?`)) {
+    return;
+  }
+
+  try {
+    console.log('Deleting pattern:', patternName);
+    const response = await fetch('/delete_theta_rho_file', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ file_name: patternName })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    if (result.success) {
+      console.log('Pattern deleted successfully');
+      // Remove the pattern card
+      selectedPattern.remove();
+      // Close the preview panel
+      document.getElementById('patternPreviewPanel').classList.add('translate-x-full');
+      // Clear the preview panel content
+      document.getElementById('patternPreviewImage').src = '';
+      document.getElementById('patternPreviewTitle').textContent = 'Pattern Details';
+      document.getElementById('firstCoordinate').textContent = '(0, 0)';
+      document.getElementById('lastCoordinate').textContent = '(0, 0)';
+      // Refresh the pattern list
+      await loadPatterns();
+    } else {
+      console.error('Failed to delete pattern:', result.error || 'Unknown error');
+      alert('Failed to delete pattern: ' + (result.error || 'Unknown error'));
+    }
+  } catch (error) {
+    console.error('Error deleting pattern:', error);
+    alert('Error deleting pattern: ' + error.message);
+  }
+});
+
+// Update delete button state when pattern is selected
+function updateDeleteButtonState(patternName) {
+  const deleteButton = document.getElementById('deletePattern');
+  if (!deleteButton) return;
+  
+  if (patternName && patternName.startsWith('custom_patterns/')) {
+    deleteButton.classList.remove('delete-button-disabled');
+    deleteButton.disabled = false;
+  } else {
+    deleteButton.classList.add('delete-button-disabled');
+    deleteButton.disabled = true;
+  }
+}
+
+// Override the selectPattern function to update delete button state
+const originalSelectPattern = window.selectPattern;
+window.selectPattern = function(pattern, card) {
+  originalSelectPattern(pattern, card);
+  updateDeleteButtonState(pattern);
+};
+
+// Initialize delete button state when the page loads
+document.addEventListener('DOMContentLoaded', function() {
+  // Initially disable the delete button
+  const deleteButton = document.getElementById('deletePattern');
+  if (deleteButton) {
+    deleteButton.classList.add('delete-button-disabled');
+    deleteButton.disabled = true;
+  }
+});
+
+// Override the loadPatterns function to update delete button state after loading
+const originalLoadPatterns = window.loadPatterns;
+window.loadPatterns = async function() {
+  await originalLoadPatterns();
+  // Update delete button state based on currently selected pattern
+  const selectedPattern = document.querySelector('.pattern-card.selected');
+  if (selectedPattern) {
+    updateDeleteButtonState(selectedPattern.dataset.pattern);
+  } else {
+    updateDeleteButtonState(null);
+  }
+};
+</script>
+{% endblock %}

@@ -148,12 +148,8 @@ async def broadcast_status_update(status: dict):
 
 # FastAPI routes
 @app.get("/")
-async def index():
-    return templates.TemplateResponse("index.html", {"request": {}})
-
-@app.get("/home")
-async def home(request: Request):
-    return templates.TemplateResponse("home.html", {"request": request})
+async def index(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/settings")
 async def settings(request: Request):
@@ -535,13 +531,15 @@ async def run_playlist_endpoint(request: PlaylistRequest):
             raise HTTPException(status_code=404, detail=f"Playlist '{request.playlist_name}' not found")
 
         # Start the playlist execution
-        asyncio.create_task(playlist_manager.run_playlist(
+        success, message = await playlist_manager.run_playlist(
             request.playlist_name,
             pause_time=request.pause_time,
             clear_pattern=request.clear_pattern,
             run_mode=request.run_mode,
             shuffle=request.shuffle
-        ))
+        )
+        if not success:
+            raise HTTPException(status_code=409, detail=message)
 
         return {"message": f"Started playlist: {request.playlist_name}"}
     except Exception as e:

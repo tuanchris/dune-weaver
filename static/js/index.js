@@ -120,16 +120,15 @@ function addPatternToBatch(pattern, element) {
         if (previewData && !previewData.error) {
             const img = imageCache.get(previewData.preview_url);
             if (img) {
-                element.style.backgroundImage = `url('${previewData.preview_url}')`;
-                element.classList.remove('bg-slate-100');
+                element.innerHTML = `<img src="${previewData.preview_url}" alt="Pattern Preview" class="w-full h-full object-contain" />`;
             }
         }
         return;
     }
 
     // Add loading indicator - ensure it's visible
-    if (!element.style.backgroundImage) {
-        element.innerHTML = '<div class="absolute inset-0 flex items-center justify-center bg-slate-100 rounded-full"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-500"></div></div>';
+    if (!element.querySelector('img')) {
+        element.innerHTML = '<div class="absolute inset-0 flex items-center justify-center"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-500"></div></div>';
     }
 
     // Add to pending batch
@@ -181,8 +180,7 @@ async function processPendingBatch() {
             // Update UI
             const img = imageCache.get(cachedPreview.preview_url);
             if (img && element) {
-                element.innerHTML = ''; // Remove loading indicator
-                element.style.backgroundImage = `url('${cachedPreview.preview_url}')`;
+                element.innerHTML = `<img src="${cachedPreview.preview_url}" alt="Pattern Preview" class="w-full h-full object-contain" />`;
             }
         } else {
             stillNeedLoading.push(pattern);
@@ -221,8 +219,7 @@ async function processPendingBatch() {
                     
                     const img = imageCache.get(data.preview_url);
                     if (img && element) {
-                        element.innerHTML = ''; // Remove loading indicator
-                        element.style.backgroundImage = `url('${data.preview_url}')`;
+                        element.innerHTML = `<img src="${data.preview_url}" alt="Pattern Preview" class="w-full h-full object-contain" />`;
                     }
                 } else {
                     previewCache.set(pattern, { error: true });
@@ -373,18 +370,18 @@ function displayPatternBatch() {
 // Create a pattern card element
 function createPatternCard(pattern) {
     const card = document.createElement('div');
-    card.className = 'pattern-card flex flex-col items-center gap-3';
+    card.className = 'pattern-card flex flex-col items-center gap-3 bg-gray-50';
     card.dataset.pattern = pattern; // Add pattern data to the card itself
     
-    // Create preview container with proper styling for loading indicator
-    const previewContainer = document.createElement('div');
-    previewContainer.className = 'w-32 h-32 rounded-full bg-center bg-no-repeat bg-cover shadow-md relative bg-slate-100';
-    previewContainer.dataset.pattern = pattern;
-    
-    // Create pattern name
-    const patternName = document.createElement('p');
-    patternName.className = 'text-gray-700 text-sm font-medium text-center truncate w-full';
-    patternName.textContent = pattern.replace('.thr', '').split('/').pop();
+   // Create preview container with proper styling for loading indicator
+   const previewContainer = document.createElement('div');
+   previewContainer.className = 'w-32 h-32 rounded-full bg-center bg-no-repeat bg-cover shadow-md relative bg-slate-100';
+   previewContainer.dataset.pattern = pattern;
+   
+   // Create pattern name
+   const patternName = document.createElement('p');
+   patternName.className = 'text-gray-700 text-sm font-medium text-center truncate w-full';
+   patternName.textContent = pattern.replace('.thr', '').split('/').pop();
 
     // Add click handler
     card.onclick = () => selectPattern(pattern, card);

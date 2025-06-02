@@ -1,8 +1,83 @@
 {% extends "base.html" %} {% block title %}Settings - Kinetic Sand Table{%
-endblock %} {% block content %}
-<div class="layout-content-container flex flex-col w-full max-w-4xl gap-8">
+endblock %}
+
+{% block additional_styles %}
+/* Dark mode styles for settings page */
+.dark .bg-white {
+  background-color: #262626;
+}
+.dark .text-slate-900 {
+  color: #e5e5e5;
+}
+.dark .text-slate-800 {
+  color: #e5e5e5;
+}
+.dark .text-slate-700 {
+  color: #d1d5db;
+}
+.dark .text-slate-600 {
+  color: #9ca3af;
+}
+.dark .text-slate-500 {
+  color: #9ca3af;
+}
+.dark .border-slate-200 {
+  border-color: #404040;
+}
+.dark .border-slate-300 {
+  border-color: #404040;
+}
+.dark .divide-slate-100 {
+  border-color: #404040;
+}
+.dark .bg-slate-50 {
+  background-color: #262626;
+}
+.dark .hover\:bg-slate-50:hover {
+  background-color: #404040;
+}
+.dark .bg-slate-100 {
+  background-color: #404040;
+}
+.dark .form-input {
+  background-color: #262626;
+  border-color: #404040;
+  color: #e5e5e5;
+}
+.dark .form-input::placeholder {
+  color: #9ca3af;
+}
+.dark .form-input:focus {
+  border-color: #0c7ff2;
+  ring-color: #0c7ff2;
+}
+.dark .form-select {
+  background-color: #262626;
+  border-color: #404040;
+  color: #e5e5e5;
+}
+.dark .form-select:focus {
+  border-color: #0c7ff2;
+  ring-color: #0c7ff2;
+}
+.dark .focus\:ring-sky-500:focus {
+  ring-color: #0c7ff2;
+}
+.dark .focus\:border-sky-500:focus {
+  border-color: #0c7ff2;
+}
+.dark .hover\:text-gray-700:hover {
+  color: #e5e5e5;
+}
+.dark .text-gray-400 {
+  color: #9ca3af;
+}
+{% endblock %}
+
+{% block content %}
+<div class="layout-content-container flex flex-col w-full max-w-4xl gap-8 pt-2 pb-[75px]">
   <div
-    class="flex flex-wrap justify-between items-center gap-4 p-4 bg-white rounded-xl shadow-sm mt-8"
+    class="flex flex-wrap justify-between items-center p-4 bg-white rounded-xl shadow-sm mt-8"
   >
     <h1
       class="text-slate-900 tracking-tight text-2xl sm:text-3xl font-bold leading-tight"

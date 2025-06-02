@@ -174,6 +174,12 @@ async function savePreviewToCache(pattern, previewData) {
     try {
         if (!previewCacheDB) await initPreviewCacheDB();
         
+        // Validate preview data before attempting to fetch
+        if (!previewData || !previewData.preview_url) {
+            logMessage(`Invalid preview data for ${pattern}, skipping cache save`, LOG_TYPE.WARNING);
+            return;
+        }
+        
         // Convert preview URL to blob for size calculation
         const response = await fetch(previewData.preview_url);
         const blob = await response.blob();
@@ -390,11 +396,10 @@ function addPatternToBatch(pattern, element) {
     // Check in-memory cache first
     if (previewCache.has(pattern)) {
         const previewData = previewCache.get(pattern);
-        if (previewData && !previewData.error) {
+        if (previewData && !previewData.error && previewData.preview_url) {
             const previewContainer = element.querySelector('.pattern-preview');
             if (previewContainer) {
-                previewContainer.style.backgroundImage = `url('${previewData.preview_url}')`;
-                previewContainer.classList.remove('bg-slate-100');
+                previewContainer.innerHTML = `<img src="${previewData.preview_url}" alt="Pattern Preview" class="w-full h-full object-cover rounded-full" />`;
             }
         }
         return;
@@ -445,7 +450,7 @@ async function processPendingBatch() {
         elementsMap.set(pattern, element);
         
         const cachedPreview = await getPreviewFromCache(pattern);
-        if (cachedPreview && !cachedPreview.error) {
+        if (cachedPreview && !cachedPreview.error && cachedPreview.preview_url) {
             // Add to in-memory cache
             previewCache.set(pattern, cachedPreview);
             
@@ -453,8 +458,7 @@ async function processPendingBatch() {
             const previewContainer = element.querySelector('.pattern-preview');
             if (previewContainer) {
                 previewContainer.innerHTML = ''; // Remove loading indicator
-                previewContainer.style.backgroundImage = `url('${cachedPreview.preview_url}')`;
-                previewContainer.classList.remove('bg-slate-100');
+                previewContainer.innerHTML = `<img src="${cachedPreview.preview_url}" alt="Pattern Preview" class="w-full h-full object-cover rounded-full" />`;
             }
         } else {
             stillNeedLoading.push(pattern);
@@ -481,15 +485,14 @@ async function processPendingBatch() {
                 const element = elementsMap.get(pattern);
                 const previewContainer = element?.querySelector('.pattern-preview');
                 
-                if (data && !data.error) {
+                if (data && !data.error && data.preview_url) {
                     // Cache both in memory and IndexedDB
                     previewCache.set(pattern, data);
                     await savePreviewToCache(pattern, data);
                     
                     if (previewContainer) {
                         previewContainer.innerHTML = ''; // Remove loading indicator
-                        previewContainer.style.backgroundImage = `url('${data.preview_url}')`;
-                        previewContainer.classList.remove('bg-slate-100');
+                        previewContainer.innerHTML = `<img src="${data.preview_url}" alt="Pattern Preview" class="w-full h-full object-cover rounded-full" />`;
                     }
                 } else {
                     previewCache.set(pattern, { error: true });
@@ -590,7 +593,7 @@ function displayPlaylists() {
 
     if (allPlaylists.length === 0) {
         playlistsNav.innerHTML = `
-            <div class="flex items-center justify-center py-8 text-slate-500">
+            <div class="flex items-center justify-center py-8 text-slate-500 dark:text-slate-400">
                 <span class="text-sm">No playlists found</span>
             </div>
         `;
@@ -599,11 +602,11 @@ function displayPlaylists() {
 
     allPlaylists.forEach(playlist => {
         const playlistItem = document.createElement('a');
-        playlistItem.className = 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors duration-150 cursor-pointer';
+        playlistItem.className = 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-100 transition-colors duration-150 cursor-pointer';
         playlistItem.innerHTML = `
-            <span class="material-icons text-lg text-slate-500">queue_music</span>
+            <span class="material-icons text-lg text-slate-500 dark:text-slate-400">queue_music</span>
             <span class="text-sm font-medium flex-1 truncate">${playlist}</span>
-            <span class="material-icons text-lg text-slate-400">chevron_right</span>
+            <span class="material-icons text-lg text-slate-400 dark:text-slate-500">chevron_right</span>
         `;
         
         playlistItem.addEventListener('click', () => selectPlaylist(playlist, playlistItem));
@@ -615,17 +618,30 @@ function displayPlaylists() {
 async function selectPlaylist(playlistName, element) {
     // Remove active state from all playlist items
     document.querySelectorAll('#playlistsNav a').forEach(item => {
-        item.classList.remove('text-slate-900', 'bg-slate-100', 'font-semibold');
-        item.classList.add('text-slate-700', 'font-medium');
+        item.classList.remove('text-slate-900', 'dark:text-slate-100', 'bg-slate-100', 'dark:bg-slate-700', 'font-semibold');
+        item.classList.add('text-slate-700', 'dark:text-slate-300', 'font-medium');
     });
 
     // Add active state to selected item
-    element.classList.remove('text-slate-700', 'font-medium');
-    element.classList.add('text-slate-900', 'bg-slate-100', 'font-semibold');
+    element.classList.remove('text-slate-700', 'dark:text-slate-300', 'font-medium');
+    element.classList.add('text-slate-900', 'dark:text-slate-100', 'bg-slate-100', 'dark:bg-slate-700', 'font-semibold');
 
     // Update current playlist
     currentPlaylist = playlistName;
-    document.getElementById('currentPlaylistTitle').textContent = playlistName;
+    
+    // Update header with playlist name and delete button
+    const header = document.getElementById('currentPlaylistTitle');
+    header.innerHTML = `
+        <div class="flex items-center gap-3">
+            <span class="truncate">${playlistName}</span>
+            <button id="deletePlaylistBtn" class="p-1 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/20 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-all duration-150" title="Delete playlist">
+                <span class="material-icons text-lg">delete</span>
+            </button>
+        </div>
+    `;
+    
+    // Add delete button event listener
+    document.getElementById('deletePlaylistBtn').addEventListener('click', () => deletePlaylist(playlistName));
 
     // Enable buttons
     document.getElementById('addPatternsBtn').disabled = false;
@@ -663,7 +679,7 @@ async function displayPlaylistPatterns(patterns) {
     
     if (patterns.length === 0) {
         patternsGrid.innerHTML = `
-            <div class="flex items-center justify-center col-span-full py-12 text-slate-500">
+            <div class="flex items-center justify-center col-span-full py-12 text-slate-500 dark:text-slate-400">
                 <span class="text-sm">No patterns in this playlist</span>
             </div>
         `;
@@ -693,13 +709,12 @@ function createPatternCard(pattern, showRemove = false) {
     // Only set preview image if already available in memory cache
     const previewData = previewCache.get(pattern);
     if (previewData && !previewData.error) {
-        previewContainer.style.backgroundImage = `url('${previewData.preview_url}')`;
-        previewContainer.classList.remove('bg-slate-100');
+        previewContainer.innerHTML = `<img src="${previewData.preview_url}" alt="Pattern Preview" class="w-full h-full object-cover rounded-full" />`;
     }
     // Note: No more eager loading here - let intersection observer handle it
 
     const patternName = document.createElement('p');
-    patternName.className = 'text-sm text-slate-700 group-hover:text-slate-900 font-medium truncate text-center';
+    patternName.className = 'text-sm text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-slate-100 font-medium truncate text-center';
     patternName.textContent = pattern.replace('.thr', '').split('/').pop();
 
     card.appendChild(previewContainer);
@@ -887,12 +902,12 @@ function displayAvailablePatterns() {
         card.dataset.pattern = pattern;
         
         card.innerHTML = `
-            <div class="w-full bg-center bg-no-repeat aspect-square bg-cover rounded-lg border border-slate-200 relative pattern-preview bg-slate-100">
-                <div class="absolute top-2 right-2 size-6 rounded-full bg-white shadow-md opacity-0 transition-opacity duration-150 flex items-center justify-center">
-                    <span class="material-icons text-sm text-slate-600">add</span>
+            <div class="w-full bg-center bg-no-repeat aspect-square bg-cover rounded-lg border border-slate-200 dark:border-slate-700 relative pattern-preview bg-slate-100 dark:bg-slate-800">
+                <div class="absolute top-2 right-2 size-6 rounded-full bg-white dark:bg-slate-700 shadow-md opacity-0 transition-opacity duration-150 flex items-center justify-center">
+                    <span class="material-icons text-sm text-slate-600 dark:text-slate-300">add</span>
                 </div>
             </div>
-            <p class="text-xs text-slate-700 font-medium truncate text-center">${pattern.replace('.thr', '').split('/').pop()}</p>
+            <p class="text-xs text-slate-700 dark:text-slate-300 font-medium truncate text-center">${pattern.replace('.thr', '').split('/').pop()}</p>
         `;
 
         const previewContainer = card.querySelector('.pattern-preview');
@@ -901,8 +916,7 @@ function displayAvailablePatterns() {
         // Only set preview image if already available in memory cache
         const previewData = previewCache.get(pattern);
         if (previewData && !previewData.error) {
-            previewContainer.style.backgroundImage = `url('${previewData.preview_url}')`;
-            previewContainer.classList.remove('bg-slate-100');
+            previewContainer.innerHTML = `<img src="${previewData.preview_url}" alt="Pattern Preview" class="w-full h-full object-cover rounded-full" />`;
         }
         
         // Set up lazy loading for ALL patterns (no more special handling for first 6)
@@ -1014,8 +1028,12 @@ async function runPlaylist() {
                 }
             } catch (e) {}
         } else {
-            const data = await response.json();
-            throw new Error(data.detail || 'Failed to run playlist');
+            let errorMsg = 'Failed to run playlist';
+            try {
+                const data = await response.json();
+                if (data.detail) errorMsg = data.detail;
+            } catch (e) {}
+            showStatusMessage(errorMsg, 'error');
         }
     } catch (error) {
         logMessage(`Error running playlist: ${error.message}`, LOG_TYPE.ERROR);
@@ -1057,11 +1075,73 @@ async function createNewPlaylist() {
     }
 }
 
+// Delete playlist
+async function deletePlaylist(playlistName) {
+    if (!confirm(`Are you sure you want to delete the playlist "${playlistName}"?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/delete_playlist', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                playlist_name: playlistName
+            })
+        });
+
+        if (response.ok) {
+            showStatusMessage(`Playlist "${playlistName}" deleted successfully`, 'success');
+            
+            // If the deleted playlist was selected, clear the selection
+            if (currentPlaylist === playlistName) {
+                currentPlaylist = null;
+                document.getElementById('currentPlaylistTitle').textContent = 'Select a Playlist';
+                document.getElementById('addPatternsBtn').disabled = true;
+                document.getElementById('runPlaylistBtn').disabled = true;
+                document.getElementById('playbackSettings').classList.add('hidden');
+                document.getElementById('patternsGrid').innerHTML = `
+                    <div class="flex items-center justify-center col-span-full py-12 text-slate-500 dark:text-slate-400">
+                        <span class="text-sm">Select a playlist to view its patterns</span>
+                    </div>
+                `;
+            }
+            
+            // Reload playlists
+            await loadPlaylists();
+        } else {
+            const data = await response.json();
+            throw new Error(data.detail || 'Failed to delete playlist');
+        }
+    } catch (error) {
+        logMessage(`Error deleting playlist: ${error.message}`, LOG_TYPE.ERROR);
+        showStatusMessage('Failed to delete playlist', 'error');
+    }
+}
+
 // Setup event listeners
 function setupEventListeners() {
     // Add playlist button
     document.getElementById('addPlaylistBtn').addEventListener('click', () => {
-        document.getElementById('addPlaylistModal').classList.remove('hidden');
+        const modal = document.getElementById('addPlaylistModal');
+        const input = document.getElementById('newPlaylistName');
+        
+        // Show modal first
+        modal.classList.remove('hidden');
+        
+        // Focus handling
+        const focusInput = () => {
+            if (input) {
+                input.focus();
+                input.select();
+            }
+        };
+
+        // Try multiple approaches to ensure focus
+        focusInput();
+        requestAnimationFrame(focusInput);
+        setTimeout(focusInput, 50);
+        setTimeout(focusInput, 100);
     });
 
     // Add patterns button
@@ -1145,9 +1225,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Load playlists
         await loadPlaylists();
         
+        // Check serial connection status
+        await checkSerialStatus();
+        
         logMessage('Playlists page initialized successfully', LOG_TYPE.SUCCESS);
     } catch (error) {
         logMessage(`Error during initialization: ${error.message}`, LOG_TYPE.ERROR);
         showStatusMessage('Failed to initialize playlists page', 'error');
     }
-}); 
+});
+
+// Check serial connection status
+async function checkSerialStatus() {
+    try {
+        const response = await fetch('/serial_status');
+        if (response.ok) {
+            const data = await response.json();
+            const statusDot = document.getElementById('connectionStatusDot');
+            if (statusDot) {
+                statusDot.className = `inline-block size-2 rounded-full ml-2 align-middle ${
+                    data.connected ? 'bg-green-500' : 'bg-red-500'
+                }`;
+            }
+        }
+    } catch (error) {
+        logMessage(`Error checking serial status: ${error.message}`, LOG_TYPE.ERROR);
+    }
+} 
