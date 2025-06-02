@@ -38,8 +38,8 @@
       <h2 class="text-gray-900 text-3xl font-bold leading-tight tracking-tight">
         Browse Patterns
       </h2>
-      <div class="relative w-full sm:w-auto">
-        <div class="flex gap-2">
+      <div class="relative w-full sm:w-auto flex gap-2 items-center">
+        <div class="flex gap-2 flex-1">
           <div class="relative flex-1">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
               <span class="material-icons text-gray-400">search</span>
@@ -58,50 +58,20 @@
             Search
           </button>
         </div>
-      </div>
-    </div>
-    <div class="mt-4">
-      <div class="flex flex-wrap gap-4">
-        <div class="relative">
-          <label class="block text-sm font-medium text-gray-700 mb-1" for="category-filter">Category</label>
-          <select
-            class="form-select block w-full sm:w-48 rounded-lg border-gray-300 bg-white py-2 pl-3 pr-10 text-gray-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm"
-            id="category-filter"
-            name="category-filter"
-          >
-            <option>All Categories</option>
-            <option>Abstract</option>
-            <option>Geometric</option>
-            <option>Nature</option>
-            <option>Cosmic</option>
-            <option>Zen</option>
-          </select>
-        </div>
-        <div class="relative">
-          <label class="block text-sm font-medium text-gray-700 mb-1" for="tag-filter">Tag</label>
-          <select
-            class="form-select block w-full sm:w-48 rounded-lg border-gray-300 bg-white py-2 pl-3 pr-10 text-gray-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm"
-            id="tag-filter"
-            name="tag-filter"
-          >
-            <option>All Tags</option>
-            <option>Swirls</option>
-            <option>Maze</option>
-            <option>Waves</option>
-            <option>Flow</option>
-            <option>Garden</option>
-            <option>Mountains</option>
-            <option>Forest</option>
-            <option>Galaxy</option>
-            <option>Dunes</option>
-            <option>City</option>
-            <option>Floral</option>
-            <option>Mandala</option>
-            <option>Tribal</option>
-            <option>Liquid</option>
-            <option>Ripples</option>
-          </select>
-        </div>
+        <!-- Add Pattern Button -->
+        <input
+          type="file"
+          id="patternFileInput"
+          accept=".thr"
+          class="hidden"
+        />
+        <button
+          aria-label="Add new pattern"
+          class="inline-flex items-center justify-center rounded-lg h-11 w-11 bg-blue-600 text-white shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ml-2 text-xl font-bold"
+          onclick="document.getElementById('patternFileInput').click()"
+        >
+          <span class="material-icons">add</span>
+        </button>
       </div>
     </div>
   </div>
@@ -110,22 +80,11 @@
       <!-- All patterns will be populated here -->
     </div>
   </section>
-  <div class="fixed bottom-16 right-6 sm:bottom-20 sm:right-10 z-20">
-    <!-- Hidden file input -->
-    <input
-      type="file"
-      id="patternFileInput"
-      accept=".thr"
-      class="hidden"
-    />
-    <button
-      aria-label="Add new pattern"
-      class="flex items-center justify-center rounded-full h-14 w-14 bg-blue-600 text-white shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-      onclick="document.getElementById('patternFileInput').click()"
-    >
-      <span class="material-icons text-3xl">add</span>
-    </button>
-  </div>
+</div>
+
+<!-- Status Message Container -->
+<div id="status-message-container" class="fixed top-4 right-4 z-50">
+  <div id="status-message" class="opacity-0 transform -translate-y-2 transition-all duration-300 ease-in-out"></div>
 </div>
 
 <!-- Pattern Preview Panel -->

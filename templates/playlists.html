@@ -3,27 +3,167 @@
 {% block title %}Playlists - Kinetic Sand Table{% endblock %}
 
 {% block content %}
-<div class="layout-content-container flex flex-col w-full max-w-4xl gap-8">
-  <div class="flex flex-wrap justify-between items-center gap-4 p-4 bg-white rounded-xl shadow-sm">
-    <h1 class="text-slate-900 tracking-tight text-2xl sm:text-3xl font-bold leading-tight">
-      Playlists
-    </h1>
-  </div>
-  <section class="bg-white rounded-xl shadow-sm overflow-hidden">
-    <div class="px-6 py-5 space-y-4">
-      <div class="flex justify-end">
-        <button
-          class="flex items-center justify-center gap-2 min-w-[100px] max-w-[480px] cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors"
-        >
-          <span class="material-icons text-lg">add</span>
-          <span class="truncate">New Playlist</span>
-        </button>
+<div class="flex flex-1 justify-center p-6 gap-6 bg-slate-50" style="min-height: calc(100vh - 72px - 64px);">
+  <!-- Sidebar for Playlists -->
+  <aside class="layout-content-container flex flex-col w-80 bg-white rounded-xl shadow-sm border border-slate-200" style="height: calc(100vh - 72px - 64px - 48px);">
+    <div class="flex items-center justify-between gap-3 p-4 border-b border-slate-200 flex-shrink-0">
+      <h3 class="text-slate-900 text-xl font-semibold leading-tight">Playlists</h3>
+      <button id="addPlaylistBtn" class="flex items-center justify-center size-8 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors duration-150">
+        <span class="material-icons text-xl">add</span>
+      </button>
+    </div>
+    <nav id="playlistsNav" class="flex-1 overflow-y-auto p-2 space-y-1">
+      <!-- Playlists will be populated here -->
+      <div class="flex items-center justify-center py-8 text-slate-500">
+        <span class="text-sm">Loading playlists...</span>
       </div>
-      <div class="grid grid-cols-1 gap-4">
-        <!-- Playlist items will be populated here -->
+    </nav>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="layout-content-container flex flex-col flex-1 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden" style="height: calc(100vh - 72px - 64px - 48px);">
+    <header class="flex items-center justify-between gap-4 p-4 border-b border-slate-200 flex-shrink-0 bg-white z-10">
+      <h1 id="currentPlaylistTitle" class="text-slate-900 text-2xl font-semibold leading-tight truncate">Select a Playlist</h1>
+      <button id="addPatternsBtn" class="flex items-center gap-2 min-w-[84px] max-w-[480px] cursor-pointer justify-center overflow-hidden rounded-full h-9 px-4 bg-[#dce8f3] text-slate-800 hover:bg-[#cadbed] text-sm font-medium leading-normal transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+        <span class="material-icons text-lg">add_photo_alternate</span>
+        <span class="truncate">Add Patterns</span>
+      </button>
+    </header>
+    
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <!-- Patterns Grid - Scrollable -->
+      <div class="flex-1 overflow-y-auto">
+        <div id="patternsGrid" class="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-x-4 gap-y-6 p-4">
+          <div class="flex items-center justify-center col-span-full py-12 text-slate-500">
+            <span class="text-sm">Select a playlist to view its patterns</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Playback Settings - Fixed at bottom -->
+      <div id="playbackSettings" class="border-t border-slate-200 bg-white flex-shrink-0 hidden">
+        <div class="px-4 pt-6 pb-4">
+          <h2 class="text-slate-900 text-xl font-semibold leading-tight mb-4">Playback Settings</h2>
+          <div class="space-y-5">
+            <div>
+              <p class="text-slate-700 text-sm font-medium mb-2">Run Playlist</p>
+              <div class="flex flex-wrap gap-3">
+                <label class="text-sm font-medium leading-normal flex items-center justify-center rounded-lg border border-slate-300 px-4 h-10 text-slate-700 has-[:checked]:border-[#dce8f3] has-[:checked]:bg-[#dce8f3] has-[:checked]:text-slate-800 has-[:checked]:shadow-sm relative cursor-pointer transition-all duration-150 hover:border-slate-400">
+                  Once
+                  <input class="invisible absolute" name="run_playlist" type="radio" value="single" checked/>
+                </label>
+                <label class="text-sm font-medium leading-normal flex items-center justify-center rounded-lg border border-slate-300 px-4 h-10 text-slate-700 has-[:checked]:border-[#dce8f3] has-[:checked]:bg-[#dce8f3] has-[:checked]:text-slate-800 has-[:checked]:shadow-sm relative cursor-pointer transition-all duration-150 hover:border-slate-400">
+                  Loop
+                  <input class="invisible absolute" name="run_playlist" type="radio" value="indefinite"/>
+                </label>
+              </div>
+              <div class="mt-3 flex items-center gap-2">
+                <input id="shuffleCheckbox" type="checkbox" class="form-checkbox h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                <label for="shuffleCheckbox" class="text-sm font-medium text-slate-700 select-none cursor-pointer">Shuffle</label>
+              </div>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="flex flex-col">
+                  <p class="text-slate-700 text-sm font-medium leading-normal pb-2">Between patterns (Pause Time in seconds)</p>
+                  <input id="pauseTimeInput" class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#dce8f3] border border-slate-300 bg-white focus:border-[#b0c7e0] h-10 placeholder:text-slate-400 px-3 text-sm font-normal leading-normal" type="number" value="5" min="0" step="1"/>
+                </label>
+              </div>
+              <div>
+                <label class="flex flex-col">
+                  <p class="text-slate-700 text-sm font-medium leading-normal pb-2">Clear Pattern Before Next</p>
+                  <select id="clearPatternSelect" class="form-select w-full text-sm rounded-md border-slate-300 shadow-sm focus:border-[#b0c7e0] focus:ring focus:ring-[#dce8f3] focus:ring-opacity-50 text-slate-700 h-10">
+                    <option value="adaptive">Adaptive</option>
+                    <option value="center">Clear from Center</option>
+                    <option value="perimeter">Clear from Perimeter</option>
+                    <option value="sideway">Clear Sideway</option>
+                    <option value="none">None</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <div class="pt-2">
+              <button id="runPlaylistBtn" class="flex items-center gap-2 min-w-[84px] w-full max-w-xs cursor-pointer justify-center overflow-hidden rounded-lg h-10 px-4 bg-slate-700 text-white hover:bg-slate-800 text-sm font-medium leading-normal transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                <span class="material-icons text-lg">play_arrow</span>
+                <span class="truncate">Run Playlist</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-  </section>
+  </main>
+</div>
+
+<!-- Status Message Container -->
+<div id="status-message-container" class="fixed top-4 right-4 z-50">
+  <div id="status-message" class="opacity-0 transform -translate-y-2 transition-all duration-300 ease-in-out"></div>
+</div>
+
+<!-- Add Playlist Modal -->
+<div id="addPlaylistModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+  <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+    <h3 class="text-lg font-semibold text-slate-900 mb-4">Create New Playlist</h3>
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Playlist Name</label>
+        <input id="newPlaylistName" type="text" class="form-input w-full rounded-lg border-slate-300 focus:border-sky-500 focus:ring-sky-500" placeholder="Enter playlist name">
+      </div>
+      <div class="flex gap-3 justify-end">
+        <button id="cancelPlaylistBtn" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors duration-150">Cancel</button>
+        <button id="createPlaylistBtn" class="px-4 py-2 text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-lg transition-colors duration-150">Create</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Patterns Modal -->
+<div id="addPatternsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+  <div class="bg-white rounded-lg p-6 w-full max-w-4xl mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+    <div class="flex items-center justify-between mb-4 flex-shrink-0">
+      <h3 class="text-lg font-semibold text-slate-900">Add Patterns to Playlist</h3>
+    </div>
+    
+    <!-- Search Bar -->
+    <div class="mb-4 flex-shrink-0">
+      <div class="relative">
+        <span class="material-icons absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-lg">search</span>
+        <input 
+          id="patternSearchInput" 
+          type="text" 
+          placeholder="Search patterns..." 
+          class="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-sm"
+        />
+        <button id="clearSearchBtn" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 hidden">
+          <span class="material-icons text-lg">clear</span>
+        </button>
+      </div>
+    </div>
+    
+    <div class="flex-1 overflow-y-auto">
+      <div id="availablePatternsGrid" class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4 p-2">
+        <!-- Available patterns will be populated here -->
+      </div>
+      
+      <!-- Loading indicator -->
+      <div id="patternsLoadingIndicator" class="flex items-center justify-center py-12 text-slate-500 hidden">
+        <div class="flex items-center gap-3">
+          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-slate-500"></div>
+          <span class="text-sm">Loading patterns...</span>
+        </div>
+      </div>
+      
+      <!-- No results message -->
+      <div id="noResultsMessage" class="flex items-center justify-center py-12 text-slate-500 hidden">
+        <span class="text-sm">No patterns found matching your search</span>
+      </div>
+    </div>
+    
+    <div class="flex gap-3 justify-end mt-4 pt-4 border-t border-slate-200 flex-shrink-0">
+      <button id="cancelAddPatternsBtn" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors duration-150">Cancel</button>
+      <button id="confirmAddPatternsBtn" class="px-4 py-2 text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-lg transition-colors duration-150">Add Selected</button>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
