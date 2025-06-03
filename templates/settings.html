@@ -124,25 +124,25 @@ endblock %}
           <span class="text-slate-700 text-sm font-medium leading-normal"
             >Available Serial Ports</span
           >
-          <select
-            id="portSelect"
-            class="form-select flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-12 placeholder:text-slate-400 px-4 text-base font-normal leading-normal transition-colors"
-          >
-            <option value="">Select a port...</option>
-          </select>
-          <p class="text-xs text-slate-500">
+          <div class="flex gap-3 items-center">
+            <select
+              id="portSelect"
+              class="form-select flex-1 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-medium leading-normal transition-colors "
+            >
+              <option value="">Select a port...</option>
+            </select>
+            <button
+              id="connectButton"
+              class="flex items-center justify-center gap-2 min-w-[100px] cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors flex-shrink-0"
+            >
+              <span class="material-icons text-lg">cable</span>
+              <span class="truncate">Connect</span>
+            </button>
+          </div>
+          <p class="text-xs text-slate-500 mt-2">
             Select a port and click 'Connect' to establish a connection.
           </p>
         </label>
-        <div class="flex justify-end">
-          <button
-            id="connectButton"
-            class="flex items-center justify-center gap-2 min-w-[100px] max-w-[480px] cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors"
-          >
-            <span class="material-icons text-lg">cable</span>
-            <span class="truncate">Connect</span>
-          </button>
-        </div>
       </div>
     </div>
   </section>
@@ -157,35 +157,35 @@ endblock %}
         <span class="text-slate-700 text-sm font-medium leading-normal"
           >IP Address</span
         >
-        <div class="relative">
-          <input
-            id="wledIpInput"
-            class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-12 placeholder:text-slate-400 px-4 text-base font-normal leading-normal transition-colors"
-            placeholder="e.g., 192.168.1.100"
-            value=""
-          />
+        <div class="flex gap-3 items-center">
+          <div class="relative flex-1">
+            <input
+              id="wledIpInput"
+              class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 pr-10 text-base font-normal leading-normal transition-colors"
+              placeholder="e.g., 192.168.1.100"
+              value=""
+            />
+            <button
+              type="button"
+              onclick="document.getElementById('wledIpInput').value='';"
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+              aria-label="Clear WLED IP"
+            >
+              <span class="material-icons">close</span>
+            </button>
+          </div>
           <button
-            type="button"
-            onclick="document.getElementById('wledIpInput').value='';"
-            class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
-            aria-label="Clear WLED IP"
+            id="saveWledConfig"
+            class="flex items-center justify-center gap-2 min-w-[140px] cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors flex-shrink-0"
           >
-            <span class="material-icons">close</span>
+            <span class="material-icons text-lg">save</span>
+            <span class="truncate">Save Configuration</span>
           </button>
         </div>
-        <p class="text-xs text-slate-500">
+        <p class="text-xs text-slate-500 mt-2">
           Enter the IP address of your WLED controller.
         </p>
       </label>
-      <div class="flex justify-end">
-        <button
-          id="saveWledConfig"
-          class="flex items-center justify-center gap-2 min-w-[100px] max-w-[480px] cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors"
-        >
-          <span class="material-icons text-lg">save</span>
-          <span class="truncate">Save Configuration</span>
-        </button>
-      </div>
     </div>
   </section>
   <section class="bg-white rounded-xl shadow-sm overflow-hidden">

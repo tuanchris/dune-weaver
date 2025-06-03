@@ -153,67 +153,71 @@ function setWledButtonState(isSet) {
 
 // Initialize settings page
 document.addEventListener('DOMContentLoaded', async () => {
-    // Hide the entire content until we have the initial status
-    const contentContainer = document.querySelector('.layout-content-container');
-    if (contentContainer) {
-        contentContainer.style.visibility = 'hidden';
-    }
-
-    try {
-        // Check connection status first
-        const statusResponse = await fetch('/serial_status');
-        if (statusResponse.ok) {
-            const statusData = await statusResponse.json();
-            setCachedConnectionStatus(statusData);
-            updateConnectionUI(statusData);
-        }
-
+    // Initialize UI with default disconnected state
+    updateConnectionUI({ connected: false });
+    
+    // Load all data asynchronously
+    Promise.all([
+        // Check connection status
+        fetch('/serial_status').then(response => response.json()).catch(() => ({ connected: false })),
+        
         // Load current WLED IP
-        const wledResponse = await fetch('/get_wled_ip');
-        if (wledResponse.ok) {
-            const data = await wledResponse.json();
-            if (data.wled_ip) {
-                document.getElementById('wledIpInput').value = data.wled_ip;
-                setWledButtonState(true);
-            } else {
-                setWledButtonState(false);
-            }
+        fetch('/get_wled_ip').then(response => response.json()).catch(() => ({ wled_ip: null })),
+        
+        // Load current version and check for updates
+        fetch('/check_software_update').then(response => response.json()).catch(() => ({ current_version: '1.0.0', update_available: false })),
+        
+        // Load available serial ports
+        fetch('/list_serial_ports').then(response => response.json()).catch(() => [])
+    ]).then(([statusData, wledData, updateData, ports]) => {
+        // Update connection status
+        setCachedConnectionStatus(statusData);
+        updateConnectionUI(statusData);
+        
+        // Update WLED IP
+        if (wledData.wled_ip) {
+            document.getElementById('wledIpInput').value = wledData.wled_ip;
+            setWledButtonState(true);
         } else {
             setWledButtonState(false);
         }
+        
+        // Update version display
+        document.querySelector('.text-slate-500.text-sm.font-normal.leading-normal').textContent = updateData.current_version;
+        
+        // Show/hide update button
+        const updateButton = document.getElementById('updateSoftware');
+        if (updateButton) {
+            updateButton.style.display = updateData.update_available ? 'flex' : 'none';
+        }
+        
+        // Update port selection
+        const portSelect = document.getElementById('portSelect');
+        if (portSelect) {
+            // Clear existing options except the first one
+            while (portSelect.options.length > 1) {
+                portSelect.remove(1);
+            }
+            
+            // Add new options
+            ports.forEach(port => {
+                const option = document.createElement('option');
+                option.value = port;
+                option.textContent = port;
+                portSelect.appendChild(option);
+            });
 
-        // Load current version and check for updates
-        const updateResponse = await fetch('/check_software_update');
-        if (updateResponse.ok) {
-            const data = await updateResponse.json();
-            // Update version display
-            document.querySelector('.text-slate-500.text-sm.font-normal.leading-normal').textContent = data.current_version;
-            // Show update button if update is available
-            const updateButton = document.getElementById('updateSoftware');
-            if (data.update_available) {
-                updateButton.style.display = 'flex';
-            } else {
-                updateButton.style.display = 'none';
+            // If there's exactly one port available, select it
+            if (ports.length === 1) {
+                portSelect.value = ports[0];
             }
         }
+    }).catch(error => {
+        logMessage(`Error initializing settings page: ${error.message}`, LOG_TYPE.ERROR);
+    });
 
-        // Load available serial ports
-        await updateSerialPorts();
-
-        // Setup event listeners
-        setupEventListeners();
-
-        // Show the content now that we have all the initial data
-        if (contentContainer) {
-            contentContainer.style.visibility = 'visible';
-        }
-    } catch (error) {
-        logMessage(`Error during initialization: ${error.message}`, LOG_TYPE.ERROR);
-        // Show the content even if there's an error
-        if (contentContainer) {
-            contentContainer.style.visibility = 'visible';
-        }
-    }
+    // Set up event listeners
+    setupEventListeners();
 });
 
 // Setup event listeners

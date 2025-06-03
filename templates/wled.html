@@ -8,6 +8,12 @@
 .dark .border-slate-200 {
   border-color: #404040;
 }
+.dark .text-gray-500 {
+  color: #9ca3af;
+}
+.dark .text-gray-700 {
+  color: #d1d5db;
+}
 {% endblock %}
 
 {% block content %}
@@ -15,9 +21,19 @@
   <section class="bg-white rounded-xl shadow-sm overflow-hidden pt-4 sm:pt-0 h-full">
     <div class="flex flex-col items-center px-0 py-0 h-full">
       <div class="w-full h-full max-w-5xl flex flex-col overflow-hidden">
+        <div id="wled-status" class="w-full p-8 text-center">
+          <div class="flex flex-col items-center gap-4">
+            <span class="material-icons text-6xl text-gray-500">lightbulb</span>
+            <h2 class="text-2xl font-semibold text-gray-700">WLED Not Configured</h2>
+            <p class="text-gray-500 max-w-md">Please set up your WLED IP address in the Settings page to control your LED lights.</p>
+            <a href="/settings" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+              Go to Settings
+            </a>
+          </div>
+        </div>
         <iframe id="wled-frame"
           src=""
-          class="h-full w-full rounded-lg border border-slate-200"
+          class="h-full w-full rounded-lg border border-slate-200 hidden"
           frameborder="0"
           allowfullscreen
         ></iframe>
@@ -43,10 +59,16 @@
     }
     if (wledIp && frame) {
       frame.src = `http://${wledIp}`;
-      if (status) status.textContent = '';
+      frame.classList.remove('hidden');
+      status.classList.add('hidden');
     } else {
-      if (frame) frame.src = '';
-      if (status) status.textContent = 'No WLED IP set. Please set it in Settings.';
+      if (frame) {
+        frame.src = '';
+        frame.classList.add('hidden');
+      }
+      if (status) {
+        status.classList.remove('hidden');
+      }
     }
   }
   document.addEventListener('DOMContentLoaded', loadWledIframe);

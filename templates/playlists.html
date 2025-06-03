@@ -3,125 +3,33 @@
 {% block title %}Playlists - Kinetic Sand Table{% endblock %}
 
 {% block additional_styles %}
-/* Dark mode styles for playlists page */
-.dark .bg-slate-50 {
-  background-color: #1a1a1a;
-}
-.dark .bg-white {
-  background-color: #262626;
-}
-.dark .border-slate-200 {
-  border-color: #404040;
-}
-.dark .text-slate-900 {
-  color: #e5e5e5;
-}
-.dark .text-slate-700 {
-  color: #d1d5db;
-}
-.dark .text-slate-500 {
-  color: #9ca3af;
-}
-.dark .hover\:bg-slate-100:hover {
-  background-color: #404040;
-}
-.dark .hover\:text-slate-700:hover {
-  color: #e5e5e5;
-}
-.dark .hover\:border-slate-400:hover {
-  border-color: #525252;
-}
-.dark .bg-\[\#dce8f3\] {
-  background-color: #1e3a5f;
-}
-.dark .hover\:bg-\[\#cadbed\]:hover {
-  background-color: #2c5282;
-}
-.dark .text-slate-800 {
-  color: #e5e5e5;
-}
-.dark .form-input {
-  background-color: #262626;
-  border-color: #404040;
-  color: #e5e5e5;
-}
-.dark .form-input::placeholder {
-  color: #9ca3af;
-}
-.dark .form-input:focus {
-  border-color: #0c7ff2;
-  ring-color: #0c7ff2;
-}
-.dark .form-select {
-  background-color: #262626;
-  border-color: #404040;
-  color: #e5e5e5;
-}
-.dark .form-select:focus {
-  border-color: #0c7ff2;
-  ring-color: #0c7ff2;
-}
-.dark .form-checkbox {
-  border-color: #404040;
-  background-color: #262626;
-}
-.dark .form-checkbox:checked {
-  background-color: #0c7ff2;
-  border-color: #0c7ff2;
-}
-.dark .bg-slate-100 {
-  background-color: #404040;
-}
-.dark .hover\:bg-slate-200:hover {
-  background-color: #525252;
-}
-.dark .bg-sky-600 {
-  background-color: #0c7ff2;
-}
-.dark .hover\:bg-sky-700:hover {
-  background-color: #0a6cd6;
-}
-.dark .border-slate-300 {
-  border-color: #404040;
-}
-.dark .focus\:ring-sky-500:focus {
-  ring-color: #0c7ff2;
-}
-.dark .focus\:border-sky-500:focus {
-  border-color: #0c7ff2;
-}
-.dark .border-b-\[\#f0f2f5\] {
-  border-color: #404040;
-}
-
-/* Dark mode pattern preview styles */
-.dark .pattern-preview {
-  background-color: #262626 !important;
-  border-color: #404040 !important;
-}
-.dark .pattern-preview img {
-  filter: invert(1);
-}
-.dark .pattern-preview .absolute {
-  filter: invert(1);
-}
-
-/* Pattern preview container styles */
+/* Minimal custom styles - rely on Tailwind utilities */
 .pattern-preview {
-  background-color: #f3f4f6;
-  border: 1px solid #e5e7eb;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
 }
+
 .pattern-preview img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-/* Mobile-responsive styles */
+/* Dark mode pattern preview adjustments */
+.dark .pattern-preview {
+  background-color: #334155 !important;
+  border-color: #475569 !important;
+}
+
+.dark .pattern-preview img {
+  filter: invert(1);
+}
+
+/* Mobile responsive utilities */
 @media (max-width: 768px) {
   .mobile-hidden {
     display: none !important;
@@ -135,7 +43,6 @@
     display: flex !important;
   }
   
-  /* Mobile playlist container adjustments */
   .mobile-playlist-container {
     padding-top: 0.5rem;
     padding-bottom: 75px;
@@ -143,124 +50,229 @@
     padding-right: 0;
   }
   
-  /* Mobile full width */
   .mobile-full-width {
     width: 100% !important;
     max-width: 100% !important;
+    border-radius: 0 !important;
+    border-left: none !important;
+    border-right: none !important;
   }
   
-  /* Mobile stacked layout */
-  .mobile-stack {
-    flex-direction: column !important;
-  }
-  
-  /* Mobile patterns grid adjustments */
   .mobile-patterns-grid {
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)) !important;
     gap: 0.75rem !important;
+    padding: 1rem !important;
   }
+}
+
+.mobile-playlists-sidebar {
+  padding: 0 !important;
+  border-radius: 0 !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-bottom: none !important;
+}
+
+/* Override base template's dark mode rules for playlists page in light mode */
+html:not(.dark) #playlistsSidebar,
+html:not(.dark) #playlistDetails,
+html:not(.dark) #playlistsNav,
+html:not(.dark) .bg-white {
+  background-color: #ffffff !important;
+}
+
+html:not(.dark) .bg-gray-50 {
+  background-color: #f9fafb !important;
+}
+
+html:not(.dark) .bg-gray-100 {
+  background-color: #f3f4f6 !important;
+}
+
+html:not(.dark) .text-gray-900 {
+  color: #111827 !important;
+}
+
+html:not(.dark) .text-gray-700 {
+  color: #374151 !important;
+}
+
+html:not(.dark) .text-gray-500 {
+  color: #6b7280 !important;
+}
+
+html:not(.dark) .border-gray-200 {
+  border-color: #e5e7eb !important;
+}
+
+html:not(.dark) .border-gray-300 {
+  border-color: #d1d5db !important;
+}
+
+/* Fix hover states in light mode */
+html:not(.dark) .hover\:bg-gray-100:hover,
+html:not(.dark) #playlistsNav a:hover {
+  background-color: #f3f4f6 !important;
+}
+
+html:not(.dark) .hover\:bg-gray-200:hover {
+  background-color: #e5e7eb !important;
+}
+
+html:not(.dark) .hover\:text-gray-900:hover {
+  color: #111827 !important;
+}
+
+html:not(.dark) .hover\:text-gray-700:hover {
+  color: #374151 !important;
+}
+
+/* Ensure active playlist item styling works in light mode */
+html:not(.dark) #playlistsNav a.active,
+html:not(.dark) .bg-gray-100 {
+  background-color: #f3f4f6 !important;
+  color: #111827 !important;
+}
+
+/* Fix pattern text colors in light mode */
+html:not(.dark) .text-gray-800 {
+  color: #1f2937 !important;
+}
+
+html:not(.dark) .group:hover .group-hover\:text-gray-900,
+html:not(.dark) .group-hover\:text-gray-900 {
+  color: #111827 !important;
+}
+
+/* Pattern cards text in light mode */
+html:not(.dark) #patternsGrid p,
+html:not(.dark) #patternsGrid .text-sm {
+  color: #1f2937 !important;
+}
+
+html:not(.dark) #patternsGrid .group:hover p,
+html:not(.dark) #patternsGrid .group:hover .text-sm {
+  color: #111827 !important;
+}
+
+/* Available patterns modal text in light mode */
+html:not(.dark) #availablePatternsGrid p,
+html:not(.dark) #availablePatternsGrid .text-xs {
+  color: #1f2937 !important;
 }
 {% endblock %}
 
 {% block content %}
-<div class="flex flex-1 justify-center p-6 gap-6 bg-slate-50 mobile-playlist-container mobile-stack" style="min-height: calc(100vh - 72px - 64px);">
-  <!-- Mobile Back Button (hidden on desktop) -->
-  <button id="backToPlaylistsBtn" class="hidden mobile-hidden flex items-center gap-2 mb-4 px-3 py-2 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 transition-colors duration-150">
-    <span class="material-icons text-lg">arrow_back</span>
-    <span>Back to Playlists</span>
-  </button>
-
+<div class="flex flex-1 justify-center p-4 sm:p-6 gap-6 bg-gray-50 dark:bg-gray-900 max-w-5xl mx-auto w-full mobile-playlist-container" style="min-height: calc(100vh - 72px - 64px);">
+  
   <!-- Sidebar for Playlists -->
-  <aside id="playlistsSidebar" class="layout-content-container flex flex-col w-80 mobile-full-width bg-white rounded-xl shadow-sm border border-slate-200" style="height: calc(100vh - 72px - 64px - 48px);">
-    <div class="flex items-center justify-between gap-3 p-4 border-b border-slate-200 flex-shrink-0">
-      <h3 class="text-slate-900 text-xl font-semibold leading-tight">Playlists</h3>
-      <button id="addPlaylistBtn" class="flex items-center justify-center size-8 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors duration-150">
+  <aside id="playlistsSidebar" class="w-80 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col mobile-full-width mobile-playlists-sidebar" style="height: calc(100vh - 72px - 64px - 48px);">
+    <div class="flex items-center justify-between gap-3 p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 bg-white dark:bg-gray-800">
+      <h3 class="text-gray-900 dark:text-gray-100 text-xl font-semibold leading-tight">Playlists</h3>
+      <button id="addPlaylistBtn" class="flex items-center justify-center size-8 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors duration-150">
         <span class="material-icons text-xl">add</span>
       </button>
     </div>
-    <nav id="playlistsNav" class="flex-1 overflow-y-auto p-2 space-y-1">
+    <nav id="playlistsNav" class="flex-1 overflow-y-auto p-3 space-y-1 bg-white dark:bg-gray-800">
       <!-- Playlists will be populated here -->
-      <div class="flex items-center justify-center py-8 text-slate-500">
+      <div class="flex items-center justify-center py-8 text-gray-500 dark:text-gray-400">
         <span class="text-sm">Loading playlists...</span>
       </div>
     </nav>
   </aside>
 
   <!-- Main Content -->
-  <main id="playlistDetails" class="layout-content-container flex flex-col flex-1 mobile-full-width bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden" style="height: calc(100vh - 72px - 64px - 48px);">
-    <header class="flex items-center justify-between gap-4 p-4 border-b border-slate-200 flex-shrink-0 bg-white z-10">
+  <main id="playlistDetails" class="flex-1 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col mobile-full-width" style="height: calc(100vh - 72px - 64px - 48px);">
+    <header class="flex items-center justify-between gap-4 p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 bg-white dark:bg-gray-800">
       <!-- Mobile back button in header -->
       <div class="flex items-center gap-3 flex-1 min-w-0">
-        <button id="mobileBackBtn" class="hidden mobile-flex md:hidden items-center justify-center size-8 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors duration-150 flex-shrink-0">
+        <button id="mobileBackBtn" class="hidden mobile-flex md:hidden items-center justify-center size-8 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors duration-150 flex-shrink-0">
           <span class="material-icons text-lg">arrow_back</span>
         </button>
         <div id="currentPlaylistTitle" class="flex items-center gap-3 min-w-0 flex-1">
-          <h1 class="text-slate-900 text-2xl font-semibold leading-tight truncate">Select a Playlist</h1>
+          <h1 class="text-gray-900 dark:text-gray-100 text-2xl font-semibold leading-tight truncate">Select a Playlist</h1>
         </div>
       </div>
-      <button id="addPatternsBtn" class="flex items-center gap-2 min-w-[84px] max-w-[480px] cursor-pointer justify-center overflow-hidden rounded-full h-9 px-4 bg-[#dce8f3] text-slate-800 hover:bg-[#cadbed] text-sm font-medium leading-normal transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0" disabled>
+      <button id="addPatternsBtn" class="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0" disabled>
         <span class="material-icons text-lg">add_photo_alternate</span>
-        <span class="truncate hidden sm:inline">Add Patterns</span>
-        <span class="truncate sm:hidden">Add</span>
+        <span class="hidden sm:inline">Add Patterns</span>
+        <span class="sm:hidden">Add</span>
       </button>
     </header>
     
-    <div class="flex-1 flex flex-col overflow-hidden">
+    <div class="flex-1 flex flex-col overflow-hidden bg-white dark:bg-gray-800">
       <!-- Patterns Grid - Scrollable -->
-      <div class="flex-1 overflow-y-auto">
-        <div id="patternsGrid" class="grid grid-cols-[repeat(auto-fill,minmax(128px,1fr))] mobile-patterns-grid gap-x-4 gap-y-6 p-4">
-          <div class="flex items-center justify-center col-span-full py-12 text-slate-500">
+      <div class="flex-1 overflow-y-auto bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+        <div id="patternsGrid" class="grid grid-cols-[repeat(auto-fill,minmax(128px,1fr))] gap-4 p-4 mobile-patterns-grid">
+          <div class="flex items-center justify-center col-span-full py-12 text-gray-500 dark:text-gray-400">
             <span class="text-sm text-center">Select a playlist to view its patterns</span>
           </div>
         </div>
       </div>
 
       <!-- Playback Settings - Fixed at bottom -->
-      <div id="playbackSettings" class="border-t border-slate-200 bg-white flex-shrink-0 hidden">
-        <div class="px-4 pt-6 pb-4">
-          <h2 class="text-slate-900 text-xl font-semibold leading-tight mb-4">Playback Settings</h2>
-          <div class="space-y-5">
-            <div>
-              <p class="text-slate-700 text-sm font-medium mb-2">Run Playlist</p>
-              <div class="flex flex-wrap gap-3">
-                <label class="text-sm font-medium leading-normal flex items-center justify-center rounded-lg border border-slate-300 px-4 h-10 text-slate-700 has-[:checked]:border-[#dce8f3] has-[:checked]:bg-[#dce8f3] has-[:checked]:text-slate-800 has-[:checked]:shadow-sm relative cursor-pointer transition-all duration-150 hover:border-slate-400">
-                  Once
-                  <input class="invisible absolute" name="run_playlist" type="radio" value="single" checked/>
-                </label>
-                <label class="text-sm font-medium leading-normal flex items-center justify-center rounded-lg border border-slate-300 px-4 h-10 text-slate-700 has-[:checked]:border-[#dce8f3] has-[:checked]:bg-[#dce8f3] has-[:checked]:text-slate-800 has-[:checked]:shadow-sm relative cursor-pointer transition-all duration-150 hover:border-slate-400">
-                  Loop
-                  <input class="invisible absolute" name="run_playlist" type="radio" value="indefinite"/>
-                </label>
-              </div>
-              <div class="mt-3 flex items-center gap-2">
-                <input id="shuffleCheckbox" type="checkbox" class="form-checkbox h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                <label for="shuffleCheckbox" class="text-sm font-medium text-slate-700 select-none cursor-pointer">Shuffle</label>
+      <div id="playbackSettings" class="bg-white dark:bg-gray-800 flex-shrink-0 hidden">
+        <div class="px-4 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 class="text-gray-900 dark:text-gray-100 text-base font-semibold mb-3">Playback Settings</h2>
+          
+          <div class="space-y-4">
+            <!-- Run Mode & Shuffle Section -->
+            <div class="pb-3 border-b border-gray-100 dark:border-gray-600">
+              <div class="flex flex-wrap items-center gap-3 mb-3">
+                <div class="flex gap-2">
+                  <label class="text-xs font-medium flex items-center justify-center rounded-md border-2 border-gray-300 dark:border-gray-600 px-3 h-8 text-gray-700 dark:text-gray-300 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 dark:has-[:checked]:bg-blue-900/20 has-[:checked]:text-blue-700 dark:has-[:checked]:text-blue-300 has-[:checked]:font-semibold relative cursor-pointer transition-all duration-200 hover:border-gray-400 dark:hover:border-gray-500">
+                    <span class="material-icons text-sm mr-1">play_circle</span>
+                    Once
+                    <input class="invisible absolute" name="run_playlist" type="radio" value="single" checked/>
+                  </label>
+                  <label class="text-xs font-medium flex items-center justify-center rounded-md border-2 border-gray-300 dark:border-gray-600 px-3 h-8 text-gray-700 dark:text-gray-300 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 dark:has-[:checked]:bg-blue-900/20 has-[:checked]:text-blue-700 dark:has-[:checked]:text-blue-300 has-[:checked]:font-semibold relative cursor-pointer transition-all duration-200 hover:border-gray-400 dark:hover:border-gray-500">
+                    <span class="material-icons text-sm mr-1">repeat</span>
+                    Loop
+                    <input class="invisible absolute" name="run_playlist" type="radio" value="indefinite"/>
+                  </label>
+                </div>
+                
+                <div class="flex items-center gap-2">
+                  <input id="shuffleCheckbox" type="checkbox" class="h-4 w-4 text-blue-600 bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 dark:focus:ring-blue-600">
+                  <label for="shuffleCheckbox" class="text-xs font-medium text-gray-700 dark:text-gray-300 select-none cursor-pointer flex items-center gap-1">
+                    <span class="material-icons text-sm">shuffle</span>
+                    Shuffle
+                  </label>
+                </div>
               </div>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label class="flex flex-col">
-                  <p class="text-slate-700 text-sm font-medium leading-normal pb-2">Between patterns (Pause Time in seconds)</p>
-                  <input id="pauseTimeInput" class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#dce8f3] border border-slate-300 bg-white focus:border-[#b0c7e0] h-10 placeholder:text-slate-400 px-3 text-sm font-normal leading-normal" type="number" value="5" min="0" step="1"/>
-                </label>
-              </div>
-              <div>
-                <label class="flex flex-col">
-                  <p class="text-slate-700 text-sm font-medium leading-normal pb-2">Clear Pattern Before Next</p>
-                  <select id="clearPatternSelect" class="form-select w-full text-sm rounded-md border-slate-300 shadow-sm focus:border-[#b0c7e0] focus:ring focus:ring-[#dce8f3] focus:ring-opacity-50 text-slate-700 h-10">
+
+            <!-- Timing & Clear Pattern Section -->
+            <div class="pb-3 border-b border-gray-100 dark:border-gray-600">
+              <div class="grid grid-cols-2 gap-3">
+                <div class="flex items-center gap-2">
+                  <span class="material-icons text-sm text-gray-500 dark:text-gray-400">schedule</span>
+                  <span class="text-xs font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">Pause:</span>
+                  <div class="relative flex-1">
+                    <input id="pauseTimeInput" class="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 h-8 px-2 pr-8 text-xs" type="number" value="5" min="0" step="1"/>
+                    <span class="absolute right-2 top-1/2 transform -translate-y-1/2 text-xs text-gray-500 dark:text-gray-400">s</span>
+                  </div>
+                </div>
+                
+                <div class="flex items-center gap-2">
+                  <span class="material-icons text-sm text-gray-500 dark:text-gray-400">clear_all</span>
+                  <span class="text-xs font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">Clear:</span>
+                  <select id="clearPatternSelect" class="flex-1 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 h-8 px-2 text-xs">
                     <option value="adaptive">Adaptive</option>
-                    <option value="center">Clear from Center</option>
-                    <option value="perimeter">Clear from Perimeter</option>
-                    <option value="sideway">Clear Sideway</option>
+                    <option value="center">Center</option>
+                    <option value="perimeter">Perimeter</option>
+                    <option value="sideway">Sideway</option>
                     <option value="none">None</option>
                   </select>
-                </label>
+                </div>
               </div>
             </div>
-            <div class="pt-2">
-              <button id="runPlaylistBtn" class="flex items-center gap-2 min-w-[84px] w-full max-w-xs cursor-pointer justify-center overflow-hidden rounded-lg h-10 px-4 bg-slate-700 text-white hover:bg-slate-800 text-sm font-medium leading-normal transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                <span class="material-icons text-lg">play_arrow</span>
-                <span class="truncate">Run Playlist</span>
+
+            <!-- Run Button Section -->
+            <div class="pt-1">
+              <button id="runPlaylistBtn" class="flex items-center justify-center gap-2 w-full h-9 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:hover:bg-gray-400 text-white text-sm font-medium rounded-md transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed" disabled>
+                <span class="material-icons text-base">play_arrow</span>
+                <span>Run Playlist</span>
               </button>
             </div>
           </div>
@@ -270,23 +282,18 @@
   </main>
 </div>
 
-<!-- Status Message Container -->
-<div id="status-message-container" class="fixed top-4 right-4 z-50">
-  <div id="status-message" class="opacity-0 transform -translate-y-2 transition-all duration-300 ease-in-out"></div>
-</div>
-
 <!-- Add Playlist Modal -->
-<div id="addPlaylistModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden" tabindex="-1" role="dialog" aria-modal="true">
-  <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4" role="document">
-    <h3 class="text-lg font-semibold text-slate-900 mb-4">Create New Playlist</h3>
+<div id="addPlaylistModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+  <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
+    <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Create New Playlist</h3>
     <div class="space-y-4">
       <div>
-        <label for="newPlaylistName" class="block text-sm font-medium text-slate-700 mb-1">Playlist Name</label>
-        <input id="newPlaylistName" type="text" class="form-input w-full rounded-lg border-slate-300 focus:border-sky-500 focus:ring-sky-500" placeholder="Enter playlist name" autofocus>
+        <label for="newPlaylistName" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Playlist Name</label>
+        <input id="newPlaylistName" type="text" class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 px-3 py-2" placeholder="Enter playlist name" autofocus>
       </div>
       <div class="flex gap-3 justify-end">
-        <button id="cancelPlaylistBtn" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors duration-150">Cancel</button>
-        <button id="createPlaylistBtn" class="px-4 py-2 text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-lg transition-colors duration-150">Create</button>
+        <button id="cancelPlaylistBtn" class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors duration-150">Cancel</button>
+        <button id="createPlaylistBtn" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors duration-150">Create</button>
       </div>
     </div>
   </div>
@@ -294,22 +301,22 @@
 
 <!-- Add Patterns Modal -->
 <div id="addPatternsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-  <div class="bg-white rounded-lg p-6 w-full max-w-4xl mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+  <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-4xl mx-4 max-h-[80vh] overflow-hidden flex flex-col">
     <div class="flex items-center justify-between mb-4 flex-shrink-0">
-      <h3 class="text-lg font-semibold text-slate-900">Add Patterns to Playlist</h3>
+      <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Add Patterns to Playlist</h3>
     </div>
     
     <!-- Search Bar -->
     <div class="mb-4 flex-shrink-0">
       <div class="relative">
-        <span class="material-icons absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-lg">search</span>
+        <span class="material-icons absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 text-lg">search</span>
         <input 
           id="patternSearchInput" 
           type="text" 
           placeholder="Search patterns..." 
-          class="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-sm"
+          class="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
         />
-        <button id="clearSearchBtn" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 hidden">
+        <button id="clearSearchBtn" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hidden">
           <span class="material-icons text-lg">clear</span>
         </button>
       </div>
@@ -321,27 +328,61 @@
       </div>
       
       <!-- Loading indicator -->
-      <div id="patternsLoadingIndicator" class="flex items-center justify-center py-12 text-slate-500 hidden">
+      <div id="patternsLoadingIndicator" class="flex items-center justify-center py-12 text-gray-500 dark:text-gray-400 hidden">
         <div class="flex items-center gap-3">
-          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-slate-500"></div>
+          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-500 dark:border-gray-400"></div>
           <span class="text-sm">Loading patterns...</span>
         </div>
       </div>
       
       <!-- No results message -->
-      <div id="noResultsMessage" class="flex items-center justify-center py-12 text-slate-500 hidden">
+      <div id="noResultsMessage" class="flex items-center justify-center py-12 text-gray-500 dark:text-gray-400 hidden">
         <span class="text-sm">No patterns found matching your search</span>
       </div>
     </div>
     
-    <div class="flex gap-3 justify-end mt-4 pt-4 border-t border-slate-200 flex-shrink-0">
-      <button id="cancelAddPatternsBtn" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors duration-150">Cancel</button>
-      <button id="confirmAddPatternsBtn" class="px-4 py-2 text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-lg transition-colors duration-150">Add Selected</button>
+    <div class="flex gap-3 justify-end mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
+      <button id="cancelAddPatternsBtn" class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors duration-150">Cancel</button>
+      <button id="confirmAddPatternsBtn" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors duration-150">Add Selected</button>
     </div>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
+<script>
+// Force light mode styling if not in dark mode
+document.addEventListener('DOMContentLoaded', function() {
+  const isDark = document.documentElement.classList.contains('dark');
+  
+  if (!isDark) {
+    // Force light backgrounds
+    const sidebar = document.getElementById('playlistsSidebar');
+    const mainContent = document.getElementById('playlistDetails');
+    const nav = document.getElementById('playlistsNav');
+    
+    if (sidebar) {
+      sidebar.style.backgroundColor = '#ffffff';
+      sidebar.style.borderColor = '#e5e7eb';
+    }
+    
+    if (mainContent) {
+      mainContent.style.backgroundColor = '#ffffff';
+      mainContent.style.borderColor = '#e5e7eb';
+    }
+    
+    if (nav) {
+      nav.style.backgroundColor = '#ffffff';
+    }
+    
+    // Force light text colors
+    document.querySelectorAll('h1, h2, h3').forEach(el => {
+      if (!el.closest('.dark')) {
+        el.style.color = '#111827';
+      }
+    });
+  }
+});
+</script>
 <script src="/static/js/playlists.js"></script>
 {% endblock %} 

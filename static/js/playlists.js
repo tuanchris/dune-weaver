@@ -596,7 +596,7 @@ function displayPlaylists() {
 
     if (allPlaylists.length === 0) {
         playlistsNav.innerHTML = `
-            <div class="flex items-center justify-center py-8 text-slate-500 dark:text-slate-400">
+            <div class="flex items-center justify-center py-8 text-gray-500 dark:text-gray-400">
                 <span class="text-sm">No playlists found</span>
             </div>
         `;
@@ -605,11 +605,11 @@ function displayPlaylists() {
 
     allPlaylists.forEach(playlist => {
         const playlistItem = document.createElement('a');
-        playlistItem.className = 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-100 transition-colors duration-150 cursor-pointer';
+        playlistItem.className = 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100 transition-colors duration-150 cursor-pointer';
         playlistItem.innerHTML = `
-            <span class="material-icons text-lg text-slate-500 dark:text-slate-400">queue_music</span>
+            <span class="material-icons text-lg text-gray-500 dark:text-gray-400">queue_music</span>
             <span class="text-sm font-medium flex-1 truncate">${playlist}</span>
-            <span class="material-icons text-lg text-slate-400 dark:text-slate-500">chevron_right</span>
+            <span class="material-icons text-lg text-gray-400 dark:text-gray-500">chevron_right</span>
         `;
         
         playlistItem.addEventListener('click', () => selectPlaylist(playlist, playlistItem));
@@ -621,13 +621,13 @@ function displayPlaylists() {
 async function selectPlaylist(playlistName, element) {
     // Remove active state from all playlist items
     document.querySelectorAll('#playlistsNav a').forEach(item => {
-        item.classList.remove('text-slate-900', 'dark:text-slate-100', 'bg-slate-100', 'dark:bg-slate-700', 'font-semibold');
-        item.classList.add('text-slate-700', 'dark:text-slate-300', 'font-medium');
+        item.classList.remove('text-gray-900', 'dark:text-gray-100', 'bg-gray-100', 'dark:bg-gray-700', 'font-semibold');
+        item.classList.add('text-gray-700', 'dark:text-gray-300', 'font-medium');
     });
 
     // Add active state to selected item
-    element.classList.remove('text-slate-700', 'dark:text-slate-300', 'font-medium');
-    element.classList.add('text-slate-900', 'dark:text-slate-100', 'bg-slate-100', 'dark:bg-slate-700', 'font-semibold');
+    element.classList.remove('text-gray-700', 'dark:text-gray-300', 'font-medium');
+    element.classList.add('text-gray-900', 'dark:text-gray-100', 'bg-gray-100', 'dark:bg-gray-700', 'font-semibold');
 
     // Update current playlist
     currentPlaylist = playlistName;
@@ -635,8 +635,8 @@ async function selectPlaylist(playlistName, element) {
     // Update header with playlist name and delete button
     const header = document.getElementById('currentPlaylistTitle');
     header.innerHTML = `
-        <h1 class="text-slate-900 text-2xl font-semibold leading-tight truncate">${playlistName}</h1>
-        <button id="deletePlaylistBtn" class="p-1 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/20 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-all duration-150 flex-shrink-0" title="Delete playlist">
+        <h1 class="text-gray-900 dark:text-gray-100 text-2xl font-semibold leading-tight truncate">${playlistName}</h1>
+        <button id="deletePlaylistBtn" class="p-1 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/20 text-gray-500 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-all duration-150 flex-shrink-0" title="Delete playlist">
             <span class="material-icons text-lg">delete</span>
         </button>
     `;
@@ -683,7 +683,7 @@ async function displayPlaylistPatterns(patterns) {
     
     if (patterns.length === 0) {
         patternsGrid.innerHTML = `
-            <div class="flex items-center justify-center col-span-full py-12 text-slate-500 dark:text-slate-400">
+            <div class="flex items-center justify-center col-span-full py-12 text-gray-500 dark:text-gray-400">
                 <span class="text-sm">No patterns in this playlist</span>
             </div>
         `;
@@ -708,7 +708,7 @@ function createPatternCard(pattern, showRemove = false) {
     card.className = 'flex flex-col gap-3 group cursor-pointer relative';
     
     const previewContainer = document.createElement('div');
-    previewContainer.className = 'w-full bg-center bg-no-repeat aspect-square bg-cover rounded-full shadow-sm group-hover:shadow-md transition-shadow duration-150 border border-slate-200 pattern-preview bg-slate-100';
+    previewContainer.className = 'w-full bg-center bg-no-repeat aspect-square bg-cover rounded-full shadow-sm group-hover:shadow-md transition-shadow duration-150 border border-gray-200 dark:border-gray-700 pattern-preview bg-gray-100 dark:bg-gray-800';
     
     // Only set preview image if already available in memory cache
     const previewData = previewCache.get(pattern);
@@ -718,7 +718,7 @@ function createPatternCard(pattern, showRemove = false) {
     // Note: No more eager loading here - let intersection observer handle it
 
     const patternName = document.createElement('p');
-    patternName.className = 'text-sm text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-slate-100 font-medium truncate text-center';
+    patternName.className = 'text-sm text-gray-800 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100 font-medium truncate text-center';
     patternName.textContent = pattern.replace('.thr', '').split('/').pop();
 
     card.appendChild(previewContainer);
@@ -726,7 +726,7 @@ function createPatternCard(pattern, showRemove = false) {
 
     if (showRemove) {
         const removeBtn = document.createElement('button');
-        removeBtn.className = 'absolute top-2 right-2 size-6 rounded-full bg-red-500 text-white hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center justify-center text-xs';
+        removeBtn.className = 'absolute top-2 right-2 size-6 rounded-full bg-red-500 hover:bg-red-600 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center justify-center text-xs';
         removeBtn.innerHTML = '<span class="material-icons text-sm">close</span>';
         removeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -906,12 +906,12 @@ function displayAvailablePatterns() {
         card.dataset.pattern = pattern;
         
         card.innerHTML = `
-            <div class="w-full bg-center bg-no-repeat aspect-square bg-cover rounded-lg border border-slate-200 dark:border-slate-700 relative pattern-preview bg-slate-100 dark:bg-slate-800">
-                <div class="absolute top-2 right-2 size-6 rounded-full bg-white dark:bg-slate-700 shadow-md opacity-0 transition-opacity duration-150 flex items-center justify-center">
-                    <span class="material-icons text-sm text-slate-600 dark:text-slate-300">add</span>
+            <div class="w-full bg-center bg-no-repeat aspect-square bg-cover rounded-lg border border-gray-200 dark:border-gray-700 relative pattern-preview bg-gray-100 dark:bg-gray-800">
+                <div class="absolute top-2 right-2 size-6 rounded-full bg-white dark:bg-gray-700 shadow-md opacity-0 transition-opacity duration-150 flex items-center justify-center">
+                    <span class="material-icons text-sm text-gray-600 dark:text-gray-300">add</span>
                 </div>
             </div>
-            <p class="text-xs text-slate-700 dark:text-slate-300 font-medium truncate text-center">${pattern.replace('.thr', '').split('/').pop()}</p>
+            <p class="text-xs text-gray-700 dark:text-gray-300 font-medium truncate text-center">${pattern.replace('.thr', '').split('/').pop()}</p>
         `;
 
         const previewContainer = card.querySelector('.pattern-preview');
@@ -920,7 +920,7 @@ function displayAvailablePatterns() {
         // Only set preview image if already available in memory cache
         const previewData = previewCache.get(pattern);
         if (previewData && !previewData.error) {
-            previewContainer.innerHTML = `<img src="${previewData.preview_url}" alt="Pattern Preview" class="w-full h-full object-cover rounded-full" />`;
+            previewContainer.innerHTML = `<img src="${previewData.preview_url}" alt="Pattern Preview" class="w-full h-full object-cover rounded-lg" />`;
         }
         
         // Set up lazy loading for ALL patterns (no more special handling for first 6)
@@ -930,15 +930,15 @@ function displayAvailablePatterns() {
         card.addEventListener('click', () => {
             if (selectedPatterns.has(pattern)) {
                 selectedPatterns.delete(pattern);
-                card.classList.remove('ring-2', 'ring-sky-500');
-                addBtn.classList.remove('opacity-100', 'bg-sky-500', 'text-white');
-                addBtn.classList.add('opacity-0', 'bg-white');
+                card.classList.remove('ring-2', 'ring-blue-500');
+                addBtn.classList.remove('opacity-100', 'bg-blue-500', 'text-white');
+                addBtn.classList.add('opacity-0', 'bg-white', 'dark:bg-gray-700');
                 addBtn.querySelector('.material-icons').textContent = 'add';
             } else {
                 selectedPatterns.add(pattern);
-                card.classList.add('ring-2', 'ring-sky-500');
-                addBtn.classList.remove('opacity-0', 'bg-white');
-                addBtn.classList.add('opacity-100', 'bg-sky-500', 'text-white');
+                card.classList.add('ring-2', 'ring-blue-500');
+                addBtn.classList.remove('opacity-0', 'bg-white', 'dark:bg-gray-700');
+                addBtn.classList.add('opacity-100', 'bg-blue-500', 'text-white');
                 addBtn.querySelector('.material-icons').textContent = 'check';
             }
         });
@@ -1101,12 +1101,12 @@ async function deletePlaylist(playlistName) {
             if (currentPlaylist === playlistName) {
                 currentPlaylist = null;
                 const header = document.getElementById('currentPlaylistTitle');
-                header.innerHTML = '<h1 class="text-slate-900 text-2xl font-semibold leading-tight truncate">Select a Playlist</h1>';
+                header.innerHTML = '<h1 class="text-gray-900 text-2xl font-semibold leading-tight truncate">Select a Playlist</h1>';
                 document.getElementById('addPatternsBtn').disabled = true;
                 document.getElementById('runPlaylistBtn').disabled = true;
                 document.getElementById('playbackSettings').classList.add('hidden');
                 document.getElementById('patternsGrid').innerHTML = `
-                    <div class="flex items-center justify-center col-span-full py-12 text-slate-500 dark:text-slate-400">
+                    <div class="flex items-center justify-center col-span-full py-12 text-gray-500 dark:text-gray-400">
                         <span class="text-sm text-center">Select a playlist to view its patterns</span>
                     </div>
                 `;

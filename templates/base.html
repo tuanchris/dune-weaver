@@ -1,6 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
+    <script>
+      // Immediately set dark mode if needed, before page loads
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const savedTheme = localStorage.getItem('theme');
+      if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+        document.documentElement.classList.add('dark');
+      }
+    </script>
     <meta charset="utf-8" />
     <link crossorigin="" href="https://fonts.gstatic.com/" rel="preconnect" />
     <link
@@ -16,6 +24,7 @@
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <link rel="manifest" href="/static/site.webmanifest">
     <link rel="stylesheet" href="/static/css/tailwind.css">
+    <script src="https://cdn.tailwindcss.com"></script>
     <link
       href="https://fonts.googleapis.com/icon?family=Material+Icons"
       rel="stylesheet"
@@ -140,6 +149,7 @@
       }
       .inactive-tab {
         color: #6b7280;
+        border-color: transparent;
       }
       .inactive-tab:hover {
         color: #374151;
@@ -395,25 +405,25 @@
               <span class="material-icons">search</span> Browse
             </a>
             <a
-              class="{% if request.url.path == '/playlists' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] border-transparent py-3 text-xs font-medium sm:text-sm"
+              class="{% if request.url.path == '/playlists' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
               href="/playlists"
             >
               <span class="material-icons">list_alt</span> Playlists
             </a>
             <a
-              class="{% if request.url.path == '/table_control' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] border-transparent py-3 text-xs font-medium sm:text-sm"
+              class="{% if request.url.path == '/table_control' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
               href="/table_control"
             >
               <span class="material-icons">table_chart</span> Table Control
             </a>
             <a
-              class="{% if request.url.path == '/wled' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] border-transparent py-3 text-xs font-medium sm:text-sm"
+              class="{% if request.url.path == '/wled' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
               href="/wled"
             >
               <span class="material-icons">lightbulb</span> WLED
             </a>
             <a
-              class="{% if request.url.path == '/settings' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] border-transparent py-3 text-xs font-medium sm:text-sm"
+              class="{% if request.url.path == '/settings' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
               href="/settings"
             >
               <span class="material-icons">settings</span> Settings
@@ -484,25 +494,25 @@
     </script>
     <script>
       // Theme switching functionality
-      const themeToggle = document.getElementById('theme-toggle');
-      const themeToggleIcon = document.getElementById('theme-toggle-icon');
-      
-      // Check for saved theme preference or use system preference
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const savedTheme = localStorage.getItem('theme');
-      const theme = savedTheme || (prefersDark ? 'dark' : 'light');
-      
-      // Apply theme on load
-      if (theme === 'dark') {
-        document.documentElement.classList.add('dark');
-        themeToggleIcon.textContent = 'light_mode';
-      }
-      
-      // Theme toggle click handler
-      themeToggle.addEventListener('click', () => {
-        const isDark = document.documentElement.classList.toggle('dark');
-        themeToggleIcon.textContent = isDark ? 'light_mode' : 'dark_mode';
-        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      document.addEventListener('DOMContentLoaded', function() {
+        const themeToggle = document.getElementById('theme-toggle');
+        const themeToggleIcon = document.getElementById('theme-toggle-icon');
+        
+        // Update icon based on current theme
+        function updateThemeIcon() {
+          const isDark = document.documentElement.classList.contains('dark');
+          themeToggleIcon.textContent = isDark ? 'light_mode' : 'dark_mode';
+        }
+        
+        // Initial icon update
+        updateThemeIcon();
+        
+        // Theme toggle click handler
+        themeToggle.addEventListener('click', () => {
+          const isDark = document.documentElement.classList.toggle('dark');
+          localStorage.setItem('theme', isDark ? 'dark' : 'light');
+          updateThemeIcon();
+        });
       });
     </script>
   </body>
