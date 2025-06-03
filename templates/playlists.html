@@ -120,12 +120,58 @@
   height: 100%;
   object-fit: cover;
 }
+
+/* Mobile-responsive styles */
+@media (max-width: 768px) {
+  .mobile-hidden {
+    display: none !important;
+  }
+  
+  .mobile-show {
+    display: block !important;
+  }
+  
+  .mobile-flex {
+    display: flex !important;
+  }
+  
+  /* Mobile playlist container adjustments */
+  .mobile-playlist-container {
+    padding-top: 0.5rem;
+    padding-bottom: 75px;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  
+  /* Mobile full width */
+  .mobile-full-width {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  
+  /* Mobile stacked layout */
+  .mobile-stack {
+    flex-direction: column !important;
+  }
+  
+  /* Mobile patterns grid adjustments */
+  .mobile-patterns-grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)) !important;
+    gap: 0.75rem !important;
+  }
+}
 {% endblock %}
 
 {% block content %}
-<div class="flex flex-1 justify-center p-6 gap-6 bg-slate-50" style="min-height: calc(100vh - 72px - 64px);">
+<div class="flex flex-1 justify-center p-6 gap-6 bg-slate-50 mobile-playlist-container mobile-stack" style="min-height: calc(100vh - 72px - 64px);">
+  <!-- Mobile Back Button (hidden on desktop) -->
+  <button id="backToPlaylistsBtn" class="hidden mobile-hidden flex items-center gap-2 mb-4 px-3 py-2 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 transition-colors duration-150">
+    <span class="material-icons text-lg">arrow_back</span>
+    <span>Back to Playlists</span>
+  </button>
+
   <!-- Sidebar for Playlists -->
-  <aside class="layout-content-container flex flex-col w-80 bg-white rounded-xl shadow-sm border border-slate-200" style="height: calc(100vh - 72px - 64px - 48px);">
+  <aside id="playlistsSidebar" class="layout-content-container flex flex-col w-80 mobile-full-width bg-white rounded-xl shadow-sm border border-slate-200" style="height: calc(100vh - 72px - 64px - 48px);">
     <div class="flex items-center justify-between gap-3 p-4 border-b border-slate-200 flex-shrink-0">
       <h3 class="text-slate-900 text-xl font-semibold leading-tight">Playlists</h3>
       <button id="addPlaylistBtn" class="flex items-center justify-center size-8 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors duration-150">
@@ -141,21 +187,30 @@
   </aside>
 
   <!-- Main Content -->
-  <main class="layout-content-container flex flex-col flex-1 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden" style="height: calc(100vh - 72px - 64px - 48px);">
+  <main id="playlistDetails" class="layout-content-container flex flex-col flex-1 mobile-full-width bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden" style="height: calc(100vh - 72px - 64px - 48px);">
     <header class="flex items-center justify-between gap-4 p-4 border-b border-slate-200 flex-shrink-0 bg-white z-10">
-      <h1 id="currentPlaylistTitle" class="text-slate-900 text-2xl font-semibold leading-tight truncate">Select a Playlist</h1>
-      <button id="addPatternsBtn" class="flex items-center gap-2 min-w-[84px] max-w-[480px] cursor-pointer justify-center overflow-hidden rounded-full h-9 px-4 bg-[#dce8f3] text-slate-800 hover:bg-[#cadbed] text-sm font-medium leading-normal transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+      <!-- Mobile back button in header -->
+      <div class="flex items-center gap-3 flex-1 min-w-0">
+        <button id="mobileBackBtn" class="hidden mobile-flex md:hidden items-center justify-center size-8 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors duration-150 flex-shrink-0">
+          <span class="material-icons text-lg">arrow_back</span>
+        </button>
+        <div id="currentPlaylistTitle" class="flex items-center gap-3 min-w-0 flex-1">
+          <h1 class="text-slate-900 text-2xl font-semibold leading-tight truncate">Select a Playlist</h1>
+        </div>
+      </div>
+      <button id="addPatternsBtn" class="flex items-center gap-2 min-w-[84px] max-w-[480px] cursor-pointer justify-center overflow-hidden rounded-full h-9 px-4 bg-[#dce8f3] text-slate-800 hover:bg-[#cadbed] text-sm font-medium leading-normal transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0" disabled>
         <span class="material-icons text-lg">add_photo_alternate</span>
-        <span class="truncate">Add Patterns</span>
+        <span class="truncate hidden sm:inline">Add Patterns</span>
+        <span class="truncate sm:hidden">Add</span>
       </button>
     </header>
     
     <div class="flex-1 flex flex-col overflow-hidden">
       <!-- Patterns Grid - Scrollable -->
       <div class="flex-1 overflow-y-auto">
-        <div id="patternsGrid" class="grid grid-cols-[repeat(auto-fill,minmax(128px,1fr))] gap-x-4 gap-y-6 p-4">
+        <div id="patternsGrid" class="grid grid-cols-[repeat(auto-fill,minmax(128px,1fr))] mobile-patterns-grid gap-x-4 gap-y-6 p-4">
           <div class="flex items-center justify-center col-span-full py-12 text-slate-500">
-            <span class="text-sm">Select a playlist to view its patterns</span>
+            <span class="text-sm text-center">Select a playlist to view its patterns</span>
           </div>
         </div>
       </div>

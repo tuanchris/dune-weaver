@@ -17,6 +17,9 @@ let previewCache = new Map();
 let intersectionObserver = null;
 let searchTimeout = null;
 
+// Mobile navigation state
+let isMobileView = false;
+
 // Global variables for batching lazy loading
 let pendingPatterns = new Map(); // pattern -> element mapping
 let batchTimeout = null;
@@ -632,12 +635,10 @@ async function selectPlaylist(playlistName, element) {
     // Update header with playlist name and delete button
     const header = document.getElementById('currentPlaylistTitle');
     header.innerHTML = `
-        <div class="flex items-center gap-3">
-            <span class="truncate">${playlistName}</span>
-            <button id="deletePlaylistBtn" class="p-1 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/20 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-all duration-150" title="Delete playlist">
-                <span class="material-icons text-lg">delete</span>
-            </button>
-        </div>
+        <h1 class="text-slate-900 text-2xl font-semibold leading-tight truncate">${playlistName}</h1>
+        <button id="deletePlaylistBtn" class="p-1 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/20 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-all duration-150 flex-shrink-0" title="Delete playlist">
+            <span class="material-icons text-lg">delete</span>
+        </button>
     `;
     
     // Add delete button event listener
@@ -649,6 +650,9 @@ async function selectPlaylist(playlistName, element) {
 
     // Save last selected
     saveLastSelectedPlaylist(playlistName);
+
+    // Show playlist details on mobile
+    showPlaylistDetails();
 
     // Load playlist patterns
     await loadPlaylistPatterns(playlistName);
@@ -1096,15 +1100,19 @@ async function deletePlaylist(playlistName) {
             // If the deleted playlist was selected, clear the selection
             if (currentPlaylist === playlistName) {
                 currentPlaylist = null;
-                document.getElementById('currentPlaylistTitle').textContent = 'Select a Playlist';
+                const header = document.getElementById('currentPlaylistTitle');
+                header.innerHTML = '<h1 class="text-slate-900 text-2xl font-semibold leading-tight truncate">Select a Playlist</h1>';
                 document.getElementById('addPatternsBtn').disabled = true;
                 document.getElementById('runPlaylistBtn').disabled = true;
                 document.getElementById('playbackSettings').classList.add('hidden');
                 document.getElementById('patternsGrid').innerHTML = `
                     <div class="flex items-center justify-center col-span-full py-12 text-slate-500 dark:text-slate-400">
-                        <span class="text-sm">Select a playlist to view its patterns</span>
+                        <span class="text-sm text-center">Select a playlist to view its patterns</span>
                     </div>
                 `;
+                
+                // Return to playlists list on mobile
+                showPlaylistsList();
             }
             
             // Reload playlists
@@ -1121,6 +1129,11 @@ async function deletePlaylist(playlistName) {
 
 // Setup event listeners
 function setupEventListeners() {
+    // Mobile back button event listeners
+    document.getElementById('mobileBackBtn').addEventListener('click', () => {
+        showPlaylistsList();
+    });
+
     // Add playlist button
     document.getElementById('addPlaylistBtn').addEventListener('click', () => {
         const modal = document.getElementById('addPlaylistModal');
@@ -1218,6 +1231,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Setup event listeners
         setupEventListeners();
         
+        // Initialize mobile view state
+        isMobileView = isMobile();
+        if (isMobileView) {
+            initMobileLayout();
+        } else {
+            initDesktopLayout();
+        }
+        
+        // Add window resize listener for responsive behavior
+        window.addEventListener('resize', updateMobileView);
+        
         // Restore playback settings
         restorePlaybackSettings();
         setupPlaybackSettingsPersistence();
@@ -1250,5 +1274,81 @@ async function checkSerialStatus() {
         }
     } catch (error) {
         logMessage(`Error checking serial status: ${error.message}`, LOG_TYPE.ERROR);
+    }
+}
+
+// Mobile utility functions
+function isMobile() {
+    return window.innerWidth <= 768;
+}
+
+function updateMobileView() {
+    const wasMobile = isMobileView;
+    isMobileView = isMobile();
+    
+    if (wasMobile !== isMobileView) {
+        // Mobile state changed, update layout
+        if (isMobileView) {
+            initMobileLayout();
+        } else {
+            initDesktopLayout();
+        }
+    }
+}
+
+function initMobileLayout() {
+    const sidebar = document.getElementById('playlistsSidebar');
+    const details = document.getElementById('playlistDetails');
+    const mobileBackBtn = document.getElementById('mobileBackBtn');
+    
+    if (!currentPlaylist) {
+        // Show playlists list, hide details
+        sidebar.classList.remove('mobile-hidden');
+        details.classList.add('mobile-hidden');
+        mobileBackBtn.classList.add('mobile-hidden');
+    } else {
+        // Show details, hide playlists list
+        sidebar.classList.add('mobile-hidden');
+        details.classList.remove('mobile-hidden');
+        mobileBackBtn.classList.remove('mobile-hidden');
+        mobileBackBtn.classList.add('mobile-flex');
+    }
+}
+
+function initDesktopLayout() {
+    const sidebar = document.getElementById('playlistsSidebar');
+    const details = document.getElementById('playlistDetails');
+    const mobileBackBtn = document.getElementById('mobileBackBtn');
+    
+    // Show both sidebar and details on desktop
+    sidebar.classList.remove('mobile-hidden');
+    details.classList.remove('mobile-hidden');
+    mobileBackBtn.classList.add('mobile-hidden');
+    mobileBackBtn.classList.remove('mobile-flex');
+}
+
+function showPlaylistDetails() {
+    if (isMobileView) {
+        const sidebar = document.getElementById('playlistsSidebar');
+        const details = document.getElementById('playlistDetails');
+        const mobileBackBtn = document.getElementById('mobileBackBtn');
+        
+        sidebar.classList.add('mobile-hidden');
+        details.classList.remove('mobile-hidden');
+        mobileBackBtn.classList.remove('mobile-hidden');
+        mobileBackBtn.classList.add('mobile-flex');
+    }
+}
+
+function showPlaylistsList() {
+    if (isMobileView) {
+        const sidebar = document.getElementById('playlistsSidebar');
+        const details = document.getElementById('playlistDetails');
+        const mobileBackBtn = document.getElementById('mobileBackBtn');
+        
+        sidebar.classList.remove('mobile-hidden');
+        details.classList.add('mobile-hidden');
+        mobileBackBtn.classList.add('mobile-hidden');
+        mobileBackBtn.classList.remove('mobile-flex');
     }
 } 
