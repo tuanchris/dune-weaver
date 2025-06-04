@@ -100,7 +100,7 @@ def list_theta_rho_files():
             relative_path = os.path.relpath(os.path.join(root, file), THETA_RHO_DIR)
             files.append(relative_path)
     logger.debug(f"Found {len(files)} theta-rho files")
-    return files
+    return [file for file in files if file.endswith('.thr')]
 
 def parse_theta_rho_file(file_path):
     """Parse a theta-rho file and return a list of (theta, rho) pairs."""
