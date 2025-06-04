@@ -6,7 +6,6 @@ import serial.tools.list_ports
 import websocket
 
 from modules.core.state import state
-from modules.core.pattern_manager import move_polar, reset_theta
 from modules.led.led_controller import effect_loading, effect_idle, effect_connected, LEDController
 logger = logging.getLogger(__name__)
 

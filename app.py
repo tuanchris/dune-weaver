@@ -21,7 +21,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from modules.led.led_controller import LEDController, effect_idle
 import math
-from modules.core.cache_manager import generate_all_image_previews, get_cache_path, generate_image_preview
+from modules.core.cache_manager import generate_all_image_previews, get_cache_path, generate_image_preview, get_pattern_metadata
 import json
 
 # Configure logging
@@ -385,14 +385,21 @@ async def preview_thr(request: DeleteFileRequest):
                 logger.error(f"Failed to generate or find preview for {request.file_name} after attempting generation.")
                 raise HTTPException(status_code=500, detail="Failed to generate preview image.")
 
-        # Get the coordinates for display
-        coordinates = parse_theta_rho_file(pattern_file_path)
-        first_coord = coordinates[0] if coordinates else None
-        last_coord = coordinates[-1] if coordinates else None
-
-        # Format coordinates as objects with x and y properties
-        first_coord_obj = {"x": first_coord[0], "y": first_coord[1]} if first_coord else None
-        last_coord_obj = {"x": last_coord[0], "y": last_coord[1]} if last_coord else None
+        # Try to get coordinates from metadata cache first
+        metadata = get_pattern_metadata(request.file_name)
+        if metadata:
+            first_coord_obj = metadata.get('first_coordinate')
+            last_coord_obj = metadata.get('last_coordinate')
+        else:
+            # Fallback to parsing file if metadata not cached (shouldn't happen after initial cache)
+            logger.debug(f"Metadata cache miss for {request.file_name}, parsing file")
+            coordinates = await asyncio.to_thread(parse_theta_rho_file, pattern_file_path)
+            first_coord = coordinates[0] if coordinates else None
+            last_coord = coordinates[-1] if coordinates else None
+            
+            # Format coordinates as objects with x and y properties
+            first_coord_obj = {"x": first_coord[0], "y": first_coord[1]} if first_coord else None
+            last_coord_obj = {"x": last_coord[0], "y": last_coord[1]} if last_coord else None
 
         # Return JSON with preview URL and coordinates
         # URL encode the file_name for the preview URL
@@ -640,14 +647,21 @@ async def preview_thr_batch(request: dict):
                     results[file_name] = {"error": "Failed to generate preview"}
                     continue
 
-            # Get the coordinates for display
-            coordinates = parse_theta_rho_file(pattern_file_path)
-            first_coord = coordinates[0] if coordinates else None
-            last_coord = coordinates[-1] if coordinates else None
-
-            # Format coordinates as objects with x and y properties
-            first_coord_obj = {"x": first_coord[0], "y": first_coord[1]} if first_coord else None
-            last_coord_obj = {"x": last_coord[0], "y": last_coord[1]} if last_coord else None
+            # Try to get coordinates from metadata cache first
+            metadata = get_pattern_metadata(file_name)
+            if metadata:
+                first_coord_obj = metadata.get('first_coordinate')
+                last_coord_obj = metadata.get('last_coordinate')
+            else:
+                # Fallback to parsing file if metadata not cached (shouldn't happen after initial cache)
+                logger.debug(f"Metadata cache miss for {file_name}, parsing file")
+                coordinates = await asyncio.to_thread(parse_theta_rho_file, pattern_file_path)
+                first_coord = coordinates[0] if coordinates else None
+                last_coord = coordinates[-1] if coordinates else None
+                
+                # Format coordinates as objects with x and y properties
+                first_coord_obj = {"x": first_coord[0], "y": first_coord[1]} if first_coord else None
+                last_coord_obj = {"x": last_coord[0], "y": last_coord[1]} if last_coord else None
 
             # URL encode the file_name for the preview URL
             encoded_filename = file_name.replace('/', '--')

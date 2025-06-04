@@ -1,12 +1,13 @@
 """Preview module for generating image previews of patterns."""
 import os
 import math
+import asyncio
 from io import BytesIO
 from PIL import Image, ImageDraw
 from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR
 
-async def generate_preview_image(pattern_file):
-    """Generate a PNG preview for a pattern file, optimized for a 300x300 view."""
+def _generate_preview_image_sync(pattern_file):
+    """Synchronous version of preview generation to run in thread pool."""
     file_path = os.path.join(THETA_RHO_DIR, pattern_file)
     coordinates = parse_theta_rho_file(file_path) 
     
@@ -65,3 +66,8 @@ async def generate_preview_image(pattern_file):
     img.save(img_byte_arr, format='PNG')
     img_byte_arr.seek(0)
     return img_byte_arr.getvalue()
+
+async def generate_preview_image(pattern_file):
+    """Generate a PNG preview for a pattern file, optimized for a 300x300 view."""
+    # Run the CPU-intensive work in a thread pool to avoid blocking the event loop
+    return await asyncio.to_thread(_generate_preview_image_sync, pattern_file)
