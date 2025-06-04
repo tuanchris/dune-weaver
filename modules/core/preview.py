@@ -6,15 +6,13 @@ from io import BytesIO
 from PIL import Image, ImageDraw
 from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR
 
+# Final display size - generate at this size directly
+DISPLAY_SIZE = 300
+
 def _generate_preview_image_sync(pattern_file):
     """Synchronous version of preview generation to run in thread pool."""
     file_path = os.path.join(THETA_RHO_DIR, pattern_file)
     coordinates = parse_theta_rho_file(file_path) 
-    
-    # Use 1000x1000 for high quality rendering
-    RENDER_SIZE = 1000
-    # Final display size
-    DISPLAY_SIZE = 300
     
     if not coordinates:
         # Create an image with "No pattern data" text
@@ -33,41 +31,42 @@ def _generate_preview_image_sync(pattern_file):
         draw.text((text_x, text_y), text, fill="black")
         
         img_byte_arr = BytesIO()
-        img.save(img_byte_arr, format='PNG')
+        # Use higher compression for better performance
+        img.save(img_byte_arr, format='WEBP', quality=75, method=6)
         img_byte_arr.seek(0)
         return img_byte_arr.getvalue()
 
     # Image drawing parameters
-    img = Image.new('RGBA', (RENDER_SIZE, RENDER_SIZE), (255, 255, 255, 0)) # Transparent background
+    img = Image.new('RGBA', (DISPLAY_SIZE, DISPLAY_SIZE), (255, 255, 255, 0)) # Transparent background
     draw = ImageDraw.Draw(img)
     
-    CENTER = RENDER_SIZE / 2.0
-    SCALE_FACTOR = (RENDER_SIZE / 2.0) - 10.0 
+    CENTER = DISPLAY_SIZE / 2.0
+    SCALE_FACTOR = (DISPLAY_SIZE / 2.0) - 10.0 
     LINE_COLOR = "black" 
-    STROKE_WIDTH = 2  # Increased stroke width for better visibility after scaling
+    STROKE_WIDTH = 2
 
+    # Optimize point drawing by reducing precision
     points_to_draw = []
     for theta, rho in coordinates:
-        x = CENTER - rho * SCALE_FACTOR * math.cos(theta)
-        y = CENTER - rho * SCALE_FACTOR * math.sin(theta)
+        # Round to 2 decimal places to reduce memory usage
+        x = round(CENTER - rho * SCALE_FACTOR * math.cos(theta), 2)
+        y = round(CENTER - rho * SCALE_FACTOR * math.sin(theta), 2)
         points_to_draw.append((x, y))
     
     if len(points_to_draw) > 1:
         draw.line(points_to_draw, fill=LINE_COLOR, width=STROKE_WIDTH, joint="curve")
     elif len(points_to_draw) == 1:
-        r = 4  # Larger radius for single point to remain visible after scaling
+        r = 4  # Larger radius for single point to remain visible
         x, y = points_to_draw[0]
         draw.ellipse([(x-r, y-r), (x+r, y+r)], fill=LINE_COLOR)
 
-    # Scale down to display size with high-quality resampling
-    img = img.resize((DISPLAY_SIZE, DISPLAY_SIZE), Image.Resampling.LANCZOS)
-
+    # Save as WebP with higher compression
     img_byte_arr = BytesIO()
-    img.save(img_byte_arr, format='PNG')
+    img.save(img_byte_arr, format='WEBP', quality=75, method=6)
     img_byte_arr.seek(0)
     return img_byte_arr.getvalue()
 
 async def generate_preview_image(pattern_file):
-    """Generate a PNG preview for a pattern file, optimized for a 300x300 view."""
+    """Generate a WebP preview for a pattern file, optimized for a 300x300 view."""
     # Run the CPU-intensive work in a thread pool to avoid blocking the event loop
     return await asyncio.to_thread(_generate_preview_image_sync, pattern_file)

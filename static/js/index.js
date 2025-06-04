@@ -4,26 +4,16 @@ let selectedPattern = null;
 let previewObserver = null;
 let currentBatch = 0;
 const BATCH_SIZE = 20; // Number of patterns to load per batch
-let previewCache = new Map(); // Cache for preview data
+let previewCache = new Map(); // Simple in-memory cache for preview data
 let imageCache = new Map(); // Cache for preloaded images
 
-// Global variables for batching lazy loading
+// Global variables for lazy loading
 let pendingPatterns = new Map(); // pattern -> element mapping
 let batchTimeout = null;
-const LAZY_BATCH_SIZE = 8; // Load 8 patterns at a time for lazy loading
-const BATCH_DELAY = 150; // Wait 150ms to collect more patterns before batching
+const LAZY_BATCH_SIZE = 12; // Increased batch size for single user
 
 // Shared caching for patterns list (persistent across sessions)
 const PATTERNS_CACHE_KEY = 'dune_weaver_patterns_cache';
-
-// IndexedDB cache for preview images with size management
-const PREVIEW_CACHE_DB_NAME = 'dune_weaver_previews';
-const PREVIEW_CACHE_DB_VERSION = 1;
-const PREVIEW_CACHE_STORE_NAME = 'previews';
-const MAX_CACHE_SIZE_MB = 20; // Limit to 20MB to be conservative
-const MAX_CACHE_SIZE_BYTES = MAX_CACHE_SIZE_MB * 1024 * 1024;
-
-let previewCacheDB = null;
 
 // Define constants for log message types
 const LOG_TYPE = {
@@ -100,14 +90,13 @@ function initPreviewObserver() {
                 const previewContainer = entry.target;
                 const pattern = previewContainer.dataset.pattern;
                 if (pattern) {
-                    // Add to pending batch instead of loading immediately
                     addPatternToBatch(pattern, previewContainer);
                     previewObserver.unobserve(previewContainer);
                 }
             }
         });
     }, {
-        rootMargin: '100px 0px', // Load images 100px before they come into view
+        rootMargin: '200px 0px', // Increased margin for smoother loading
         threshold: 0.1
     });
 }
@@ -118,9 +107,8 @@ function addPatternToBatch(pattern, element) {
     if (previewCache.has(pattern)) {
         const previewData = previewCache.get(pattern);
         if (previewData && !previewData.error) {
-            const img = imageCache.get(previewData.preview_url);
-            if (img) {
-                element.innerHTML = `<img src="${previewData.preview_url}" alt="Pattern Preview" class="w-full h-full object-contain" />`;
+            if (element) {
+                element.innerHTML = `<img src="${previewData.image_data}" alt="Pattern Preview" class="w-full h-full object-contain" loading="lazy" />`;
             }
         }
         return;
@@ -134,19 +122,8 @@ function addPatternToBatch(pattern, element) {
     // Add to pending batch
     pendingPatterns.set(pattern, element);
     
-    // Clear existing timeout and set new one
-    if (batchTimeout) {
-        clearTimeout(batchTimeout);
-    }
-    
-    batchTimeout = setTimeout(() => {
-        processPendingBatch();
-    }, BATCH_DELAY);
-    
-    // If batch is full, process immediately
+    // Process batch immediately if it's full
     if (pendingPatterns.size >= LAZY_BATCH_SIZE) {
-        clearTimeout(batchTimeout);
-        batchTimeout = null;
         processPendingBatch();
     }
 }
@@ -158,68 +135,31 @@ async function processPendingBatch() {
     // Create a copy of current pending patterns and clear the original
     const currentBatch = new Map(pendingPatterns);
     pendingPatterns.clear();
-    batchTimeout = null;
     
     const patternsToLoad = Array.from(currentBatch.keys());
     
-    // Check IndexedDB cache for all patterns first
-    const stillNeedLoading = [];
-    const elementsMap = new Map();
-    
-    for (const [pattern, element] of currentBatch.entries()) {
-        elementsMap.set(pattern, element);
-        
-        const cachedPreview = await getPreviewFromCache(pattern);
-        if (cachedPreview && !cachedPreview.error) {
-            // Add to in-memory cache
-            previewCache.set(pattern, cachedPreview);
-            
-            // Preload the image
-            await preloadImages([cachedPreview.preview_url]);
-            
-            // Update UI
-            const img = imageCache.get(cachedPreview.preview_url);
-            if (img && element) {
-                element.innerHTML = `<img src="${cachedPreview.preview_url}" alt="Pattern Preview" class="w-full h-full object-contain" />`;
-            }
-        } else {
-            stillNeedLoading.push(pattern);
-        }
-    }
-    
-    // If no patterns need loading from server, we're done
-    if (stillNeedLoading.length === 0) return;
-    
     try {
-        logMessage(`Loading batch of ${stillNeedLoading.length} pattern previews`, LOG_TYPE.DEBUG);
+        logMessage(`Loading batch of ${patternsToLoad.length} pattern previews`, LOG_TYPE.DEBUG);
         
         const response = await fetch('/preview_thr_batch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ file_names: stillNeedLoading })
+            body: JSON.stringify({ file_names: patternsToLoad })
         });
 
         if (response.ok) {
             const results = await response.json();
             
-            // Preload images for this batch
-            const urlsToPreload = Object.values(results)
-                .filter(data => !data.error)
-                .map(data => data.preview_url);
-            await preloadImages(urlsToPreload);
-            
             // Process all results
             for (const [pattern, data] of Object.entries(results)) {
-                const element = elementsMap.get(pattern);
+                const element = currentBatch.get(pattern);
                 
                 if (data && !data.error) {
-                    // Cache both in memory and IndexedDB
+                    // Cache in memory
                     previewCache.set(pattern, data);
-                    await savePreviewToCache(pattern, data);
                     
-                    const img = imageCache.get(data.preview_url);
-                    if (img && element) {
-                        element.innerHTML = `<img src="${data.preview_url}" alt="Pattern Preview" class="w-full h-full object-contain" />`;
+                    if (element) {
+                        element.innerHTML = `<img src="${data.image_data}" alt="Pattern Preview" class="w-full h-full object-contain" loading="lazy" />`;
                     }
                 } else {
                     previewCache.set(pattern, { error: true });
@@ -228,22 +168,13 @@ async function processPendingBatch() {
                     }
                 }
             }
-        } else {
-            // Handle error - remove loading indicators
-            for (const pattern of stillNeedLoading) {
-                const element = elementsMap.get(pattern);
-                if (element) {
-                    element.innerHTML = ''; // Remove loading indicator
-                }
-                previewCache.set(pattern, { error: true });
-            }
         }
     } catch (error) {
-        logMessage(`Error loading pattern preview batch: ${error.message}`, LOG_TYPE.ERROR);
+        logMessage(`Error loading preview batch: ${error.message}`, LOG_TYPE.ERROR);
         
-        // Handle error - remove loading indicators and mark as error
-        for (const pattern of stillNeedLoading) {
-            const element = elementsMap.get(pattern);
+        // Handle error - remove loading indicators
+        for (const pattern of patternsToLoad) {
+            const element = currentBatch.get(pattern);
             if (element) {
                 element.innerHTML = ''; // Remove loading indicator
             }
@@ -415,15 +346,6 @@ async function showPatternPreview(pattern) {
         // Check in-memory cache first
         let data = previewCache.get(pattern);
         
-        // If not in memory cache, check IndexedDB cache
-        if (!data) {
-            data = await getPreviewFromCache(pattern);
-            if (data && !data.error) {
-                // Add to in-memory cache for faster subsequent access
-                previewCache.set(pattern, data);
-            }
-        }
-        
         // If not in cache, fetch it
         if (!data) {
             const response = await fetch('/preview_thr_batch', {
@@ -439,12 +361,8 @@ async function showPatternPreview(pattern) {
             const results = await response.json();
             data = results[pattern];
             if (data && !data.error) {
-                // Cache both in memory and IndexedDB
+                // Cache in memory
                 previewCache.set(pattern, data);
-                await savePreviewToCache(pattern, data);
-                
-                // Preload the image
-                await preloadImages([data.preview_url]);
             } else {
                 throw new Error(data?.error || 'Failed to get preview data');
             }
@@ -454,10 +372,10 @@ async function showPatternPreview(pattern) {
         const layoutContainer = document.querySelector('.layout-content-container');
         
         // Update preview content
-        const img = imageCache.get(data.preview_url);
-        if (img) {
-            document.getElementById('patternPreviewImage').src = data.preview_url;
+        if (data.image_data) {
+            document.getElementById('patternPreviewImage').src = data.image_data;
         }
+        
         // Set pattern name in the preview panel
         const patternName = pattern.replace('.thr', '').split('/').pop();
         document.getElementById('patternPreviewTitle').textContent = patternName;
@@ -705,9 +623,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         logMessage('Initializing patterns page...', LOG_TYPE.DEBUG);
         
-        // Initialize IndexedDB preview cache
-        await initPreviewCacheDB();
-        
         // Setup upload event handlers
         setupUploadEventHandlers();
         
@@ -813,24 +728,25 @@ function updateCurrentlyPlayingUI(status) {
     // ... existing code ...
 }
 
-// Load patterns cache from localStorage
+// Load patterns from cache
 function loadPatternsFromCache() {
     try {
         const cached = localStorage.getItem(PATTERNS_CACHE_KEY);
-        return cached ? JSON.parse(cached) : null;
+        if (cached) {
+            return JSON.parse(cached);
+        }
     } catch (error) {
-        logMessage('Error loading patterns cache from localStorage', LOG_TYPE.WARNING);
-        return null;
+        logMessage(`Error loading patterns from cache: ${error.message}`, LOG_TYPE.ERROR);
     }
+    return null;
 }
 
-// Save patterns cache to localStorage
+// Save patterns to cache
 function savePatternsToCache(patterns) {
     try {
         localStorage.setItem(PATTERNS_CACHE_KEY, JSON.stringify(patterns));
-        logMessage(`Cached ${patterns.length} patterns to localStorage`, LOG_TYPE.DEBUG);
     } catch (error) {
-        logMessage('Error saving patterns cache to localStorage', LOG_TYPE.WARNING);
+        logMessage(`Error saving patterns to cache: ${error.message}`, LOG_TYPE.ERROR);
     }
 }
 
@@ -838,79 +754,31 @@ function savePatternsToCache(patterns) {
 function clearPatternsCache() {
     try {
         localStorage.removeItem(PATTERNS_CACHE_KEY);
-        logMessage('Patterns cache cleared from localStorage', LOG_TYPE.DEBUG);
     } catch (error) {
-        logMessage('Error clearing patterns cache', LOG_TYPE.WARNING);
+        logMessage(`Error clearing patterns cache: ${error.message}`, LOG_TYPE.ERROR);
     }
-}
-
-// Refresh patterns list (force reload and clear cache)
-async function refreshPatternsList() {
-    clearPatternsCache(); // Clear cache before refresh
-    await loadPatterns(true);
 }
 
 // Check if patterns are cached
 function hasCachedPatterns() {
-    return loadPatternsFromCache() !== null;
-}
-
-// Initialize IndexedDB for preview caching
-async function initPreviewCacheDB() {
-    if (previewCacheDB) return previewCacheDB;
-    
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open(PREVIEW_CACHE_DB_NAME, PREVIEW_CACHE_DB_VERSION);
-        
-        request.onerror = () => {
-            logMessage('Failed to open preview cache database', LOG_TYPE.ERROR);
-            reject(request.error);
-        };
-        
-        request.onsuccess = () => {
-            previewCacheDB = request.result;
-            logMessage('Preview cache database opened successfully', LOG_TYPE.DEBUG);
-            resolve(previewCacheDB);
-        };
-        
-        request.onupgradeneeded = (event) => {
-            const db = event.target.result;
-            
-            // Create object store for preview cache
-            const store = db.createObjectStore(PREVIEW_CACHE_STORE_NAME, { keyPath: 'pattern' });
-            store.createIndex('lastAccessed', 'lastAccessed', { unique: false });
-            store.createIndex('size', 'size', { unique: false });
-            
-            logMessage('Preview cache database schema created', LOG_TYPE.DEBUG);
-        };
-    });
+    return localStorage.getItem(PATTERNS_CACHE_KEY) !== null;
 }
 
 // Get preview from IndexedDB cache
 async function getPreviewFromCache(pattern) {
     try {
-        if (!previewCacheDB) await initPreviewCacheDB();
-        
-        const transaction = previewCacheDB.transaction([PREVIEW_CACHE_STORE_NAME], 'readwrite');
-        const store = transaction.objectStore(PREVIEW_CACHE_STORE_NAME);
-        
-        return new Promise((resolve, reject) => {
-            const request = store.get(pattern);
-            
-            request.onsuccess = () => {
-                const result = request.result;
-                if (result) {
-                    // Update last accessed time
-                    result.lastAccessed = Date.now();
-                    store.put(result);
-                    resolve(result.data);
-                } else {
-                    resolve(null);
-                }
-            };
-            
-            request.onerror = () => reject(request.error);
+        const response = await fetch('/preview_thr_batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file_names: [pattern] })
         });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const results = await response.json();
+        return results[pattern];
     } catch (error) {
         logMessage(`Error getting preview from cache: ${error.message}`, LOG_TYPE.WARNING);
         return null;
@@ -920,15 +788,9 @@ async function getPreviewFromCache(pattern) {
 // Save preview to IndexedDB cache with size management
 async function savePreviewToCache(pattern, previewData) {
     try {
-        if (!previewCacheDB) await initPreviewCacheDB();
-        
-        // Convert preview URL to blob for size calculation
         const response = await fetch(previewData.preview_url);
         const blob = await response.blob();
         const size = blob.size;
-        
-        // Check if we need to free up space
-        await managePreviewCacheSize(size);
         
         const cacheEntry = {
             pattern: pattern,
@@ -937,9 +799,6 @@ async function savePreviewToCache(pattern, previewData) {
             lastAccessed: Date.now(),
             created: Date.now()
         };
-        
-        const transaction = previewCacheDB.transaction([PREVIEW_CACHE_STORE_NAME], 'readwrite');
-        const store = transaction.objectStore(PREVIEW_CACHE_STORE_NAME);
         
         return new Promise((resolve, reject) => {
             const request = store.put(cacheEntry);
@@ -954,131 +813,6 @@ async function savePreviewToCache(pattern, previewData) {
         
     } catch (error) {
         logMessage(`Error saving preview to cache: ${error.message}`, LOG_TYPE.WARNING);
-    }
-}
-
-// Manage cache size by removing least recently used items
-async function managePreviewCacheSize(newItemSize) {
-    try {
-        const currentSize = await getPreviewCacheSize();
-        
-        if (currentSize + newItemSize <= MAX_CACHE_SIZE_BYTES) {
-            return; // No cleanup needed
-        }
-        
-        logMessage(`Cache size would exceed limit (${((currentSize + newItemSize) / 1024 / 1024).toFixed(1)}MB), cleaning up...`, LOG_TYPE.DEBUG);
-        
-        const transaction = previewCacheDB.transaction([PREVIEW_CACHE_STORE_NAME], 'readwrite');
-        const store = transaction.objectStore(PREVIEW_CACHE_STORE_NAME);
-        const index = store.index('lastAccessed');
-        
-        // Get all entries sorted by last accessed (oldest first)
-        const entries = await new Promise((resolve, reject) => {
-            const request = index.getAll();
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-        });
-        
-        // Sort by last accessed time (oldest first)
-        entries.sort((a, b) => a.lastAccessed - b.lastAccessed);
-        
-        let freedSpace = 0;
-        const targetSpace = newItemSize + (MAX_CACHE_SIZE_BYTES * 0.1); // Free 10% extra buffer
-        
-        for (const entry of entries) {
-            if (freedSpace >= targetSpace) break;
-            
-            await new Promise((resolve, reject) => {
-                const deleteRequest = store.delete(entry.pattern);
-                deleteRequest.onsuccess = () => {
-                    freedSpace += entry.size;
-                    logMessage(`Evicted cached preview for ${entry.pattern} (${(entry.size / 1024).toFixed(1)}KB)`, LOG_TYPE.DEBUG);
-                    resolve();
-                };
-                deleteRequest.onerror = () => reject(deleteRequest.error);
-            });
-        }
-        
-        logMessage(`Freed ${(freedSpace / 1024 / 1024).toFixed(1)}MB from preview cache`, LOG_TYPE.DEBUG);
-        
-    } catch (error) {
-        logMessage(`Error managing cache size: ${error.message}`, LOG_TYPE.WARNING);
-    }
-}
-
-// Get current cache size
-async function getPreviewCacheSize() {
-    try {
-        if (!previewCacheDB) return 0;
-        
-        const transaction = previewCacheDB.transaction([PREVIEW_CACHE_STORE_NAME], 'readonly');
-        const store = transaction.objectStore(PREVIEW_CACHE_STORE_NAME);
-        
-        return new Promise((resolve, reject) => {
-            const request = store.getAll();
-            
-            request.onsuccess = () => {
-                const totalSize = request.result.reduce((sum, entry) => sum + (entry.size || 0), 0);
-                resolve(totalSize);
-            };
-            
-            request.onerror = () => reject(request.error);
-        });
-        
-    } catch (error) {
-        logMessage(`Error getting cache size: ${error.message}`, LOG_TYPE.WARNING);
-        return 0;
-    }
-}
-
-// Clear preview cache
-async function clearPreviewCache() {
-    try {
-        if (!previewCacheDB) return;
-        
-        const transaction = previewCacheDB.transaction([PREVIEW_CACHE_STORE_NAME], 'readwrite');
-        const store = transaction.objectStore(PREVIEW_CACHE_STORE_NAME);
-        
-        return new Promise((resolve, reject) => {
-            const request = store.clear();
-            
-            request.onsuccess = () => {
-                logMessage('Preview cache cleared', LOG_TYPE.DEBUG);
-                resolve();
-            };
-            
-            request.onerror = () => reject(request.error);
-        });
-        
-    } catch (error) {
-        logMessage(`Error clearing preview cache: ${error.message}`, LOG_TYPE.WARNING);
-    }
-}
-
-// Get cache statistics
-async function getPreviewCacheStats() {
-    try {
-        const size = await getPreviewCacheSize();
-        const transaction = previewCacheDB.transaction([PREVIEW_CACHE_STORE_NAME], 'readonly');
-        const store = transaction.objectStore(PREVIEW_CACHE_STORE_NAME);
-        
-        const count = await new Promise((resolve, reject) => {
-            const request = store.count();
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-        });
-        
-        return {
-            count,
-            size,
-            sizeMB: size / 1024 / 1024,
-            maxSizeMB: MAX_CACHE_SIZE_MB,
-            utilizationPercent: (size / MAX_CACHE_SIZE_BYTES) * 100
-        };
-        
-    } catch (error) {
-        logMessage(`Error getting cache stats: ${error.message}`, LOG_TYPE.WARNING);
-        return { count: 0, size: 0, sizeMB: 0, maxSizeMB: MAX_CACHE_SIZE_MB, utilizationPercent: 0 };
     }
 }
 

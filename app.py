@@ -23,6 +23,7 @@ from modules.led.led_controller import LEDController, effect_idle
 import math
 from modules.core.cache_manager import generate_all_image_previews, get_cache_path, generate_image_preview, get_pattern_metadata
 import json
+import base64
 
 # Configure logging
 logging.basicConfig(
@@ -426,8 +427,19 @@ async def serve_preview(encoded_filename: str):
     if not os.path.exists(cache_path):
         logger.error(f"Preview image not found for {file_name}")
         raise HTTPException(status_code=404, detail="Preview image not found")
-        
-    return FileResponse(cache_path, media_type="image/png")
+    
+    # Add caching headers
+    headers = {
+        "Cache-Control": "public, max-age=31536000",  # Cache for 1 year
+        "Content-Type": "image/webp",
+        "Accept-Ranges": "bytes"
+    }
+    
+    return FileResponse(
+        cache_path,
+        media_type="image/webp",
+        headers=headers
+    )
 
 @app.post("/send_coordinate")
 async def send_coordinate(request: CoordinateRequest):
@@ -626,6 +638,12 @@ async def preview_thr_batch(request: dict):
     if not isinstance(file_names, list):
         raise HTTPException(status_code=400, detail="file_names must be a list")
 
+    # Add caching headers for the batch response
+    headers = {
+        "Cache-Control": "public, max-age=3600",  # Cache for 1 hour
+        "Content-Type": "application/json"
+    }
+
     results = {}
     for file_name in file_names:
         try:
@@ -663,10 +681,15 @@ async def preview_thr_batch(request: dict):
                 first_coord_obj = {"x": first_coord[0], "y": first_coord[1]} if first_coord else None
                 last_coord_obj = {"x": last_coord[0], "y": last_coord[1]} if last_coord else None
 
-            # URL encode the file_name for the preview URL
-            encoded_filename = file_name.replace('/', '--')
+            # Read the image data
+            with open(cache_path, 'rb') as f:
+                image_data = f.read()
+            
+            # Convert to base64 for JSON transmission
+            image_b64 = base64.b64encode(image_data).decode('utf-8')
+            
             results[file_name] = {
-                "preview_url": f"/preview/{encoded_filename}",
+                "image_data": f"data:image/webp;base64,{image_b64}",
                 "first_coordinate": first_coord_obj,
                 "last_coordinate": last_coord_obj
             }
@@ -675,7 +698,7 @@ async def preview_thr_batch(request: dict):
             logger.error(f"Error processing {file_name}: {str(e)}")
             results[file_name] = {"error": str(e)}
 
-    return results
+    return JSONResponse(content=results, headers=headers)
 
 @app.get("/playlists")
 async def playlists(request: Request):
