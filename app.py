@@ -668,6 +668,10 @@ async def playlists(request: Request):
     logger.debug("Rendering playlists page")
     return templates.TemplateResponse("playlists.html", {"request": request})
 
+@app.get("/image2sand")
+async def image2sand(request: Request):
+    return templates.TemplateResponse("image2sand.html", {"request": request})
+
 @app.get("/wled")
 async def wled(request: Request):
     return templates.TemplateResponse("wled.html", {"request": request})

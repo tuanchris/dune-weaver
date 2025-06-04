@@ -399,7 +399,7 @@
           </div>
           <nav class="mx-auto flex max-w-5xl justify-around">
             <a
-              class="{% if request.url.path == '/' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
+              class="{% if request.url.path == '/' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] {% if request.url.path != '/' %}border-transparent{% endif %} py-3 text-xs font-medium sm:text-sm"
               href="/"
             >
               <span class="material-icons">search</span> Browse
@@ -409,6 +409,12 @@
               href="/playlists"
             >
               <span class="material-icons">list_alt</span> Playlists
+            </a>
+            <a
+              class="{% if request.url.path == '/image2sand' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
+              href="/image2sand"
+            >
+              <span class="material-icons">image</span> Image2Sand
             </a>
             <a
               class="{% if request.url.path == '/table_control' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"

@@ -5,6 +5,42 @@
  * 
  */
 
+// Log types for message styling
+const LOG_TYPE = {
+    INFO: 'info',
+    SUCCESS: 'success',
+    WARNING: 'warning',
+    ERROR: 'error'
+};
+
+/**
+ * Display a message to the user
+ * @param {string} message - The message to display
+ * @param {string} type - The type of message (info, success, warning, error)
+ */
+function logMessage(message, type = LOG_TYPE.INFO) {
+    console.log(`[${type.toUpperCase()}] ${message}`);
+    
+    // Create message element
+    const messageElement = document.createElement('div');
+    messageElement.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 transition-opacity duration-300 ${
+        type === LOG_TYPE.ERROR ? 'bg-red-100 text-red-700' :
+        type === LOG_TYPE.SUCCESS ? 'bg-green-100 text-green-700' :
+        type === LOG_TYPE.WARNING ? 'bg-yellow-100 text-yellow-700' :
+        'bg-blue-100 text-blue-700'
+    }`;
+    messageElement.textContent = message;
+    
+    // Add to document
+    document.body.appendChild(messageElement);
+    
+    // Remove after 5 seconds
+    setTimeout(() => {
+        messageElement.style.opacity = '0';
+        setTimeout(() => messageElement.remove(), 300);
+    }, 5000);
+}
+
 // Global variables for the image converter
 let originalImage = null;
 let fileName = '';
@@ -27,7 +63,11 @@ function openImageConverter(file) {
         return;
     }
 
-    fileName = file.name.split('.')[0]; // Remove extension
+    // Store the original file name globally for later use
+    window._originalUploadedFileName = file.name;
+    
+    // Remove extension for display/use
+    fileName = file.name.replace(/\.[^/.]+$/, '');
     
     // Create an image element to load the file
     const img = new Image();
@@ -87,9 +127,18 @@ async function saveConvertedPattern() {
     }
     
     try {
-        // Create a safe filename (replace spaces and special characters)
-        const safeFileName = fileName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        const thrFileName = `${safeFileName}.thr`;
+        // Always use the original uploaded file name if available
+        let originalName = window._originalUploadedFileName;
+        if (!originalName || typeof originalName !== 'string') {
+            originalName = fileName || 'pattern';
+        }
+        // Remove extension
+        let baseName = originalName.replace(/\.[^/.]+$/, '');
+        // Replace spaces with underscores
+        baseName = baseName.replace(/\s+/g, '_').trim();
+        // Fallback if baseName is empty
+        if (!baseName) baseName = 'pattern';
+        let thrFileName = baseName + '.thr';
         
         // Create a Blob with the coordinates
         const blob = new Blob([convertedCoordinates], { type: 'text/plain' });
@@ -122,18 +171,22 @@ async function saveConvertedPattern() {
             closeImageConverter();
 
             // clear the file input
-            fileInput.value = '';
+            if (fileInput) {
+                fileInput.value = '';
+            }
 
             // Refresh the file list
             await loadThetaRhoFiles();
             
             // Select the newly created file
             const fileList = document.getElementById('theta_rho_files');
-            const listItems = fileList.querySelectorAll('li');
-            for (const item of listItems) {
-                if (item.textContent === finalFileName) {
-                    selectFile(finalFileName, item);
-                    break;
+            if (fileList) {
+                const listItems = fileList.querySelectorAll('li');
+                for (const item of listItems) {
+                    if (item.textContent === finalFileName) {
+                        selectFile(finalFileName, item);
+                        break;
+                    }
                 }
             }
         } else {
@@ -323,3 +376,29 @@ document.getElementById('gen-image-button')?.addEventListener('click', function(
         generateOpenAIImage(apiKey, prompt);
     }
 });
+
+async function loadThetaRhoFiles() {
+    const fileList = document.getElementById('theta_rho_files');
+    if (!fileList) return;
+
+    // Clear the list
+    fileList.innerHTML = '';
+
+    try {
+        // Fetch the file list from your backend
+        const response = await fetch('/list_theta_rho_files');
+        if (!response.ok) throw new Error('Failed to fetch file list');
+        const files = await response.json();
+
+        // Populate the list
+        files.forEach(filename => {
+            const li = document.createElement('li');
+            li.textContent = filename;
+            fileList.appendChild(li);
+        });
+    } catch (error) {
+        const li = document.createElement('li');
+        li.textContent = 'Error loading file list';
+        fileList.appendChild(li);
+    }
+}
