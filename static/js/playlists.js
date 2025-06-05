@@ -377,17 +377,37 @@ function clearPatternsCache() {
 // Initialize Intersection Observer for lazy loading
 function initializeIntersectionObserver() {
     intersectionObserver = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                const patternElement = entry.target;
-                const pattern = patternElement.dataset.pattern;
-                if (pattern) {
-                    // Add to pending batch instead of loading immediately
-                    addPatternToBatch(pattern, patternElement);
-                    intersectionObserver.unobserve(patternElement);
-                }
+        // Get all visible elements
+        const visibleElements = entries.filter(entry => entry.isIntersecting);
+        if (visibleElements.length === 0) return;
+
+        // Collect all visible patterns
+        const visiblePatterns = new Map();
+        visibleElements.forEach(entry => {
+            const patternElement = entry.target;
+            const pattern = patternElement.dataset.pattern;
+            if (pattern && !previewCache.has(pattern)) {
+                visiblePatterns.set(pattern, patternElement);
+                intersectionObserver.unobserve(patternElement);
             }
         });
+
+        // If we have visible patterns that need loading, add them to the batch
+        if (visiblePatterns.size > 0) {
+            // Add to pending batch
+            for (const [pattern, element] of visiblePatterns) {
+                pendingPatterns.set(pattern, element);
+            }
+
+            // Clear existing timeout and set new one
+            if (batchTimeout) {
+                clearTimeout(batchTimeout);
+            }
+
+            batchTimeout = setTimeout(() => {
+                processPendingBatch();
+            }, BATCH_DELAY);
+        }
     }, {
         rootMargin: '400px 0px', // Increased margin for smoother loading
         threshold: 0.1
@@ -406,7 +426,7 @@ async function processPendingBatch() {
     const patternsToLoad = Array.from(currentBatch.keys());
     
     try {
-        logMessage(`Loading batch of ${patternsToLoad.length} pattern previews`, LOG_TYPE.DEBUG);
+        logMessage(`Loading ${patternsToLoad.length} pattern previews`, LOG_TYPE.DEBUG);
         
         const response = await fetch('/preview_thr_batch', {
             method: 'POST',
@@ -431,9 +451,6 @@ async function processPendingBatch() {
                     }
                 } else {
                     previewCache.set(pattern, { error: true });
-                    if (previewContainer) {
-                        previewContainer.innerHTML = ''; // Remove loading indicator
-                    }
                 }
             }
         } else {
@@ -442,55 +459,10 @@ async function processPendingBatch() {
     } catch (error) {
         logMessage(`Error loading pattern preview batch: ${error.message}`, LOG_TYPE.ERROR);
         
-        // Handle error - remove loading indicators and mark as error
+        // Handle error - mark as error in cache
         for (const pattern of patternsToLoad) {
-            const element = currentBatch.get(pattern);
-            const previewContainer = element?.querySelector('.pattern-preview');
-            if (previewContainer) {
-                previewContainer.innerHTML = ''; // Remove loading indicator
-            }
             previewCache.set(pattern, { error: true });
         }
-    }
-}
-
-// Add pattern to pending batch for efficient loading
-function addPatternToBatch(pattern, element) {
-    // Check in-memory cache first
-    if (previewCache.has(pattern)) {
-        const previewData = previewCache.get(pattern);
-        if (previewData && !previewData.error && previewData.image_data) {
-            const previewContainer = element.querySelector('.pattern-preview');
-            if (previewContainer) {
-                previewContainer.innerHTML = `<img src="${previewData.image_data}" alt="Pattern Preview" class="w-full h-full object-cover rounded-full" />`;
-            }
-        }
-        return;
-    }
-
-    // Add loading indicator
-    const previewContainer = element.querySelector('.pattern-preview');
-    if (previewContainer) {
-        previewContainer.innerHTML = '<div class="absolute inset-0 flex items-center justify-center"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-500"></div></div>';
-    }
-
-    // Add to pending batch
-    pendingPatterns.set(pattern, element);
-    
-    // Clear existing timeout and set new one
-    if (batchTimeout) {
-        clearTimeout(batchTimeout);
-    }
-    
-    batchTimeout = setTimeout(() => {
-        processPendingBatch();
-    }, BATCH_DELAY);
-    
-    // If batch is full, process immediately
-    if (pendingPatterns.size >= BATCH_SIZE) {
-        clearTimeout(batchTimeout);
-        batchTimeout = null;
-        processPendingBatch();
     }
 }
 
@@ -674,13 +646,10 @@ function createPatternCard(pattern, showRemove = false) {
     const previewContainer = document.createElement('div');
     previewContainer.className = 'w-full bg-center bg-no-repeat aspect-square bg-cover rounded-full shadow-sm group-hover:shadow-md transition-shadow duration-150 border border-gray-200 dark:border-gray-700 pattern-preview bg-gray-100 dark:bg-gray-800 relative';
     
-    // Add loading indicator by default
-    previewContainer.innerHTML = '<div class="absolute inset-0 flex items-center justify-center"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-500"></div></div>';
-    
     // Only set preview image if already available in memory cache
     const previewData = previewCache.get(pattern);
-    if (previewData && !previewData.error && previewData.preview_url) {
-        previewContainer.innerHTML = `<img src="${previewData.preview_url}" alt="Pattern Preview" class="w-full h-full object-cover rounded-full" />`;
+    if (previewData && !previewData.error && previewData.image_data) {
+        previewContainer.innerHTML = `<img src="${previewData.image_data}" alt="Pattern Preview" class="w-full h-full object-cover rounded-full" />`;
     }
 
     const patternName = document.createElement('p');
@@ -873,9 +842,6 @@ function displayAvailablePatterns() {
         
         card.innerHTML = `
             <div class="w-full bg-center bg-no-repeat aspect-square bg-cover rounded-lg border border-gray-200 dark:border-gray-700 relative pattern-preview bg-gray-100 dark:bg-gray-800">
-                <div class="absolute inset-0 flex items-center justify-center">
-                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-500"></div>
-                </div>
                 <div class="absolute top-2 right-2 size-6 rounded-full bg-white dark:bg-gray-700 shadow-md opacity-0 transition-opacity duration-150 flex items-center justify-center">
                     <span class="material-icons text-sm text-gray-600 dark:text-gray-300">add</span>
                 </div>
@@ -888,8 +854,8 @@ function displayAvailablePatterns() {
         
         // Only set preview image if already available in memory cache
         const previewData = previewCache.get(pattern);
-        if (previewData && !previewData.error && previewData.preview_url) {
-            previewContainer.innerHTML = `<img src="${previewData.preview_url}" alt="Pattern Preview" class="w-full h-full object-cover rounded-lg" />`;
+        if (previewData && !previewData.error && previewData.image_data) {
+            previewContainer.innerHTML = `<img src="${previewData.image_data}" alt="Pattern Preview" class="w-full h-full object-cover rounded-lg" />`;
             // Re-add the add button
             const addBtnContainer = document.createElement('div');
             addBtnContainer.className = 'absolute top-2 right-2 size-6 rounded-full bg-white dark:bg-gray-700 shadow-md opacity-0 transition-opacity duration-150 flex items-center justify-center';
