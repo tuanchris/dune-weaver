@@ -55,12 +55,15 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to initialize MQTT: {str(e)}")
     
-    # Generate image previews for all patterns
+    # Generate metadata cache and image previews for all patterns
     try:
-        logger.info("Starting image cache generation...")
+        logger.info("Starting cache generation...")
+        from modules.core.cache_manager import generate_metadata_cache, generate_all_image_previews
+        await generate_metadata_cache()
         await generate_all_image_previews()
+        logger.info("Cache generation completed successfully")
     except Exception as e:
-        logger.warning(f"Failed to generate image cache: {str(e)}")
+        logger.warning(f"Failed to generate cache: {str(e)}")
 
     yield  # This separates startup from shutdown code
 
