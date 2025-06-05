@@ -122,6 +122,18 @@
   .inactive-tab:hover {
     @apply text-gray-700;
   }
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-colors duration-150;
+  }
+  .btn-primary {
+    @apply bg-blue-600 text-white hover:bg-blue-700;
+  }
+  .btn-secondary {
+    @apply bg-gray-200 text-gray-700 hover:bg-gray-300;
+  }
+  .form-input {
+    @apply block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500;
+  }
 }
 
 /* Status message transition */

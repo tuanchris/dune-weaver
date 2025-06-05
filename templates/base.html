@@ -10,6 +10,7 @@
       }
     </script>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link crossorigin="" href="https://fonts.gstatic.com/" rel="preconnect" />
     <link
       as="style"
@@ -239,7 +240,7 @@
     >
       <div class="layout-container flex h-full grow flex-col">
         <header
-          class="fixed top-0 left-0 right-0 z-10 flex items-center justify-between whitespace-nowrap border-b border-solid border-b-gray-200 bg-white px-6 py-4 shadow-sm md:px-10"
+          class="fixed top-0 left-0 right-0 z-10 flex items-center justify-between whitespace-nowrap border-b border-solid border-b-gray-200 bg-white px-4 sm:px-6 md:px-10 py-3 sm:py-4 shadow-sm"
         >
           <div class="flex items-center gap-3 text-gray-800">
             <a href="/" class="flex items-center gap-3 text-gray-800 hover:opacity-80 transition-opacity">
@@ -276,7 +277,7 @@
             </button>
           </div>
         </header>
-        <main class="flex flex-1 justify-center px-4 sm:px-6 lg:px-8 mt-16">
+        <main class="flex flex-1 justify-center px-4 sm:px-6 lg:px-8 pt-16 sm:pt-20">
           {% block content %}{% endblock %}
         </main>
         <footer
