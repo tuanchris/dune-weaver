@@ -24,6 +24,7 @@ import math
 from modules.core.cache_manager import generate_all_image_previews, get_cache_path, generate_image_preview, get_pattern_metadata
 import json
 import base64
+import time
 
 # Configure logging
 logging.basicConfig(
@@ -629,7 +630,7 @@ async def skip_pattern():
 
 @app.post("/preview_thr_batch")
 async def preview_thr_batch(request: dict):
-    """Get previews for multiple pattern files in a single request."""
+    start = time.time()
     if not request.get("file_names"):
         logger.warning("Batch preview request received without filenames")
         raise HTTPException(status_code=400, detail="No file names provided")
@@ -638,7 +639,6 @@ async def preview_thr_batch(request: dict):
     if not isinstance(file_names, list):
         raise HTTPException(status_code=400, detail="file_names must be a list")
 
-    # Add caching headers for the batch response
     headers = {
         "Cache-Control": "public, max-age=3600",  # Cache for 1 hour
         "Content-Type": "application/json"
@@ -646,8 +646,8 @@ async def preview_thr_batch(request: dict):
 
     results = {}
     for file_name in file_names:
+        t1 = time.time()
         try:
-            # Construct the full path to the pattern file to check existence
             pattern_file_path = os.path.join(pattern_manager.THETA_RHO_DIR, file_name)
             if not os.path.exists(pattern_file_path):
                 logger.warning(f"Pattern file not found: {pattern_file_path}")
@@ -658,46 +658,39 @@ async def preview_thr_batch(request: dict):
             
             if not os.path.exists(cache_path):
                 logger.info(f"Cache miss for {file_name}. Generating preview...")
-                # Attempt to generate the preview if it's missing
                 success = await generate_image_preview(file_name)
                 if not success or not os.path.exists(cache_path):
                     logger.error(f"Failed to generate or find preview for {file_name}")
                     results[file_name] = {"error": "Failed to generate preview"}
                     continue
 
-            # Try to get coordinates from metadata cache first
             metadata = get_pattern_metadata(file_name)
             if metadata:
                 first_coord_obj = metadata.get('first_coordinate')
                 last_coord_obj = metadata.get('last_coordinate')
             else:
-                # Fallback to parsing file if metadata not cached (shouldn't happen after initial cache)
                 logger.debug(f"Metadata cache miss for {file_name}, parsing file")
                 coordinates = await asyncio.to_thread(parse_theta_rho_file, pattern_file_path)
                 first_coord = coordinates[0] if coordinates else None
                 last_coord = coordinates[-1] if coordinates else None
-                
-                # Format coordinates as objects with x and y properties
                 first_coord_obj = {"x": first_coord[0], "y": first_coord[1]} if first_coord else None
                 last_coord_obj = {"x": last_coord[0], "y": last_coord[1]} if last_coord else None
 
-            # Read the image data
             with open(cache_path, 'rb') as f:
                 image_data = f.read()
-            
-            # Convert to base64 for JSON transmission
             image_b64 = base64.b64encode(image_data).decode('utf-8')
-            
             results[file_name] = {
                 "image_data": f"data:image/webp;base64,{image_b64}",
                 "first_coordinate": first_coord_obj,
                 "last_coordinate": last_coord_obj
             }
-
         except Exception as e:
             logger.error(f"Error processing {file_name}: {str(e)}")
             results[file_name] = {"error": str(e)}
+        finally:
+            logger.info(f"Processed {file_name} in {time.time() - t1:.2f}s")
 
+    logger.info(f"Total batch processing time: {time.time() - start:.2f}s for {len(file_names)} files")
     return JSONResponse(content=results, headers=headers)
 
 @app.get("/playlists")
