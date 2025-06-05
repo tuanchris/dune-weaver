@@ -710,6 +710,16 @@ async def wled(request: Request):
 async def table_control(request: Request):
     return templates.TemplateResponse("table_control.html", {"request": request})
 
+@app.post("/rebuild_cache")
+async def rebuild_cache_endpoint():
+    """Trigger a rebuild of the pattern cache."""
+    try:
+        await cache_manager.rebuild_cache()
+        return {"success": True, "message": "Cache rebuild completed successfully"}
+    except Exception as e:
+        logger.error(f"Failed to rebuild cache: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully but forcefully."""
     logger.info("Received shutdown signal, cleaning up...")

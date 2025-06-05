@@ -10,12 +10,21 @@ logger = logging.getLogger(__name__)
 
 # Constants
 CACHE_DIR = os.path.join(THETA_RHO_DIR, "cached_images")
-METADATA_CACHE_FILE = os.path.join(CACHE_DIR, "metadata_cache.json")
+METADATA_CACHE_FILE = "metadata_cache.json"  # Now in root directory
 
 def ensure_cache_dir():
     """Ensure the cache directory exists with proper permissions."""
     try:
         Path(CACHE_DIR).mkdir(parents=True, exist_ok=True)
+        
+        # Initialize metadata cache if it doesn't exist
+        if not os.path.exists(METADATA_CACHE_FILE):
+            with open(METADATA_CACHE_FILE, 'w') as f:
+                json.dump({}, f)
+            try:
+                os.chmod(METADATA_CACHE_FILE, 0o644)  # More conservative permissions
+            except (OSError, PermissionError) as e:
+                logger.debug(f"Could not set metadata cache file permissions: {str(e)}")
         
         for root, dirs, files in os.walk(CACHE_DIR):
             try:
@@ -39,7 +48,11 @@ def get_cache_path(pattern_file):
     """Get the cache path for a pattern file."""
     # Create subdirectories in cache to match the pattern file structure
     cache_subpath = os.path.dirname(pattern_file)
-    cache_dir = os.path.join(CACHE_DIR, cache_subpath)
+    if cache_subpath == 'custom_patterns':
+        # Store custom patterns directly in the cache root
+        cache_dir = CACHE_DIR
+    else:
+        cache_dir = os.path.join(CACHE_DIR, cache_subpath)
     
     # Ensure the subdirectory exists
     os.makedirs(cache_dir, exist_ok=True)
@@ -180,3 +193,35 @@ async def generate_all_image_previews():
         successful += sum(1 for r in results if r)
     
     logger.info(f"Image cache generation completed: {successful}/{total_files} patterns cached")
+
+async def rebuild_cache():
+    """Rebuild the entire cache for all pattern files."""
+    logger.info("Starting cache rebuild...")
+    
+    # Ensure cache directory exists
+    ensure_cache_dir()
+    
+    # Get all pattern files
+    pattern_files = [f for f in list_theta_rho_files() if f.endswith('.thr')]
+    total_files = len(pattern_files)
+    
+    if total_files == 0:
+        logger.info("No pattern files found to cache")
+        return
+        
+    logger.info(f"Rebuilding cache for {total_files} pattern files...")
+    
+    # Process in batches
+    batch_size = 5
+    successful = 0
+    for i in range(0, total_files, batch_size):
+        batch = pattern_files[i:i + batch_size]
+        tasks = [generate_image_preview(file) for file in batch]
+        results = await asyncio.gather(*tasks)
+        successful += sum(1 for r in results if r)
+        
+        # Log progress
+        progress = min(i + batch_size, total_files)
+        logger.info(f"Cache rebuild progress: {progress}/{total_files} files processed")
+    
+    logger.info(f"Cache rebuild completed: {successful}/{total_files} patterns cached successfully")
