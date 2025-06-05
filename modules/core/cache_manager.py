@@ -4,7 +4,7 @@ import json
 import asyncio
 import logging
 from pathlib import Path
-from modules.core.pattern_manager import list_theta_rho_files, THETA_RHO_DIR
+from modules.core.pattern_manager import list_theta_rho_files, THETA_RHO_DIR, parse_theta_rho_file
 
 logger = logging.getLogger(__name__)
 
