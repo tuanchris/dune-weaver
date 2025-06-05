@@ -194,6 +194,49 @@ async def generate_all_image_previews():
     
     logger.info(f"Image cache generation completed: {successful}/{total_files} patterns cached")
 
+async def generate_metadata_cache():
+    """Generate metadata cache for all pattern files."""
+    logger.info("Starting metadata cache generation...")
+    
+    # Get all pattern files using the same function as the rest of the codebase
+    pattern_files = list_theta_rho_files()
+    total_files = len(pattern_files)
+    
+    if total_files == 0:
+        logger.info("No pattern files found to cache")
+        return
+        
+    logger.info(f"Generating metadata cache for {total_files} pattern files...")
+    
+    # Process in batches
+    batch_size = 5
+    successful = 0
+    for i in range(0, total_files, batch_size):
+        batch = pattern_files[i:i + batch_size]
+        tasks = []
+        for file_name in batch:
+            pattern_path = os.path.join(THETA_RHO_DIR, file_name)
+            try:
+                # Parse file to get metadata
+                coordinates = await asyncio.to_thread(parse_theta_rho_file, pattern_path)
+                if coordinates:
+                    first_coord = {"x": coordinates[0][0], "y": coordinates[0][1]}
+                    last_coord = {"x": coordinates[-1][0], "y": coordinates[-1][1]}
+                    total_coords = len(coordinates)
+                    
+                    # Cache the metadata
+                    cache_pattern_metadata(file_name, first_coord, last_coord, total_coords)
+                    successful += 1
+                    logger.debug(f"Generated metadata for {file_name}")
+            except Exception as e:
+                logger.error(f"Failed to generate metadata for {file_name}: {str(e)}")
+        
+        # Log progress
+        progress = min(i + batch_size, total_files)
+        logger.info(f"Metadata cache generation progress: {progress}/{total_files} files processed")
+    
+    logger.info(f"Metadata cache generation completed: {successful}/{total_files} patterns cached successfully")
+
 async def rebuild_cache():
     """Rebuild the entire cache for all pattern files."""
     logger.info("Starting cache rebuild...")
@@ -201,7 +244,10 @@ async def rebuild_cache():
     # Ensure cache directory exists
     ensure_cache_dir()
     
-    # Get all pattern files
+    # First generate metadata cache for all files
+    await generate_metadata_cache()
+    
+    # Then generate image previews
     pattern_files = [f for f in list_theta_rho_files() if f.endswith('.thr')]
     total_files = len(pattern_files)
     
@@ -209,7 +255,7 @@ async def rebuild_cache():
         logger.info("No pattern files found to cache")
         return
         
-    logger.info(f"Rebuilding cache for {total_files} pattern files...")
+    logger.info(f"Generating image previews for {total_files} pattern files...")
     
     # Process in batches
     batch_size = 5
@@ -222,6 +268,6 @@ async def rebuild_cache():
         
         # Log progress
         progress = min(i + batch_size, total_files)
-        logger.info(f"Cache rebuild progress: {progress}/{total_files} files processed")
+        logger.info(f"Image preview generation progress: {progress}/{total_files} files processed")
     
     logger.info(f"Cache rebuild completed: {successful}/{total_files} patterns cached successfully")
