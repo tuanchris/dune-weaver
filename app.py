@@ -691,7 +691,7 @@ async def preview_thr_batch(request: dict):
             logger.error(f"Error processing {file_name}: {str(e)}")
             results[file_name] = {"error": str(e)}
         finally:
-            logger.info(f"Processed {file_name} in {time.time() - t1:.2f}s")
+            logger.debug(f"Processed {file_name} in {time.time() - t1:.2f}s")
 
     logger.info(f"Total batch processing time: {time.time() - start:.2f}s for {len(file_names)} files")
     return JSONResponse(content=results, headers=headers)

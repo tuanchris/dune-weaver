@@ -127,8 +127,17 @@ def cache_pattern_metadata(pattern_file, first_coord, last_coord, total_coords):
 
 def needs_cache(pattern_file):
     """Check if a pattern file needs its cache generated."""
+    # Check if image preview exists
     cache_path = get_cache_path(pattern_file)
-    return not os.path.exists(cache_path)
+    if not os.path.exists(cache_path):
+        return True
+        
+    # Check if metadata cache exists and is valid
+    metadata = get_pattern_metadata(pattern_file)
+    if metadata is None:
+        return True
+        
+    return False
 
 async def generate_image_preview(pattern_file):
     """Generate image preview for a single pattern file."""
@@ -152,10 +161,15 @@ async def generate_image_preview(pattern_file):
                 # Cache the metadata for future use
                 cache_pattern_metadata(pattern_file, first_coord, last_coord, total_coords)
         
+        # Check if we need to generate the image
+        cache_path = get_cache_path(pattern_file)
+        if os.path.exists(cache_path):
+            logger.debug(f"Skipping image generation for {pattern_file} - already cached")
+            return True
+            
         # Generate the image
         image_content = await generate_preview_image(pattern_file)
         
-        cache_path = get_cache_path(pattern_file)
         with open(cache_path, 'wb') as f:
             f.write(image_content)
         
@@ -191,6 +205,10 @@ async def generate_all_image_previews():
         tasks = [generate_image_preview(file) for file in batch]
         results = await asyncio.gather(*tasks)
         successful += sum(1 for r in results if r)
+        
+        # Log progress
+        progress = min(i + batch_size, total_files)
+        logger.info(f"Image cache generation progress: {progress}/{total_files} files processed")
     
     logger.info(f"Image cache generation completed: {successful}/{total_files} patterns cached")
 
@@ -200,28 +218,29 @@ async def generate_metadata_cache():
     
     # Get all pattern files using the same function as the rest of the codebase
     pattern_files = list_theta_rho_files()
-    total_files = len(pattern_files)
+    
+    # Filter out files that already have valid metadata cache
+    files_to_process = []
+    for file_name in pattern_files:
+        if get_pattern_metadata(file_name) is None:
+            files_to_process.append(file_name)
+    
+    total_files = len(files_to_process)
+    skipped_files = len(pattern_files) - total_files
     
     if total_files == 0:
-        logger.info("No pattern files found to cache")
+        logger.info(f"No new files to cache. {skipped_files} files already cached.")
         return
         
-    logger.info(f"Generating metadata cache for {total_files} pattern files...")
+    logger.info(f"Generating metadata cache for {total_files} new files ({skipped_files} files already cached)...")
     
     # Process in batches
     batch_size = 5
     successful = 0
-    skipped = 0
     for i in range(0, total_files, batch_size):
-        batch = pattern_files[i:i + batch_size]
+        batch = files_to_process[i:i + batch_size]
         tasks = []
         for file_name in batch:
-            # Check if we already have valid cached metadata
-            if get_pattern_metadata(file_name) is not None:
-                logger.debug(f"Skipping {file_name} - metadata already cached")
-                skipped += 1
-                continue
-                
             pattern_path = os.path.join(THETA_RHO_DIR, file_name)
             try:
                 # Parse file to get metadata
@@ -242,7 +261,7 @@ async def generate_metadata_cache():
         progress = min(i + batch_size, total_files)
         logger.info(f"Metadata cache generation progress: {progress}/{total_files} files processed")
     
-    logger.info(f"Metadata cache generation completed: {successful}/{total_files} patterns cached successfully, {skipped} patterns skipped (already cached)")
+    logger.info(f"Metadata cache generation completed: {successful}/{total_files} patterns cached successfully, {skipped_files} patterns skipped (already cached)")
 
 async def rebuild_cache():
     """Rebuild the entire cache for all pattern files."""

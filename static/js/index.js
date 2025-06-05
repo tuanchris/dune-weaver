@@ -3,14 +3,14 @@ let allPatterns = [];
 let selectedPattern = null;
 let previewObserver = null;
 let currentBatch = 0;
-const BATCH_SIZE = 20; // Number of patterns to load per batch
+const BATCH_SIZE = 40; // Increased batch size for better performance
 let previewCache = new Map(); // Simple in-memory cache for preview data
 let imageCache = new Map(); // Cache for preloaded images
 
 // Global variables for lazy loading
 let pendingPatterns = new Map(); // pattern -> element mapping
 let batchTimeout = null;
-const LAZY_BATCH_SIZE = 12; // Increased batch size for single user
+const LAZY_BATCH_SIZE = 20; // Batch size for preview loading
 
 // Shared caching for patterns list (persistent across sessions)
 const PATTERNS_CACHE_KEY = 'dune_weaver_patterns_cache';
@@ -96,7 +96,7 @@ function initPreviewObserver() {
             }
         });
     }, {
-        rootMargin: '200px 0px', // Increased margin for smoother loading
+        rootMargin: '400px 0px', // Increased margin for smoother loading
         threshold: 0.1
     });
 }
@@ -277,12 +277,10 @@ function displayPatternBatch() {
         patternGrid.appendChild(patternCard);
     });
 
-    // No more eager preview loading - all lazy now!
-
-    // If there are more patterns to load, set up the observer for the last card
+    // If there are more patterns to load, set up the observer for the last few cards
     if (end < allPatterns.length) {
-        const lastCard = patternGrid.lastElementChild;
-        if (lastCard) {
+        const lastCards = Array.from(patternGrid.children).slice(-3); // Observe last 3 cards
+        lastCards.forEach(card => {
             const observer = new IntersectionObserver((entries) => {
                 if (entries[0].isIntersecting) {
                     currentBatch++;
@@ -290,11 +288,11 @@ function displayPatternBatch() {
                     observer.disconnect();
                 }
             }, {
-                rootMargin: '100px 0px',
+                rootMargin: '200px 0px',
                 threshold: 0.1
             });
-            observer.observe(lastCard);
-        }
+            observer.observe(card);
+        });
     }
 }
 
@@ -302,17 +300,20 @@ function displayPatternBatch() {
 function createPatternCard(pattern) {
     const card = document.createElement('div');
     card.className = 'pattern-card flex flex-col items-center gap-3 bg-gray-50';
-    card.dataset.pattern = pattern; // Add pattern data to the card itself
+    card.dataset.pattern = pattern;
     
-   // Create preview container with proper styling for loading indicator
-   const previewContainer = document.createElement('div');
-   previewContainer.className = 'w-32 h-32 rounded-full bg-center bg-no-repeat bg-cover shadow-md relative bg-slate-100';
-   previewContainer.dataset.pattern = pattern;
-   
-   // Create pattern name
-   const patternName = document.createElement('p');
-   patternName.className = 'text-gray-700 text-sm font-medium text-center truncate w-full';
-   patternName.textContent = pattern.replace('.thr', '').split('/').pop();
+    // Create preview container with proper styling for loading indicator
+    const previewContainer = document.createElement('div');
+    previewContainer.className = 'w-32 h-32 rounded-full bg-center bg-no-repeat bg-cover shadow-md relative bg-slate-100';
+    previewContainer.dataset.pattern = pattern;
+    
+    // Add loading indicator
+    previewContainer.innerHTML = '<div class="absolute inset-0 flex items-center justify-center"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-500"></div></div>';
+    
+    // Create pattern name
+    const patternName = document.createElement('p');
+    patternName.className = 'text-gray-700 text-sm font-medium text-center truncate w-full';
+    patternName.textContent = pattern.replace('.thr', '').split('/').pop();
 
     // Add click handler
     card.onclick = () => selectPattern(pattern, card);
