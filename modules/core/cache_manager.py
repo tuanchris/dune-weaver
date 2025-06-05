@@ -211,10 +211,17 @@ async def generate_metadata_cache():
     # Process in batches
     batch_size = 5
     successful = 0
+    skipped = 0
     for i in range(0, total_files, batch_size):
         batch = pattern_files[i:i + batch_size]
         tasks = []
         for file_name in batch:
+            # Check if we already have valid cached metadata
+            if get_pattern_metadata(file_name) is not None:
+                logger.debug(f"Skipping {file_name} - metadata already cached")
+                skipped += 1
+                continue
+                
             pattern_path = os.path.join(THETA_RHO_DIR, file_name)
             try:
                 # Parse file to get metadata
@@ -235,7 +242,7 @@ async def generate_metadata_cache():
         progress = min(i + batch_size, total_files)
         logger.info(f"Metadata cache generation progress: {progress}/{total_files} files processed")
     
-    logger.info(f"Metadata cache generation completed: {successful}/{total_files} patterns cached successfully")
+    logger.info(f"Metadata cache generation completed: {successful}/{total_files} patterns cached successfully, {skipped} patterns skipped (already cached)")
 
 async def rebuild_cache():
     """Rebuild the entire cache for all pattern files."""
