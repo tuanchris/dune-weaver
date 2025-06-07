@@ -10,7 +10,10 @@ let imageCache = new Map(); // Cache for preloaded images
 // Global variables for lazy loading
 let pendingPatterns = new Map(); // pattern -> element mapping
 let batchTimeout = null;
-const LAZY_BATCH_SIZE = 20; // Batch size for preview loading
+const INITIAL_BATCH_SIZE = 12; // Smaller initial batch for faster first load
+const LAZY_BATCH_SIZE = 5; // Reduced batch size for smoother loading
+const MAX_RETRIES = 3; // Maximum number of retries for failed loads
+const RETRY_DELAY = 1000; // Delay between retries in ms
 
 // Shared caching for patterns list (persistent across sessions)
 const PATTERNS_CACHE_KEY = 'dune_weaver_patterns_cache';
@@ -96,7 +99,7 @@ function initPreviewObserver() {
             }
         });
     }, {
-        rootMargin: '400px 0px', // Increased margin for smoother loading
+        rootMargin: '200px 0px', // Reduced margin for more precise loading
         threshold: 0.1
     });
 }
@@ -108,15 +111,22 @@ function addPatternToBatch(pattern, element) {
         const previewData = previewCache.get(pattern);
         if (previewData && !previewData.error) {
             if (element) {
-                element.innerHTML = `<img src="${previewData.image_data}" alt="Pattern Preview" class="w-full h-full object-contain" loading="lazy" />`;
+                updatePreviewElement(element, previewData.image_data);
             }
         }
         return;
     }
 
-    // Add loading indicator - ensure it's visible
+    // Add loading indicator with better styling
     if (!element.querySelector('img')) {
-        element.innerHTML = '<div class="absolute inset-0 flex items-center justify-center"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-500"></div></div>';
+        element.innerHTML = `
+            <div class="absolute inset-0 flex items-center justify-center bg-slate-100 rounded-full">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-500"></div>
+            </div>
+            <div class="absolute inset-0 flex items-center justify-center">
+                <div class="text-xs text-slate-500 mt-12">Loading...</div>
+            </div>
+        `;
     }
 
     // Add to pending batch
@@ -126,6 +136,22 @@ function addPatternToBatch(pattern, element) {
     if (pendingPatterns.size >= LAZY_BATCH_SIZE) {
         processPendingBatch();
     }
+}
+
+// Update preview element with smooth transition
+function updatePreviewElement(element, imageData) {
+    const img = new Image();
+    img.onload = () => {
+        element.innerHTML = '';
+        element.appendChild(img);
+        img.className = 'w-full h-full object-contain transition-opacity duration-300';
+        img.style.opacity = '0';
+        requestAnimationFrame(() => {
+            img.style.opacity = '1';
+        });
+    };
+    img.src = imageData;
+    img.alt = 'Pattern Preview';
 }
 
 // Process pending patterns in batches
@@ -155,32 +181,73 @@ async function processPendingBatch() {
                 const element = currentBatch.get(pattern);
                 
                 if (data && !data.error) {
-                    // Cache in memory
+                    // Cache in memory with size limit
+                    if (previewCache.size > 100) { // Limit cache size
+                        const oldestKey = previewCache.keys().next().value;
+                        previewCache.delete(oldestKey);
+                    }
                     previewCache.set(pattern, data);
                     
                     if (element) {
-                        element.innerHTML = `<img src="${data.image_data}" alt="Pattern Preview" class="w-full h-full object-contain" loading="lazy" />`;
+                        updatePreviewElement(element, data.image_data);
                     }
                 } else {
-                    previewCache.set(pattern, { error: true });
-                    if (element) {
-                        element.innerHTML = ''; // Remove loading indicator
-                    }
+                    handleLoadError(pattern, element, data?.error || 'Failed to load preview');
                 }
             }
         }
     } catch (error) {
         logMessage(`Error loading preview batch: ${error.message}`, LOG_TYPE.ERROR);
         
-        // Handle error - remove loading indicators
+        // Handle error for each pattern in batch
         for (const pattern of patternsToLoad) {
             const element = currentBatch.get(pattern);
-            if (element) {
-                element.innerHTML = ''; // Remove loading indicator
-            }
-            previewCache.set(pattern, { error: true });
+            handleLoadError(pattern, element, error.message);
         }
     }
+}
+
+// Handle load errors with retry logic
+function handleLoadError(pattern, element, error) {
+    const retryCount = element.dataset.retryCount || 0;
+    
+    if (retryCount < MAX_RETRIES) {
+        // Update retry count
+        element.dataset.retryCount = parseInt(retryCount) + 1;
+        
+        // Show retry message
+        element.innerHTML = `
+            <div class="absolute inset-0 flex items-center justify-center bg-slate-100 rounded-full">
+                <div class="text-xs text-slate-500 text-center">
+                    <div>Failed to load</div>
+                    <div>Retrying... (${retryCount + 1}/${MAX_RETRIES})</div>
+                </div>
+            </div>
+        `;
+        
+        // Retry after delay
+        setTimeout(() => {
+            addPatternToBatch(pattern, element);
+        }, RETRY_DELAY);
+    } else {
+        // Show final error state
+        element.innerHTML = `
+            <div class="absolute inset-0 flex items-center justify-center bg-slate-100 rounded-full">
+                <div class="text-xs text-slate-500 text-center">
+                    <div>Failed to load</div>
+                    <div>Click to retry</div>
+                </div>
+            </div>
+        `;
+        
+        // Add click handler for manual retry
+        element.onclick = () => {
+            element.dataset.retryCount = '0';
+            addPatternToBatch(pattern, element);
+        };
+    }
+    
+    previewCache.set(pattern, { error: true });
 }
 
 // Load and display patterns
@@ -259,7 +326,7 @@ async function loadPatterns(forceRefresh = false) {
     }
 }
 
-// Display a batch of patterns
+// Display a batch of patterns with improved initial load
 function displayPatternBatch() {
     const patternGrid = document.querySelector('.grid');
     if (!patternGrid) {

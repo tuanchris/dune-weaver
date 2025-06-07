@@ -409,12 +409,39 @@ function initializeIntersectionObserver() {
             }, BATCH_DELAY);
         }
     }, {
-        rootMargin: '400px 0px', // Increased margin for smoother loading
+        rootMargin: '0px 0px 600px 0px', // Large bottom margin to trigger early as element approaches from bottom
         threshold: 0.1
     });
 }
 
-// Process pending patterns in batches
+// Call this after initial render to trigger batch for visible previews
+function triggerInitialPreviewBatch() {
+    const stillLoading = getVisibleLoadingPatterns();
+    if (stillLoading.size > 0) {
+        for (const [pattern, element] of stillLoading) {
+            pendingPatterns.set(pattern, element);
+        }
+        processPendingBatch();
+    }
+}
+
+// Helper: Find all visible pattern previews that are still loading
+function getVisibleLoadingPatterns() {
+    // Find all .pattern-preview elements that do NOT have an <img> child
+    const loadingPreviews = Array.from(document.querySelectorAll('.pattern-preview'))
+        .filter(el => !el.querySelector('img') && el.offsetParent !== null);
+    // Return a map of pattern -> element
+    const result = new Map();
+    loadingPreviews.forEach(el => {
+        const pattern = el.closest('[data-pattern]')?.dataset.pattern;
+        if (pattern && !previewCache.has(pattern)) {
+            result.set(pattern, el.closest('[data-pattern]'));
+        }
+    });
+    return result;
+}
+
+// Modified processPendingBatch to keep polling for loading previews
 async function processPendingBatch() {
     if (pendingPatterns.size === 0) return;
     
@@ -458,11 +485,20 @@ async function processPendingBatch() {
         }
     } catch (error) {
         logMessage(`Error loading pattern preview batch: ${error.message}`, LOG_TYPE.ERROR);
-        
-        // Handle error - mark as error in cache
+        // Mark as error in cache
         for (const pattern of patternsToLoad) {
             previewCache.set(pattern, { error: true });
         }
+    }
+
+    // After processing, check for any visible loading previews and request them
+    const stillLoading = getVisibleLoadingPatterns();
+    if (stillLoading.size > 0) {
+        // Add to pendingPatterns and immediately process
+        for (const [pattern, element] of stillLoading) {
+            pendingPatterns.set(pattern, element);
+        }
+        await processPendingBatch();
     }
 }
 
@@ -636,6 +672,8 @@ async function displayPlaylistPatterns(patterns) {
         patternCard.dataset.pattern = pattern;
         intersectionObserver.observe(patternCard);
     });
+
+    triggerInitialPreviewBatch();
 }
 
 // Create a pattern card
@@ -900,6 +938,8 @@ function displayAvailablePatterns() {
 
         grid.appendChild(card);
     });
+
+    triggerInitialPreviewBatch();
 }
 
 // Add selected patterns to playlist
