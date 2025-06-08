@@ -48,11 +48,12 @@ def get_cache_path(pattern_file):
     """Get the cache path for a pattern file."""
     # Create subdirectories in cache to match the pattern file structure
     cache_subpath = os.path.dirname(pattern_file)
-    if cache_subpath == 'custom_patterns':
-        # Store custom patterns directly in the cache root
-        cache_dir = CACHE_DIR
-    else:
+    if cache_subpath:
+        # Create the same subdirectory structure in cache (including custom_patterns)
         cache_dir = os.path.join(CACHE_DIR, cache_subpath)
+    else:
+        # For files in root pattern directory
+        cache_dir = CACHE_DIR
     
     # Ensure the subdirectory exists
     os.makedirs(cache_dir, exist_ok=True)
@@ -65,7 +66,7 @@ def get_cache_path(pattern_file):
     # Use just the filename part for the cache file
     filename = os.path.basename(pattern_file)
     safe_name = filename.replace('\\', '_')
-    return os.path.join(cache_dir, f"{safe_name}.png")
+    return os.path.join(cache_dir, f"{safe_name}.webp")
 
 def load_metadata_cache():
     """Load the metadata cache from disk."""

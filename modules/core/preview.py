@@ -6,7 +6,7 @@ from PIL import Image, ImageDraw
 from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR
 
 async def generate_preview_image(pattern_file):
-    """Generate a PNG preview for a pattern file, optimized for a 300x300 view."""
+    """Generate a Webp preview for a pattern file, optimized for a 300x300 view."""
     file_path = os.path.join(THETA_RHO_DIR, pattern_file)
     coordinates = parse_theta_rho_file(file_path) 
     
