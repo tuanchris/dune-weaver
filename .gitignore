@@ -7,8 +7,7 @@ __pycache__/
 *.json
 .venv/
 patterns/cached_svg/
-patterns/cached_images/
-patterns/custom_patterns/
+patterns/cached_images/custom_*
 # Node.js and build files
 node_modules/
 static/css/tailwind.css
