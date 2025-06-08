@@ -6,7 +6,6 @@ import serial.tools.list_ports
 import websocket
 
 from modules.core.state import state
-from modules.core.pattern_manager import move_polar, reset_theta
 from modules.led.led_controller import effect_loading, effect_idle, effect_connected, LEDController
 logger = logging.getLogger(__name__)
 
@@ -379,24 +378,28 @@ def home():
     """
     Perform homing by checking device configuration and sending the appropriate commands.
     """
-    if state.homing:
-        logger.info("Using sensorless homing")
-        state.conn.send("$H\n")
-        state.conn.send("G1 Y0 F100\n")
-    else:
-        homing_speed = 400
-        if state.table_type == 'dune_weaver_mini':
-            homing_speed = 120
-        logger.info("Sensorless homing not supported. Using crash homing")
-        logger.info(f"Homing with speed {homing_speed}")
-        if state.gear_ratio == 6.25:
-            send_grbl_coordinates(0, - 30, homing_speed, home=True)
-            state.machine_y -= 30
+    try:
+        if state.homing:
+            logger.info("Using sensorless homing")
+            state.conn.send("$H\n")
+            state.conn.send("G1 Y0 F100\n")
         else:
-            send_grbl_coordinates(0, -22, homing_speed, home=True)
-            state.machine_y -= 22
+            homing_speed = 400
+            if state.table_type == 'dune_weaver_mini':
+                homing_speed = 120
+            logger.info("Sensorless homing not supported. Using crash homing")
+            logger.info(f"Homing with speed {homing_speed}")
+            if state.gear_ratio == 6.25:
+                send_grbl_coordinates(0, - 30, homing_speed, home=True)
+                state.machine_y -= 30
+            else:
+                send_grbl_coordinates(0, -22, homing_speed, home=True)
+                state.machine_y -= 22
 
-    state.current_theta = state.current_rho = 0
+        state.current_theta = state.current_rho = 0
+    except Exception as e:
+        logger.error(f"Error homing: {e}")
+        return False
 
 def check_idle():
     """

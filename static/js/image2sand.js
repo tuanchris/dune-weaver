@@ -208,7 +208,21 @@ function processImage(imgElement) {
         edgeCanvas.width = imgElement.naturalWidth;
         edgeCanvas.height = imgElement.naturalHeight;
 
+        // Show the edge detection results
         cv.imshow('edge-image', dst);
+        
+        // Make the canvas visible
+        edgeCanvas.classList.remove('hidden');
+        
+        // Hide the placeholder
+        const placeholder = edgeCanvas.parentElement.querySelector('.upload-placeholder');
+        if (placeholder) {
+            placeholder.style.display = 'none';
+        }
+        
+        // Switch to the edge detection tab
+        switchTab('edge', 'image-converter');
+
         cv.bitwise_not(dst, dst);
         generateDots(dst);
         src.delete(); dst.delete();
@@ -216,14 +230,7 @@ function processImage(imgElement) {
         // Hide the processing status label
         document.getElementById('processing-status').style.display = 'none';
         document.getElementById('generate-button').disabled = false;
-    }, 0); // Set delay to 0 to allow the UI to update
-
-    // Ensure grid height does not exceed 70% of the viewport height
-    const gridHeight = document.querySelector('.grid').clientHeight;
-    const viewportHeight = window.innerHeight * 0.7;
-    if (gridHeight > viewportHeight) {
-        document.querySelector('.grid').style.height = `${viewportHeight}px`;
-    }
+    }, 0);
 }
 
 
@@ -1334,7 +1341,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const file = event.target.files[0];
         if (file) {
             fileNameDisplay.textContent = file.name;
-            handleImageUpload(event);
+            if (typeof openImageConverter === 'function') {
+                openImageConverter(file);
+            } else {
+                handleImageUpload(event);
+            }
         }
     });
 

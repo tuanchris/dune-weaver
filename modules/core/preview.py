@@ -6,14 +6,14 @@ from PIL import Image, ImageDraw
 from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR
 
 async def generate_preview_image(pattern_file):
-    """Generate a PNG preview for a pattern file, optimized for a 300x300 view."""
+    """Generate a Webp preview for a pattern file, optimized for a 300x300 view."""
     file_path = os.path.join(THETA_RHO_DIR, pattern_file)
     coordinates = parse_theta_rho_file(file_path) 
     
     # Use 1000x1000 for high quality rendering
-    RENDER_SIZE = 1000
+    RENDER_SIZE = 2048
     # Final display size
-    DISPLAY_SIZE = 300
+    DISPLAY_SIZE = 512
     
     if not coordinates:
         # Create an image with "No pattern data" text
@@ -32,7 +32,7 @@ async def generate_preview_image(pattern_file):
         draw.text((text_x, text_y), text, fill="black")
         
         img_byte_arr = BytesIO()
-        img.save(img_byte_arr, format='PNG')
+        img.save(img_byte_arr, format='WEBP')
         img_byte_arr.seek(0)
         return img_byte_arr.getvalue()
 
@@ -62,6 +62,6 @@ async def generate_preview_image(pattern_file):
     img = img.resize((DISPLAY_SIZE, DISPLAY_SIZE), Image.Resampling.LANCZOS)
 
     img_byte_arr = BytesIO()
-    img.save(img_byte_arr, format='PNG')
+    img.save(img_byte_arr, format='WEBP')
     img_byte_arr.seek(0)
     return img_byte_arr.getvalue()

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -21,7 +21,10 @@ import asyncio
 from contextlib import asynccontextmanager
 from modules.led.led_controller import LEDController, effect_idle
 import math
-from modules.core.cache_manager import generate_all_image_previews, get_cache_path, generate_image_preview
+from modules.core.cache_manager import generate_all_image_previews, get_cache_path, generate_image_preview, get_pattern_metadata
+import json
+import base64
+import time
 
 # Configure logging
 logging.basicConfig(
@@ -52,12 +55,15 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to initialize MQTT: {str(e)}")
     
-    # Generate image previews for all patterns
+    # Generate metadata cache and image previews for all patterns
     try:
-        logger.info("Starting image cache generation...")
+        logger.info("Starting cache generation...")
+        from modules.core.cache_manager import generate_metadata_cache, generate_all_image_previews
+        await generate_metadata_cache()
         await generate_all_image_previews()
+        logger.info("Cache generation completed successfully")
     except Exception as e:
-        logger.warning(f"Failed to generate image cache: {str(e)}")
+        logger.warning(f"Failed to generate cache: {str(e)}")
 
     yield  # This separates startup from shutdown code
 
@@ -147,8 +153,12 @@ async def broadcast_status_update(status: dict):
 
 # FastAPI routes
 @app.get("/")
-async def index():
-    return templates.TemplateResponse("index.html", {"request": {}})
+async def index(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/settings")
+async def settings(request: Request):
+    return templates.TemplateResponse("settings.html", {"request": request})
 
 @app.get("/list_serial_ports")
 async def list_ports():
@@ -380,18 +390,29 @@ async def preview_thr(request: DeleteFileRequest):
                 logger.error(f"Failed to generate or find preview for {request.file_name} after attempting generation.")
                 raise HTTPException(status_code=500, detail="Failed to generate preview image.")
 
-        # Get the coordinates for display
-        coordinates = parse_theta_rho_file(pattern_file_path)
-        first_coord = coordinates[0] if coordinates else None
-        last_coord = coordinates[-1] if coordinates else None
+        # Try to get coordinates from metadata cache first
+        metadata = get_pattern_metadata(request.file_name)
+        if metadata:
+            first_coord_obj = metadata.get('first_coordinate')
+            last_coord_obj = metadata.get('last_coordinate')
+        else:
+            # Fallback to parsing file if metadata not cached (shouldn't happen after initial cache)
+            logger.debug(f"Metadata cache miss for {request.file_name}, parsing file")
+            coordinates = await asyncio.to_thread(parse_theta_rho_file, pattern_file_path)
+            first_coord = coordinates[0] if coordinates else None
+            last_coord = coordinates[-1] if coordinates else None
+            
+            # Format coordinates as objects with x and y properties
+            first_coord_obj = {"x": first_coord[0], "y": first_coord[1]} if first_coord else None
+            last_coord_obj = {"x": last_coord[0], "y": last_coord[1]} if last_coord else None
 
         # Return JSON with preview URL and coordinates
         # URL encode the file_name for the preview URL
         encoded_filename = request.file_name.replace('/', '--')
         return {
             "preview_url": f"/preview/{encoded_filename}",
-            "first_coordinate": first_coord,
-            "last_coordinate": last_coord
+            "first_coordinate": first_coord_obj,
+            "last_coordinate": last_coord_obj
         }
 
     except HTTPException:
@@ -410,8 +431,19 @@ async def serve_preview(encoded_filename: str):
     if not os.path.exists(cache_path):
         logger.error(f"Preview image not found for {file_name}")
         raise HTTPException(status_code=404, detail="Preview image not found")
-        
-    return FileResponse(cache_path, media_type="image/png")
+    
+    # Add caching headers
+    headers = {
+        "Cache-Control": "public, max-age=31536000",  # Cache for 1 year
+        "Content-Type": "image/webp",
+        "Accept-Ranges": "bytes"
+    }
+    
+    return FileResponse(
+        cache_path,
+        media_type="image/webp",
+        headers=headers
+    )
 
 @app.post("/send_coordinate")
 async def send_coordinate(request: CoordinateRequest):
@@ -522,13 +554,15 @@ async def run_playlist_endpoint(request: PlaylistRequest):
             raise HTTPException(status_code=404, detail=f"Playlist '{request.playlist_name}' not found")
 
         # Start the playlist execution
-        asyncio.create_task(playlist_manager.run_playlist(
+        success, message = await playlist_manager.run_playlist(
             request.playlist_name,
             pause_time=request.pause_time,
             clear_pattern=request.clear_pattern,
             run_mode=request.run_mode,
             shuffle=request.shuffle
-        ))
+        )
+        if not success:
+            raise HTTPException(status_code=409, detail=message)
 
         return {"message": f"Started playlist: {request.playlist_name}"}
     except Exception as e:
@@ -596,6 +630,99 @@ async def skip_pattern():
         raise HTTPException(status_code=400, detail="No playlist is currently running")
     state.skip_requested = True
     return {"success": True}
+
+@app.post("/preview_thr_batch")
+async def preview_thr_batch(request: dict):
+    start = time.time()
+    if not request.get("file_names"):
+        logger.warning("Batch preview request received without filenames")
+        raise HTTPException(status_code=400, detail="No file names provided")
+
+    file_names = request["file_names"]
+    if not isinstance(file_names, list):
+        raise HTTPException(status_code=400, detail="file_names must be a list")
+
+    headers = {
+        "Cache-Control": "public, max-age=3600",  # Cache for 1 hour
+        "Content-Type": "application/json"
+    }
+
+    results = {}
+    for file_name in file_names:
+        t1 = time.time()
+        try:
+            pattern_file_path = os.path.join(pattern_manager.THETA_RHO_DIR, file_name)
+            if not os.path.exists(pattern_file_path):
+                logger.warning(f"Pattern file not found: {pattern_file_path}")
+                results[file_name] = {"error": "Pattern file not found"}
+                continue
+
+            cache_path = get_cache_path(file_name)
+            
+            if not os.path.exists(cache_path):
+                logger.info(f"Cache miss for {file_name}. Generating preview...")
+                success = await generate_image_preview(file_name)
+                if not success or not os.path.exists(cache_path):
+                    logger.error(f"Failed to generate or find preview for {file_name}")
+                    results[file_name] = {"error": "Failed to generate preview"}
+                    continue
+
+            metadata = get_pattern_metadata(file_name)
+            if metadata:
+                first_coord_obj = metadata.get('first_coordinate')
+                last_coord_obj = metadata.get('last_coordinate')
+            else:
+                logger.debug(f"Metadata cache miss for {file_name}, parsing file")
+                coordinates = await asyncio.to_thread(parse_theta_rho_file, pattern_file_path)
+                first_coord = coordinates[0] if coordinates else None
+                last_coord = coordinates[-1] if coordinates else None
+                first_coord_obj = {"x": first_coord[0], "y": first_coord[1]} if first_coord else None
+                last_coord_obj = {"x": last_coord[0], "y": last_coord[1]} if last_coord else None
+
+            with open(cache_path, 'rb') as f:
+                image_data = f.read()
+            image_b64 = base64.b64encode(image_data).decode('utf-8')
+            results[file_name] = {
+                "image_data": f"data:image/webp;base64,{image_b64}",
+                "first_coordinate": first_coord_obj,
+                "last_coordinate": last_coord_obj
+            }
+        except Exception as e:
+            logger.error(f"Error processing {file_name}: {str(e)}")
+            results[file_name] = {"error": str(e)}
+        finally:
+            logger.debug(f"Processed {file_name} in {time.time() - t1:.2f}s")
+
+    logger.info(f"Total batch processing time: {time.time() - start:.2f}s for {len(file_names)} files")
+    return JSONResponse(content=results, headers=headers)
+
+@app.get("/playlists")
+async def playlists(request: Request):
+    logger.debug("Rendering playlists page")
+    return templates.TemplateResponse("playlists.html", {"request": request})
+
+@app.get("/image2sand")
+async def image2sand(request: Request):
+    return templates.TemplateResponse("image2sand.html", {"request": request})
+
+@app.get("/wled")
+async def wled(request: Request):
+    return templates.TemplateResponse("wled.html", {"request": request})
+
+@app.get("/table_control")
+async def table_control(request: Request):
+    return templates.TemplateResponse("table_control.html", {"request": request})
+
+@app.post("/rebuild_cache")
+async def rebuild_cache_endpoint():
+    """Trigger a rebuild of the pattern cache."""
+    try:
+        from modules.core.cache_manager import rebuild_cache
+        await rebuild_cache()
+        return {"success": True, "message": "Cache rebuild completed successfully"}
+    except Exception as e:
+        logger.error(f"Failed to rebuild cache: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully but forcefully."""

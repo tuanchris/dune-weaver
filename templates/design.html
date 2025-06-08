@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}Design - Kinetic Sand Table{% endblock %}
+
+{% block additional_styles %}
+.design-canvas {
+  background-color: #f8fafc;
+  background-image: linear-gradient(#e2e8f0 1px, transparent 1px),
+    linear-gradient(90deg, #e2e8f0 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+.design-canvas.drawing {
+  cursor: crosshair;
+}
+.design-canvas.moving {
+  cursor: grab;
+}
+.design-canvas.moving:active {
+  cursor: grabbing;
+}
+{% endblock %}
+
+{% block content %}
+<div class="layout-content-container flex flex-col w-full max-w-7xl gap-8">
+  <div class="flex flex-wrap justify-between items-center gap-4 p-4 bg-white rounded-xl shadow-sm">
+    <h1 class="text-slate-900 tracking-tight text-2xl sm:text-3xl font-bold leading-tight">
+      Design
+    </h1>
+    <div class="flex items-center gap-3">
+      <button
+        id="undoButton"
+        class="flex items-center justify-center rounded-lg h-10 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+        disabled
+      >
+        <span class="material-icons text-xl">undo</span>
+      </button>
+      <button
+        id="redoButton"
+        class="flex items-center justify-center rounded-lg h-10 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+        disabled
+      >
+        <span class="material-icons text-xl">redo</span>
+      </button>
+      <button
+        id="clearButton"
+        class="flex items-center justify-center rounded-lg h-10 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+      >
+        <span class="material-icons text-xl">delete</span>
+      </button>
+    </div>
+  </div>
+  <div class="flex flex-col lg:flex-row gap-8">
+    <div class="flex-1">
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="p-4 border-b border-slate-200">
+          <div class="flex items-center justify-between">
+            <h2 class="text-slate-800 text-xl font-semibold leading-tight tracking-[-0.01em]">
+              Canvas
+            </h2>
+            <div class="flex items-center gap-2">
+              <button
+                id="zoomOutButton"
+                class="flex items-center justify-center rounded-lg h-9 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+              >
+                <span class="material-icons text-xl">remove</span>
+              </button>
+              <span id="zoomLevel" class="text-slate-700 text-sm font-medium">100%</span>
+              <button
+                id="zoomInButton"
+                class="flex items-center justify-center rounded-lg h-9 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+              >
+                <span class="material-icons text-xl">add</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="p-4">
+          <div class="relative aspect-square w-full overflow-hidden rounded-lg border border-slate-200">
+            <canvas
+              id="designCanvas"
+              class="design-canvas absolute inset-0 size-full"
+              width="1000"
+              height="1000"
+            ></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="w-full lg:w-80">
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="p-4 border-b border-slate-200">
+          <h2 class="text-slate-800 text-xl font-semibold leading-tight tracking-[-0.01em]">
+            Tools
+          </h2>
+        </div>
+        <div class="p-4 space-y-4">
+          <div class="space-y-2">
+            <label class="text-slate-700 text-sm font-medium leading-normal">Mode</label>
+            <div class="grid grid-cols-2 gap-2">
+              <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-sky-500 has-[:checked]:border-sky-500 has-[:checked]:bg-sky-500 has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-sky-500 has-[:checked]:ring-offset-2">
+                Draw
+                <input checked class="peer sr-only" name="mode" type="radio" value="draw" />
+              </label>
+              <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-sky-500 has-[:checked]:border-sky-500 has-[:checked]:bg-sky-500 has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-sky-500 has-[:checked]:ring-offset-2">
+                Move
+                <input class="peer sr-only" name="mode" type="radio" value="move" />
+              </label>
+            </div>
+          </div>
+          <div class="space-y-2">
+            <label class="text-slate-700 text-sm font-medium leading-normal">Brush Size</label>
+            <input
+              id="brushSizeInput"
+              class="form-range w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+              type="range"
+              min="1"
+              max="50"
+              value="5"
+            />
+            <div class="flex justify-between text-xs text-slate-500">
+              <span>1px</span>
+              <span>50px</span>
+            </div>
+          </div>
+          <div class="space-y-2">
+            <label class="text-slate-700 text-sm font-medium leading-normal">Color</label>
+            <div class="grid grid-cols-4 gap-2">
+              <button
+                class="size-8 rounded-full bg-black border-2 border-slate-300 hover:border-slate-400 transition-colors"
+                data-color="#000000"
+              ></button>
+              <button
+                class="size-8 rounded-full bg-white border-2 border-slate-300 hover:border-slate-400 transition-colors"
+                data-color="#ffffff"
+              ></button>
+              <button
+                class="size-8 rounded-full bg-red-500 border-2 border-slate-300 hover:border-slate-400 transition-colors"
+                data-color="#ef4444"
+              ></button>
+              <button
+                class="size-8 rounded-full bg-blue-500 border-2 border-slate-300 hover:border-slate-400 transition-colors"
+                data-color="#3b82f6"
+              ></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mt-8 bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="p-4 border-b border-slate-200">
+          <h2 class="text-slate-800 text-xl font-semibold leading-tight tracking-[-0.01em]">
+            Actions
+          </h2>
+        </div>
+        <div class="p-4 space-y-4">
+          <button
+            id="saveButton"
+            class="flex w-full items-center justify-center gap-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors h-10 px-4"
+          >
+            <span class="material-icons text-lg">save</span>
+            <span class="truncate">Save Design</span>
+          </button>
+          <button
+            id="playButton"
+            class="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors h-10 px-4"
+          >
+            <span class="material-icons text-lg">play_arrow</span>
+            <span class="truncate">Play Design</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/design.js"></script>
+{% endblock %} 

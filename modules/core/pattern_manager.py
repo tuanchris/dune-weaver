@@ -100,7 +100,7 @@ def list_theta_rho_files():
             relative_path = os.path.relpath(os.path.join(root, file), THETA_RHO_DIR)
             files.append(relative_path)
     logger.debug(f"Found {len(files)} theta-rho files")
-    return files
+    return [file for file in files if file.endswith('.thr')]
 
 def parse_theta_rho_file(file_path):
     """Parse a theta-rho file and return a list of (theta, rho) pairs."""
@@ -381,12 +381,15 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                         logger.info("Skipping pause after clear pattern")
                     else:
                         logger.info(f"Pausing for {pause_time} seconds")
+                        state.original_pause_time = pause_time
                         pause_start = time.time()
                         while time.time() - pause_start < pause_time:
+                            state.pause_time_remaining = pause_start + pause_time - time.time()
                             if state.skip_requested:
                                 logger.info("Pause interrupted by stop/skip request")
                                 break
-                            await asyncio.sleep(1)  # Check every 100ms
+                            await asyncio.sleep(1)
+                        state.pause_time_remaining = 0
                     
                 state.skip_requested = False
 
@@ -394,7 +397,14 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                 logger.info("Playlist completed. Restarting as per 'indefinite' run mode")
                 if pause_time > 0:
                     logger.debug(f"Pausing for {pause_time} seconds before restarting")
-                    await asyncio.sleep(pause_time)
+                    pause_start = time.time()
+                    while time.time() - pause_start < pause_time:
+                        state.pause_time_remaining = pause_start + pause_time - time.time()
+                        if state.skip_requested:
+                            logger.info("Pause interrupted by stop/skip request")
+                            break
+                        await asyncio.sleep(1)
+                    state.pause_time_remaining = 0
                 continue
             else:
                 logger.info("Playlist completed")
@@ -538,7 +548,10 @@ def get_status():
         "is_running": bool(state.current_playing_file and not state.stop_requested),
         "progress": None,
         "playlist": None,
-        "speed": state.speed
+        "speed": state.speed,
+        "pause_time_remaining": state.pause_time_remaining,
+        "original_pause_time": getattr(state, 'original_pause_time', None),
+        "connection_status": state.conn.is_connected() if state.conn else False
     }
     
     # Add playlist information if available

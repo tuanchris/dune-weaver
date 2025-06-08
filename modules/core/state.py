@@ -24,6 +24,7 @@ class AppState:
         self.current_rho = 0
         self.current_playlist_index = 0
         self.playlist_mode = "loop"
+        self.pause_time_remaining = 0
         
         # Machine position variables
         self.machine_x = 0.0
@@ -157,14 +158,14 @@ class AppState:
             "pause_time": self._pause_time,
             "clear_pattern": self._clear_pattern,
             "port": self.port,
-            "wled_ip": self.wled_ip
+            "wled_ip": self.wled_ip,
         }
 
     def from_dict(self, data):
         """Update state from a dictionary."""
         self.stop_requested = data.get("stop_requested", False)
         self._pause_requested = data.get("pause_requested", False)
-        self._current_playing_file = data.get("current_playing_file")
+        self._current_playing_file = data.get("current_playing_file", None)
         self.execution_progress = data.get("execution_progress")
         self.is_clearing = data.get("is_clearing", False)
         self.current_theta = data.get("current_theta", 0)
@@ -176,9 +177,9 @@ class AppState:
         self.y_steps_per_mm = data.get("y_steps_per_mm", 0.0)
         self.gear_ratio = data.get('gear_ratio', 10)
         self.homing = data.get('homing', 0)
-        self._current_playlist = data.get("current_playlist")
-        self._current_playlist_name = data.get("current_playlist_name")
-        self.current_playlist_index = data.get("current_playlist_index")
+        self._current_playlist = data.get("current_playlist", None)
+        self._current_playlist_name = data.get("current_playlist_name", None)
+        self.current_playlist_index = data.get("current_playlist_index", None)
         self._playlist_mode = data.get("playlist_mode", "loop")
         self._pause_time = data.get("pause_time", 0)
         self._clear_pattern = data.get("clear_pattern", "none")
