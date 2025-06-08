@@ -881,7 +881,7 @@ function displayAvailablePatterns() {
         card.dataset.pattern = pattern;
         
         card.innerHTML = `
-            <div class="w-full bg-center bg-no-repeat aspect-square bg-cover rounded-lg border border-gray-200 dark:border-gray-700 relative pattern-preview bg-gray-100 dark:bg-gray-800">
+            <div class="w-full bg-center bg-no-repeat aspect-square bg-cover rounded-lg border border-gray-200 dark:border-gray-700 relative pattern-preview bg-slate-100">
                 <div class="absolute top-2 right-2 size-6 rounded-full bg-white dark:bg-gray-700 shadow-md opacity-0 transition-opacity duration-150 flex items-center justify-center">
                     <span class="material-icons text-sm text-gray-600 dark:text-gray-300">add</span>
                 </div>
