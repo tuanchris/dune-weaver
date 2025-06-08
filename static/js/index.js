@@ -139,7 +139,7 @@ function addPatternToBatch(pattern, element) {
 }
 
 // Update preview element with smooth transition
-function updatePreviewElement(element, imageData) {
+function updatePreviewElement(element, imageUrl) {
     const img = new Image();
     img.onload = () => {
         element.innerHTML = '';
@@ -150,7 +150,7 @@ function updatePreviewElement(element, imageData) {
             img.style.opacity = '1';
         });
     };
-    img.src = imageData;
+    img.src = imageUrl;
     img.alt = 'Pattern Preview';
 }
 
@@ -180,7 +180,7 @@ async function processPendingBatch() {
             for (const [pattern, data] of Object.entries(results)) {
                 const element = currentBatch.get(pattern);
                 
-                if (data && !data.error) {
+                if (data && !data.error && data.image_data) {
                     // Cache in memory with size limit
                     if (previewCache.size > 100) { // Limit cache size
                         const oldestKey = previewCache.keys().next().value;
@@ -204,6 +204,30 @@ async function processPendingBatch() {
             const element = currentBatch.get(pattern);
             handleLoadError(pattern, element, error.message);
         }
+    }
+}
+
+// Trigger preview loading for currently visible patterns
+function triggerPreviewLoadingForVisible() {
+    // Get all pattern cards currently in the DOM
+    const patternCards = document.querySelectorAll('.pattern-card');
+    
+    patternCards.forEach(card => {
+        const previewContainer = card.querySelector('[data-pattern]');
+        if (previewContainer) {
+            const pattern = previewContainer.dataset.pattern;
+            
+            // Check if this pattern needs preview loading
+            if (!previewCache.has(pattern) && !pendingPatterns.has(pattern)) {
+                // Add to batch for immediate loading
+                addPatternToBatch(pattern, previewContainer);
+            }
+        }
+    });
+    
+    // Process any pending previews immediately
+    if (pendingPatterns.size > 0) {
+        processPendingBatch();
     }
 }
 
@@ -670,6 +694,9 @@ function searchPatterns(query) {
         const patternCard = createPatternCard(pattern);
         patternGrid.appendChild(patternCard);
     });
+
+    // Trigger preview loading for the search results
+    triggerPreviewLoadingForVisible();
 
     logMessage(`Showing ${filteredPatterns.length} patterns matching "${query}"`, LOG_TYPE.INFO);
 }

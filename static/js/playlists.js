@@ -178,13 +178,13 @@ async function savePreviewToCache(pattern, previewData) {
         if (!previewCacheDB) await initPreviewCacheDB();
         
         // Validate preview data before attempting to fetch
-        if (!previewData || !previewData.preview_url) {
+        if (!previewData || !previewData.image_data) {
             logMessage(`Invalid preview data for ${pattern}, skipping cache save`, LOG_TYPE.WARNING);
             return;
         }
         
         // Convert preview URL to blob for size calculation
-        const response = await fetch(previewData.preview_url);
+        const response = await fetch(previewData.image_data);
         const blob = await response.blob();
         const size = blob.size;
         
@@ -470,10 +470,12 @@ async function processPendingBatch() {
                 const previewContainer = element?.querySelector('.pattern-preview');
                 
                 if (data && !data.error && data.image_data) {
-                    // Cache in memory
+                    // Cache both in memory and IndexedDB
                     previewCache.set(pattern, data);
+                    await savePreviewToCache(pattern, data);
                     
                     if (previewContainer) {
+                        previewContainer.innerHTML = ''; // Remove loading indicator
                         previewContainer.innerHTML = `<img src="${data.image_data}" alt="Pattern Preview" class="w-full h-full object-cover rounded-full" />`;
                     }
                 } else {
@@ -682,7 +684,7 @@ function createPatternCard(pattern, showRemove = false) {
     card.className = 'flex flex-col gap-3 group cursor-pointer relative';
     
     const previewContainer = document.createElement('div');
-    previewContainer.className = 'w-full bg-center bg-no-repeat aspect-square bg-cover rounded-full shadow-sm group-hover:shadow-md transition-shadow duration-150 border border-gray-200 dark:border-gray-700 pattern-preview bg-gray-100 dark:bg-gray-800 relative';
+    previewContainer.className = 'w-full bg-center bg-no-repeat aspect-square bg-cover rounded-full shadow-sm group-hover:shadow-md transition-shadow duration-150 border border-gray-200 dark:border-gray-700 pattern-preview bg-slate-100 relative';
     
     // Only set preview image if already available in memory cache
     const previewData = previewCache.get(pattern);
