@@ -8,3 +8,5 @@ __pycache__/
 .venv/
 patterns/cached_svg/
 patterns/cached_images/custom_*
+patterns/cached_images/
+venv/
