@@ -19,9 +19,10 @@ import signal
 import sys
 import asyncio
 from contextlib import asynccontextmanager
-from modules.led.led_controller import LEDController, effect_idle
+from modules.led.led_controller import LEDController, effect_idle, set_off
 import math
 from modules.core.cache_manager import generate_all_image_previews, get_cache_path, generate_image_preview
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(
@@ -34,6 +35,27 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+
+async def stop_at_time(target_hour=17, target_minute=0):
+    """Background task to stop operations at a specific time every day."""
+    while True:
+        now = datetime.now()
+        if now.hour == target_hour and now.minute == target_minute:
+            logger.info("Target time reached, stopping operations.")
+            logger.info("Shutting down wled.")
+            set_off(state.led_controller)
+            logger.info("Stopping movement.")
+            if not (state.conn.is_connected() if state.conn else False):
+                logger.warning("Attempted to stop without a connection")
+            else:
+                pattern_manager.stop_actions()
+            logger.info("Operations stopped at the target time.")
+            break
+        await asyncio.sleep(30)  # Check every 30 seconds
+
+
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -42,6 +64,9 @@ async def lifespan(app: FastAPI):
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
+    # Start background time logger
+    # asyncio.create_task(log_time_periodically())
+    asyncio.create_task(stop_at_time(17, 0))
     try:
         connection_manager.connect_device()
     except Exception as e:

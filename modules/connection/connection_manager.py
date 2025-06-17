@@ -7,7 +7,7 @@ import websocket
 
 from modules.core.state import state
 from modules.core.pattern_manager import move_polar, reset_theta
-from modules.led.led_controller import effect_loading, effect_idle, effect_connected, LEDController
+from modules.led.led_controller import effect_loading, effect_idle, effect_connected, set_off, LEDController
 logger = logging.getLogger(__name__)
 
 IGNORE_PORTS = ['/dev/cu.debug-console', '/dev/cu.Bluetooth-Incoming-Port']
@@ -176,7 +176,8 @@ def connect_device(homing=True):
         device_init(homing)
         
     if state.led_controller:
-        effect_connected(state.led_controller)
+        set_off(state.led_controller)
+        # effect_connected(state.led_controller)
 
 def get_status_response() -> str:
     """
