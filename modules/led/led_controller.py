@@ -22,6 +22,8 @@ class LEDController:
 
     def _send_command(self, state_params: Dict = None) -> Dict:
         """Send command to WLED and return status"""
+        logger.info("Sending command to WLED...")
+        logger.info(state_params)
         try:
             url = self._get_base_url()
             
@@ -217,6 +219,10 @@ def effect_loading(led_controller: LEDController):
     else:
         return False
 
+def set_off(led_controller: LEDController):
+    led_controller.set_power(0)  # Turn off WLED
+
+
 def effect_idle(led_controller: LEDController):
     led_controller.set_preset(1)
 
@@ -233,6 +239,7 @@ def effect_connected(led_controller: LEDController):
         return True
     else:
         return False
+
 
 def effect_playing(led_controller: LEDController):
     led_controller.set_preset(2)
