@@ -67,7 +67,7 @@ async def lifespan(app: FastAPI):
     
     # Start background time logger
     # asyncio.create_task(log_time_periodically())
-    asyncio.create_task(stop_at_time(19, 0))
+    asyncio.create_task(stop_at_time(17, 0))
     try:
         connection_manager.connect_device()
     except Exception as e:
