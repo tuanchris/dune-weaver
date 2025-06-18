@@ -279,32 +279,16 @@ async function loadPatterns(forceRefresh = false) {
     try {
         logMessage('Loading patterns...', LOG_TYPE.INFO);
         
-        // Check cache first (unless force refresh is requested)
-        let patterns = null;
-        if (!forceRefresh) {
-            patterns = loadPatternsFromCache();
-            if (patterns) {
-                logMessage(`Using cached patterns list (${patterns.length} patterns)`, LOG_TYPE.DEBUG);
-            }
-        }
-        
-        // If no cache or force refresh, fetch from API
-        if (!patterns) {
-            logMessage('Fetching fresh patterns list from server', LOG_TYPE.DEBUG);
-            const response = await fetch('/list_theta_rho_files');
-            const allFiles = await response.json();
-            logMessage(`Received ${allFiles.length} files from server`, LOG_TYPE.INFO);
+        logMessage('Fetching fresh patterns list from server', LOG_TYPE.DEBUG);
+        const response = await fetch('/list_theta_rho_files');
+        const allFiles = await response.json();
+        logMessage(`Received ${allFiles.length} files from server`, LOG_TYPE.INFO);
 
-            // Filter for .thr files
-            patterns = allFiles.filter(file => file.endsWith('.thr'));
-            logMessage(`Filtered to ${patterns.length} .thr files`, LOG_TYPE.INFO);
-            
-            // Save to cache
-            savePatternsToCache(patterns);
-            
-            if (forceRefresh) {
-                showStatusMessage('Patterns list refreshed successfully', 'success');
-            }
+        // Filter for .thr files
+        let patterns = allFiles.filter(file => file.endsWith('.thr'));
+        logMessage(`Filtered to ${patterns.length} .thr files`, LOG_TYPE.INFO);
+        if (forceRefresh) {
+            showStatusMessage('Patterns list refreshed successfully', 'success');
         }
         
         // Sort patterns with custom_patterns on top and all alphabetically sorted
@@ -325,28 +309,7 @@ async function loadPatterns(forceRefresh = false) {
     } catch (error) {
         logMessage(`Error loading patterns: ${error.message}`, LOG_TYPE.ERROR);
         console.error('Full error:', error);
-        
-        // If this was a forced refresh and it failed, try to fall back to cache
-        if (forceRefresh) {
-            const cachedPatterns = loadPatternsFromCache();
-            if (cachedPatterns) {
-                logMessage('Falling back to cached patterns list', LOG_TYPE.WARNING);
-                const sortedPatterns = cachedPatterns.sort((a, b) => {
-                    const isCustomA = a.startsWith('custom_patterns/');
-                    const isCustomB = b.startsWith('custom_patterns/');
-
-                    if (isCustomA && !isCustomB) return -1;
-                    if (!isCustomA && isCustomB) return 1;
-                    return a.localeCompare(b);
-                });
-                allPatterns = sortedPatterns;
-                currentBatch = 0;
-                displayPatternBatch();
-                showStatusMessage('Using cached patterns (refresh failed)', 'warning');
-            } else {
-                showStatusMessage('Failed to load patterns', 'error');
-            }
-        }
+        showStatusMessage('Failed to load patterns', 'error');
     }
 }
 
@@ -395,7 +358,7 @@ function createPatternCard(pattern) {
     
     // Create preview container with proper styling for loading indicator
     const previewContainer = document.createElement('div');
-    previewContainer.className = 'w-32 h-32 rounded-full bg-center bg-no-repeat bg-cover shadow-md relative bg-slate-100';
+    previewContainer.className = 'w-32 h-32 rounded-full shadow-md relative pattern-preview';
     previewContainer.dataset.pattern = pattern;
     
     // Add loading indicator
@@ -582,12 +545,15 @@ function setupPreviewPanelEvents(pattern) {
                 hidePatternPreview();
                 
             } else {
-                throw new Error(data.detail || 'Failed to run pattern');
+                showStatusMessage(data.detail || 'Failed to run pattern', 'error');
+                return;
             }
         } catch (error) {
             console.error('Error running pattern:', error);
-            if (error.message.includes('409')) {
+            if (error.message && error.message.includes('409')) {
                 showStatusMessage('Another pattern is already running', 'error');
+            } else if (error.message) {
+                showStatusMessage(error.message, 'error');
             } else {
                 showStatusMessage('Failed to run pattern', 'error');
             }
@@ -821,42 +787,6 @@ function updateCurrentlyPlayingUI(status) {
 
     // Update pattern preview if it's a new pattern
     // ... existing code ...
-}
-
-// Load patterns from cache
-function loadPatternsFromCache() {
-    try {
-        const cached = localStorage.getItem(PATTERNS_CACHE_KEY);
-        if (cached) {
-            return JSON.parse(cached);
-        }
-    } catch (error) {
-        logMessage(`Error loading patterns from cache: ${error.message}`, LOG_TYPE.ERROR);
-    }
-    return null;
-}
-
-// Save patterns to cache
-function savePatternsToCache(patterns) {
-    try {
-        localStorage.setItem(PATTERNS_CACHE_KEY, JSON.stringify(patterns));
-    } catch (error) {
-        logMessage(`Error saving patterns to cache: ${error.message}`, LOG_TYPE.ERROR);
-    }
-}
-
-// Clear patterns cache
-function clearPatternsCache() {
-    try {
-        localStorage.removeItem(PATTERNS_CACHE_KEY);
-    } catch (error) {
-        logMessage(`Error clearing patterns cache: ${error.message}`, LOG_TYPE.ERROR);
-    }
-}
-
-// Check if patterns are cached
-function hasCachedPatterns() {
-    return localStorage.getItem(PATTERNS_CACHE_KEY) !== null;
 }
 
 // Get preview from IndexedDB cache

@@ -322,7 +322,7 @@
               <div class="flex items-stretch">
                 <div class="py-4 flex-shrink-0">
                   <div
-                    class="bg-center bg-no-repeat bg-contain w-32 sm:w-48 aspect-square rounded-md dark:invert"
+                    class="bg-center bg-no-repeat bg-contain w-32 sm:w-48 aspect-square rounded-md border border-gray-300 dark:border-gray-600 dark:invert pattern-preview rounded-full"
                     id="player-pattern-preview"
                   ></div>
                 </div>
@@ -432,16 +432,16 @@
               <span class="material-icons">list_alt</span> Playlists
             </a>
             <a
-              class="{% if request.url.path == '/image2sand' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
-              href="/image2sand"
-            >
-              <span class="material-icons">image</span> Image2Sand
-            </a>
-            <a
               class="{% if request.url.path == '/table_control' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
               href="/table_control"
             >
               <span class="material-icons">table_chart</span> Table Control
+            </a>
+            <a
+              class="{% if request.url.path == '/settings' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
+              href="/settings"
+            >
+              <span class="material-icons">settings</span> Settings
             </a>
             <a
               class="{% if request.url.path == '/wled' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
@@ -450,10 +450,10 @@
               <span class="material-icons">lightbulb</span> WLED
             </a>
             <a
-              class="{% if request.url.path == '/settings' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
-              href="/settings"
+              class="{% if request.url.path == '/image2sand' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
+              href="/image2sand"
             >
-              <span class="material-icons">settings</span> Settings
+              <span class="material-icons">image</span> Image2Sand
             </a>
           </nav>
         </footer>

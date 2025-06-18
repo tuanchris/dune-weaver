@@ -280,6 +280,9 @@ async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTa
             **kwargs  # Spread keyword arguments
         )
         return {"success": True}
+    except HTTPException as http_exc:
+        logger.error(f'Failed to run theta-rho file {request.file_name}: {http_exc.detail}')
+        raise http_exc
     except Exception as e:
         logger.error(f'Failed to run theta-rho file {request.file_name}: {str(e)}')
         raise HTTPException(status_code=500, detail=str(e))

@@ -32,7 +32,6 @@
 
 /* Pattern preview styles */
 .pattern-preview {
-  background-color: #f3f4f6;
   border-radius: 0.5rem;
   overflow: hidden;
   aspect-ratio: 1;
@@ -168,7 +167,6 @@
 
 /* Dark mode pattern preview styles */
 .dark .pattern-preview {
-  background-color: #262626;
   border-color: #404040;
 }
 .dark .pattern-preview img {
@@ -254,7 +252,7 @@
       </button>
     </header>
     <div class="p-6 overflow-y-auto h-[calc(100%-4rem)]">
-      <div class="mb-6 aspect-square w-full overflow-hidden bg-slate-200">
+      <div class="mb-6 aspect-square w-full overflow-hidden pattern-preview rounded-full">
         <img id="patternPreviewImage" alt="Pattern Preview" class="h-full w-full object-cover" src=""/>
       </div>
       <div class="mb-4 flex justify-between text-sm">

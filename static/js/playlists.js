@@ -343,37 +343,6 @@ async function getPreviewCacheStats() {
     }
 }
 
-// Load patterns cache from localStorage
-function loadPatternsFromCache() {
-    try {
-        const cached = localStorage.getItem(PATTERNS_CACHE_KEY);
-        return cached ? JSON.parse(cached) : null;
-    } catch (error) {
-        logMessage('Error loading patterns cache from localStorage', LOG_TYPE.WARNING);
-        return null;
-    }
-}
-
-// Save patterns cache to localStorage
-function savePatternsToCache(patterns) {
-    try {
-        localStorage.setItem(PATTERNS_CACHE_KEY, JSON.stringify(patterns));
-        logMessage(`Cached ${patterns.length} patterns to localStorage`, LOG_TYPE.DEBUG);
-    } catch (error) {
-        logMessage('Error saving patterns cache to localStorage', LOG_TYPE.WARNING);
-    }
-}
-
-// Clear patterns cache
-function clearPatternsCache() {
-    try {
-        localStorage.removeItem(PATTERNS_CACHE_KEY);
-        logMessage('Patterns cache cleared from localStorage', LOG_TYPE.DEBUG);
-    } catch (error) {
-        logMessage('Error clearing patterns cache', LOG_TYPE.WARNING);
-    }
-}
-
 // Initialize Intersection Observer for lazy loading
 function initializeIntersectionObserver() {
     intersectionObserver = new IntersectionObserver((entries) => {
@@ -412,33 +381,6 @@ function initializeIntersectionObserver() {
         rootMargin: '0px 0px 600px 0px', // Large bottom margin to trigger early as element approaches from bottom
         threshold: 0.1
     });
-}
-
-// Call this after initial render to trigger batch for visible previews
-function triggerInitialPreviewBatch() {
-    const stillLoading = getVisibleLoadingPatterns();
-    if (stillLoading.size > 0) {
-        for (const [pattern, element] of stillLoading) {
-            pendingPatterns.set(pattern, element);
-        }
-        processPendingBatch();
-    }
-}
-
-// Helper: Find all visible pattern previews that are still loading
-function getVisibleLoadingPatterns() {
-    // Find all .pattern-preview elements that do NOT have an <img> child
-    const loadingPreviews = Array.from(document.querySelectorAll('.pattern-preview'))
-        .filter(el => !el.querySelector('img') && el.offsetParent !== null);
-    // Return a map of pattern -> element
-    const result = new Map();
-    loadingPreviews.forEach(el => {
-        const pattern = el.closest('[data-pattern]')?.dataset.pattern;
-        if (pattern && !previewCache.has(pattern)) {
-            result.set(pattern, el.closest('[data-pattern]'));
-        }
-    });
-    return result;
 }
 
 // Modified processPendingBatch to keep polling for loading previews
@@ -674,8 +616,6 @@ async function displayPlaylistPatterns(patterns) {
         patternCard.dataset.pattern = pattern;
         intersectionObserver.observe(patternCard);
     });
-
-    triggerInitialPreviewBatch();
 }
 
 // Create a pattern card
@@ -684,7 +624,7 @@ function createPatternCard(pattern, showRemove = false) {
     card.className = 'flex flex-col gap-3 group cursor-pointer relative';
     
     const previewContainer = document.createElement('div');
-    previewContainer.className = 'w-full bg-center bg-no-repeat aspect-square bg-cover rounded-full shadow-sm group-hover:shadow-md transition-shadow duration-150 border border-gray-200 dark:border-gray-700 pattern-preview bg-slate-100 relative';
+    previewContainer.className = 'w-full aspect-square bg-cover rounded-full shadow-sm group-hover:shadow-md transition-shadow duration-150 border border-gray-200 dark:border-gray-700 pattern-preview relative';
     
     // Only set preview image if already available in memory cache
     const previewData = previewCache.get(pattern);
@@ -798,25 +738,13 @@ async function removePatternFromPlaylist(pattern) {
     }
 }
 
-// Load available patterns for adding (with caching)
+// Load available patterns for adding (no caching)
 async function loadAvailablePatterns(forceRefresh = false) {
     const loadingIndicator = document.getElementById('patternsLoadingIndicator');
     const grid = document.getElementById('availablePatternsGrid');
     const noResultsMessage = document.getElementById('noResultsMessage');
     
-    // Check cache first (unless force refresh is requested)
-    if (!forceRefresh && loadPatternsFromCache()) {
-        logMessage('Using cached patterns list', LOG_TYPE.DEBUG);
-        availablePatterns = [...loadPatternsFromCache()];
-        filteredPatterns = [...availablePatterns];
-        
-        // Show patterns immediately - all lazy loading now
-        displayAvailablePatterns();
-        
-        return;
-    }
-    
-    // Show loading indicator
+    // Always fetch from backend
     loadingIndicator.classList.remove('hidden');
     grid.classList.add('hidden');
     noResultsMessage.classList.add('hidden');
@@ -827,16 +755,10 @@ async function loadAvailablePatterns(forceRefresh = false) {
         if (response.ok) {
             const patterns = await response.json();
             const thrPatterns = patterns.filter(file => file.endsWith('.thr'));
-            
-            // Update cache
-            savePatternsToCache(thrPatterns);
-            
             availablePatterns = [...thrPatterns];
             filteredPatterns = [...availablePatterns];
-            
             // Show patterns immediately - all lazy loading now
             displayAvailablePatterns();
-            
             if (forceRefresh) {
                 showStatusMessage('Patterns list refreshed successfully', 'success');
             }
@@ -846,15 +768,6 @@ async function loadAvailablePatterns(forceRefresh = false) {
     } catch (error) {
         logMessage(`Error loading available patterns: ${error.message}`, LOG_TYPE.ERROR);
         showStatusMessage('Failed to load available patterns', 'error');
-        
-        // If cache exists and this was a refresh attempt, fall back to cache
-        if (forceRefresh && loadPatternsFromCache()) {
-            logMessage('Falling back to cached patterns list', LOG_TYPE.WARNING);
-            availablePatterns = [...loadPatternsFromCache()];
-            filteredPatterns = [...availablePatterns];
-            displayAvailablePatterns();
-            showStatusMessage('Using cached patterns (refresh failed)', 'warning');
-        }
     } finally {
         loadingIndicator.classList.add('hidden');
     }
@@ -881,8 +794,8 @@ function displayAvailablePatterns() {
         card.dataset.pattern = pattern;
         
         card.innerHTML = `
-            <div class="w-full bg-center bg-no-repeat aspect-square bg-cover rounded-lg border border-gray-200 dark:border-gray-700 relative pattern-preview bg-slate-100">
-                <div class="absolute top-2 right-2 size-6 rounded-full bg-white dark:bg-gray-700 shadow-md opacity-0 transition-opacity duration-150 flex items-center justify-center">
+            <div class="w-full bg-center aspect-square bg-cover rounded-full border border-gray-200 dark:border-gray-700 relative pattern-preview">
+                <div class="absolute top-2 right-2 size-6 rounded-full shadow-md opacity-0 transition-opacity duration-150 flex items-center justify-center">
                     <span class="material-icons text-sm text-gray-600 dark:text-gray-300">add</span>
                 </div>
             </div>
@@ -895,7 +808,7 @@ function displayAvailablePatterns() {
         // Only set preview image if already available in memory cache
         const previewData = previewCache.get(pattern);
         if (previewData && !previewData.error && previewData.image_data) {
-            previewContainer.innerHTML = `<img src="${previewData.image_data}" alt="Pattern Preview" class="w-full h-full object-cover rounded-lg" />`;
+            previewContainer.innerHTML = `<img src="${previewData.image_data}" alt="Pattern Preview" class="w-full h-full object-cover rounded-full" />`;
             // Re-add the add button
             const addBtnContainer = document.createElement('div');
             addBtnContainer.className = 'absolute top-2 right-2 size-6 rounded-full bg-white dark:bg-gray-700 shadow-md opacity-0 transition-opacity duration-150 flex items-center justify-center';
@@ -940,8 +853,6 @@ function displayAvailablePatterns() {
 
         grid.appendChild(card);
     });
-
-    triggerInitialPreviewBatch();
 }
 
 // Add selected patterns to playlist

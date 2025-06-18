@@ -5,7 +5,6 @@
 {% block additional_styles %}
 /* Minimal custom styles - rely on Tailwind utilities */
 .pattern-preview {
-  background-color: #f8fafc;
   border: 1px solid #e2e8f0;
   overflow: hidden;
   display: flex;
@@ -13,17 +12,6 @@
   justify-content: center;
 }
 
-.pattern-preview img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-/* Dark mode pattern preview adjustments */
-.dark .pattern-preview {
-  background-color: #334155 !important;
-  border-color: #475569 !important;
-}
 
 .dark .pattern-preview img {
   filter: invert(1);
@@ -182,7 +170,7 @@ html:not(.dark) #availablePatternsGrid .text-xs {
   </aside>
 
   <!-- Main Content -->
-  <main id="playlistDetails" class="flex-1 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col mobile-full-width" style="height: calc(100vh - 72px - 64px - 48px);">
+  <main id="playlistDetails" class="flex-1 bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col mobile-full-width" style="height: calc(100vh - 72px - 64px - 48px);">
     <header class="flex items-center justify-between gap-4 p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 bg-white dark:bg-gray-800">
       <!-- Mobile back button in header -->
       <div class="flex items-center gap-3 flex-1 min-w-0">
@@ -202,7 +190,7 @@ html:not(.dark) #availablePatternsGrid .text-xs {
     
     <div class="flex-1 flex flex-col overflow-hidden bg-white dark:bg-gray-800">
       <!-- Patterns Grid - Scrollable -->
-      <div class="flex-1 overflow-y-auto bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      <div class="flex-1 overflow-y-auto border-b border-gray-200 dark:border-gray-700">
         <div id="patternsGrid" class="grid grid-cols-[repeat(auto-fill,minmax(128px,1fr))] gap-4 p-4 mobile-patterns-grid">
           <div class="flex items-center justify-center col-span-full py-12 text-gray-500 dark:text-gray-400">
             <span class="text-sm text-center">Select a playlist to view its patterns</span>
