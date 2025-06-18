@@ -2,6 +2,8 @@ services:
   flask-app:
     build: . # Uncomment this if you need to build 
     image: ghcr.io/jodegreef/dune-weaver:main # Use latest production image
+    environment:
+      - TZ=Europe/Brussels
     restart: always
     ports:
       - "8080:8080" # Map port 8080 of the container to 8080 of the host
