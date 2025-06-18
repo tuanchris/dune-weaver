@@ -40,6 +40,7 @@ async def stop_at_time(target_hour=17, target_minute=0):
     """Background task to stop operations at a specific time every day."""
     while True:
         now = datetime.now()
+        logger.info(f"Checking if it's time to stop operations: stoptime: {target_hour}:{target_minute}...current time: {now.hour}:{+now.minute}")
         if now.hour == target_hour and now.minute == target_minute:
             logger.info("Target time reached, stopping operations.")
             logger.info("Shutting down wled.")
