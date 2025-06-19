@@ -36,6 +36,11 @@ const LOG_TYPE = {
     DEBUG: 'debug'
 };
 
+// Cache progress storage keys
+const CACHE_PROGRESS_KEY = 'dune_weaver_cache_progress';
+const CACHE_TIMESTAMP_KEY = 'dune_weaver_cache_timestamp';
+const CACHE_PROGRESS_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+
 // Function to show status message
 function showStatusMessage(message, type = 'success') {
     const statusContainer = document.getElementById('status-message-container');
@@ -1209,11 +1214,6 @@ async function cacheAllPreviews() {
     try {
         // Disable button and show loading state
         cacheAllButton.disabled = true;
-        const originalText = cacheAllButton.innerHTML;
-        cacheAllButton.innerHTML = `
-            <div class="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-            <span>Caching...</span>
-        `;
 
         // Get current cache size
         const currentSize = await getPreviewCacheSize();
@@ -1222,6 +1222,9 @@ async function cacheAllPreviews() {
         if (currentSize > maxSize) {
             // Clear cache if it's too large
             await clearPreviewCache();
+            // Also clear progress since we're starting fresh
+            localStorage.removeItem(CACHE_PROGRESS_KEY);
+            localStorage.removeItem(CACHE_TIMESTAMP_KEY);
         }
 
         // Get all patterns that aren't cached yet
@@ -1232,20 +1235,42 @@ async function cacheAllPreviews() {
             return;
         }
 
+        // Check for existing progress
+        let startIndex = 0;
+        const savedProgress = localStorage.getItem(CACHE_PROGRESS_KEY);
+        const savedTimestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY);
+        
+        if (savedProgress && savedTimestamp) {
+            const progressAge = Date.now() - parseInt(savedTimestamp);
+            if (progressAge < CACHE_PROGRESS_EXPIRY) {
+                const lastCachedPattern = savedProgress;
+                const lastIndex = uncachedPatterns.findIndex(p => p === lastCachedPattern);
+                if (lastIndex !== -1) {
+                    startIndex = lastIndex + 1;
+                    showStatusMessage('Resuming from previous progress...', 'info');
+                }
+            } else {
+                // Clear expired progress
+                localStorage.removeItem(CACHE_PROGRESS_KEY);
+                localStorage.removeItem(CACHE_TIMESTAMP_KEY);
+            }
+        }
+
         // Process patterns in smaller batches to avoid overwhelming the server
         const BATCH_SIZE = 10;
-        const totalBatches = Math.ceil(uncachedPatterns.length / BATCH_SIZE);
+        const remainingPatterns = uncachedPatterns.slice(startIndex);
+        const totalBatches = Math.ceil(remainingPatterns.length / BATCH_SIZE);
         
         for (let i = 0; i < totalBatches; i++) {
             const batchStart = i * BATCH_SIZE;
-            const batchEnd = Math.min(batchStart + BATCH_SIZE, uncachedPatterns.length);
-            const batchPatterns = uncachedPatterns.slice(batchStart, batchEnd);
+            const batchEnd = Math.min(batchStart + BATCH_SIZE, remainingPatterns.length);
+            const batchPatterns = remainingPatterns.slice(batchStart, batchEnd);
             
             // Update button text with progress
-            const progress = Math.round((i / totalBatches) * 100);
+            const overallProgress = Math.round(((startIndex + batchStart + BATCH_SIZE) / uncachedPatterns.length) * 100);
             cacheAllButton.innerHTML = `
                 <div class="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                <span>Caching ${progress}%</span>
+                <span>Caching ${overallProgress}%</span>
             `;
 
             try {
@@ -1263,22 +1288,31 @@ async function cacheAllPreviews() {
                         if (data && !data.error && data.image_data) {
                             previewCache.set(pattern, data);
                             await savePreviewToCache(pattern, data);
+                            
+                            // Save progress after each successful pattern
+                            localStorage.setItem(CACHE_PROGRESS_KEY, pattern);
+                            localStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
                         }
                     }
                 }
             } catch (error) {
                 logMessage(`Error caching batch ${i + 1}: ${error.message}`, LOG_TYPE.ERROR);
+                // Don't clear progress on error - allows resuming from last successful pattern
             }
 
             // Small delay between batches to prevent overwhelming the server
             await new Promise(resolve => setTimeout(resolve, 100));
         }
 
+        // Clear progress after successful completion
+        localStorage.removeItem(CACHE_PROGRESS_KEY);
+        localStorage.removeItem(CACHE_TIMESTAMP_KEY);
+
         // Show success message
         showStatusMessage('All pattern previews have been cached!', 'success');
     } catch (error) {
         logMessage(`Error caching previews: ${error.message}`, LOG_TYPE.ERROR);
-        showStatusMessage('Failed to cache all previews', 'error');
+        showStatusMessage('Failed to cache all previews. Click again to resume.', 'error');
     } finally {
         // Reset button state
         if (cacheAllButton) {
