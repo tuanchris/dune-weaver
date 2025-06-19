@@ -106,6 +106,13 @@ class WLEDRequest(BaseModel):
 class DeletePlaylistRequest(BaseModel):
     playlist_name: str
 
+class ThetaRhoRequest(BaseModel):
+    file_name: str
+    pre_execution: Optional[str] = "none"
+
+class GetCoordinatesRequest(BaseModel):
+    file_name: str
+
 # Store active WebSocket connections
 active_status_connections = set()
 
@@ -253,9 +260,30 @@ async def upload_theta_rho(file: UploadFile = File(...)):
         logger.error(f"Error uploading file: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-class ThetaRhoRequest(BaseModel):
-    file_name: str
-    pre_execution: Optional[str] = "none"
+@app.post("/get_theta_rho_coordinates")
+async def get_theta_rho_coordinates(request: GetCoordinatesRequest):
+    """Get theta-rho coordinates for animated preview."""
+    try:
+        file_path = os.path.join(THETA_RHO_DIR, request.file_name)
+        
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail=f"File {request.file_name} not found")
+        
+        # Parse the theta-rho file
+        coordinates = parse_theta_rho_file(file_path)
+        
+        if not coordinates:
+            raise HTTPException(status_code=400, detail="No valid coordinates found in file")
+        
+        return {
+            "success": True,
+            "coordinates": coordinates,
+            "total_points": len(coordinates)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting coordinates for {request.file_name}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/run_theta_rho")
 async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTasks):

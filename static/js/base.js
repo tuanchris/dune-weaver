@@ -5,6 +5,8 @@ const maxReconnectAttempts = 5;
 const reconnectDelay = 3000; // 3 seconds
 let isEditingSpeed = false; // Track if user is editing speed
 let playerBarVisible = true; // Track player bar visibility
+let playerPreviewData = null; // Store the current pattern's preview data
+let playerPreviewCtx = null; // Store the canvas context for player preview
 
 // Utility: Save/restore player bar visibility
 function savePlayerBarVisibility(visible) {
@@ -113,6 +115,144 @@ function updateConnectionStatus(isConnected) {
     }
 }
 
+// Setup player preview canvas
+function setupPlayerPreviewCanvas() {
+    const previewContainer = document.getElementById('player-pattern-preview');
+    if (!previewContainer) return;
+
+    // Remove any existing canvas
+    const existingCanvas = previewContainer.querySelector('canvas');
+    if (existingCanvas) existingCanvas.remove();
+
+    // Create and setup canvas
+    const canvas = document.createElement('canvas');
+    canvas.className = 'w-full h-full rounded-full';
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    
+    // Set high-DPI canvas size
+    const size = 800;
+    canvas.width = size * (window.devicePixelRatio || 1) * 2;
+    canvas.height = size * (window.devicePixelRatio || 1) * 2;
+    
+    // Get context and store it
+    playerPreviewCtx = canvas.getContext('2d');
+    
+    // Clear container and add canvas
+    previewContainer.innerHTML = '';
+    previewContainer.appendChild(canvas);
+    
+    // Setup initial canvas state
+    if (playerPreviewCtx) {
+        const pixelRatio = (window.devicePixelRatio || 1) * 2;
+        playerPreviewCtx.scale(pixelRatio, pixelRatio);
+        playerPreviewCtx.translate(size/2, size/2);
+        playerPreviewCtx.rotate(-Math.PI);
+        playerPreviewCtx.translate(-size/2, -size/2);
+    }
+}
+
+// Draw player preview
+function drawPlayerPreview(progress) {
+    if (!playerPreviewCtx || !playerPreviewData || playerPreviewData.length === 0) return;
+    
+    const canvas = playerPreviewCtx.canvas;
+    const pixelRatio = (window.devicePixelRatio || 1) * 2;
+    const displayWidth = parseInt(canvas.style.width);
+    const displayHeight = parseInt(canvas.style.height);
+    const center = (canvas.width / pixelRatio) / 2;
+    const scale = ((canvas.width / pixelRatio) / 2) - 30;
+    
+    // Clear canvas with white background
+    playerPreviewCtx.fillStyle = '#ffffff';
+    playerPreviewCtx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Calculate how many points to draw
+    const totalPoints = playerPreviewData.length;
+    const pointsToDraw = Math.floor(totalPoints * progress);
+    
+    if (pointsToDraw < 2) return;
+    
+    // Draw the pattern
+    playerPreviewCtx.beginPath();
+    playerPreviewCtx.strokeStyle = '#000000';
+    playerPreviewCtx.lineWidth = 0.75;
+    playerPreviewCtx.lineCap = 'round';
+    playerPreviewCtx.lineJoin = 'round';
+    
+    // Enable high quality rendering
+    playerPreviewCtx.imageSmoothingEnabled = true;
+    playerPreviewCtx.imageSmoothingQuality = 'high';
+    
+    // Draw pattern lines
+    for (let i = 0; i < pointsToDraw - 1; i++) {
+        const [theta1, rho1] = playerPreviewData[i];
+        const [theta2, rho2] = playerPreviewData[i + 1];
+        
+        const x1 = center + rho1 * scale * Math.cos(theta1);
+        const y1 = center + rho1 * scale * Math.sin(theta1);
+        const x2 = center + rho2 * scale * Math.cos(theta2);
+        const y2 = center + rho2 * scale * Math.sin(theta2);
+        
+        if (i === 0) {
+            playerPreviewCtx.moveTo(x1, y1);
+        }
+        playerPreviewCtx.lineTo(x2, y2);
+    }
+    playerPreviewCtx.stroke();
+    
+    // Draw current position dot
+    if (pointsToDraw > 0) {
+        const [theta, rho] = playerPreviewData[pointsToDraw - 1];
+        const x = center + rho * scale * Math.cos(theta);
+        const y = center + rho * scale * Math.sin(theta);
+        
+        // Draw white border
+        playerPreviewCtx.beginPath();
+        playerPreviewCtx.fillStyle = '#ffffff';
+        playerPreviewCtx.arc(x, y, 7.5, 0, Math.PI * 2);
+        playerPreviewCtx.fill();
+        
+        // Draw red dot
+        playerPreviewCtx.beginPath();
+        playerPreviewCtx.fillStyle = '#ff0000';
+        playerPreviewCtx.arc(x, y, 6, 0, Math.PI * 2);
+        playerPreviewCtx.fill();
+    }
+}
+
+// Load pattern coordinates for player preview
+async function loadPlayerPreviewData(pattern) {
+    try {
+        const response = await fetch('/get_theta_rho_coordinates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file_name: pattern })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        playerPreviewData = data.coordinates;
+        
+        // Setup canvas if needed
+        setupPlayerPreviewCanvas();
+        
+        // Draw initial state
+        drawPlayerPreview(0);
+        
+    } catch (error) {
+        console.error(`Error loading player preview data: ${error.message}`);
+        playerPreviewData = null;
+    }
+}
+
 function updatePlayerStatus(status) {
     const playerBar = document.getElementById('player-status-bar-container');
     const patternName = document.getElementById('player-pattern-name');
@@ -136,8 +276,15 @@ function updatePlayerStatus(status) {
         patternName.textContent = fileName.replace('.thr', '');
 
         // Update pattern preview
-        const encodedFilename = fileName.replace(/\//g, '--');
-        patternPreview.style.backgroundImage = `url('/preview/${encodedFilename}')`;
+        if (!playerPreviewData) {
+            // Load preview data if not loaded
+            loadPlayerPreviewData(status.current_file);
+        }
+        
+        // Update preview animation if we have data
+        if (playerPreviewData && status.progress && status.progress.percentage !== null) {
+            drawPlayerPreview(status.progress.percentage / 100);
+        }
 
         // Update ETA
         if (status.progress && status.progress.remaining_time !== null) {
@@ -213,6 +360,9 @@ function updatePlayerStatus(status) {
         if (playerBar) playerBar.dataset.isPlaying = '0';
         // Hide both bar and toggle button
         setPlayerBarVisibility(false);
+        // Clear preview data
+        playerPreviewData = null;
+        playerPreviewCtx = null;
     }
 }
 

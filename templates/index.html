@@ -259,8 +259,14 @@
       </button>
     </header>
     <div class="p-6 overflow-y-auto h-[calc(100%-4rem)]">
-      <div class="mb-6 aspect-square w-full overflow-hidden pattern-preview rounded-full">
+      <div class="mb-6 aspect-square w-full overflow-hidden pattern-preview rounded-full relative group">
         <img id="patternPreviewImage" alt="Pattern Preview" class="h-full w-full object-cover" src=""/>
+        <!-- Play button overlay for animated preview -->
+        <div id="previewPlayOverlay" class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer">
+          <div class="bg-white rounded-full p-3 shadow-lg flex items-center justify-center w-12 h-12">
+            <span class="material-icons text-2xl text-gray-800">play_arrow</span>
+          </div>
+        </div>
       </div>
       <div class="mb-4 flex justify-between text-sm">
         <div class="flex items-center gap-2">
@@ -306,6 +312,70 @@
           <span class="material-icons text-lg">delete</span>
           Delete
         </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Animated Preview Modal -->
+<div id="animatedPreviewModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden">
+  <div class="flex items-center justify-center min-h-screen p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between p-6 border-b border-gray-200">
+        <h3 id="animatedPreviewTitle" class="text-xl font-semibold text-gray-900">Animated Preview</h3>
+        <button id="closeAnimatedPreview" class="text-gray-400 hover:text-gray-600">
+          <span class="material-icons text-2xl">close</span>
+        </button>
+      </div>
+      
+      <!-- Modal Content -->
+      <div class="p-6">
+        <!-- Canvas Container -->
+        <div class="flex justify-center mb-6">
+          <div class="relative w-full max-w-[800px]">
+            <canvas id="animatedPreviewCanvas" width="800" height="800" class="border border-gray-300 rounded-full w-full h-auto max-w-full dark:invert"></canvas>
+            <!-- Play/Pause Overlay -->
+            <div id="playPauseOverlay" class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-20 opacity-0 transition-opacity duration-200 cursor-pointer rounded-full">
+              <div class="bg-white rounded-full p-4 shadow-lg">
+                <span id="playPauseIcon" class="material-icons text-3xl text-gray-800">play_arrow</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Controls -->
+        <div class="space-y-4">
+          <!-- Speed Control -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Speed</label>
+            <div class="flex items-center gap-4">
+              <input type="range" id="speedSlider" min="0.1" max="5" step="0.1" value="1" class="flex-1">
+              <span id="speedValue" class="text-sm font-medium text-gray-900 w-16">1x</span>
+            </div>
+          </div>
+          
+          <!-- Progress Control -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Progress</label>
+            <div class="flex items-center gap-4">
+              <input type="range" id="progressSlider" min="0" max="100" step="0.1" value="0" class="flex-1">
+              <span id="progressValue" class="text-sm font-medium text-gray-900 w-20">0%</span>
+            </div>
+          </div>
+          
+          <!-- Control Buttons -->
+          <div class="flex items-center justify-center gap-4">
+            <button id="playPauseBtn" class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              <span id="playPauseBtnIcon" class="material-icons">play_arrow</span>
+              <span id="playPauseBtnText">Play</span>
+            </button>
+            <button id="resetBtn" class="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">
+              <span class="material-icons">replay</span>
+              Reset
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>

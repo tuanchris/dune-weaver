@@ -41,6 +41,14 @@ const CACHE_PROGRESS_KEY = 'dune_weaver_cache_progress';
 const CACHE_TIMESTAMP_KEY = 'dune_weaver_cache_timestamp';
 const CACHE_PROGRESS_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
+// Animated Preview Variables
+let animatedPreviewData = null;
+let animationFrameId = null;
+let isPlaying = false;
+let currentProgress = 0;
+let animationSpeed = 1;
+let lastTimestamp = 0;
+
 // Function to show status message
 function showStatusMessage(message, type = 'success') {
     const statusContainer = document.getElementById('status-message-container');
@@ -650,11 +658,24 @@ function createPatternCard(pattern) {
     
     // Create preview container with proper styling for loading indicator
     const previewContainer = document.createElement('div');
-    previewContainer.className = 'w-32 h-32 rounded-full shadow-md relative pattern-preview';
+    previewContainer.className = 'w-32 h-32 rounded-full shadow-md relative pattern-preview group';
     previewContainer.dataset.pattern = pattern;
     
     // Add loading indicator
     previewContainer.innerHTML = '<div class="absolute inset-0 flex items-center justify-center"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-500"></div></div>';
+    
+    // Add play button overlay (hidden by default, shown on hover)
+    const playOverlay = document.createElement('div');
+    playOverlay.className = 'absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer';
+    playOverlay.innerHTML = '<div class="bg-white rounded-full p-2 shadow-lg flex items-center justify-center w-10 h-10"><span class="material-icons text-lg text-gray-800">play_arrow</span></div>';
+    
+    // Add click handler for play button (separate from card click)
+    playOverlay.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent card selection
+        openAnimatedPreview(pattern);
+    });
+    
+    previewContainer.appendChild(playOverlay);
     
     // Create pattern name
     const patternName = document.createElement('p');
@@ -796,6 +817,7 @@ function setupPreviewPanelEvents(pattern) {
     const playButton = document.getElementById('playPattern');
     const deleteButton = document.getElementById('deletePattern');
     const preExecutionInputs = document.querySelectorAll('input[name="preExecutionAction"]');
+    const previewPlayOverlay = document.getElementById('previewPlayOverlay');
 
     // Close panel when clicking the close button
     closeButton.onclick = () => {
@@ -805,6 +827,13 @@ function setupPreviewPanelEvents(pattern) {
             c.classList.remove('selected');
         });
     };
+
+    // Handle play button overlay click in preview panel
+    if (previewPlayOverlay) {
+        previewPlayOverlay.onclick = () => {
+            openAnimatedPreview(pattern);
+        };
+    }
 
     // Handle play button click
     playButton.onclick = async () => {
@@ -1323,4 +1352,375 @@ async function cacheAllPreviews() {
             `;
         }
     }
+}
+
+// Open animated preview modal
+async function openAnimatedPreview(pattern) {
+    try {
+        const modal = document.getElementById('animatedPreviewModal');
+        const title = document.getElementById('animatedPreviewTitle');
+        const canvas = document.getElementById('animatedPreviewCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Set title
+        title.textContent = pattern.replace('.thr', '').split('/').pop();
+        
+        // Show modal
+        modal.classList.remove('hidden');
+        
+        // Load pattern coordinates
+        const response = await fetch('/get_theta_rho_coordinates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file_name: pattern })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        animatedPreviewData = data.coordinates;
+        
+        // Setup canvas
+        setupAnimatedPreviewCanvas(ctx);
+        
+        // Setup controls
+        setupAnimatedPreviewControls();
+        
+        // Draw initial state
+        drawAnimatedPreview(ctx, 0);
+        
+        // Auto-play the animation
+        setTimeout(() => {
+            playAnimation();
+        }, 100); // Small delay to ensure everything is set up
+        
+    } catch (error) {
+        logMessage(`Error opening animated preview: ${error.message}`, LOG_TYPE.ERROR);
+        showStatusMessage('Failed to load pattern for animation', 'error');
+    }
+}
+
+// Setup animated preview canvas
+function setupAnimatedPreviewCanvas(ctx) {
+    const canvas = ctx.canvas;
+    const size = canvas.width;
+    const center = size / 2;
+    const scale = (size / 2) - 30; // Slightly smaller to account for border
+    
+    // Clear canvas with white background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, size, size);
+    
+    // Set drawing style for ultra-high quality lines
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 0.75; // Thinner line for higher resolution
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    
+    // Enable high quality rendering
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+}
+
+// Setup animated preview controls
+function setupAnimatedPreviewControls() {
+    const modal = document.getElementById('animatedPreviewModal');
+    const closeBtn = document.getElementById('closeAnimatedPreview');
+    const playPauseBtn = document.getElementById('playPauseBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const speedSlider = document.getElementById('speedSlider');
+    const speedValue = document.getElementById('speedValue');
+    const progressSlider = document.getElementById('progressSlider');
+    const progressValue = document.getElementById('progressValue');
+    const canvas = document.getElementById('animatedPreviewCanvas');
+    const playPauseOverlay = document.getElementById('playPauseOverlay');
+    
+    // Set responsive canvas size with ultra-high-DPI support
+    const setCanvasSize = () => {
+        const isMobile = window.innerWidth < 768;
+        const displaySize = isMobile ? Math.min(window.innerWidth - 80, 400) : 800;
+        
+        // Get device pixel ratio and multiply by 2 for higher resolution
+        const pixelRatio = (window.devicePixelRatio || 1) * 2;
+        
+        // Set the display size (CSS pixels)
+        canvas.style.width = displaySize + 'px';
+        canvas.style.height = displaySize + 'px';
+        
+        // Set the actual canvas size (device pixels) - increased resolution
+        canvas.width = displaySize * pixelRatio;
+        canvas.height = displaySize * pixelRatio;
+        
+        // Scale the context to match the increased pixel ratio
+        const ctx = canvas.getContext('2d', { alpha: false }); // Disable alpha for better performance
+        ctx.scale(pixelRatio, pixelRatio);
+        
+        // Enable high quality rendering
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        
+        // Redraw with new size
+        if (animatedPreviewData) {
+            setupAnimatedPreviewCanvas(ctx);
+            drawAnimatedPreview(ctx, currentProgress / 100);
+        }
+    };
+    
+    // Set initial size
+    setCanvasSize();
+    
+    // Handle window resize
+    window.addEventListener('resize', setCanvasSize);
+    
+    // Close modal
+    closeBtn.onclick = closeAnimatedPreview;
+    modal.onclick = (e) => {
+        if (e.target === modal) closeAnimatedPreview();
+    };
+    
+    // Play/Pause button
+    playPauseBtn.onclick = toggleAnimation;
+    
+    // Reset button
+    resetBtn.onclick = resetAnimation;
+    
+    // Speed slider
+    speedSlider.oninput = (e) => {
+        animationSpeed = parseFloat(e.target.value);
+        speedValue.textContent = `${animationSpeed}x`;
+    };
+    
+    // Progress slider
+    progressSlider.oninput = (e) => {
+        currentProgress = parseFloat(e.target.value);
+        progressValue.textContent = `${currentProgress.toFixed(1)}%`;
+        drawAnimatedPreview(canvas.getContext('2d'), currentProgress / 100);
+        if (isPlaying) {
+            // Pause animation when manually adjusting progress
+            toggleAnimation();
+        }
+    };
+    
+    // Canvas click to play/pause
+    canvas.onclick = () => {
+        playPauseOverlay.style.opacity = '1';
+        setTimeout(() => {
+            playPauseOverlay.style.opacity = '0';
+        }, 200);
+        toggleAnimation();
+    };
+    
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        if (modal.classList.contains('hidden')) return;
+        
+        switch(e.code) {
+            case 'Space':
+                e.preventDefault();
+                toggleAnimation();
+                break;
+            case 'Escape':
+                closeAnimatedPreview();
+                break;
+            case 'ArrowLeft':
+                e.preventDefault();
+                currentProgress = Math.max(0, currentProgress - 5);
+                updateProgressUI();
+                drawAnimatedPreview(canvas.getContext('2d'), currentProgress / 100);
+                break;
+            case 'ArrowRight':
+                e.preventDefault();
+                currentProgress = Math.min(100, currentProgress + 5);
+                updateProgressUI();
+                drawAnimatedPreview(canvas.getContext('2d'), currentProgress / 100);
+                break;
+        }
+    });
+}
+
+// Draw animated preview
+function drawAnimatedPreview(ctx, progress) {
+    if (!animatedPreviewData || animatedPreviewData.length === 0) return;
+    
+    const canvas = ctx.canvas;
+    const pixelRatio = (window.devicePixelRatio || 1) * 2; // Match the increased ratio
+    const displayWidth = parseInt(canvas.style.width);
+    const displayHeight = parseInt(canvas.style.height);
+    const center = (canvas.width / pixelRatio) / 2;
+    const scale = ((canvas.width / pixelRatio) / 2) - 30;
+    
+    // Clear canvas with white background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Calculate how many points to draw
+    const totalPoints = animatedPreviewData.length;
+    const pointsToDraw = Math.floor(totalPoints * progress);
+    
+    if (pointsToDraw < 2) return;
+    
+    // Draw the path with ultra-high quality settings
+    ctx.beginPath();
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 0.75; // Thinner line for higher resolution
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    
+    // Ensure sub-pixel alignment for ultra-high resolution
+    for (let i = 0; i < pointsToDraw; i++) {
+        const [theta, rho] = animatedPreviewData[i];
+        // Round to nearest 0.25 for even more precise lines
+        // Mirror both X and Y coordinates
+        const x = Math.round((center + rho * scale * Math.cos(theta)) * 4) / 4; // Changed minus to plus
+        const y = Math.round((center + rho * scale * Math.sin(theta)) * 4) / 4;
+        
+        if (i === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    }
+    ctx.stroke();
+    
+    // Draw current position dot
+    if (pointsToDraw > 0) {
+        const [currentTheta, currentRho] = animatedPreviewData[pointsToDraw - 1];
+        const currentX = Math.round((center + currentRho * scale * Math.cos(currentTheta)) * 4) / 4; // Changed minus to plus
+        const currentY = Math.round((center + currentRho * scale * Math.sin(currentTheta)) * 4) / 4;
+        
+        // Draw a filled circle at current position with anti-aliasing
+        ctx.fillStyle = '#ff4444'; // Red dot
+        ctx.beginPath();
+        ctx.arc(currentX, currentY, 6, 0, 2 * Math.PI); // Increased dot size
+        ctx.fill();
+        
+        // Add a subtle white border
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+    }
+}
+
+// Toggle animation play/pause
+function toggleAnimation() {
+    if (isPlaying) {
+        pauseAnimation();
+    } else {
+        playAnimation();
+    }
+}
+
+// Play animation
+function playAnimation() {
+    if (!animatedPreviewData) return;
+    
+    isPlaying = true;
+    lastTimestamp = performance.now();
+    
+    // Update UI
+    const playPauseBtn = document.getElementById('playPauseBtn');
+    const playPauseBtnIcon = document.getElementById('playPauseBtnIcon');
+    const playPauseBtnText = document.getElementById('playPauseBtnText');
+    
+    if (playPauseBtnIcon) playPauseBtnIcon.textContent = 'pause';
+    if (playPauseBtnText) playPauseBtnText.textContent = 'Pause';
+    
+    // Start animation loop
+    animationFrameId = requestAnimationFrame(animate);
+}
+
+// Pause animation
+function pauseAnimation() {
+    isPlaying = false;
+    
+    // Update UI
+    const playPauseBtn = document.getElementById('playPauseBtn');
+    const playPauseBtnIcon = document.getElementById('playPauseBtnIcon');
+    const playPauseBtnText = document.getElementById('playPauseBtnText');
+    
+    if (playPauseBtnIcon) playPauseBtnIcon.textContent = 'play_arrow';
+    if (playPauseBtnText) playPauseBtnText.textContent = 'Play';
+    
+    // Cancel animation frame
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+    }
+}
+
+// Animation loop
+function animate(timestamp) {
+    if (!isPlaying) return;
+    
+    const deltaTime = timestamp - lastTimestamp;
+    const progressIncrement = (deltaTime / 1000) * animationSpeed * 2.0; // Much faster base speed
+    
+    currentProgress = Math.min(100, currentProgress + progressIncrement);
+    
+    // Update UI
+    updateProgressUI();
+    
+    // Draw frame
+    const canvas = document.getElementById('animatedPreviewCanvas');
+    if (canvas) {
+        drawAnimatedPreview(canvas.getContext('2d'), currentProgress / 100);
+    }
+    
+    // Continue animation
+    if (currentProgress < 100) {
+        lastTimestamp = timestamp;
+        animationFrameId = requestAnimationFrame(animate);
+    } else {
+        // Animation complete
+        pauseAnimation();
+    }
+}
+
+// Reset animation
+function resetAnimation() {
+    pauseAnimation();
+    currentProgress = 0;
+    updateProgressUI();
+    
+    const canvas = document.getElementById('animatedPreviewCanvas');
+    drawAnimatedPreview(canvas.getContext('2d'), 0);
+}
+
+// Update progress UI
+function updateProgressUI() {
+    const progressSlider = document.getElementById('progressSlider');
+    const progressValue = document.getElementById('progressValue');
+    
+    progressSlider.value = currentProgress;
+    progressValue.textContent = `${currentProgress.toFixed(1)}%`;
+}
+
+// Close animated preview
+function closeAnimatedPreview() {
+    pauseAnimation();
+    
+    const modal = document.getElementById('animatedPreviewModal');
+    modal.classList.add('hidden');
+    
+    // Clear data
+    animatedPreviewData = null;
+    currentProgress = 0;
+    animationSpeed = 1;
+    
+    // Reset UI
+    const speedSlider = document.getElementById('speedSlider');
+    const speedValue = document.getElementById('speedValue');
+    const progressSlider = document.getElementById('progressSlider');
+    const progressValue = document.getElementById('progressValue');
+    
+    speedSlider.value = 1;
+    speedValue.textContent = '1x';
+    progressSlider.value = 0;
+    progressValue.textContent = '0%';
 } 
