@@ -50,7 +50,7 @@ async def generate_preview_image(pattern_file):
     points_to_draw = []
     for theta, rho in coordinates:
         x = CENTER - rho * SCALE_FACTOR * math.cos(theta)
-        y = CENTER + rho * SCALE_FACTOR * math.sin(theta)
+        y = CENTER - rho * SCALE_FACTOR * math.sin(theta)
         points_to_draw.append((x, y))
     
     if len(points_to_draw) > 1:
@@ -62,8 +62,11 @@ async def generate_preview_image(pattern_file):
 
     # Scale down to display size with high-quality resampling
     img = img.resize((DISPLAY_SIZE, DISPLAY_SIZE), Image.Resampling.LANCZOS)
+    
+    # Rotate the image 180 degrees
+    img = img.rotate(180)
 
     img_byte_arr = BytesIO()
-    img.save(img_byte_arr, format='WEBP')
+    img.save(img_byte_arr, format='WEBP', lossless=False, alpha_quality=20, method=0)
     img_byte_arr.seek(0)
     return img_byte_arr.getvalue()

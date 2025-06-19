@@ -876,6 +876,92 @@ function displayAvailablePatterns() {
 
         grid.appendChild(card);
     });
+    
+    // Trigger preview loading for visible patterns after displaying
+    triggerPreviewLoadingForVisible();
+}
+
+// Trigger preview loading for currently visible patterns
+function triggerPreviewLoadingForVisible() {
+    // Get all pattern cards currently in the DOM
+    const patternCards = document.querySelectorAll('[data-pattern]');
+    
+    patternCards.forEach(card => {
+        const pattern = card.dataset.pattern;
+        const previewContainer = card.querySelector('.pattern-preview');
+        
+        // Check if this pattern needs preview loading
+        if (pattern && !previewCache.has(pattern) && !pendingPatterns.has(pattern)) {
+            // Add to batch for immediate loading
+            addPatternToBatch(pattern, previewContainer);
+        }
+    });
+    
+    // Process any pending previews immediately
+    if (pendingPatterns.size > 0) {
+        processPendingBatch();
+    }
+}
+
+// Add pattern to pending batch for efficient loading
+async function addPatternToBatch(pattern, element) {
+    // Check in-memory cache first
+    if (previewCache.has(pattern)) {
+        const previewData = previewCache.get(pattern);
+        if (previewData && !previewData.error) {
+            if (element) {
+                updatePreviewElement(element, previewData.image_data);
+            }
+        }
+        return;
+    }
+
+    // Check IndexedDB cache
+    const cachedData = await getPreviewFromCache(pattern);
+    if (cachedData && !cachedData.error) {
+        // Add to in-memory cache for faster access
+        previewCache.set(pattern, cachedData);
+        if (element) {
+            updatePreviewElement(element, cachedData.image_data);
+        }
+        return;
+    }
+    
+    // Add loading indicator with better styling
+    if (element && !element.querySelector('img')) {
+        element.innerHTML = `
+            <div class="absolute inset-0 flex items-center justify-center bg-slate-100 rounded-full">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-500"></div>
+            </div>
+            <div class="absolute inset-0 flex items-center justify-center">
+                <div class="text-xs text-slate-500 mt-12">Loading...</div>
+            </div>
+        `;
+    }
+
+    // Add to pending batch
+    pendingPatterns.set(pattern, element);
+    
+    // Process batch immediately if it's full
+    if (pendingPatterns.size >= BATCH_SIZE) {
+        processPendingBatch();
+    }
+}
+
+// Update preview element with image
+function updatePreviewElement(element, imageData) {
+    if (element) {
+        element.innerHTML = `<img src="${imageData}" alt="Pattern Preview" class="w-full h-full object-cover rounded-full" />`;
+        
+        // Re-add the add button if it exists in the parent card
+        const card = element.closest('[data-pattern]');
+        if (card && !selectedPatterns.has(card.dataset.pattern)) {
+            const addBtnContainer = document.createElement('div');
+            addBtnContainer.className = 'absolute top-2 right-2 size-6 rounded-full bg-white dark:bg-gray-700 shadow-md opacity-0 transition-opacity duration-150 flex items-center justify-center';
+            addBtnContainer.innerHTML = '<span class="material-icons text-sm text-gray-600 dark:text-gray-300">add</span>';
+            element.appendChild(addBtnContainer);
+        }
+    }
 }
 
 // Add selected patterns to playlist

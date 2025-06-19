@@ -428,15 +428,13 @@ function triggerPreviewLoadingForVisible() {
     const patternCards = document.querySelectorAll('.pattern-card');
     
     patternCards.forEach(card => {
-        const previewContainer = card.querySelector('[data-pattern]');
-        if (previewContainer) {
-            const pattern = previewContainer.dataset.pattern;
-            
-            // Check if this pattern needs preview loading
-            if (!previewCache.has(pattern) && !pendingPatterns.has(pattern)) {
-                // Add to batch for immediate loading
-                addPatternToBatch(pattern, previewContainer);
-            }
+        const pattern = card.dataset.pattern;
+        const previewContainer = card.querySelector('.pattern-preview');
+        
+        // Check if this pattern needs preview loading
+        if (pattern && !previewCache.has(pattern) && !pendingPatterns.has(pattern)) {
+            // Add to batch for immediate loading
+            addPatternToBatch(pattern, previewContainer);
         }
     });
     
@@ -661,8 +659,14 @@ function createPatternCard(pattern) {
     // Add click handler
     card.onclick = () => selectPattern(pattern, card);
 
-    // Start observing the preview container for lazy loading
-    previewObserver.observe(previewContainer);
+    // Check if preview is already in cache
+    const previewData = previewCache.get(pattern);
+    if (previewData && !previewData.error && previewData.image_data) {
+        updatePreviewElement(previewContainer, previewData.image_data);
+    } else {
+        // Start observing the preview container for lazy loading
+        previewObserver.observe(previewContainer);
+    }
 
     card.appendChild(previewContainer);
     card.appendChild(patternName);
@@ -975,8 +979,11 @@ function searchPatterns(query) {
         patternGrid.appendChild(patternCard);
     });
 
-    // Trigger preview loading for the search results
-    triggerPreviewLoadingForVisible();
+    // Give the browser a chance to render the cards
+    requestAnimationFrame(() => {
+        // Trigger preview loading for the search results
+        triggerPreviewLoadingForVisible();
+    });
 
     logMessage(`Showing ${filteredPatterns.length} patterns matching "${query}"`, LOG_TYPE.INFO);
 }
@@ -1010,6 +1017,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Setup search functionality
         const searchInput = document.getElementById('patternSearch');
         const searchButton = document.getElementById('searchButton');
+        const cacheAllButton = document.getElementById('cacheAllButton');
         
         if (searchInput && searchButton) {
             // Search on button click
@@ -1030,6 +1038,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     searchPatterns('');
                 }
             });
+        }
+
+        // Setup cache all button
+        if (cacheAllButton) {
+            cacheAllButton.addEventListener('click', () => cacheAllPreviews());
         }
 
         // Load patterns on page load
@@ -1184,6 +1197,96 @@ function setupUploadEventHandlers() {
             cancelBtn.addEventListener('click', () => {
                 deleteModal.classList.add('hidden');
             });
+        }
+    }
+}
+
+// Cache all pattern previews
+async function cacheAllPreviews() {
+    const cacheAllButton = document.getElementById('cacheAllButton');
+    if (!cacheAllButton) return;
+
+    try {
+        // Disable button and show loading state
+        cacheAllButton.disabled = true;
+        const originalText = cacheAllButton.innerHTML;
+        cacheAllButton.innerHTML = `
+            <div class="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+            <span>Caching...</span>
+        `;
+
+        // Get current cache size
+        const currentSize = await getPreviewCacheSize();
+        const maxSize = MAX_CACHE_SIZE_BYTES || (200 * 1024 * 1024); // 200MB default
+
+        if (currentSize > maxSize) {
+            // Clear cache if it's too large
+            await clearPreviewCache();
+        }
+
+        // Get all patterns that aren't cached yet
+        const uncachedPatterns = allPatterns.filter(pattern => !previewCache.has(pattern));
+        
+        if (uncachedPatterns.length === 0) {
+            showStatusMessage('All patterns are already cached!', 'info');
+            return;
+        }
+
+        // Process patterns in smaller batches to avoid overwhelming the server
+        const BATCH_SIZE = 10;
+        const totalBatches = Math.ceil(uncachedPatterns.length / BATCH_SIZE);
+        
+        for (let i = 0; i < totalBatches; i++) {
+            const batchStart = i * BATCH_SIZE;
+            const batchEnd = Math.min(batchStart + BATCH_SIZE, uncachedPatterns.length);
+            const batchPatterns = uncachedPatterns.slice(batchStart, batchEnd);
+            
+            // Update button text with progress
+            const progress = Math.round((i / totalBatches) * 100);
+            cacheAllButton.innerHTML = `
+                <div class="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                <span>Caching ${progress}%</span>
+            `;
+
+            try {
+                const response = await fetch('/preview_thr_batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file_names: batchPatterns })
+                });
+
+                if (response.ok) {
+                    const results = await response.json();
+                    
+                    // Cache each preview
+                    for (const [pattern, data] of Object.entries(results)) {
+                        if (data && !data.error && data.image_data) {
+                            previewCache.set(pattern, data);
+                            await savePreviewToCache(pattern, data);
+                        }
+                    }
+                }
+            } catch (error) {
+                logMessage(`Error caching batch ${i + 1}: ${error.message}`, LOG_TYPE.ERROR);
+            }
+
+            // Small delay between batches to prevent overwhelming the server
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        // Show success message
+        showStatusMessage('All pattern previews have been cached!', 'success');
+    } catch (error) {
+        logMessage(`Error caching previews: ${error.message}`, LOG_TYPE.ERROR);
+        showStatusMessage('Failed to cache all previews', 'error');
+    } finally {
+        // Reset button state
+        if (cacheAllButton) {
+            cacheAllButton.disabled = false;
+            cacheAllButton.innerHTML = `
+                <span class="material-icons text-sm">cached</span>
+                Cache All Previews
+            `;
         }
     }
 } 
