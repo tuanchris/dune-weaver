@@ -335,68 +335,6 @@ document.getElementById('patternFileInput').addEventListener('change', async fun
   }
 });
 
-// Handle pattern deletion
-document.getElementById('deletePattern').addEventListener('click', async function() {
-  const selectedPattern = document.querySelector('.pattern-card.selected');
-  if (!selectedPattern) {
-    console.log('No pattern selected');
-    return;
-  }
-
-  const patternName = selectedPattern.dataset.pattern;
-  if (!patternName) {
-    console.log('No pattern name found');
-    return;
-  }
-
-  // Check if it's a custom pattern
-  if (!patternName.startsWith('custom_patterns/')) {
-    console.log('Cannot delete built-in patterns');
-    return;
-  }
-
-  if (!confirm(`Are you sure you want to delete the pattern "${patternName}"?`)) {
-    return;
-  }
-
-  try {
-    console.log('Deleting pattern:', patternName);
-    const response = await fetch('/delete_theta_rho_file', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ file_name: patternName })
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const result = await response.json();
-    if (result.success) {
-      console.log('Pattern deleted successfully');
-      // Remove the pattern card
-      selectedPattern.remove();
-      // Close the preview panel
-      document.getElementById('patternPreviewPanel').classList.add('translate-x-full');
-      // Clear the preview panel content
-      document.getElementById('patternPreviewImage').src = '';
-      document.getElementById('patternPreviewTitle').textContent = 'Pattern Details';
-      document.getElementById('firstCoordinate').textContent = '(0, 0)';
-      document.getElementById('lastCoordinate').textContent = '(0, 0)';
-      // Refresh the pattern list
-      await loadPatterns();
-    } else {
-      console.error('Failed to delete pattern:', result.error || 'Unknown error');
-      alert('Failed to delete pattern: ' + (result.error || 'Unknown error'));
-    }
-  } catch (error) {
-    console.error('Error deleting pattern:', error);
-    alert('Error deleting pattern: ' + error.message);
-  }
-});
-
 // Update delete button state when pattern is selected
 function updateDeleteButtonState(patternName) {
   const deleteButton = document.getElementById('deletePattern');

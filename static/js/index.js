@@ -319,14 +319,24 @@ async function addPatternToBatch(pattern, element) {
         return;
     }
 
+    // Check if this is a newly uploaded pattern
+    const isNewUpload = element?.dataset.isNewUpload === 'true';
+    
+    // Reset retry flags when starting fresh
+    if (element) {
+        element.dataset.retryCount = '0';
+        element.dataset.hasTriedIndividual = 'false';
+    }
+    
     // Add loading indicator with better styling
     if (!element.querySelector('img')) {
+        const loadingText = isNewUpload ? 'Generating preview...' : 'Loading...';
         element.innerHTML = `
             <div class="absolute inset-0 flex items-center justify-center bg-slate-100 rounded-full">
                 <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-500"></div>
             </div>
             <div class="absolute inset-0 flex items-center justify-center">
-                <div class="text-xs text-slate-500 mt-12">Loading...</div>
+                <div class="text-xs text-slate-500 mt-12">${loadingText}</div>
             </div>
         `;
     }
@@ -334,8 +344,8 @@ async function addPatternToBatch(pattern, element) {
     // Add to pending batch
     pendingPatterns.set(pattern, element);
     
-    // Process batch immediately if it's full
-    if (pendingPatterns.size >= LAZY_BATCH_SIZE) {
+    // Process batch immediately if it's full or if it's a new upload
+    if (pendingPatterns.size >= LAZY_BATCH_SIZE || isNewUpload) {
         processPendingBatch();
     }
 }
@@ -436,28 +446,101 @@ function triggerPreviewLoadingForVisible() {
     }
 }
 
+// Load individual pattern preview (fallback when batch loading fails)
+async function loadIndividualPreview(pattern, element) {
+    try {
+        logMessage(`Loading individual preview for ${pattern}`, LOG_TYPE.DEBUG);
+        
+        const response = await fetch('/preview_thr_batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file_names: [pattern] })
+        });
+
+        if (response.ok) {
+            const results = await response.json();
+            const data = results[pattern];
+            
+            if (data && !data.error && data.image_data) {
+                // Cache in memory with size limit
+                if (previewCache.size > 100) { // Limit cache size
+                    const oldestKey = previewCache.keys().next().value;
+                    previewCache.delete(oldestKey);
+                }
+                previewCache.set(pattern, data);
+                
+                // Save to IndexedDB cache for persistence
+                await savePreviewToCache(pattern, data);
+                
+                if (element) {
+                    updatePreviewElement(element, data.image_data);
+                }
+                
+                logMessage(`Individual preview loaded successfully for ${pattern}`, LOG_TYPE.DEBUG);
+            } else {
+                throw new Error(data?.error || 'Failed to load preview data');
+            }
+        } else {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+    } catch (error) {
+        logMessage(`Error loading individual preview for ${pattern}: ${error.message}`, LOG_TYPE.ERROR);
+        // Continue with normal error handling
+        handleLoadError(pattern, element, error.message);
+    }
+}
+
 // Handle load errors with retry logic
 function handleLoadError(pattern, element, error) {
     const retryCount = element.dataset.retryCount || 0;
+    const isNewUpload = element.dataset.isNewUpload === 'true';
+    const hasTriedIndividual = element.dataset.hasTriedIndividual === 'true';
     
-    if (retryCount < MAX_RETRIES) {
+    // Use longer delays for newly uploaded patterns
+    const retryDelay = isNewUpload ? RETRY_DELAY * 2 : RETRY_DELAY;
+    const maxRetries = isNewUpload ? MAX_RETRIES * 2 : MAX_RETRIES;
+    
+    if (retryCount < maxRetries) {
         // Update retry count
         element.dataset.retryCount = parseInt(retryCount) + 1;
         
-        // Show retry message
+        // Determine retry strategy
+        let retryStrategy = 'batch';
+        if (retryCount >= 1 && !hasTriedIndividual) {
+            // After first batch attempt fails, try individual loading
+            retryStrategy = 'individual';
+            element.dataset.hasTriedIndividual = 'true';
+        }
+        
+        // Show retry message with different text for new uploads and retry strategies
+        let retryText;
+        if (isNewUpload) {
+            retryText = retryStrategy === 'individual' ? 
+                `Trying individual load... (${retryCount + 1}/${maxRetries})` :
+                `Generating preview... (${retryCount + 1}/${maxRetries})`;
+        } else {
+            retryText = retryStrategy === 'individual' ? 
+                `Trying individual load... (${retryCount + 1}/${maxRetries})` :
+                `Retrying... (${retryCount + 1}/${maxRetries})`;
+        }
+            
         element.innerHTML = `
             <div class="absolute inset-0 flex items-center justify-center bg-slate-100 rounded-full">
                 <div class="text-xs text-slate-500 text-center">
-                    <div>Failed to load</div>
-                    <div>Retrying... (${retryCount + 1}/${MAX_RETRIES})</div>
+                    <div>${isNewUpload ? 'Processing new pattern' : 'Failed to load'}</div>
+                    <div>${retryText}</div>
                 </div>
             </div>
         `;
         
-        // Retry after delay
+        // Retry after delay with appropriate strategy
         setTimeout(() => {
-            addPatternToBatch(pattern, element);
-        }, RETRY_DELAY);
+            if (retryStrategy === 'individual') {
+                loadIndividualPreview(pattern, element);
+            } else {
+                addPatternToBatch(pattern, element);
+            }
+        }, retryDelay);
     } else {
         // Show final error state
         element.innerHTML = `
@@ -472,6 +555,7 @@ function handleLoadError(pattern, element, error) {
         // Add click handler for manual retry
         element.onclick = () => {
             element.dataset.retryCount = '0';
+            element.dataset.hasTriedIndividual = 'false';
             addPatternToBatch(pattern, element);
         };
     }
@@ -1041,10 +1125,34 @@ function setupUploadEventHandlers() {
             const result = await response.json();
             if (result.success) {
                 showStatusMessage(`Pattern "${file.name}" uploaded successfully`);
+                
+                // Clear any existing cache for this pattern to ensure fresh loading
+                const newPatternPath = `custom_patterns/${file.name}`;
+                previewCache.delete(newPatternPath);
+                
+                // Add a small delay to allow backend preview generation to complete
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
                 // Refresh the pattern list (force refresh since new pattern was uploaded)
                 await loadPatterns(true);
+                
                 // Clear the file input
                 e.target.value = '';
+                
+                // Trigger preview loading for newly uploaded patterns with extended retry
+                setTimeout(() => {
+                    const newPatternCard = document.querySelector(`[data-pattern="${newPatternPath}"]`);
+                    if (newPatternCard) {
+                        const previewContainer = newPatternCard.querySelector('.pattern-preview');
+                        if (previewContainer) {
+                            // Clear any existing retry count and force reload
+                            previewContainer.dataset.retryCount = '0';
+                            previewContainer.dataset.hasTriedIndividual = 'false';
+                            previewContainer.dataset.isNewUpload = 'true';
+                            addPatternToBatch(newPatternPath, previewContainer);
+                        }
+                    }
+                }, 500);
             } else {
                 showStatusMessage(`Failed to upload pattern: ${result.error}`, 'error');
             }

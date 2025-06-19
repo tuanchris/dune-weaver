@@ -1,6 +1,7 @@
 """Preview module for generating image previews of patterns."""
 import os
 import math
+import asyncio
 from io import BytesIO
 from PIL import Image, ImageDraw
 from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR
@@ -8,7 +9,8 @@ from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR
 async def generate_preview_image(pattern_file):
     """Generate a Webp preview for a pattern file, optimized for a 300x300 view."""
     file_path = os.path.join(THETA_RHO_DIR, pattern_file)
-    coordinates = parse_theta_rho_file(file_path) 
+    # Use asyncio.to_thread to prevent blocking the event loop
+    coordinates = await asyncio.to_thread(parse_theta_rho_file, file_path)
     
     # Use 1000x1000 for high quality rendering
     RENDER_SIZE = 2048
@@ -48,7 +50,7 @@ async def generate_preview_image(pattern_file):
     points_to_draw = []
     for theta, rho in coordinates:
         x = CENTER - rho * SCALE_FACTOR * math.cos(theta)
-        y = CENTER - rho * SCALE_FACTOR * math.sin(theta)
+        y = CENTER + rho * SCALE_FACTOR * math.sin(theta)
         points_to_draw.append((x, y))
     
     if len(points_to_draw) > 1:

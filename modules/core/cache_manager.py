@@ -146,21 +146,31 @@ async def generate_image_preview(pattern_file):
     from modules.core.pattern_manager import parse_theta_rho_file
     
     try:
+        logger.debug(f"Starting preview generation for {pattern_file}")
+        
         # Check if we need to update metadata cache
         metadata = get_pattern_metadata(pattern_file)
         if metadata is None:
             # Parse file to get metadata (this is the only time we need to parse)
             logger.debug(f"Parsing {pattern_file} for metadata cache")
             pattern_path = os.path.join(THETA_RHO_DIR, pattern_file)
-            coordinates = await asyncio.to_thread(parse_theta_rho_file, pattern_path)
             
-            if coordinates:
-                first_coord = {"x": coordinates[0][0], "y": coordinates[0][1]}
-                last_coord = {"x": coordinates[-1][0], "y": coordinates[-1][1]}
-                total_coords = len(coordinates)
+            try:
+                coordinates = await asyncio.to_thread(parse_theta_rho_file, pattern_path)
                 
-                # Cache the metadata for future use
-                cache_pattern_metadata(pattern_file, first_coord, last_coord, total_coords)
+                if coordinates:
+                    first_coord = {"x": coordinates[0][0], "y": coordinates[0][1]}
+                    last_coord = {"x": coordinates[-1][0], "y": coordinates[-1][1]}
+                    total_coords = len(coordinates)
+                    
+                    # Cache the metadata for future use
+                    cache_pattern_metadata(pattern_file, first_coord, last_coord, total_coords)
+                    logger.debug(f"Metadata cached for {pattern_file}: {total_coords} coordinates")
+                else:
+                    logger.warning(f"No coordinates found in {pattern_file}")
+            except Exception as e:
+                logger.error(f"Failed to parse {pattern_file} for metadata: {str(e)}")
+                # Continue with image generation even if metadata fails
         
         # Check if we need to generate the image
         cache_path = get_cache_path(pattern_file)
@@ -169,7 +179,15 @@ async def generate_image_preview(pattern_file):
             return True
             
         # Generate the image
+        logger.debug(f"Generating image preview for {pattern_file}")
         image_content = await generate_preview_image(pattern_file)
+        
+        if not image_content:
+            logger.error(f"Generated image content is empty for {pattern_file}")
+            return False
+        
+        # Ensure cache directory exists
+        ensure_cache_dir()
         
         with open(cache_path, 'wb') as f:
             f.write(image_content)
@@ -180,6 +198,7 @@ async def generate_image_preview(pattern_file):
             # Log as debug instead of error since this is not critical
             logger.debug(f"Could not set cache file permissions for {pattern_file}: {str(e)}")
         
+        logger.debug(f"Successfully generated preview for {pattern_file}")
         return True
     except Exception as e:
         logger.error(f"Failed to generate image for {pattern_file}: {str(e)}")

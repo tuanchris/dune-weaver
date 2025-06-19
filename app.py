@@ -224,11 +224,29 @@ async def upload_theta_rho(file: UploadFile = File(...)):
         file_path_in_patterns_dir = os.path.join("custom_patterns", file.filename)
         full_file_path = os.path.join(pattern_manager.THETA_RHO_DIR, file_path_in_patterns_dir)
         
+        # Save the uploaded file
         with open(full_file_path, "wb") as f:
             f.write(await file.read())
         
-        # Generate image preview for the new file
-        await generate_image_preview(file_path_in_patterns_dir)
+        logger.info(f"File {file.filename} saved successfully")
+        
+        # Generate image preview for the new file with retry logic
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Generating preview for {file_path_in_patterns_dir} (attempt {attempt + 1}/{max_retries})")
+                success = await generate_image_preview(file_path_in_patterns_dir)
+                if success:
+                    logger.info(f"Preview generated successfully for {file_path_in_patterns_dir}")
+                    break
+                else:
+                    logger.warning(f"Preview generation failed for {file_path_in_patterns_dir} (attempt {attempt + 1})")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(0.5)  # Small delay before retry
+            except Exception as e:
+                logger.error(f"Error generating preview for {file_path_in_patterns_dir} (attempt {attempt + 1}): {str(e)}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(0.5)  # Small delay before retry
         
         return {"success": True, "message": f"File {file.filename} uploaded successfully"}
     except Exception as e:

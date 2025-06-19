@@ -122,7 +122,7 @@ def parse_theta_rho_file(file_path):
         logger.error(f"Error reading file: {e}")
         return coordinates
 
-    logger.debug(f"Parsed {len(coordinates)} coordinates from {file_path}")
+        logger.debug(f"Parsed {len(coordinates)} coordinates from {file_path}")
     return coordinates
 
 def get_clear_pattern_file(clear_pattern_mode, path=None):
