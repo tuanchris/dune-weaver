@@ -553,6 +553,10 @@ async def add_to_playlist(request: AddToPlaylistRequest):
 async def run_playlist_endpoint(request: PlaylistRequest):
     """Run a playlist with specified parameters."""
     try:
+        if not (state.conn.is_connected() if state.conn else False):
+            logger.warning("Attempted to run a playlist without a connection")
+            raise HTTPException(status_code=400, detail="Connection not established")
+        
         if not os.path.exists(playlist_manager.PLAYLISTS_FILE):
             raise HTTPException(status_code=404, detail=f"Playlist '{request.playlist_name}' not found")
 

@@ -533,7 +533,7 @@ def resume_execution():
     
 def reset_theta():
     logger.info('Resetting Theta')
-    state.current_theta = 0
+    state.current_theta = state.current_theta % (2 * pi)
     connection_manager.update_machine_position()
 
 def set_speed(new_speed):

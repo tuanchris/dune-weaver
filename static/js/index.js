@@ -526,7 +526,7 @@ function setupPreviewPanelEvents(pattern) {
 
             // Get the selected pre-execution action
             const preExecutionInput = document.querySelector('input[name="preExecutionAction"]:checked');
-            const preExecution = preExecutionInput ? preExecutionInput.parentElement.textContent.trim().toLowerCase() : 'none';
+            const preExecution = preExecutionInput ? preExecutionInput.value : 'none';
 
             const response = await fetch('/run_theta_rho', {
                 method: 'POST',
@@ -545,13 +545,38 @@ function setupPreviewPanelEvents(pattern) {
                 hidePatternPreview();
                 
             } else {
-                showStatusMessage(data.detail || 'Failed to run pattern', 'error');
+                let errorMsg = data.detail || 'Failed to run pattern';
+                let errorType = 'error';
+                
+                // Handle specific error cases with appropriate messaging
+                if (data.detail === 'Connection not established') {
+                    errorMsg = 'Please connect to the device before running a pattern';
+                    errorType = 'warning';
+                } else if (response.status === 409) {
+                    errorMsg = 'Another pattern is already running. Please stop the current pattern first.';
+                    errorType = 'warning';
+                } else if (response.status === 404) {
+                    errorMsg = 'Pattern file not found. Please refresh the page and try again.';
+                    errorType = 'error';
+                } else if (response.status === 400) {
+                    errorMsg = 'Invalid request. Please check your settings and try again.';
+                    errorType = 'error';
+                } else if (response.status === 500) {
+                    errorMsg = 'Server error. Please try again later.';
+                    errorType = 'error';
+                }
+                
+                showStatusMessage(errorMsg, errorType);
                 return;
             }
         } catch (error) {
             console.error('Error running pattern:', error);
-            if (error.message && error.message.includes('409')) {
-                showStatusMessage('Another pattern is already running', 'error');
+            
+            // Handle network errors specifically
+            if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                showStatusMessage('Network error. Please check your connection and try again.', 'error');
+            } else if (error.message && error.message.includes('409')) {
+                showStatusMessage('Another pattern is already running', 'warning');
             } else if (error.message) {
                 showStatusMessage(error.message, 'error');
             } else {

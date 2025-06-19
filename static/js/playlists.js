@@ -926,15 +926,45 @@ async function runPlaylist() {
             } catch (e) {}
         } else {
             let errorMsg = 'Failed to run playlist';
+            let errorType = 'error';
+            
             try {
                 const data = await response.json();
-                if (data.detail) errorMsg = data.detail;
-            } catch (e) {}
-            showStatusMessage(errorMsg, 'error');
+                if (data.detail) {
+                    errorMsg = data.detail;
+                    
+                    // Handle specific error cases with appropriate messaging
+                    if (data.detail === 'Connection not established') {
+                        errorMsg = 'Please connect to the device before running a playlist';
+                        errorType = 'warning';
+                    } else if (response.status === 409) {
+                        errorMsg = 'Another pattern is already running. Please stop the current pattern first.';
+                        errorType = 'warning';
+                    } else if (response.status === 404) {
+                        errorMsg = 'Playlist not found. Please refresh the page and try again.';
+                        errorType = 'error';
+                    }
+                }
+            } catch (e) {
+                // If we can't parse the JSON, use status-based messaging
+                if (response.status === 400) {
+                    errorMsg = 'Invalid request. Please check your settings and try again.';
+                } else if (response.status === 500) {
+                    errorMsg = 'Server error. Please try again later.';
+                }
+            }
+            
+            showStatusMessage(errorMsg, errorType);
         }
     } catch (error) {
         logMessage(`Error running playlist: ${error.message}`, LOG_TYPE.ERROR);
-        showStatusMessage('Failed to run playlist', 'error');
+        
+        // Handle network errors specifically
+        if (error.name === 'TypeError' && error.message.includes('fetch')) {
+            showStatusMessage('Network error. Please check your connection and try again.', 'error');
+        } else {
+            showStatusMessage('Failed to run playlist', 'error');
+        }
     }
 }
 
