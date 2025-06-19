@@ -122,13 +122,7 @@ def parse_theta_rho_file(file_path):
         logger.error(f"Error reading file: {e}")
         return coordinates
 
-    # Normalization Step
-    if coordinates:
-        first_theta = coordinates[0][0]
-        normalized = [(theta - first_theta, rho) for theta, rho in coordinates]
-        coordinates = normalized
-        logger.debug(f"Parsed {len(coordinates)} coordinates from {file_path}")
-
+    logger.debug(f"Parsed {len(coordinates)} coordinates from {file_path}")
     return coordinates
 
 def get_clear_pattern_file(clear_pattern_mode, path=None):
