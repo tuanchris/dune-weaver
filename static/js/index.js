@@ -18,6 +18,15 @@ const RETRY_DELAY = 1000; // Delay between retries in ms
 // Shared caching for patterns list (persistent across sessions)
 const PATTERNS_CACHE_KEY = 'dune_weaver_patterns_cache';
 
+// IndexedDB cache for preview images with size management (shared with playlists page)
+const PREVIEW_CACHE_DB_NAME = 'dune_weaver_previews';
+const PREVIEW_CACHE_DB_VERSION = 1;
+const PREVIEW_CACHE_STORE_NAME = 'previews';
+const MAX_CACHE_SIZE_MB = 200;
+const MAX_CACHE_SIZE_BYTES = MAX_CACHE_SIZE_MB * 1024 * 1024;
+
+let previewCacheDB = null;
+
 // Define constants for log message types
 const LOG_TYPE = {
     SUCCESS: 'success',
@@ -59,6 +68,188 @@ function showStatusMessage(message, type = 'success') {
 // Function to log messages
 function logMessage(message, type = LOG_TYPE.DEBUG) {
     console.log(`[${type}] ${message}`);
+}
+
+// Initialize IndexedDB for preview caching (shared with playlists page)
+async function initPreviewCacheDB() {
+    if (previewCacheDB) return previewCacheDB;
+    
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(PREVIEW_CACHE_DB_NAME, PREVIEW_CACHE_DB_VERSION);
+        
+        request.onerror = () => {
+            logMessage('Failed to open preview cache database', LOG_TYPE.ERROR);
+            reject(request.error);
+        };
+        
+        request.onsuccess = () => {
+            previewCacheDB = request.result;
+            logMessage('Preview cache database opened successfully', LOG_TYPE.DEBUG);
+            resolve(previewCacheDB);
+        };
+        
+        request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            
+            // Create object store for preview cache
+            const store = db.createObjectStore(PREVIEW_CACHE_STORE_NAME, { keyPath: 'pattern' });
+            store.createIndex('lastAccessed', 'lastAccessed', { unique: false });
+            store.createIndex('size', 'size', { unique: false });
+            
+            logMessage('Preview cache database schema created', LOG_TYPE.DEBUG);
+        };
+    });
+}
+
+// Get preview from IndexedDB cache
+async function getPreviewFromCache(pattern) {
+    try {
+        if (!previewCacheDB) await initPreviewCacheDB();
+        
+        const transaction = previewCacheDB.transaction([PREVIEW_CACHE_STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(PREVIEW_CACHE_STORE_NAME);
+        
+        return new Promise((resolve, reject) => {
+            const request = store.get(pattern);
+            
+            request.onsuccess = () => {
+                const result = request.result;
+                if (result) {
+                    // Update last accessed time
+                    result.lastAccessed = Date.now();
+                    store.put(result);
+                    resolve(result.data);
+                } else {
+                    resolve(null);
+                }
+            };
+            
+            request.onerror = () => reject(request.error);
+        });
+    } catch (error) {
+        logMessage(`Error getting preview from cache: ${error.message}`, LOG_TYPE.WARNING);
+        return null;
+    }
+}
+
+// Save preview to IndexedDB cache with size management
+async function savePreviewToCache(pattern, previewData) {
+    try {
+        if (!previewCacheDB) await initPreviewCacheDB();
+        
+        // Validate preview data before attempting to fetch
+        if (!previewData || !previewData.image_data) {
+            logMessage(`Invalid preview data for ${pattern}, skipping cache save`, LOG_TYPE.WARNING);
+            return;
+        }
+        
+        // Convert preview URL to blob for size calculation
+        const response = await fetch(previewData.image_data);
+        const blob = await response.blob();
+        const size = blob.size;
+        
+        // Check if we need to free up space
+        await managePreviewCacheSize(size);
+        
+        const cacheEntry = {
+            pattern: pattern,
+            data: previewData,
+            size: size,
+            lastAccessed: Date.now(),
+            created: Date.now()
+        };
+        
+        const transaction = previewCacheDB.transaction([PREVIEW_CACHE_STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(PREVIEW_CACHE_STORE_NAME);
+        
+        return new Promise((resolve, reject) => {
+            const request = store.put(cacheEntry);
+            
+            request.onsuccess = () => {
+                logMessage(`Preview cached for ${pattern} (${(size / 1024).toFixed(1)}KB)`, LOG_TYPE.DEBUG);
+                resolve();
+            };
+            
+            request.onerror = () => reject(request.error);
+        });
+        
+    } catch (error) {
+        logMessage(`Error saving preview to cache: ${error.message}`, LOG_TYPE.WARNING);
+    }
+}
+
+// Manage cache size by removing least recently used items
+async function managePreviewCacheSize(newItemSize) {
+    try {
+        const currentSize = await getPreviewCacheSize();
+        
+        if (currentSize + newItemSize <= MAX_CACHE_SIZE_BYTES) {
+            return; // No cleanup needed
+        }
+        
+        logMessage(`Cache size would exceed limit (${((currentSize + newItemSize) / 1024 / 1024).toFixed(1)}MB), cleaning up...`, LOG_TYPE.DEBUG);
+        
+        const transaction = previewCacheDB.transaction([PREVIEW_CACHE_STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(PREVIEW_CACHE_STORE_NAME);
+        const index = store.index('lastAccessed');
+        
+        // Get all entries sorted by last accessed (oldest first)
+        const entries = await new Promise((resolve, reject) => {
+            const request = index.getAll();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+        
+        // Sort by last accessed time (oldest first)
+        entries.sort((a, b) => a.lastAccessed - b.lastAccessed);
+        
+        let freedSpace = 0;
+        const targetSpace = newItemSize + (MAX_CACHE_SIZE_BYTES * 0.1); // Free 10% extra buffer
+        
+        for (const entry of entries) {
+            if (freedSpace >= targetSpace) break;
+            
+            await new Promise((resolve, reject) => {
+                const deleteRequest = store.delete(entry.pattern);
+                deleteRequest.onsuccess = () => {
+                    freedSpace += entry.size;
+                    logMessage(`Evicted cached preview for ${entry.pattern} (${(entry.size / 1024).toFixed(1)}KB)`, LOG_TYPE.DEBUG);
+                    resolve();
+                };
+                deleteRequest.onerror = () => reject(deleteRequest.error);
+            });
+        }
+        
+        logMessage(`Freed ${(freedSpace / 1024 / 1024).toFixed(1)}MB from preview cache`, LOG_TYPE.DEBUG);
+        
+    } catch (error) {
+        logMessage(`Error managing cache size: ${error.message}`, LOG_TYPE.WARNING);
+    }
+}
+
+// Get current cache size
+async function getPreviewCacheSize() {
+    try {
+        if (!previewCacheDB) return 0;
+        
+        const transaction = previewCacheDB.transaction([PREVIEW_CACHE_STORE_NAME], 'readonly');
+        const store = transaction.objectStore(PREVIEW_CACHE_STORE_NAME);
+        
+        return new Promise((resolve, reject) => {
+            const request = store.getAll();
+            
+            request.onsuccess = () => {
+                const totalSize = request.result.reduce((sum, entry) => sum + (entry.size || 0), 0);
+                resolve(totalSize);
+            };
+            
+            request.onerror = () => reject(request.error);
+        });
+        
+    } catch (error) {
+        logMessage(`Error getting cache size: ${error.message}`, LOG_TYPE.WARNING);
+        return 0;
+    }
 }
 
 // Preload images in batch
@@ -105,7 +296,7 @@ function initPreviewObserver() {
 }
 
 // Add pattern to pending batch for efficient loading
-function addPatternToBatch(pattern, element) {
+async function addPatternToBatch(pattern, element) {
     // Check in-memory cache first
     if (previewCache.has(pattern)) {
         const previewData = previewCache.get(pattern);
@@ -113,6 +304,17 @@ function addPatternToBatch(pattern, element) {
             if (element) {
                 updatePreviewElement(element, previewData.image_data);
             }
+        }
+        return;
+    }
+
+    // Check IndexedDB cache
+    const cachedData = await getPreviewFromCache(pattern);
+    if (cachedData && !cachedData.error) {
+        // Add to in-memory cache for faster access
+        previewCache.set(pattern, cachedData);
+        if (element) {
+            updatePreviewElement(element, cachedData.image_data);
         }
         return;
     }
@@ -187,6 +389,9 @@ async function processPendingBatch() {
                         previewCache.delete(oldestKey);
                     }
                     previewCache.set(pattern, data);
+                    
+                    // Save to IndexedDB cache for persistence
+                    await savePreviewToCache(pattern, data);
                     
                     if (element) {
                         updatePreviewElement(element, data.image_data);
@@ -709,6 +914,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         logMessage('Initializing patterns page...', LOG_TYPE.DEBUG);
         
+        // Initialize IndexedDB preview cache (shared with playlists page)
+        await initPreviewCacheDB();
+        
         // Setup upload event handlers
         setupUploadEventHandlers();
         
@@ -812,58 +1020,6 @@ function updateCurrentlyPlayingUI(status) {
 
     // Update pattern preview if it's a new pattern
     // ... existing code ...
-}
-
-// Get preview from IndexedDB cache
-async function getPreviewFromCache(pattern) {
-    try {
-        const response = await fetch('/preview_thr_batch', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ file_names: [pattern] })
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const results = await response.json();
-        return results[pattern];
-    } catch (error) {
-        logMessage(`Error getting preview from cache: ${error.message}`, LOG_TYPE.WARNING);
-        return null;
-    }
-}
-
-// Save preview to IndexedDB cache with size management
-async function savePreviewToCache(pattern, previewData) {
-    try {
-        const response = await fetch(previewData.preview_url);
-        const blob = await response.blob();
-        const size = blob.size;
-        
-        const cacheEntry = {
-            pattern: pattern,
-            data: previewData,
-            size: size,
-            lastAccessed: Date.now(),
-            created: Date.now()
-        };
-        
-        return new Promise((resolve, reject) => {
-            const request = store.put(cacheEntry);
-            
-            request.onsuccess = () => {
-                logMessage(`Preview cached for ${pattern} (${(size / 1024).toFixed(1)}KB)`, LOG_TYPE.DEBUG);
-                resolve();
-            };
-            
-            request.onerror = () => reject(request.error);
-        });
-        
-    } catch (error) {
-        logMessage(`Error saving preview to cache: ${error.message}`, LOG_TYPE.WARNING);
-    }
 }
 
 // Setup upload event handlers

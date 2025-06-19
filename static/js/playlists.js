@@ -33,7 +33,7 @@ const PATTERNS_CACHE_KEY = 'dune_weaver_patterns_cache';
 const PREVIEW_CACHE_DB_NAME = 'dune_weaver_previews';
 const PREVIEW_CACHE_DB_VERSION = 1;
 const PREVIEW_CACHE_STORE_NAME = 'previews';
-const MAX_CACHE_SIZE_MB = 20; // Limit to 20MB to be conservative
+const MAX_CACHE_SIZE_MB = 200;
 const MAX_CACHE_SIZE_BYTES = MAX_CACHE_SIZE_MB * 1024 * 1024;
 
 let previewCacheDB = null;
@@ -381,6 +381,29 @@ function initializeIntersectionObserver() {
         rootMargin: '0px 0px 600px 0px', // Large bottom margin to trigger early as element approaches from bottom
         threshold: 0.1
     });
+}
+
+// Function to get visible patterns that are still loading
+function getVisibleLoadingPatterns() {
+    const visibleLoadingPatterns = new Map();
+    
+    // Get all pattern elements that are currently visible
+    const patternElements = document.querySelectorAll('[data-pattern]');
+    
+    patternElements.forEach(element => {
+        const pattern = element.dataset.pattern;
+        if (pattern && !previewCache.has(pattern)) {
+            // Check if element is visible (intersecting with viewport)
+            const rect = element.getBoundingClientRect();
+            const isVisible = rect.top < window.innerHeight && rect.bottom > 0;
+            
+            if (isVisible) {
+                visibleLoadingPatterns.set(pattern, element);
+            }
+        }
+    });
+    
+    return visibleLoadingPatterns;
 }
 
 // Modified processPendingBatch to keep polling for loading previews
