@@ -1553,8 +1553,7 @@ function drawAnimatedPreview(ctx, progress) {
     const scale = ((canvas.width / pixelRatio) / 2) - 30;
     
     // Clear canvas with white background
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     // Calculate how many points to draw
     const totalPoints = animatedPreviewData.length;
