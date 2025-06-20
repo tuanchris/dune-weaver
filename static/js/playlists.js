@@ -1026,11 +1026,10 @@ async function runPlaylist() {
 
         if (response.ok) {
             showStatusMessage(`Started playlist: ${currentPlaylist}`, 'success');
-            // Immediately show the currently playing bar
+            // Show the preview modal
             try {
-                localStorage.setItem('playerBarVisible', '1');
-                if (window.setPlayerBarVisibility) {
-                    window.setPlayerBarVisibility(true, true);
+                if (window.openPlayerPreviewModal) {
+                    window.openPlayerPreviewModal();
                 }
             } catch (e) {}
         } else {

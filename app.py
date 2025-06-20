@@ -264,10 +264,17 @@ async def upload_theta_rho(file: UploadFile = File(...)):
 async def get_theta_rho_coordinates(request: GetCoordinatesRequest):
     """Get theta-rho coordinates for animated preview."""
     try:
-        file_path = os.path.join(THETA_RHO_DIR, request.file_name)
+        # Handle file paths that may include the patterns directory prefix
+        file_name = request.file_name
+        if file_name.startswith('./patterns/'):
+            file_name = file_name[11:]  # Remove './patterns/' prefix
+        elif file_name.startswith('patterns/'):
+            file_name = file_name[9:]   # Remove 'patterns/' prefix
+            
+        file_path = os.path.join(THETA_RHO_DIR, file_name)
         
         if not os.path.exists(file_path):
-            raise HTTPException(status_code=404, detail=f"File {request.file_name} not found")
+            raise HTTPException(status_code=404, detail=f"File {file_name} not found")
         
         # Parse the theta-rho file
         coordinates = parse_theta_rho_file(file_path)

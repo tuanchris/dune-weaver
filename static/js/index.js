@@ -843,13 +843,10 @@ function setupPreviewPanelEvents(pattern) {
         }
 
         try {
-            // Immediately show the currently playing bar
-            try {
-                localStorage.setItem('playerBarVisible', '1');
-                if (window.setPlayerBarVisibility) {
-                    window.setPlayerBarVisibility(true, true);
-                }
-            } catch (e) {}
+            // Show the preview modal
+            if (window.openPlayerPreviewModal) {
+                window.openPlayerPreviewModal();
+            }
 
             // Get the selected pre-execution action
             const preExecutionInput = document.querySelector('input[name="preExecutionAction"]:checked');
@@ -1419,7 +1416,7 @@ function setupAnimatedPreviewCanvas(ctx) {
     
     // Set drawing style for ultra-high quality lines
     ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 0.75; // Thinner line for higher resolution
+    ctx.lineWidth = 1; // Thinner line for higher resolution
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     
@@ -1568,7 +1565,7 @@ function drawAnimatedPreview(ctx, progress) {
     // Draw the path with ultra-high quality settings
     ctx.beginPath();
     ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 0.75; // Thinner line for higher resolution
+    ctx.lineWidth = 1; // Thinner line for higher resolution
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     

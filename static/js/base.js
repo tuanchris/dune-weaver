@@ -4,47 +4,21 @@ let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
 const reconnectDelay = 3000; // 3 seconds
 let isEditingSpeed = false; // Track if user is editing speed
-let playerBarVisible = true; // Track player bar visibility
-let playerPreviewData = null; // Store the current pattern's preview data
-let playerPreviewCtx = null; // Store the canvas context for player preview
-
-// Utility: Save/restore player bar visibility
-function savePlayerBarVisibility(visible) {
-    try {
-        localStorage.setItem('playerBarVisible', visible ? '1' : '0');
-    } catch (e) {}
-}
-function loadPlayerBarVisibility() {
-    try {
-        return localStorage.getItem('playerBarVisible') === '0' ? false : true;
-    } catch (e) { return true; }
-}
-
-function setPlayerBarVisibility(visible, force = false) {
-    const playerBar = document.getElementById('player-status-bar-container');
-    const toggleBtn = document.getElementById('toggle-player-bar-btn');
-    if (!playerBar || !toggleBtn) return;
-    
-    playerBarVisible = visible;
-    savePlayerBarVisibility(visible);
-    
-    // Show/hide bar based on visibility setting and whether something is playing
-    const isPlaying = playerBar.dataset.isPlaying === '1';
-    
-    if (isPlaying) {
-        // If something is playing, respect the visibility setting
-        playerBar.style.display = visible ? '' : 'none';
-        toggleBtn.style.display = 'flex'; // Always show toggle if playing
-    } else {
-        // If nothing is playing, hide the bar but still show toggle for testing
-        playerBar.style.display = 'none';
-        toggleBtn.style.display = force ? 'flex' : 'none'; // Show toggle only on force (initial load)
-    }
-    
-    // Change icon
-    const toggleIcon = document.getElementById('toggle-player-bar-icon');
-    if (toggleIcon) toggleIcon.textContent = visible ? 'expand_more' : 'expand_less';
-}
+let playerPreviewData = null; // Store the current pattern's preview data for modal
+let playerPreviewCtx = null; // Store the canvas context for modal preview
+let playerAnimationId = null; // Store animation frame ID for modal
+let lastProgress = 0; // Last known progress from backend
+let targetProgress = 0; // Target progress to animate towards
+let animationStartTime = 0; // Start time of current animation
+let animationDuration = 1000; // Duration of interpolation in ms
+let smoothAnimationStartTime = 0; // Start time for smooth coordinate animation
+let smoothAnimationActive = false; // Whether smooth animation is running
+let modalAnimationId = null; // Store animation frame ID for modal
+let modalLastProgress = 0; // Last known progress for modal
+let modalTargetProgress = 0; // Target progress for modal
+let modalAnimationStartTime = 0; // Start time for modal animation
+let userDismissedModal = false; // Track if user has manually dismissed the modal
+let currentPreviewFile = null; // Track the current file for preview data
 
 function connectWebSocket() {
     if (ws) {
@@ -74,8 +48,8 @@ function connectWebSocket() {
         try {
             const data = JSON.parse(event.data);
             if (data.type === 'status_update') {
-                // Update player status with the full data
-                updatePlayerStatus(data.data);
+                // Update modal status with the full data
+                syncModalControls(data.data);
                 
                 // Update speed input field on table control page if it exists
                 if (data.data && data.data.speed) {
@@ -83,19 +57,45 @@ function connectWebSocket() {
                     if (currentSpeedDisplay) {
                         currentSpeedDisplay.textContent = `${data.data.speed} mm/s`;
                     }
-                    
-                    // Update player speed display only if not currently editing
-                    if (!isEditingSpeed) {
-                        const playerSpeedDisplay = document.getElementById('player-speed-display');
-                        if (playerSpeedDisplay) {
-                            playerSpeedDisplay.textContent = data.data.speed;
-                        }
-                    }
                 }
                 
                 // Update connection status dot using 'connection_status' or fallback to 'connected'
                 if (data.data.hasOwnProperty('connection_status')) {
                     updateConnectionStatus(data.data.connection_status);
+                }
+                
+                // Check if current file has changed and reload preview data if needed
+                if (data.data.current_file) {
+                    const newFile = data.data.current_file.replace('./patterns/', '');
+                    if (newFile !== currentPreviewFile) {
+                        currentPreviewFile = newFile;
+                        loadPlayerPreviewData(data.data.current_file);
+                    }
+                } else {
+                    currentPreviewFile = null;
+                    playerPreviewData = null;
+                }
+                
+                // Update progress for modal animation with smooth interpolation
+                if (playerPreviewData && data.data.progress && data.data.progress.percentage !== null) {
+                    const newProgress = data.data.progress.percentage / 100;
+                    targetProgress = newProgress;
+                    
+                    // Update modal if open with smooth animation
+                    const modal = document.getElementById('playerPreviewModal');
+                    if (modal && !modal.classList.contains('hidden')) {
+                        updateModalPreviewSmooth(newProgress);
+                    }
+                }
+                
+                // Show modal if pattern is playing and modal is hidden, but only if user hasn't dismissed it
+                if (data.data.current_file && data.data.is_running && !userDismissedModal) {
+                    setModalVisibility(true, false);
+                }
+                
+                // Reset userDismissedModal flag if no pattern is playing
+                if (!data.data.current_file || !data.data.is_running) {
+                    userDismissedModal = false;
                 }
             }
         } catch (error) {
@@ -111,80 +111,192 @@ function updateConnectionStatus(isConnected) {
         statusDot.className = `inline-block size-2 rounded-full ml-2 align-middle ${
             isConnected ? "bg-green-500" : "bg-red-500"
         }`;
-        // Do not update status message
     }
 }
 
-// Setup player preview canvas
-function setupPlayerPreviewCanvas() {
+// Setup player preview with expand button
+function setupPlayerPreview() {
     const previewContainer = document.getElementById('player-pattern-preview');
     if (!previewContainer) return;
 
-    // Remove any existing canvas
-    const existingCanvas = previewContainer.querySelector('canvas');
-    if (existingCanvas) existingCanvas.remove();
-
-    // Create and setup canvas
-    const canvas = document.createElement('canvas');
-    canvas.className = 'w-full h-full rounded-full';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
+    // Get current background image URL
+    const currentBgImage = previewContainer.style.backgroundImage;
     
-    // Set high-DPI canvas size
-    const size = 800;
-    canvas.width = size * (window.devicePixelRatio || 1) * 2;
-    canvas.height = size * (window.devicePixelRatio || 1) * 2;
-    
-    // Get context and store it
-    playerPreviewCtx = canvas.getContext('2d');
-    
-    // Clear container and add canvas
+    // Clear container
     previewContainer.innerHTML = '';
-    previewContainer.appendChild(canvas);
+    previewContainer.style.backgroundImage = '';
     
-    // Setup initial canvas state
-    if (playerPreviewCtx) {
-        const pixelRatio = (window.devicePixelRatio || 1) * 2;
-        playerPreviewCtx.scale(pixelRatio, pixelRatio);
-        playerPreviewCtx.translate(size/2, size/2);
-        playerPreviewCtx.rotate(-Math.PI);
-        playerPreviewCtx.translate(-size/2, -size/2);
+    // Create preview image container
+    const imageContainer = document.createElement('div');
+    imageContainer.className = 'relative aspect-square rounded-full overflow-hidden w-full h-full';
+    
+    // Create image element
+    const img = document.createElement('img');
+    img.className = 'w-full h-full object-cover';
+    // img.alt = 'Pattern Preview';
+    // Extract URL from background-image CSS
+    img.src = currentBgImage.replace(/^url\(['"](.+)['"]\)$/, '$1');
+    
+    // Add expand button overlay
+    const expandOverlay = document.createElement('div');
+    expandOverlay.className = 'absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity duration-200 cursor-pointer z-20 bg-black bg-opacity-20 hover:bg-opacity-30';
+    expandOverlay.innerHTML = '<div class="bg-white rounded-full p-3 shadow-lg flex items-center justify-center w-12 h-12"><span class="material-icons text-xl text-gray-800">fullscreen</span></div>';
+    
+    // Add click handler for expand button
+    expandOverlay.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openPlayerPreviewModal();
+    });
+    
+    // Add image and overlay to image container
+    imageContainer.appendChild(img);
+    imageContainer.appendChild(expandOverlay);
+    
+    // Add image container to preview container
+    previewContainer.appendChild(imageContainer);
+}
+
+// Open player preview modal
+async function openPlayerPreviewModal() {
+    try {
+        const modal = document.getElementById('playerPreviewModal');
+        const title = document.getElementById('playerPreviewTitle');
+        const canvas = document.getElementById('playerPreviewCanvas');
+        const ctx = canvas.getContext('2d');
+        const toggleBtn = document.getElementById('toggle-preview-modal-btn');
+        
+        // Set static title
+        title.textContent = 'Live Pattern Preview';
+        
+        // Show modal and update toggle button
+        modal.classList.remove('hidden');
+
+        
+        // Setup canvas
+        setupPlayerPreviewCanvas(ctx);
+        
+        // Draw initial state
+        drawPlayerPreview(ctx, targetProgress);
+        
+    } catch (error) {
+        console.error(`Error opening player preview modal: ${error.message}`);
+        showStatusMessage('Failed to load pattern for animation', 'error');
     }
 }
 
-// Draw player preview
-function drawPlayerPreview(progress) {
-    if (!playerPreviewCtx || !playerPreviewData || playerPreviewData.length === 0) return;
+// Setup player preview canvas for modal
+function setupPlayerPreviewCanvas(ctx) {
+    const canvas = ctx.canvas;
+    const container = canvas.parentElement;
+    const modal = document.getElementById('playerPreviewModal');
     
-    const canvas = playerPreviewCtx.canvas;
+    if (!container || !modal) return;
+    
+    // Get the modal's available height for the canvas area
+    const modalContent = modal.querySelector('.bg-white');
+    const modalHeader = modal.querySelector('.flex-shrink-0');
+    const modalControls = modal.querySelector('.flex-shrink-0:last-child');
+    
+    const modalHeight = modalContent.clientHeight;
+    const headerHeight = modalHeader ? modalHeader.clientHeight : 0;
+    const controlsHeight = modalControls ? modalControls.clientHeight : 0;
+    const padding = 32; // 2 * p-4 (16px each)
+    
+    // Calculate available height for canvas
+    const availableHeight = modalHeight - headerHeight - controlsHeight - padding;
+    
+    // Calculate the size (use the smaller of width or height to maintain aspect ratio)
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+    const size = Math.min(containerWidth, containerHeight, availableHeight);
+    
+    // Set the internal canvas size for high-DPI rendering
     const pixelRatio = (window.devicePixelRatio || 1) * 2;
-    const displayWidth = parseInt(canvas.style.width);
-    const displayHeight = parseInt(canvas.style.height);
-    const center = (canvas.width / pixelRatio) / 2;
-    const scale = ((canvas.width / pixelRatio) / 2) - 30;
+    canvas.width = size * pixelRatio;
+    canvas.height = size * pixelRatio;
     
-    // Clear canvas with white background
-    playerPreviewCtx.fillStyle = '#ffffff';
-    playerPreviewCtx.fillRect(0, 0, canvas.width, canvas.height);
+    // Set the display size
+    canvas.style.width = `${size}px`;
+    canvas.style.height = `${size}px`;
+}
+
+// Get interpolated coordinate at specific progress
+function getInterpolatedCoordinate(progress) {
+    if (!playerPreviewData || playerPreviewData.length === 0) return null;
+    
+    const totalPoints = playerPreviewData.length;
+    const exactIndex = progress * (totalPoints - 1);
+    const index = Math.floor(exactIndex);
+    const fraction = exactIndex - index;
+    
+    // Ensure we don't go out of bounds
+    if (index >= totalPoints - 1) {
+        return playerPreviewData[totalPoints - 1];
+    }
+    
+    if (index < 0) {
+        return playerPreviewData[0];
+    }
+    
+    // Get the two coordinates to interpolate between
+    const [theta1, rho1] = playerPreviewData[index];
+    const [theta2, rho2] = playerPreviewData[index + 1];
+    
+    // Interpolate theta (handle angle wrapping)
+    let deltaTheta = theta2 - theta1;
+    if (deltaTheta > Math.PI) deltaTheta -= 2 * Math.PI;
+    if (deltaTheta < -Math.PI) deltaTheta += 2 * Math.PI;
+    
+    const interpolatedTheta = theta1 + deltaTheta * fraction;
+    const interpolatedRho = rho1 + (rho2 - rho1) * fraction;
+    
+    return [interpolatedTheta, interpolatedRho];
+}
+
+// Draw player preview for modal
+function drawPlayerPreview(ctx, progress) {
+    if (!ctx || !playerPreviewData || playerPreviewData.length === 0) return;
+    
+    const canvas = ctx.canvas;
+    const pixelRatio = (window.devicePixelRatio || 1) * 2;
+    const containerSize = canvas.width / pixelRatio;
+    const center = containerSize / 2;
+    const scale = (containerSize / 2) - 30;
+    
+    ctx.save();
+
+    // Clear canvas for fresh drawing
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Create circular clipping path
+    ctx.beginPath();
+    ctx.arc(canvas.width/2, canvas.height/2, canvas.width/2, 0, Math.PI * 2);
+    ctx.clip();
+    
+    // Setup coordinate system for drawing
+    ctx.scale(pixelRatio, pixelRatio);
     
     // Calculate how many points to draw
     const totalPoints = playerPreviewData.length;
     const pointsToDraw = Math.floor(totalPoints * progress);
     
-    if (pointsToDraw < 2) return;
+    if (pointsToDraw < 2) {
+        ctx.restore();
+        return;
+    }
     
     // Draw the pattern
-    playerPreviewCtx.beginPath();
-    playerPreviewCtx.strokeStyle = '#000000';
-    playerPreviewCtx.lineWidth = 0.75;
-    playerPreviewCtx.lineCap = 'round';
-    playerPreviewCtx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.strokeStyle = '#808080';
+    ctx.lineWidth = 1;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     
     // Enable high quality rendering
-    playerPreviewCtx.imageSmoothingEnabled = true;
-    playerPreviewCtx.imageSmoothingQuality = 'high';
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     
-    // Draw pattern lines
+    // Draw pattern lines up to the last complete segment
     for (let i = 0; i < pointsToDraw - 1; i++) {
         const [theta1, rho1] = playerPreviewData[i];
         const [theta2, rho2] = playerPreviewData[i + 1];
@@ -195,30 +307,56 @@ function drawPlayerPreview(progress) {
         const y2 = center + rho2 * scale * Math.sin(theta2);
         
         if (i === 0) {
-            playerPreviewCtx.moveTo(x1, y1);
+            ctx.moveTo(x1, y1);
         }
-        playerPreviewCtx.lineTo(x2, y2);
+        ctx.lineTo(x2, y2);
     }
-    playerPreviewCtx.stroke();
     
-    // Draw current position dot
+    // Draw the final partial segment to the interpolated position
     if (pointsToDraw > 0) {
-        const [theta, rho] = playerPreviewData[pointsToDraw - 1];
-        const x = center + rho * scale * Math.cos(theta);
-        const y = center + rho * scale * Math.sin(theta);
+        const interpolatedCoord = getInterpolatedCoordinate(progress);
         
-        // Draw white border
-        playerPreviewCtx.beginPath();
-        playerPreviewCtx.fillStyle = '#ffffff';
-        playerPreviewCtx.arc(x, y, 7.5, 0, Math.PI * 2);
-        playerPreviewCtx.fill();
-        
-        // Draw red dot
-        playerPreviewCtx.beginPath();
-        playerPreviewCtx.fillStyle = '#ff0000';
-        playerPreviewCtx.arc(x, y, 6, 0, Math.PI * 2);
-        playerPreviewCtx.fill();
+        if (interpolatedCoord && pointsToDraw > 1) {
+            // Get the last complete coordinate
+            const [lastTheta, lastRho] = playerPreviewData[pointsToDraw - 1];
+            const lastX = center + lastRho * scale * Math.cos(lastTheta);
+            const lastY = center + lastRho * scale * Math.sin(lastTheta);
+            
+            // Draw line to interpolated position
+            const [interpTheta, interpRho] = interpolatedCoord;
+            const interpX = center + interpRho * scale * Math.cos(interpTheta);
+            const interpY = center + interpRho * scale * Math.sin(interpTheta);
+            
+            ctx.lineTo(interpX, interpY);
+        }
     }
+    
+    ctx.stroke();
+    
+    // Draw current position dot with interpolated position
+    if (pointsToDraw > 0) {
+        const interpolatedCoord = getInterpolatedCoordinate(progress);
+        
+        if (interpolatedCoord) {
+            const [theta, rho] = interpolatedCoord;
+            const x = center + rho * scale * Math.cos(theta);
+            const y = center + rho * scale * Math.sin(theta);
+            
+            // Draw white border
+            ctx.beginPath();
+            ctx.fillStyle = '#ffffff';
+            ctx.arc(x, y, 7.5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw red dot
+            ctx.beginPath();
+            ctx.fillStyle = '#ff0000';
+            ctx.arc(x, y, 6, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    ctx.restore();
 }
 
 // Load pattern coordinates for player preview
@@ -240,12 +378,8 @@ async function loadPlayerPreviewData(pattern) {
         }
         
         playerPreviewData = data.coordinates;
-        
-        // Setup canvas if needed
-        setupPlayerPreviewCanvas();
-        
-        // Draw initial state
-        drawPlayerPreview(0);
+        // Store the filename for comparison
+        playerPreviewData.fileName = pattern.replace('./patterns/', '');
         
     } catch (error) {
         console.error(`Error loading player preview data: ${error.message}`);
@@ -253,116 +387,323 @@ async function loadPlayerPreviewData(pattern) {
     }
 }
 
-function updatePlayerStatus(status) {
-    const playerBar = document.getElementById('player-status-bar-container');
-    const patternName = document.getElementById('player-pattern-name');
-    const patternPreview = document.getElementById('player-pattern-preview');
-    const eta = document.getElementById('player-eta');
-    const nextPattern = document.getElementById('player-next-pattern');
-    const pauseButton = document.getElementById('player-pause-button');
-    const skipButton = document.getElementById('player-skip-button');
-    const stopButton = document.getElementById('player-stop-button');
-    const progressBar = document.getElementById('player-progress-bar');
-    const toggleBtn = document.getElementById('toggle-player-bar-btn');
+// Ultra-smooth animation function for modal
+function animateModalPreview() {
+    const modal = document.getElementById('playerPreviewModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    
+    const canvas = document.getElementById('playerPreviewCanvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx || !playerPreviewData) return;
+    
+    const currentTime = Date.now();
+    const elapsed = currentTime - modalAnimationStartTime;
+    const totalDuration = animationDuration;
+    
+    // Calculate smooth progress with easing
+    const rawProgress = Math.min(elapsed / totalDuration, 1);
+    const easeProgress = rawProgress < 0.5 
+        ? 2 * rawProgress * rawProgress 
+        : 1 - Math.pow(-2 * rawProgress + 2, 2) / 2;
+    
+    // Interpolate between last and target progress
+    const currentProgress = modalLastProgress + (modalTargetProgress - modalLastProgress) * easeProgress;
+    
+    // Draw the pattern up to current progress
+    drawPlayerPreview(ctx, currentProgress);
+    
+    // Continue animation if not at target
+    if (rawProgress < 1) {
+        modalAnimationId = requestAnimationFrame(animateModalPreview);
+    }
+}
 
-    if (status.current_file && status.is_running) {
-        // Mark as playing
-        if (playerBar) playerBar.dataset.isPlaying = '1';
-        // Show/hide bar based on toggle state
-        setPlayerBarVisibility(loadPlayerBarVisibility());
-        
-        // Update pattern name
-        const fileName = status.current_file.replace('./patterns/', '');
-        patternName.textContent = fileName.replace('.thr', '');
+// Update modal preview with smooth animation
+function updateModalPreviewSmooth(newProgress) {
+    if (newProgress === modalTargetProgress) return; // No change needed
+    
+    // Stop any existing animation
+    if (modalAnimationId) {
+        cancelAnimationFrame(modalAnimationId);
+    }
+    
+    // Update animation parameters
+    modalLastProgress = modalTargetProgress;
+    modalTargetProgress = newProgress;
+    modalAnimationStartTime = Date.now();
+    
+    // Start smooth animation
+    animateModalPreview();
+}
 
-        // Update pattern preview
-        if (!playerPreviewData) {
-            // Load preview data if not loaded
-            loadPlayerPreviewData(status.current_file);
+// Setup player preview modal events
+function setupPlayerPreviewModalEvents() {
+    const modal = document.getElementById('playerPreviewModal');
+    const closeBtn = document.getElementById('closePlayerPreview');
+    const toggleBtn = document.getElementById('toggle-preview-modal-btn');
+    
+    if (!modal || !closeBtn || !toggleBtn) return;
+    
+    // Remove any existing event listeners to prevent conflicts
+    const newToggleBtn = toggleBtn.cloneNode(true);
+    toggleBtn.parentNode.replaceChild(newToggleBtn, toggleBtn);
+    
+    // Toggle button click handler
+    newToggleBtn.addEventListener('click', () => {
+        const isHidden = modal.classList.contains('hidden');
+        if (isHidden) {
+            openPlayerPreviewModal();
+
+        } else {
+            modal.classList.add('hidden');
         }
-        
-        // Update preview animation if we have data
-        if (playerPreviewData && status.progress && status.progress.percentage !== null) {
-            drawPlayerPreview(status.progress.percentage / 100);
-        }
+    });
+    
+    // Close modal when clicking close button
+    closeBtn.addEventListener('click', () => {
+        modal.classList.add('hidden');
 
-        // Update ETA
+    });
+    
+    // Close modal when clicking outside
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.classList.add('hidden');
+
+        }
+    });
+    
+    // Close modal with Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
+            modal.classList.add('hidden');
+
+        }
+    });
+    
+    // Setup modal control buttons
+    setupModalControls();
+}
+
+// Handle pause/resume toggle
+async function togglePauseResume() {
+    const pauseButton = document.getElementById('modal-pause-button');
+    if (!pauseButton) return;
+    
+    try {
+        const pauseIcon = pauseButton.querySelector('.material-icons');
+        const isCurrentlyPaused = pauseIcon.textContent === 'play_arrow';
+        
+        const endpoint = isCurrentlyPaused ? '/resume_execution' : '/pause_execution';
+        const response = await fetch(endpoint, { method: 'POST' });
+        
+        if (!response.ok) throw new Error(`Failed to ${isCurrentlyPaused ? 'resume' : 'pause'}`);
+    } catch (error) {
+        console.error('Error toggling pause:', error);
+        showStatusMessage('Failed to pause/resume pattern', 'error');
+    }
+}
+
+// Setup modal controls
+function setupModalControls() {
+    const pauseButton = document.getElementById('modal-pause-button');
+    const skipButton = document.getElementById('modal-skip-button');
+    const stopButton = document.getElementById('modal-stop-button');
+    const speedDisplay = document.getElementById('modal-speed-display');
+    const speedInput = document.getElementById('modal-speed-input');
+    
+    if (!pauseButton || !skipButton || !stopButton || !speedDisplay || !speedInput) return;
+    
+    // Pause button click handler
+    pauseButton.addEventListener('click', togglePauseResume);
+    
+    // Skip button click handler
+    skipButton.addEventListener('click', async () => {
+        try {
+            const response = await fetch('/skip_pattern', { method: 'POST' });
+            if (!response.ok) throw new Error('Failed to skip pattern');
+        } catch (error) {
+            console.error('Error skipping pattern:', error);
+            showStatusMessage('Failed to skip pattern', 'error');
+        }
+    });
+    
+    // Stop button click handler
+    stopButton.addEventListener('click', async () => {
+        try {
+            const response = await fetch('/stop_execution', { method: 'POST' });
+            if (!response.ok) throw new Error('Failed to stop pattern');
+            else {
+                // Hide modal when stopping
+                const modal = document.getElementById('playerPreviewModal');
+                if (modal) modal.classList.add('hidden');
+            }
+        } catch (error) {
+            console.error('Error stopping pattern:', error);
+            showStatusMessage('Failed to stop pattern', 'error');
+        }
+    });
+    
+    // Speed display click to edit
+    speedDisplay.addEventListener('click', () => {
+        isEditingSpeed = true;
+        speedDisplay.classList.add('hidden');
+        speedInput.value = speedDisplay.textContent;
+        speedInput.classList.remove('hidden');
+        speedInput.focus();
+        speedInput.select();
+    });
+    
+    // Speed input handlers
+    speedInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            exitModalSpeedEditMode(true);
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            exitModalSpeedEditMode(false);
+        }
+    });
+    
+    speedInput.addEventListener('blur', () => {
+        exitModalSpeedEditMode(true);
+    });
+}
+
+// Exit modal speed edit mode
+async function exitModalSpeedEditMode(save = false) {
+    const speedDisplay = document.getElementById('modal-speed-display');
+    const speedInput = document.getElementById('modal-speed-input');
+    
+    if (!speedDisplay || !speedInput) return;
+    
+    isEditingSpeed = false;
+    speedInput.classList.add('hidden');
+    speedDisplay.classList.remove('hidden');
+    
+    if (save) {
+        const speed = parseInt(speedInput.value);
+        if (!isNaN(speed) && speed >= 1 && speed <= 5000) {
+            try {
+                const response = await fetch('/set_speed', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ speed: speed })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    speedDisplay.textContent = speed;
+                    showStatusMessage(`Speed set to ${speed} mm/s`, 'success');
+                } else {
+                    throw new Error(data.detail || 'Failed to set speed');
+                }
+            } catch (error) {
+                console.error('Error setting speed:', error);
+                showStatusMessage('Failed to set speed', 'error');
+            }
+        } else {
+            showStatusMessage('Please enter a valid speed (1-5000)', 'error');
+        }
+    }
+}
+
+// Helper function to clean up pattern names
+function getCleanPatternName(filePath) {
+    if (!filePath) return '';
+    const fileName = filePath.replace('./patterns/', '');
+    return fileName.split('/').pop().replace('.thr', '');
+}
+
+// Sync modal controls with player status
+function syncModalControls(status) {
+    // Pattern name - clean up to show only filename
+    const modalPatternName = document.getElementById('modal-pattern-name');
+    if (modalPatternName && status.current_file) {
+        modalPatternName.textContent = getCleanPatternName(status.current_file);
+    }
+    
+    // Pattern preview image
+    const modalPatternPreviewImg = document.getElementById('modal-pattern-preview-img');
+    if (modalPatternPreviewImg && status.current_file) {
+        const encodedFilename = status.current_file.replace('./patterns/', '').replace(/\//g, '--');
+        const previewUrl = `/preview/${encodedFilename}`;
+        modalPatternPreviewImg.src = previewUrl;
+    }
+    
+    // ETA
+    const modalEta = document.getElementById('modal-eta');
+    if (modalEta) {
         if (status.progress && status.progress.remaining_time !== null) {
             const minutes = Math.floor(status.progress.remaining_time / 60);
             const seconds = Math.floor(status.progress.remaining_time % 60);
-            eta.textContent = `ETA: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+            modalEta.textContent = `ETA: ${minutes}:${seconds.toString().padStart(2, '0')}`;
         } else {
-            eta.textContent = 'ETA: calculating...';
+            modalEta.textContent = 'ETA: calculating...';
         }
-
-        // Update progress bar
+    }
+    
+    // Progress bar
+    const modalProgressBar = document.getElementById('modal-progress-bar');
+    if (modalProgressBar) {
         if (status.progress && status.progress.percentage !== null) {
-            progressBar.style.width = `${status.progress.percentage}%`;
+            modalProgressBar.style.width = `${status.progress.percentage}%`;
         } else {
-            progressBar.style.width = '0%';
+            modalProgressBar.style.width = '0%';
         }
-
-        // Update next pattern
+    }
+    
+    // Next pattern - clean up to show only filename
+    const modalNextPattern = document.getElementById('modal-next-pattern');
+    if (modalNextPattern) {
         if (status.playlist && status.playlist.next_file) {
-            const nextFileName = status.playlist.next_file.replace('./patterns/', '').replace('.thr', '');
-            nextPattern.textContent = nextFileName;
+            modalNextPattern.textContent = getCleanPatternName(status.playlist.next_file);
         } else {
-            nextPattern.textContent = 'None';
+            modalNextPattern.textContent = 'None';
         }
-
-        // Update pause button
-        const pauseIcon = pauseButton.querySelector('.material-icons');
+    }
+    
+    // Pause button
+    const modalPauseBtn = document.getElementById('modal-pause-button');
+    if (modalPauseBtn) {
+        const pauseIcon = modalPauseBtn.querySelector('.material-icons');
         if (status.is_paused) {
             pauseIcon.textContent = 'play_arrow';
         } else {
             pauseIcon.textContent = 'pause';
         }
-
-        // Show/hide skip button based on playlist status
+    }
+    
+    // Skip button visibility
+    const modalSkipBtn = document.getElementById('modal-skip-button');
+    if (modalSkipBtn) {
         if (status.playlist && status.playlist.next_file) {
-            skipButton.classList.remove('invisible');
+            modalSkipBtn.classList.remove('invisible');
         } else {
-            skipButton.classList.add('invisible');
+            modalSkipBtn.classList.add('invisible');
         }
+    }
+    
+    // Speed display
+    const modalSpeedDisplay = document.getElementById('modal-speed-display');
+    if (modalSpeedDisplay && status.speed && !isEditingSpeed) {
+        modalSpeedDisplay.textContent = status.speed;
+    }
+}
 
-        // Handle pause time remaining
-        if (status.pause_time_remaining && status.pause_time_remaining > 0) {
-            patternName.textContent = 'Pausing...';
-            // Show ETA as pause countdown in 0:00 format
-            if (eta) {
-                const mins = Math.floor(status.pause_time_remaining / 60);
-                const secs = Math.ceil(status.pause_time_remaining % 60);
-                eta.textContent = `ETA: ${mins}:${secs.toString().padStart(2, '0')}`;
-            }
-            // Show preview and name of next pattern if available
-            if (status.playlist && status.playlist.next_file) {
-                const nextFileName = status.playlist.next_file.replace('./patterns/', '').replace('.thr', '');
-                // Update preview image
-                const encodedFilename = status.playlist.next_file.replace('./patterns/', '').replace(/\//g, '--');
-                if (patternPreview) {
-                    patternPreview.style.backgroundImage = `url('/preview/${encodedFilename}')`;
-                }
-                // Update pattern name below preview (if you have such an element)
-                // patternName.textContent = nextFileName; // Uncomment if you want to show next pattern name
-            }
-            // Show progress bar as pause countdown
-            const totalPause = status.original_pause_time || status.pause_time_remaining;
-            const percent = totalPause
-                ? ((totalPause - status.pause_time_remaining) / totalPause) * 100
-                : 100;
-            progressBar.style.width = `${percent}%`;
-            progressBar.style.backgroundColor = '#fbbf24'; // amber-400 for pause
-        } else {
-            if (progressBar) progressBar.style.backgroundColor = '';
-        }
+// Toggle modal visibility
+function togglePreviewModal() {
+    const modal = document.getElementById('playerPreviewModal');
+    const toggleBtn = document.getElementById('toggle-preview-modal-btn');
+    
+    if (!modal || !toggleBtn) return;
+    
+    const isHidden = modal.classList.contains('hidden');
+    if (isHidden) {
+        openPlayerPreviewModal();
     } else {
-        // Mark as not playing
-        if (playerBar) playerBar.dataset.isPlaying = '0';
-        // Hide both bar and toggle button
-        setPlayerBarVisibility(false);
-        // Clear preview data
-        playerPreviewData = null;
-        playerPreviewCtx = null;
+        modal.classList.add('hidden');
+        toggleBtn.classList.remove('active-tab');
+        toggleBtn.classList.add('inactive-tab');
     }
 }
 
@@ -372,8 +713,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Initialize WebSocket connection
         initializeWebSocket();
         
-        // Restore player bar visibility
-        restorePlayerBarVisibility();
+        // Setup player preview modal events
+        setupPlayerPreviewModalEvents();
         
         console.log('Player initialized successfully');
     } catch (error) {
@@ -386,170 +727,25 @@ function initializeWebSocket() {
     connectWebSocket();
 }
 
-// Restore player bar visibility
-function restorePlayerBarVisibility() {
-    setPlayerBarVisibility(loadPlayerBarVisibility());
-}
+// Add resize handler for responsive canvas
+window.addEventListener('resize', () => {
+    const canvas = document.getElementById('playerPreviewCanvas');
+    const modal = document.getElementById('playerPreviewModal');
+    if (canvas && modal && !modal.classList.contains('hidden')) {
+        const ctx = canvas.getContext('2d');
+        setupPlayerPreviewCanvas(ctx);
+        drawPlayerPreview(ctx, targetProgress);
+    }
+});
 
-// Button event handlers
-document.addEventListener('DOMContentLoaded', function() {
-    const pauseButton = document.getElementById('player-pause-button');
-    const skipButton = document.getElementById('player-skip-button');
-    const stopButton = document.getElementById('player-stop-button');
-    const speedContainer = document.getElementById('player-speed-container');
-    const speedDisplay = document.getElementById('player-speed-display');
-    const speedInput = document.getElementById('player-speed-input');
-
-    pauseButton.addEventListener('click', async () => {
-        try {
-            const response = await fetch('/pause_execution', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-            const data = await response.json();
-            if (!data.success) {
-                throw new Error(data.detail || 'Failed to toggle pause');
-            }
-        } catch (error) {
-            console.error('Error toggling pause:', error);
-        }
-    });
-
-    skipButton.addEventListener('click', async () => {
-        try {
-            const response = await fetch('/skip_pattern', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-            const data = await response.json();
-            if (!data.success) {
-                throw new Error(data.detail || 'Failed to skip pattern');
-            }
-        } catch (error) {
-            console.error('Error skipping pattern:', error);
-        }
-    });
-
-    stopButton.addEventListener('click', async () => {
-        try {
-            const response = await fetch('/stop_execution', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-            const data = await response.json();
-            if (!data.success) {
-                throw new Error(data.detail || 'Failed to stop execution');
-            }
-        } catch (error) {
-            console.error('Error stopping execution:', error);
-        }
-    });
-
-    // Combined speed display/input functionality
-    function enterEditMode() {
-        if (!speedDisplay || !speedInput) return;
-        
-        isEditingSpeed = true;
-        const currentValue = speedDisplay.textContent;
-        
-        // Set input value to current speed (if it's a number)
-        if (currentValue !== '--' && !isNaN(parseInt(currentValue))) {
-            speedInput.value = currentValue;
+// Handle file changes and reload preview data
+function handleFileChange(newFile) {
+    if (newFile !== currentPreviewFile) {
+        currentPreviewFile = newFile;
+        if (newFile) {
+            loadPlayerPreviewData(`./patterns/${newFile}`);
         } else {
-            speedInput.value = '';
-        }
-        
-        // Switch to edit mode
-        speedDisplay.classList.add('hidden');
-        speedInput.classList.remove('hidden');
-        speedInput.focus();
-        speedInput.select(); // Select all text for easy replacement
-    }
-
-    function exitEditMode(save = false) {
-        if (!speedDisplay || !speedInput) return;
-        
-        if (save) {
-            setSpeed();
-        }
-        
-        isEditingSpeed = false;
-        speedInput.classList.add('hidden');
-        speedDisplay.classList.remove('hidden');
-        speedInput.value = '';
-    }
-
-    async function setSpeed() {
-        const speed = parseInt(speedInput.value);
-        if (isNaN(speed) || speed < 1 || speed > 5000) {
-            showStatusMessage('Please enter a valid speed (1-5000)', 'error');
-            return;
-        }
-
-        try {
-            const response = await fetch('/set_speed', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ speed: speed })
-            });
-            const data = await response.json();
-            if (data.success) {
-                showStatusMessage(`Speed set to ${speed} mm/s`, 'success');
-                // Update display immediately
-                speedDisplay.textContent = speed;
-            } else {
-                throw new Error(data.detail || 'Failed to set speed');
-            }
-        } catch (error) {
-            console.error('Error setting speed:', error);
-            showStatusMessage('Failed to set speed', 'error');
+            playerPreviewData = null;
         }
     }
-
-    // Speed display click to edit
-    if (speedDisplay) {
-        speedDisplay.addEventListener('click', enterEditMode);
-    }
-
-    // Speed input event handlers
-    if (speedInput) {
-        // Enter key to save
-        speedInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                exitEditMode(true);
-            } else if (e.key === 'Escape') {
-                e.preventDefault();
-                exitEditMode(false);
-            }
-        });
-
-        // Blur to save (when clicking away)
-        speedInput.addEventListener('blur', () => {
-            exitEditMode(true);
-        });
-    }
-
-    // Player bar toggle logic
-    const playerBar = document.getElementById('player-status-bar-container');
-    const toggleBtn = document.getElementById('toggle-player-bar-btn');
-    const toggleIcon = document.getElementById('toggle-player-bar-icon');
-    if (playerBar && toggleBtn) {
-        // Restore state
-        playerBarVisible = loadPlayerBarVisibility();
-        setPlayerBarVisibility(playerBarVisible, true);
-        // Toggle button click
-        toggleBtn.addEventListener('click', () => {
-            playerBarVisible = !playerBarVisible;
-            setPlayerBarVisibility(playerBarVisible);
-        });
-    }
-}); 
+} 
