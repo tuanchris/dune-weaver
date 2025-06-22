@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -23,6 +23,7 @@ from modules.led.led_controller import LEDController, effect_idle, set_off
 import math
 from modules.core.cache_manager import generate_all_image_previews, get_cache_path, generate_image_preview
 from datetime import datetime
+import json
 
 # Configure logging
 logging.basicConfig(
@@ -39,6 +40,9 @@ logger = logging.getLogger(__name__)
 async def stop_at_time(target_hour=17, target_minute=0):
     """Background task to stop operations at a specific time every day."""
     while True:
+        jsonstate = json.load(open("state.json", "r"))
+        target_hour = int(jsonstate.get("shutdown_hour", 17))
+        target_minute = int(jsonstate.get("shutdown_minute",0))
         now = datetime.now()
         logger.info(f"Checking if it's time to stop operations: stoptime: {target_hour}:{target_minute}...current time: {now.hour}:{+now.minute}")
         if now.hour == target_hour and now.minute == target_minute:
@@ -56,7 +60,6 @@ async def stop_at_time(target_hour=17, target_minute=0):
 
 
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -67,7 +70,9 @@ async def lifespan(app: FastAPI):
     
     # Start background time logger
     # asyncio.create_task(log_time_periodically())
-    asyncio.create_task(stop_at_time(17, 0))
+    hour = 17
+    minute = 0
+    asyncio.create_task(stop_at_time(hour,minute))
     try:
         connection_manager.connect_device()
     except Exception as e:
@@ -600,6 +605,24 @@ async def update_software():
                 "details": error_log
             }
         )
+    
+@app.post("/set_shutdown_time")
+async def set_shutdown_time(request: Request):
+    data = await request.json()
+    hour = data.get("shutdown_hour")
+    minute = data.get("shutdown_minute")
+    if hour is None or minute is None:
+        return {"success": False, "error": "Missing hour or minute"}
+    try:
+        with open("state.json", "r") as f:
+            state_dict = json.load(f)
+        state_dict["shutdown_hour"] = int(hour)
+        state_dict["shutdown_minute"] = int(minute)
+        with open("state.json", "w") as f:
+            json.dump(state_dict, f, indent=2)
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 @app.post("/set_wled_ip")
 async def set_wled_ip(request: WLEDRequest):

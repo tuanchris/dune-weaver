@@ -15,7 +15,7 @@
 </head>
 <body>
 <header>
-    <h1 id="connection_status_header" class="status">Dune Weaver Controller Customized</h1>
+    <h1 id="connection_status_header" class="status">Dune Weaver Controller LIAM</h1>
 </header>
 <div class="app">
     <!-- Home Tab -->
@@ -387,10 +387,11 @@
                 </button>
             </div>
             <div class="action-buttons square">
-                <button onclick="stopExecution()" class="cancel"><i class="fa-solid fa-stop"></i><span class="small">Stop</span></button>
+                <button onclick="stopExecution()" class="cancel"><i class="fa-solid fa-stop"></i><span class="small">Stop<span></button>
                 <button onclick="moveToCenter()" class="cta"><i class="fa-regular fa-circle-dot"></i><span class="small">Move to Center</span></button>
                 <button onclick="moveToPerimeter()" class="cta"><i class="fa-solid fa-circle-notch"></i><span class="small">Move to Perimeter</span></button>
-                <button onclick="sendHomeCommand()" class="warn"><i class="fa-solid fa-house"></i><span class="small">Home</span></button>
+                <button onclick="sendHomeCommand()" class="warn"><i class="fa-solid fa-house"></i><span class="small">Home</span></button>  
+                <button onclick="ShutDown()" class="warn"><i class="fa-solid fa-house"></i><span class="small">Shutdown</span></button>
                 <div class="scrollable-selection">
                     <div class="selection-container">
                         <div id="clear_selection" class="selection-items">
@@ -489,6 +490,20 @@
                     </div>
                 </div>
             </section>
+
+            <section class = "shutdown_time">
+                <div class = "header">
+                    <h2>Shutdown Time</h2>
+                </div>
+                <div class="control-group">
+                    <div class="item">
+                        <input type="text" id = "shutdown_hour" placeholder="Hour (0-23)">
+                        <input type="text" id = "shutdown_minute" placeholder="Minute (0-59)">
+                        <button class="cta" onclick="setShutdownTime()">
+                            <i class="fa-solid fa-save"></i>
+                            <span>Save</span>
+                    </div>
+
 
             <section class="software version">
                 <div class="header">

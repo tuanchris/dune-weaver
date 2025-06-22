@@ -301,6 +301,10 @@ async function stopExecution() {
     }
 }
 
+async function ShutDown() {
+    logMessage('Shutting down the system...');
+}
+
 let isPaused = false;
 
 function togglePausePlay() {
@@ -1782,6 +1786,33 @@ function updateWledUI() {
     wledContainer.classList.remove('hidden');
     wledFrame.src = `http://${wledIp}`;
 
+}
+
+// Save the shutdown time
+async function setShutdownTime() {
+    const hour = document.getElementById('shutdown_hour').value;
+    const minute = document.getElementById('shutdown_minute').value;
+
+    if (isNaN(hour) || isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+        logMessage('Invalid shutdown time.', LOG_TYPE.ERROR);
+        return;
+    }
+
+    try {
+        const response = await fetch('/set_shutdown_time', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ shutdown_hour: hour, shutdown_minute: minute })
+        });
+        const result = await response.json();
+        if (result.success) {
+            logMessage('Shutdown time saved!', LOG_TYPE.SUCCESS);
+        } else {
+            logMessage('Failed to save shutdown time: ' + result.error, LOG_TYPE.ERROR);
+        }
+    } catch (error) {
+        logMessage('Error saving shutdown time: ' + error.message, LOG_TYPE.ERROR);
+    }
 }
 
 // Save or clear the WLED IP, updating both the browser and backend
