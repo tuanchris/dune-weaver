@@ -40,7 +40,6 @@ async def start_at_time(target_hour=8, target_minute=0):
     while True:
         target_hour = state.startup_hour
         target_minute = state.startup_minute
-        # Add code to check wich playlist to run
         default_playlist = state.default_playlist
         now = datetime.now()
         logger.info(f"Checking if it's time to start operations: starttime: {target_hour}:{target_minute}...current time: {now.hour}:{+now.minute}")

@@ -1247,6 +1247,7 @@ async function confirmAddPlaylist() {
             // Refresh the playlist list
             loadAllPlaylists();
             populatePlaylistDropdown();
+            populateStartupPlaylistDropdown();
 
             // Hide the add playlist container
             toggleSecondaryButtons('add-playlist-container');
@@ -1340,6 +1341,7 @@ async function deleteCurrentPlaylist() {
             closeStickySection('playlist-editor');
             loadAllPlaylists();
             populatePlaylistDropdown();
+            populateStartupPlaylistDropdown();
         } else {
             logMessage(`Failed to delete playlist: ${result.error}`,  LOG_TYPE.ERROR);
         }
