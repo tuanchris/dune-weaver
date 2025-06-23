@@ -1,0 +1,122 @@
+board: MKS-DLC32 V2.1
+name: Dune Weaver
+meta: By Tuan Nguyen (2025-02-05)
+verbose_errors: true
+kinematics: {}
+stepping:
+  engine: I2S_STATIC
+  idle_ms: 0
+  pulse_us: 4
+  dir_delay_us: 1
+  disable_delay_us: 0
+axes:
+  shared_stepper_disable_pin: i2so.0
+  homing_runs: 2
+  x:
+    steps_per_mm: 320
+    max_rate_mm_per_min: 900
+    acceleration_mm_per_sec2: 30
+    max_travel_mm: 325
+    soft_limits: false
+    motor0:
+      limit_neg_pin: gpio.36
+      hard_limits: false
+      pulloff_mm: 2
+      stepstick:
+        step_pin: i2so.1
+        direction_pin: i2so.2:low
+        disable_pin: NO_PIN
+        ms1_pin: NO_PIN
+        ms2_pin: NO_PIN
+        ms3_pin: NO_PIN
+      limit_pos_pin: NO_PIN
+      limit_all_pin: NO_PIN
+  y:
+    steps_per_mm: 287.5
+    max_rate_mm_per_min: 3000
+    acceleration_mm_per_sec2: 30
+    max_travel_mm: 10
+    soft_limits: false
+    motor0:
+      limit_neg_pin: gpio.35
+      limit_pos_pin: NO_PIN
+      limit_all_pin: NO_PIN
+      hard_limits: false
+      pulloff_mm: 0.4
+      tmc_2209:
+        uart_num: 1
+        addr: 0
+        r_sense_ohms: 0.12
+        run_amps: 0.5
+        hold_amps: 0
+        homing_amps: 0.8
+        microsteps: 8
+        stallguard: 30
+        stallguard_debug: false
+        toff_disable: 0
+        toff_stealthchop: 5
+        toff_coolstep: 3
+        run_mode: StealthChop
+        homing_mode: StealthChop
+        use_enable: false
+        step_pin: i2so.5
+        direction_pin: i2so.6
+        disable_pin: NO_PIN
+    homing:
+      cycle: 2
+      positive_direction: false
+      allow_single_axis: true
+      mpos_mm: 0.4
+      feed_mm_per_min: 200
+      seek_mm_per_min: 200
+i2so:
+  bck_pin: gpio.16
+  data_pin: gpio.21
+  ws_pin: gpio.17
+sdcard:
+  cs_pin: gpio.15
+  card_detect_pin: NO_PIN
+control:
+  safety_door_pin: NO_PIN
+  reset_pin: NO_PIN
+  feed_hold_pin: NO_PIN
+  cycle_start_pin: NO_PIN
+  macro0_pin: NO_PIN
+  macro1_pin: NO_PIN
+  macro2_pin: NO_PIN
+  macro3_pin: NO_PIN
+  fault_pin: NO_PIN
+  estop_pin: NO_PIN
+macros:
+  macro0: $HY
+  macro1: G1 Y0 F200
+coolant:
+  flood_pin: NO_PIN
+  mist_pin: NO_PIN
+  delay_ms: 0
+user_outputs:
+  analog0_pin: NO_PIN
+  analog1_pin: NO_PIN
+  analog2_pin: NO_PIN
+  analog3_pin: NO_PIN
+  analog0_hz: 5000
+  analog1_hz: 5000
+  analog2_hz: 5000
+  analog3_hz: 5000
+  digital0_pin: NO_PIN
+  digital1_pin: NO_PIN
+  digital2_pin: NO_PIN
+  digital3_pin: NO_PIN
+start:
+  must_home: true
+  check_limits: false
+spi:
+  miso_pin: gpio.12
+  mosi_pin: gpio.13
+  sck_pin: gpio.14
+uart1:
+  txd_pin: gpio.0
+  rxd_pin: gpio.4
+  rts_pin: NO_PIN
+  baud: 115200
+  mode: 8N1

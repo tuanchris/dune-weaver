@@ -1,0 +1,460 @@
+{% extends "base.html" %}
+
+{% block additional_styles %}
+.pattern-card {
+  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  cursor: pointer;
+}
+.pattern-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+.pattern-card.selected {
+  border: 2px solid #0c7ff2;
+}
+@media (min-width: 1024px) {
+  .preview-open .layout-content-container {
+    margin-right: 28rem;
+  }
+  #patternPreviewPanel {
+    transform: translateX(0);
+  }
+}
+.delete-button-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+  background-color: #f3f4f6 !important;
+  border-color: #d1d5db !important;
+  color: #9ca3af !important;
+}
+
+/* Pattern preview styles */
+.pattern-preview {
+  overflow: hidden;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e5e7eb;
+}
+.pattern-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Pattern preview panel styles */
+#patternPreviewPanel .bg-slate-200 {
+  background-color: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+#patternPreviewPanel img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Dark mode styles for index page */
+.dark .pattern-card {
+  background-color: #262626;
+  border-color: #404040;
+}
+.dark .pattern-card:hover {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3),
+    0 4px 6px -2px rgba(0, 0, 0, 0.2);
+}
+.dark .pattern-card.selected {
+  border-color: #0c7ff2;
+}
+.dark .delete-button-disabled {
+  background-color: #262626 !important;
+  border-color: #404040 !important;
+  color: #6b7280 !important;
+}
+.dark #patternPreviewPanel {
+  background-color: #262626;
+}
+.dark #patternPreviewPanel header {
+  border-color: #404040;
+}
+.dark #patternPreviewPanel h2 {
+  color: #e5e5e5;
+}
+.dark #patternPreviewPanel .text-slate-500 {
+  color: #9ca3af;
+}
+.dark #patternPreviewPanel .text-slate-700 {
+  color: #d1d5db;
+}
+.dark #patternPreviewPanel .border-slate-300 {
+  border-color: #404040;
+}
+.dark #patternPreviewPanel .bg-slate-200 {
+  background-color: #262626;
+  border-color: #404040;
+}
+.dark #patternPreviewPanel .hover\:bg-slate-100:hover {
+  background-color: #404040;
+}
+.dark #patternPreviewPanel .hover\:text-slate-700:hover {
+  color: #e5e5e5;
+}
+.dark .form-input {
+  background-color: #262626;
+  border-color: #404040;
+  color: #e5e5e5;
+}
+.dark .form-input::placeholder {
+  color: #9ca3af;
+}
+.dark .form-input:focus {
+  border-color: #0c7ff2;
+  ring-color: #0c7ff2;
+}
+.dark .bg-gray-50 {
+  background-color: #1a1a1a;
+}
+.dark .bg-white {
+  background-color: #262626;
+}
+.dark .text-gray-900 {
+  color: #e5e5e5;
+}
+.dark .text-gray-500 {
+  color: #9ca3af;
+}
+.dark .text-gray-400 {
+  color: #9ca3af;
+}
+.dark .border-gray-300 {
+  border-color: #404040;
+}
+.dark .hover\:bg-red-50:hover {
+  background-color: #2d1a1a;
+}
+.dark .focus\:ring-offset-2 {
+  --tw-ring-offset-color: #262626;
+}
+.dark .text-\[\#111518\] {
+  color: #e5e5e5;
+}
+.dark .border-b-\[\#f0f2f5\] {
+  border-color: #404040;
+}
+.dark .hover\:bg-slate-100:hover {
+  background-color: #404040;
+}
+.dark .hover\:text-slate-700:hover {
+  color: #e5e5e5;
+}
+.dark .has-\[\:checked\]\:bg-\[\#0b80ee\]:has(:checked) {
+  background-color: #0c7ff2;
+}
+.dark .has-\[\:checked\]\:border-\[\#0b80ee\]:has(:checked) {
+  border-color: #0c7ff2;
+}
+.dark .has-\[\:checked\]\:ring-\[\#0b80ee\]:has(:checked) {
+  --tw-ring-color: #0c7ff2;
+}
+.dark .has-\[\:checked\]\:ring-offset-2:has(:checked) {
+  --tw-ring-offset-color: #262626;
+}
+
+/* Dark mode pattern preview styles */
+.dark .pattern-preview {
+  border-color: #404040;
+}
+.dark .pattern-preview img {
+  filter: invert(1);
+}
+.dark #patternPreviewPanel img {
+  filter: invert(1);
+}
+.dark .pattern-card img {
+  filter: invert(1);
+  background-color:rgb(229, 229, 229);
+}
+
+
+
+{% endblock %}
+
+{% block content %}
+<div class="layout-content-container flex flex-col w-full max-w-5xl h-[calc(100vh-8rem)]">
+  <div class="flex-none bg-gray-50 py-4">
+    <div class="flex flex-wrap items-center justify-between gap-4 mt-8">
+      <h2 class="text-gray-900 text-3xl font-bold leading-tight tracking-tight">
+        Browse Patterns
+      </h2>
+      <div class="relative w-full sm:w-auto flex gap-2 items-center">
+        <div class="flex gap-2 flex-1">
+          <button
+          id="cacheAllButton"
+          class="inline-flex items-cinline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        >
+          <span class="material-icons text-sm">cached</span>
+          Cache All Previews
+        </button>
+          
+          <div class="relative flex-1">
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+              <span class="material-icons text-gray-400">search</span>
+            </div>
+            <input
+              id="patternSearch"
+              class="form-input block w-full rounded-lg border-gray-300 bg-gray-50 py-2.5 pl-10 pr-3 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm"
+              placeholder="Search patterns..."
+              type="search"
+            />
+          </div>
+          <button
+            id="searchButton"
+            class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          >
+            Search
+          </button>
+        </div>
+        <!-- Add Pattern Button -->
+        <input
+          type="file"
+          id="patternFileInput"
+          accept=".thr"
+          class="hidden"
+        />
+        <button
+          aria-label="Add new pattern"
+          class="inline-flex items-center justify-center rounded-lg h-11 w-11 bg-blue-600 text-white shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ml-2 text-xl font-bold"
+          onclick="document.getElementById('patternFileInput').click()"
+        >
+          <span class="material-icons">add</span>
+        </button>
+      </div>
+    </div>
+  </div>
+  <section class="flex-1 overflow-y-auto px-4 py-6">
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-5 md:gap-6">
+      <!-- All patterns will be populated here -->
+    </div>
+  </section>
+</div>
+
+<!-- Status Message Container -->
+<div id="status-message-container" class="fixed top-4 right-4 z-50">
+  <div id="status-message" class="opacity-0 transform -translate-y-2 transition-all duration-300 ease-in-out"></div>
+</div>
+
+<!-- Pattern Preview Panel -->
+<div id="patternPreviewPanel" class="fixed top-0 bottom-0 right-0 w-full max-w-md transform translate-x-full transition-transform duration-300 ease-in-out z-40 lg:translate-x-0 lg:opacity-0 lg:pointer-events-none">
+  <div class="h-full bg-white shadow-xl">
+    <header class="flex items-center justify-between border-b border-solid border-b-[#f0f2f5] px-6 py-4">
+      <div class="flex items-center gap-3 text-[#111518]">
+        <h2 id="patternPreviewTitle" class="text-[#111518] text-lg font-semibold leading-tight">Pattern Details</h2>
+      </div>
+      <button id="closePreviewPanel" class="flex cursor-pointer items-center justify-center rounded-full p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0b80ee]">
+        <span class="material-icons text-2xl">close</span>
+      </button>
+    </header>
+    <div class="p-6 overflow-y-auto h-[calc(100%-4rem)]">
+      <div class="mb-6 aspect-square w-full overflow-hidden pattern-preview rounded-full relative group">
+        <img id="patternPreviewImage" alt="Pattern Preview" class="h-full w-full object-cover" src=""/>
+        <!-- Play button overlay for animated preview -->
+        <div id="previewPlayOverlay" class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer">
+          <div class="bg-white rounded-full p-3 shadow-lg flex items-center justify-center w-12 h-12">
+            <span class="material-icons text-2xl text-gray-800">play_arrow</span>
+          </div>
+        </div>
+      </div>
+      <div class="mb-4 flex justify-between text-sm">
+        <div class="flex items-center gap-2">
+          <span class="text-slate-500">First:</span>
+          <span id="firstCoordinate" class="font-semibold text-[#111518]">(0, 0)</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-slate-500">Last:</span>
+          <span id="lastCoordinate" class="font-semibold text-[#111518]">(0, 0)</span>
+        </div>
+      </div>
+      <div class="mb-4">
+        <h3 class="mb-2 text-sm font-semibold text-slate-700">Pre-Execution Action</h3>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
+            Adaptive
+            <input checked="" class="peer sr-only" name="preExecutionAction" type="radio" value="adaptive"/>
+          </label>
+          <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
+            Clear From Center
+            <input class="peer sr-only" name="preExecutionAction" type="radio" value="clear_from_in"/>
+          </label>
+          <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
+            Clear From Perimeter
+            <input class="peer sr-only" name="preExecutionAction" type="radio" value="clear_from_out"/>
+          </label>
+          <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
+            Clear Sideway
+            <input class="peer sr-only" name="preExecutionAction" type="radio" value="clear_sideway"/>
+          </label>
+          <label class="group relative flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 p-2 text-center text-sm font-medium text-slate-700 transition-all hover:border-[#0b80ee] has-[:checked]:border-[#0b80ee] has-[:checked]:bg-[#0b80ee] has-[:checked]:text-white has-[:checked]:ring-2 has-[:checked]:ring-[#0b80ee] has-[:checked]:ring-offset-2">
+            None
+            <input class="peer sr-only" name="preExecutionAction" type="radio" value="none"/>
+          </label>
+        </div>
+      </div>
+      <div class="space-y-3">
+        <button id="playPattern" class="flex w-full items-center justify-center gap-2 rounded-lg bg-[#0b80ee] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-opacity-90 focus:outline-none focus:ring-2 focus:ring-[#0b80ee] focus:ring-offset-2">
+          <span class="material-icons text-lg">play_arrow</span>
+          Play
+        </button>
+        <button id="deletePattern" class="flex w-full items-center justify-center gap-2 rounded-lg border border-red-500 px-4 py-2.5 text-sm font-semibold text-red-500 shadow-sm transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+          <span class="material-icons text-lg">delete</span>
+          Delete
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Animated Preview Modal -->
+<div id="animatedPreviewModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden">
+  <div class="flex items-center justify-center min-h-screen p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between p-6 border-b border-gray-200">
+        <h3 id="animatedPreviewTitle" class="text-xl font-semibold text-gray-900">Animated Preview</h3>
+        <button id="closeAnimatedPreview" class="text-gray-400 hover:text-gray-600">
+          <span class="material-icons text-2xl">close</span>
+        </button>
+      </div>
+      
+      <!-- Modal Content -->
+      <div class="p-6">
+        <!-- Canvas Container -->
+        <div class="flex justify-center mb-6">
+          <div class="relative w-full max-w-[800px]">
+            <canvas id="animatedPreviewCanvas" width="800" height="800" class="border border-gray-300 rounded-full w-full h-auto max-w-full dark:invert"></canvas>
+            <!-- Play/Pause Overlay -->
+            <div id="playPauseOverlay" class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-20 opacity-0 transition-opacity duration-200 cursor-pointer rounded-full">
+              <div class="bg-white rounded-full p-4 shadow-lg">
+                <span id="playPauseIcon" class="material-icons text-3xl text-gray-800">play_arrow</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Controls -->
+        <div class="space-y-4">
+          <!-- Speed Control -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Speed</label>
+            <div class="flex items-center gap-4">
+              <input type="range" id="speedSlider" min="0.1" max="5" step="0.1" value="1" class="flex-1">
+              <span id="speedValue" class="text-sm font-medium text-gray-900 w-16">1x</span>
+            </div>
+          </div>
+          
+          <!-- Progress Control -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Progress</label>
+            <div class="flex items-center gap-4">
+              <input type="range" id="progressSlider" min="0" max="100" step="0.1" value="0" class="flex-1">
+              <span id="progressValue" class="text-sm font-medium text-gray-900 w-20">0%</span>
+            </div>
+          </div>
+          
+          <!-- Control Buttons -->
+          <div class="flex items-center justify-center gap-4">
+            <button id="playPauseBtn" class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              <span id="playPauseBtnIcon" class="material-icons">play_arrow</span>
+              <span id="playPauseBtnText">Play</span>
+            </button>
+            <button id="resetBtn" class="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">
+              <span class="material-icons">replay</span>
+              Reset
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/index.js"></script>
+<script>
+// Add event listener for file input change
+document.getElementById('patternFileInput').addEventListener('change', async function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch('/upload_theta_rho', {
+      method: 'POST',
+      body: formData
+    });
+
+    const result = await response.json();
+    if (result.success) {
+      // Refresh the pattern list
+      loadPatterns();
+      // Clear the file input
+      e.target.value = '';
+    } else {
+      console.error('Failed to upload pattern:', result.error);
+    }
+  } catch (error) {
+    console.error('Error uploading pattern:', error);
+  }
+});
+
+// Update delete button state when pattern is selected
+function updateDeleteButtonState(patternName) {
+  const deleteButton = document.getElementById('deletePattern');
+  if (!deleteButton) return;
+  
+  if (patternName && patternName.startsWith('custom_patterns/')) {
+    deleteButton.classList.remove('delete-button-disabled');
+    deleteButton.disabled = false;
+  } else {
+    deleteButton.classList.add('delete-button-disabled');
+    deleteButton.disabled = true;
+  }
+}
+
+// Override the selectPattern function to update delete button state
+const originalSelectPattern = window.selectPattern;
+window.selectPattern = function(pattern, card) {
+  originalSelectPattern(pattern, card);
+  updateDeleteButtonState(pattern);
+};
+
+// Initialize delete button state when the page loads
+document.addEventListener('DOMContentLoaded', function() {
+  // Initially disable the delete button
+  const deleteButton = document.getElementById('deletePattern');
+  if (deleteButton) {
+    deleteButton.classList.add('delete-button-disabled');
+    deleteButton.disabled = true;
+  }
+});
+
+// Override the loadPatterns function to update delete button state after loading
+const originalLoadPatterns = window.loadPatterns;
+window.loadPatterns = async function() {
+  await originalLoadPatterns();
+  // Update delete button state based on currently selected pattern
+  const selectedPattern = document.querySelector('.pattern-card.selected');
+  if (selectedPattern) {
+    updateDeleteButtonState(selectedPattern.dataset.pattern);
+  } else {
+    updateDeleteButtonState(null);
+  }
+};
+</script>
+{% endblock %}

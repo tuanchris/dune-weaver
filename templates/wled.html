@@ -1,0 +1,76 @@
+{% extends "base.html" %} {% block title %}WLED - Kinetic Sand Table{% endblock %}
+
+{% block additional_styles %}
+/* Dark mode styles for WLED page */
+.dark .bg-white {
+  background-color: #262626;
+}
+.dark .border-slate-200 {
+  border-color: #404040;
+}
+.dark .text-gray-500 {
+  color: #9ca3af;
+}
+.dark .text-gray-700 {
+  color: #d1d5db;
+}
+{% endblock %}
+
+{% block content %}
+<div class="layout-content-container flex flex-col w-full max-w-4xl gap-0 pt-2 pb-[75px]">
+  <section class="bg-white rounded-xl shadow-sm overflow-hidden pt-4 sm:pt-0 h-full">
+    <div class="flex flex-col items-center px-0 py-0 h-full">
+      <div class="w-full h-full max-w-5xl flex flex-col overflow-hidden">
+        <div id="wled-status" class="w-full p-8 text-center">
+          <div class="flex flex-col items-center gap-4">
+            <span class="material-icons text-6xl text-gray-500">lightbulb</span>
+            <h2 class="text-2xl font-semibold text-gray-700">WLED Not Configured</h2>
+            <p class="text-gray-500 max-w-md">Please set up your WLED IP address in the Settings page to control your LED lights.</p>
+            <a href="/settings" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+              Go to Settings
+            </a>
+          </div>
+        </div>
+        <iframe id="wled-frame"
+          src=""
+          class="h-full w-full rounded-lg border border-slate-200 hidden"
+          frameborder="0"
+          allowfullscreen
+        ></iframe>
+      </div>
+    </div>
+  </section>
+</div>
+<script>
+  async function loadWledIframe() {
+    let wledIp = localStorage.getItem('wled_ip');
+    const status = document.getElementById('wled-status');
+    const frame = document.getElementById('wled-frame');
+    if (!wledIp) {
+      // Try to fetch from server if not in localStorage
+      try {
+        const resp = await fetch('/get_wled_ip');
+        if (resp.ok) {
+          const data = await resp.json();
+          wledIp = data.wled_ip;
+          localStorage.setItem('wled_ip', wledIp);
+        }
+      } catch (e) {}
+    }
+    if (wledIp && frame) {
+      frame.src = `http://${wledIp}`;
+      frame.classList.remove('hidden');
+      status.classList.add('hidden');
+    } else {
+      if (frame) {
+        frame.src = '';
+        frame.classList.add('hidden');
+      }
+      if (status) {
+        status.classList.remove('hidden');
+      }
+    }
+  }
+  document.addEventListener('DOMContentLoaded', loadWledIframe);
+</script>
+{% endblock %}

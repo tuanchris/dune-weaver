@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <script>
+      // Immediately set dark mode if needed, before page loads
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const savedTheme = localStorage.getItem('theme');
+      if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+        document.documentElement.classList.add('dark');
+      }
+    </script>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link crossorigin="" href="https://fonts.gstatic.com/" rel="preconnect" />
+    <link
+      as="style"
+      href="https://fonts.googleapis.com/css2?display=swap&amp;family=Noto+Sans%3Awght%40400%3B500%3B700%3B900&amp;family=Plus+Jakarta+Sans%3Awght%40400%3B500%3B700%3B800"
+      onload="this.rel='stylesheet'"
+      rel="stylesheet"
+    />
+    <title>{% block title %}Kinetic Sand Table{% endblock %}</title>
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="manifest" href="/static/site.webmanifest?v=2">
+    <link rel="stylesheet" href="/static/css/tailwind.css">
+    <link
+      href="https://fonts.googleapis.com/icon?family=Material+Icons"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined"
+      rel="stylesheet"
+    />
+    <style>
+      .material-icons {
+        font-family: "Material Icons";
+        font-weight: normal;
+        font-style: normal;
+        font-size: 24px;
+        display: inline-block;
+        line-height: 1;
+        text-transform: none;
+        letter-spacing: normal;
+        word-wrap: normal;
+        white-space: nowrap;
+        direction: ltr;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+        -moz-osx-font-smoothing: grayscale;
+        font-feature-settings: "liga";
+      }
+
+      /* Mobile navigation styles */
+      @media (max-width: 640px) {
+        nav.flex {
+          display: grid;
+          grid-template-columns: repeat(6, 1fr);
+          gap: 0;
+        }
+        nav.flex a {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          padding: 0.75rem 0;
+        }
+        nav.flex a .material-icons {
+          margin-bottom: 0.25rem;
+        }
+      }
+
+      /* Dark mode styles */
+      .dark {
+        color-scheme: dark;
+      }
+      .dark body {
+        background-color: #1a1a1a;
+        color: #e5e5e5;
+      }
+      .dark header {
+        background-color: #262626;
+        border-color: #404040;
+      }
+      .dark footer {
+        background-color: #262626;
+        border-color: #404040;
+      }
+      .dark .inactive-tab {
+        color: #9ca3af;
+      }
+      .dark .inactive-tab:hover {
+        color: #d1d5db;
+      }
+      .dark #player-status-bar-container {
+        background-color: #262626;
+        color: #e5e5e5;
+      }
+      .dark .bg-gray-100 {
+        background-color: #262626;
+      }
+      .dark .bg-gray-200 {
+        background-color: #404040;
+      }
+      .dark .bg-gray-300 {
+        background-color: #525252;
+      }
+      .dark .text-gray-500 {
+        color: #9ca3af;
+      }
+      .dark .text-gray-700 {
+        color: #d1d5db;
+      }
+      .dark .text-gray-800 {
+        color: #e5e5e5;
+      }
+      .dark .border-gray-200 {
+        border-color: #404040;
+      }
+      .dark .hover\:bg-gray-200:hover {
+        background-color: #404040;
+      }
+      .dark .hover\:bg-gray-300:hover {
+        background-color: #525252;
+      }
+      .dark .hover\:border-gray-300:hover {
+        border-color: #525252;
+      }
+      .dark .hover\:bg-gray-50:hover {
+        background-color: #262626;
+      }
+      .dark .bg-white {
+        background-color: #262626;
+      }
+      .dark .bg-gray-50 {
+        background-color: #1a1a1a;
+      }
+      .dark .text-gray-900 {
+        color: #e5e5e5;
+      }
+      .dark .text-gray-400 {
+        color: #9ca3af;
+      }
+      .dark .border-gray-300 {
+        border-color: #404040;
+      }
+      .dark .focus\:ring-offset-2 {
+        --tw-ring-offset-color: #262626;
+      }
+      .dark .shadow-sm {
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+      }
+      .dark .shadow-lg {
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+      }
+      .dark .shadow-xl {
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+      }
+
+      /* Existing styles */
+      .active-tab {
+        color: #0c7ff2;
+        border-color: #0c7ff2;
+      }
+      .active-tab .material-icons {
+        color: #0c7ff2;
+      }
+      .inactive-tab {
+        color: #6b7280;
+        border-color: transparent;
+      }
+      .inactive-tab:hover {
+        color: #374151;
+      }
+      #status-message {
+        transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+      }
+
+      /* Switch toggle styles */
+      .switch {
+        position: relative;
+        display: inline-block;
+        width: 40px;
+        height: 20px;
+      }
+
+      .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+
+      .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #ccc;
+        transition: .4s;
+        border-radius: 20px;
+      }
+
+      .slider:before {
+        position: absolute;
+        content: "";
+        height: 16px;
+        width: 16px;
+        left: 2px;
+        bottom: 2px;
+        background-color: white;
+        transition: .4s;
+        border-radius: 50%;
+      }
+
+      input:checked + .slider {
+        background-color: #0c7ff2;
+      }
+
+      input:checked + .slider:before {
+        transform: translateX(20px);
+      }
+
+      /* Shadow for top of status bar */
+      .shadow-lg-top {
+        box-shadow: 0 -4px 6px -1px rgb(0 0 0 / 0.1), 0 -2px 4px -2px rgb(0 0 0 / 0.1);
+      }
+
+      /* Marquee animation for pattern name on small screens */
+      @keyframes marquee {
+        0%   { transform: translateX(0%); }
+        50% { transform: translateX(-50%); }
+      }
+      .pattern-marquee {
+        display: inline-block;
+        min-width: 100%;
+        animation: marquee 8s linear infinite;
+      }
+      @media (min-width: 640px) { /* sm: and up, disable marquee */
+        .pattern-marquee {
+          animation: none !important;
+          transform: none !important;
+        }
+      }
+
+      {% block additional_styles %}{% endblock %}
+    </style>
+    {% block additional_head %}{% endblock %}
+  </head>
+  <body
+    class="bg-gray-50"
+    style="font-family: 'Plus Jakarta Sans', 'Noto Sans', sans-serif"
+  >
+    <div
+      class="relative flex size-full min-h-screen flex-col group/design-root overflow-x-hidden"
+    >
+      <div class="layout-container flex h-full grow flex-col">
+        <header
+          class="fixed top-0 left-0 right-0 z-10 flex items-center justify-between whitespace-nowrap border-b border-solid border-b-gray-200 bg-white px-4 sm:px-6 md:px-10 py-3 sm:py-4 shadow-sm"
+        >
+          <div class="flex items-center gap-3 text-gray-800">
+            <a href="/" class="flex items-center gap-3 text-gray-800 hover:opacity-80 transition-opacity">
+            <div class="text-blue-600 w-9 h-9 rounded-full shadow">
+              <img src="/static/apple-touch-icon.png" alt="Dune Weaver Logo"/>
+            </div>
+            <h1
+              class="text-gray-800 text-xl font-bold leading-tight tracking-tight flex items-center gap-2"
+            >
+              Dune Weaver
+              <span
+                id="connectionStatusDot"
+                class="inline-block size-2 rounded-full bg-red-500 ml-2 align-middle"
+              ></span>
+            </h1>
+            </a>
+          </div>
+          <div
+            class="mt-2 w-full text-center px-4"
+            id="status-message-container"
+          >
+            <p
+              class="text-base font-semibold opacity-0 transform -translate-y-2 transition-all duration-300 ease-in-out px-10 py-2 rounded-lg shadow-lg"
+              id="status-message"
+            ></p>
+          </div>
+          <div class="flex items-center gap-4">
+            <button
+              id="theme-toggle"
+              class="p-2 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              aria-label="Toggle dark mode"
+            >
+              <span class="material-icons" id="theme-toggle-icon">dark_mode</span>
+            </button>
+          </div>
+        </header>
+        <main class="flex flex-1 justify-center px-4 sm:px-6 lg:px-8 pt-16 sm:pt-20">
+          {% block content %}{% endblock %}
+        </main>
+        
+        <!-- Floating Preview Button -->
+        <button
+          id="toggle-preview-modal-btn"
+          class="fixed bottom-24 right-4 z-30 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg w-12 h-12 flex items-center justify-center transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
+          title="Toggle Pattern Preview"
+        >
+          <span class="material-icons text-xl">preview</span>
+        </button>
+        
+        <footer
+          class="fixed bottom-0 left-0 right-0 z-10 bg-white border-t border-gray-200 shadow-t-sm"
+        >
+          <nav class="mx-auto flex max-w-5xl justify-around">
+            <a
+              class="{% if request.url.path == '/' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] {% if request.url.path != '/' %}border-transparent{% endif %} py-3 text-xs font-medium sm:text-sm"
+              href="/"
+            >
+              <span class="material-icons">search</span> Browse
+            </a>
+            <a
+              class="{% if request.url.path == '/playlists' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
+              href="/playlists"
+            >
+              <span class="material-icons">list_alt</span> Playlists
+            </a>
+            <a
+              class="{% if request.url.path == '/table_control' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
+              href="/table_control"
+            >
+              <span class="material-icons">table_chart</span> Table Control
+            </a>
+            <a
+            class="{% if request.url.path == '/wled' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
+            href="/wled"
+          >
+            <span class="material-icons">lightbulb</span> WLED
+          </a>
+            <a
+              class="{% if request.url.path == '/settings' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
+              href="/settings"
+            >
+              <span class="material-icons">settings</span> Settings
+            </a>
+
+          </nav>
+        </footer>
+      </div>
+    </div>
+    {% block scripts %}{% endblock %}
+    <script src="/static/js/base.js"></script>
+    
+    <!-- Player Preview Modal -->
+    <div id="playerPreviewModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden p-4">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[95vh] flex flex-col">
+            <div class="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
+                <h2 id="playerPreviewTitle" class="text-xl font-semibold text-gray-800">Pattern Preview</h2>
+                <button id="closePlayerPreview" class="text-gray-400 hover:text-gray-600 transition-colors">
+                    <span class="material-icons text-2xl">close</span>
+                </button>
+            </div>
+
+            <!-- Canvas Area -->
+            <div class="flex-1 p-4 flex justify-center items-center overflow-hidden">
+                <div class="relative flex items-center justify-center w-full h-full">
+                    <div class="relative max-w-[min(800px,90vw)] max-h-[min(600px,80vh)] aspect-square">
+                        <canvas id="playerPreviewCanvas" width="800" height="800" class="w-full h-full rounded-full border border-gray-300 dark:invert"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Pattern Info and Controls -->
+            <div class="flex-shrink-0 p-4 border-b border-gray-200 flex items-center gap-4">
+                <!-- Pattern Preview Image -->
+                <div class="flex-shrink-0">
+                    <img id="modal-pattern-preview-img" class="w-[126px] h-[126px] rounded-full border border-gray-300 object-cover dark:invert" src="">
+                </div>
+                
+                <div class="flex-grow">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="min-w-0 max-w-[50%]">
+                            <div class="overflow-hidden relative">
+                                <p class="text-lg font-semibold whitespace-nowrap" id="modal-pattern-name">
+                                    No pattern playing
+                                </p>
+                            </div>
+                            <p class="text-base text-gray-500" id="modal-eta">
+                                ETA: --:--
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-2 flex-shrink-0">
+                            <button
+                                aria-label="Next"
+                                class="w-12 aspect-square rounded-full flex items-center justify-center hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                id="modal-skip-button"
+                            >
+                                <span class="material-icons text-gray-700">skip_next</span>
+                            </button>
+                            <button
+                                aria-label="Pause"
+                                class="w-12 aspect-square rounded-full flex items-center justify-center hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                id="modal-pause-button"
+                            >
+                                <span class="material-icons text-gray-700">pause</span>
+                            </button>
+                            <button
+                                aria-label="Stop"
+                                class="w-12 aspect-square rounded-full flex items-center justify-center hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                id="modal-stop-button"
+                            >
+                                <span class="material-icons text-gray-700">stop</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="w-full bg-gray-300 rounded-full h-2.5 mb-2">
+                        <div
+                            class="bg-blue-600 h-2.5 rounded-full"
+                            id="modal-progress-bar"
+                            style="width: 0%"
+                        ></div>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-base text-gray-500">
+                            Next:
+                            <span class="text-gray-700 font-medium" id="modal-next-pattern">None</span>
+                        </div>
+                        <div class="flex items-center gap-3 text-sm">
+                            <span class="text-gray-500">Speed:</span>
+                            <div class="flex items-center gap-2">
+                                <div class="relative min-w-[4ch] text-center cursor-pointer inline-flex items-center" id="modal-speed-container">
+                                    <span class="inline-block px-2 py-1 text-gray-700 font-medium border border-transparent rounded hover:border-gray-300 hover:bg-gray-50 transition-colors" id="modal-speed-display" title="Click to edit speed">--</span>
+                                    <input type="number" min="1" max="5000" step="1" class="w-16 sm:w-20 px-2 py-1 text-sm border border-blue-500 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-center hidden" id="modal-speed-input" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+      // Function to show status message
+      function showStatusMessage(message, type = "success") {
+        const statusContainer = document.getElementById(
+          "status-message-container"
+        );
+        const statusMessage = document.getElementById("status-message");
+
+        if (!statusContainer || !statusMessage) return;
+
+        // Set message and color based on type
+        statusMessage.textContent = message;
+        statusMessage.className = `text-base font-semibold opacity-0 transform -translate-y-2 transition-all duration-300 ease-in-out px-4 py-2 rounded-lg shadow-lg ${
+          type === "success"
+            ? "bg-green-50 text-green-700 border border-green-200"
+            : type === "error"
+            ? "bg-red-50 text-red-700 border border-red-200"
+            : type === "warning"
+            ? "bg-yellow-50 text-yellow-700 border border-yellow-200"
+            : "bg-blue-50 text-blue-700 border border-blue-200"
+        }`;
+
+        // Show message with animation
+        requestAnimationFrame(() => {
+          statusMessage.classList.remove("opacity-0", "-translate-y-2");
+          statusMessage.classList.add("opacity-100", "translate-y-0");
+        });
+
+        // Hide message after 5 seconds
+        setTimeout(() => {
+          statusMessage.classList.remove("opacity-100", "translate-y-0");
+          statusMessage.classList.add("opacity-0", "-translate-y-2");
+        }, 5000);
+      }
+
+      // Initial connection status check
+      async function checkInitialConnectionStatus() {
+        try {
+          const response = await fetch("/serial_status");
+          if (response.ok) {
+            const data = await response.json();
+            const statusDot = document.getElementById("connectionStatusDot");
+            if (statusDot) {
+              statusDot.className = `inline-block size-2 rounded-full ml-2 align-middle ${
+                data.connected ? "bg-green-500" : "bg-red-500"
+              }`;
+            }
+          }
+        } catch (error) {
+          console.error("Error checking initial connection status:", error);
+        }
+      }
+
+      // Check initial status on page load
+      document.addEventListener("DOMContentLoaded", checkInitialConnectionStatus);
+
+      // Player bar toggle logic will be handled by base.js
+    </script>
+    <script>
+      // Theme switching functionality
+      document.addEventListener('DOMContentLoaded', function() {
+        const themeToggle = document.getElementById('theme-toggle');
+        const themeToggleIcon = document.getElementById('theme-toggle-icon');
+        
+        // Update icon based on current theme
+        function updateThemeIcon() {
+          const isDark = document.documentElement.classList.contains('dark');
+          themeToggleIcon.textContent = isDark ? 'light_mode' : 'dark_mode';
+        }
+        
+        // Initial icon update
+        updateThemeIcon();
+        
+        // Theme toggle click handler
+        themeToggle.addEventListener('click', () => {
+          const isDark = document.documentElement.classList.toggle('dark');
+          localStorage.setItem('theme', isDark ? 'dark' : 'light');
+          updateThemeIcon();
+        });
+      });
+    </script>
+  </body>
+</html>
