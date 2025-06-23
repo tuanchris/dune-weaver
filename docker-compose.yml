@@ -12,5 +12,5 @@ services:
     privileged: true
     environment:
       - FLASK_ENV=development # Set environment variables for Flask
-      - LOG_LEVEL=INFO # Set logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+      - LOG_LEVEL=info # Set logging level (debug, info, warning, error, critical)
     container_name: flask-theta-rho-app
