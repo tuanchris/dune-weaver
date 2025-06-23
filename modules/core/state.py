@@ -157,7 +157,12 @@ class AppState:
             "pause_time": self._pause_time,
             "clear_pattern": self._clear_pattern,
             "port": self.port,
-            "wled_ip": self.wled_ip
+            "wled_ip": self.wled_ip,
+            "shutdown_minute":self.shutdown_minute,
+            "shutdown_hour": self.shutdown_hour,
+            "startup_minute": self.startup_minute,
+            "startup_hour": self.startup_hour,
+            "default_playlist": self.default_playlist
         }
 
     def from_dict(self, data):
@@ -184,6 +189,11 @@ class AppState:
         self._clear_pattern = data.get("clear_pattern", "none")
         self.port = data.get("port", None)
         self.wled_ip = data.get('wled_ip', None)
+        self.shutdown_minute = data.get('shutdown_minute', 0)
+        self.shutdown_hour = data.get('shutdown_hour', 0)
+        self.startup_minute = data.get('startup_minute', 0)
+        self.startup_hour = data.get('startup_hour', 0)
+        self.default_playlist = data.get('default_playlist', None)
 
     def save(self):
         """Save the current state to a JSON file."""
