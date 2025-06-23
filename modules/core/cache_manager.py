@@ -209,14 +209,20 @@ async def generate_all_image_previews():
     ensure_cache_dir()
     
     pattern_files = [f for f in list_theta_rho_files() if f.endswith('.thr')]
+    
+    if not pattern_files:
+        logger.info("No .thr pattern files found. Skipping image preview generation.")
+        return
+    
     patterns_to_cache = [f for f in pattern_files if needs_cache(f)]
     total_files = len(patterns_to_cache)
+    skipped_files = len(pattern_files) - total_files
     
     if total_files == 0:
-        logger.info("All patterns are already cached")
+        logger.info(f"All {skipped_files} pattern files already have image previews. Skipping image generation.")
         return
         
-    logger.info(f"Generating image cache for {total_files} uncached .thr patterns...")
+    logger.info(f"Generating image cache for {total_files} uncached .thr patterns ({skipped_files} already cached)...")
     
     batch_size = 5
     successful = 0
@@ -230,7 +236,7 @@ async def generate_all_image_previews():
         progress = min(i + batch_size, total_files)
         logger.info(f"Image cache generation progress: {progress}/{total_files} files processed")
     
-    logger.info(f"Image cache generation completed: {successful}/{total_files} patterns cached")
+    logger.info(f"Image cache generation completed: {successful}/{total_files} patterns cached successfully, {skipped_files} patterns skipped (already cached)")
 
 async def generate_metadata_cache():
     """Generate metadata cache for all pattern files."""
@@ -238,6 +244,10 @@ async def generate_metadata_cache():
     
     # Get all pattern files using the same function as the rest of the codebase
     pattern_files = list_theta_rho_files()
+    
+    if not pattern_files:
+        logger.info("No pattern files found. Skipping metadata cache generation.")
+        return
     
     # Filter out files that already have valid metadata cache
     files_to_process = []
@@ -249,7 +259,7 @@ async def generate_metadata_cache():
     skipped_files = len(pattern_files) - total_files
     
     if total_files == 0:
-        logger.info(f"No new files to cache. {skipped_files} files already cached.")
+        logger.info(f"All {skipped_files} files already have metadata cache. Skipping metadata generation.")
         return
         
     logger.info(f"Generating metadata cache for {total_files} new files ({skipped_files} files already cached)...")
