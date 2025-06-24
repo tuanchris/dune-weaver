@@ -60,7 +60,7 @@ async def start_at_time(target_hour=8, target_minute=0):
                 else:
                     playlist_manager.run_playlist(default_playlist)
                 logger.info("Operations started at the target time.")
-                break
+                await asyncio.sleep(60)
             except Exception as e:
                 logger.error(f"Error starting operations at scheduled time: {str(e)}")
         await asyncio.sleep(30)  # Check every 30 seconds
@@ -83,7 +83,7 @@ async def stop_at_time(target_hour=17, target_minute=0):
                 else:
                     pattern_manager.stop_actions()
                 logger.info("Operations stopped at the target time.")
-                break
+                await asyncio.sleep(60)
             except Exception as e:
                 logger.error(f"Error stopping operations at scheduled time: {str(e)}")
         await asyncio.sleep(30)  # Check every 30 seconds
