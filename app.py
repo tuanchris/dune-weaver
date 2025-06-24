@@ -19,7 +19,7 @@ import signal
 import sys
 import asyncio
 from contextlib import asynccontextmanager
-from modules.led.led_controller import LEDController, effect_idle, set_off
+from modules.led.led_controller import LEDController, effect_idle, set_off, effect_pattern_done
 import math
 from modules.core.cache_manager import generate_all_image_previews, get_cache_path, generate_image_preview
 from datetime import datetime

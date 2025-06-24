@@ -10,7 +10,7 @@ from modules.core.state import state
 from math import pi
 import asyncio
 import json
-from modules.led.led_controller import effect_playing, effect_idle
+from modules.led.led_controller import effect_playing, effect_idle, effect_pattern_done
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -381,6 +381,7 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                         logger.info("Skipping pause after clear pattern")
                     else:
                         logger.info(f"Pausing for {pause_time} seconds")
+                        effect_pattern_done(state.led_controller)
                         pause_start = time.time()
                         while time.time() - pause_start < pause_time:
                             if state.skip_requested:
@@ -418,6 +419,7 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
         state.playlist_mode = None
         
         if state.led_controller:
+            effect_pattern_done(state.led_controller)
             effect_idle(state.led_controller)
         
         logger.info("All requested patterns completed (or stopped) and state cleared")

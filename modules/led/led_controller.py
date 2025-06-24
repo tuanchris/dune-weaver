@@ -240,6 +240,12 @@ def effect_connected(led_controller: LEDController):
     else:
         return False
 
+def effect_pattern_done(led_controller: LEDController):
+    for i in range(5):
+        led_controller.set_effect(0, hex="#00ff37", brightness=100)
+        time.sleep(0.2)
+        led_controller.set_effect(0, brightness=0)
+        time.sleep(0.2)
 
 def effect_playing(led_controller: LEDController):
     led_controller.set_preset(2)
