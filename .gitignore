@@ -6,3 +6,5 @@ __pycache__/
 .idea
 *.json
 .venv/
+patterns/cached_svg/
+patterns/cached_images/custom_*

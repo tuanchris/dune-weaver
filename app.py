@@ -1,5 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -10,6 +10,7 @@ import logging
 from datetime import datetime, time
 from modules.connection import connection_manager
 from modules.core import pattern_manager
+from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR
 from modules.core import playlist_manager
 from modules.update import update_manager
 from modules.core.state import state
@@ -19,6 +20,9 @@ import sys
 import asyncio
 from contextlib import asynccontextmanager
 from modules.led.led_controller import LEDController, effect_idle
+import math
+from modules.core.cache_manager import generate_all_image_previews, get_cache_path, generate_image_preview
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -47,6 +51,13 @@ async def lifespan(app: FastAPI):
         mqtt_handler = mqtt.init_mqtt()
     except Exception as e:
         logger.warning(f"Failed to initialize MQTT: {str(e)}")
+    
+    # Generate image previews for all patterns
+    try:
+        logger.info("Starting image cache generation...")
+        await generate_all_image_previews()
+    except Exception as e:
+        logger.warning(f"Failed to generate image cache: {str(e)}")
 
     yield  # This separates startup from shutdown code
 
@@ -193,20 +204,26 @@ async def list_theta_rho_files():
 
 @app.post("/upload_theta_rho")
 async def upload_theta_rho(file: UploadFile = File(...)):
-    custom_patterns_dir = os.path.join(pattern_manager.THETA_RHO_DIR, 'custom_patterns')
-    os.makedirs(custom_patterns_dir, exist_ok=True)
-    logger.debug(f'Ensuring custom patterns directory exists: {custom_patterns_dir}')
-
-    if file:
-        file_path = os.path.join(custom_patterns_dir, file.filename)
-        contents = await file.read()
-        with open(file_path, "wb") as f:
-            f.write(contents)
-        logger.info(f'Successfully uploaded theta-rho file: {file.filename}')
-        return {"success": True}
-    
-    logger.warning('Upload theta-rho request received without file')
-    return {"success": False}
+    """Upload a theta-rho file."""
+    try:
+        # Save the file
+        # Ensure custom_patterns directory exists
+        custom_patterns_dir = os.path.join(pattern_manager.THETA_RHO_DIR, "custom_patterns")
+        os.makedirs(custom_patterns_dir, exist_ok=True)
+        
+        file_path_in_patterns_dir = os.path.join("custom_patterns", file.filename)
+        full_file_path = os.path.join(pattern_manager.THETA_RHO_DIR, file_path_in_patterns_dir)
+        
+        with open(full_file_path, "wb") as f:
+            f.write(await file.read())
+        
+        # Generate image preview for the new file
+        await generate_image_preview(file_path_in_patterns_dir)
+        
+        return {"success": True, "message": f"File {file.filename} uploaded successfully"}
+    except Exception as e:
+        logger.error(f"Error uploading file: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 class ThetaRhoRequest(BaseModel):
     file_name: str
@@ -346,17 +363,55 @@ async def preview_thr(request: DeleteFileRequest):
         logger.warning("Preview theta-rho request received without filename")
         raise HTTPException(status_code=400, detail="No file name provided")
 
-    file_path = os.path.join(pattern_manager.THETA_RHO_DIR, request.file_name)
-    if not os.path.exists(file_path):
-        logger.error(f"Attempted to preview non-existent file: {file_path}")
-        raise HTTPException(status_code=404, detail="File not found")
+    # Construct the full path to the pattern file to check existence
+    pattern_file_path = os.path.join(pattern_manager.THETA_RHO_DIR, request.file_name)
+    if not os.path.exists(pattern_file_path):
+        logger.error(f"Attempted to preview non-existent pattern file: {pattern_file_path}")
+        raise HTTPException(status_code=404, detail="Pattern file not found")
 
     try:
-        coordinates = pattern_manager.parse_theta_rho_file(file_path)
-        return {"success": True, "coordinates": coordinates}
+        cache_path = get_cache_path(request.file_name)
+        
+        if not os.path.exists(cache_path):
+            logger.info(f"Cache miss for {request.file_name}. Generating preview...")
+            # Attempt to generate the preview if it's missing
+            success = await generate_image_preview(request.file_name)
+            if not success or not os.path.exists(cache_path):
+                logger.error(f"Failed to generate or find preview for {request.file_name} after attempting generation.")
+                raise HTTPException(status_code=500, detail="Failed to generate preview image.")
+
+        # Get the coordinates for display
+        coordinates = parse_theta_rho_file(pattern_file_path)
+        first_coord = coordinates[0] if coordinates else None
+        last_coord = coordinates[-1] if coordinates else None
+
+        # Return JSON with preview URL and coordinates
+        # URL encode the file_name for the preview URL
+        encoded_filename = request.file_name.replace('/', '--')
+        return {
+            "preview_url": f"/preview/{encoded_filename}",
+            "first_coordinate": first_coord,
+            "last_coordinate": last_coord
+        }
+
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Failed to generate preview for {request.file_name}: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Failed to generate or serve preview for {request.file_name}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to serve preview image: {str(e)}")
+
+@app.get("/preview/{encoded_filename}")
+async def serve_preview(encoded_filename: str):
+    """Serve a preview image for a pattern file."""
+    # Decode the filename by replacing -- with /
+    file_name = encoded_filename.replace('--', '/')
+    cache_path = get_cache_path(file_name)
+    
+    if not os.path.exists(cache_path):
+        logger.error(f"Preview image not found for {file_name}")
+        raise HTTPException(status_code=404, detail="Preview image not found")
+        
+    return FileResponse(cache_path, media_type="image/png")
 
 @app.post("/send_coordinate")
 async def send_coordinate(request: CoordinateRequest):
@@ -563,7 +618,6 @@ def entrypoint():
     import uvicorn
     logger.info("Starting FastAPI server on port 8080...")
     uvicorn.run(app, host="0.0.0.0", port=8080, workers=1)  # Set workers to 1 to avoid multiple signal handlers
-
 
 if __name__ == "__main__":
     entrypoint()

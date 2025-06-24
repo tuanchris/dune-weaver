@@ -145,10 +145,16 @@ async function selectFile(file, listItem) {
     }
 
     logMessage(`Selected file: ${file}`);
+    
+    // Show the preview container
+    const previewContainer = document.getElementById('pattern-preview-container');
+    if (previewContainer) {
+        previewContainer.classList.remove('hidden');
+        previewContainer.classList.add('visible');
+    }
+    
+    // Update the preview
     await previewPattern(file);
-
-    // Populate the playlist dropdown after selecting a pattern
-    await populatePlaylistDropdown();
 }
 
 // Fetch and display Theta-Rho files
@@ -270,7 +276,7 @@ async function runThetaRho() {
                 currentlyPlayingFile.textContent = selectedFile.replace('./patterns/', '');
             }
             // Show initial preview
-            previewPattern(selectedFile.replace('./patterns/', ''), 'currently-playing-container');
+            updateCurrentlyPlayingPattern(selectedFile.replace('./patterns/', ''));
             logMessage(`Pattern running: ${selectedFile}`, LOG_TYPE.SUCCESS);
         } else {
             if (response.status === 409) {
@@ -374,63 +380,151 @@ async function removeCustomPattern(fileName) {
     }
 }
 
-// Preview a Theta-Rho file
-async function previewPattern(fileName, containerId = 'pattern-preview-container') {
+// Preview Cache
+const previewCache = new Map();
+
+// Function to get preview from cache or fetch it
+async function getPreview(fileName) {
+    // Check if preview is in cache
+    if (previewCache.has(fileName)) {
+        return previewCache.get(fileName);
+    }
+
+    // If not in cache, fetch it
     try {
-        logMessage(`Fetching data to preview file: ${fileName}...`);
         const response = await fetch('/preview_thr', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ file_name: fileName })
         });
 
-        const result = await response.json();
-        if (result.success) {
-            // Mirror the theta values in the coordinates
-            const coordinates = result.coordinates.map(coord => [
-                (coord[0] < Math.PI) ? 
-                    Math.PI - coord[0] : // For first half
-                    3 * Math.PI - coord[0], // For second half
-                coord[1]
-            ]);
-
-            // Render the pattern in the specified container
-            const canvasId = containerId === 'currently-playing-container'
-                ? 'currentlyPlayingCanvas'
-                : 'patternPreviewCanvas';
-            renderPattern(coordinates, canvasId);
-
-            // Update coordinate display
-            const firstCoordElement = document.getElementById('first_coordinate');
-            const lastCoordElement = document.getElementById('last_coordinate');
-
-            if (firstCoordElement) {
-                const firstCoord = coordinates[0];
-                firstCoordElement.textContent = `First Coordinate: θ=${firstCoord[0].toFixed(2)}, ρ=${firstCoord[1].toFixed(2)}`;
-            } else {
-                logMessage('First coordinate element not found.', LOG_TYPE.WARNING);
-            }
-
-            if (lastCoordElement) {
-                const lastCoord = coordinates[coordinates.length - 1];
-                lastCoordElement.textContent = `Last Coordinate: θ=${lastCoord[0].toFixed(2)}, ρ=${lastCoord[1].toFixed(2)}`;
-            } else {
-                logMessage('Last coordinate element not found.', LOG_TYPE.WARNING);
-            }
-
-            // Show the preview container
-            const previewContainer = document.getElementById(containerId);
-            if (previewContainer) {
-                previewContainer.classList.remove('hidden');
-                previewContainer.classList.add('visible');
-            } else {
-                logMessage(`Preview container not found: ${containerId}`, LOG_TYPE.ERROR);
-            }
-        } else {
-            logMessage(`Failed to fetch preview for file: ${fileName}`, LOG_TYPE.WARNING);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
+
+        const data = await response.json();
+        
+        // Store in cache
+        previewCache.set(fileName, data);
+        return data;
+    } catch (error) {
+        logMessage(`Error fetching preview: ${error.message}`, LOG_TYPE.ERROR);
+        throw error;
+    }
+}
+
+// Function to clear preview cache
+function clearPreviewCache() {
+    previewCache.clear();
+}
+
+// Update previewPattern function to handle PNG
+async function previewPattern(fileName, containerId = 'pattern-preview-container') {
+    try {
+        logMessage(`Fetching data to preview file: ${fileName}...`);
+        const data = await getPreview(fileName);
+        
+        // Get the preview container
+        const previewContainer = document.getElementById(containerId);
+        if (!previewContainer) {
+            logMessage(`Preview container not found: ${containerId}`, LOG_TYPE.ERROR);
+            return;
+        }
+
+        // Get the pattern preview section
+        const patternPreview = previewContainer.querySelector('#pattern-preview');
+        if (!patternPreview) {
+            logMessage('Pattern preview section not found', LOG_TYPE.ERROR);
+            return;
+        }
+
+        // Clear existing content
+        patternPreview.innerHTML = '';
+
+        // Create image container
+        const imgContainer = document.createElement('div');
+        imgContainer.className = 'preview-container';
+        
+        // Create and set up the image
+        const img = document.createElement('img');
+        img.src = data.preview_url;
+        img.alt = `Preview of ${fileName}`;
+        img.className = 'pattern-preview-image';
+        
+        // Add loading state
+        img.onload = () => {
+            img.classList.add('loaded');
+        };
+        
+        imgContainer.appendChild(img);
+
+        // Create coordinate display
+        const coordDisplay = document.createElement('div');
+        coordDisplay.className = 'coordinate-display';
+
+        // Update coordinate text
+        if (data.first_coordinate && data.last_coordinate) {
+            coordDisplay.innerHTML = `
+                <div>First Coordinate: θ=${data.first_coordinate[0].toFixed(2)}, ρ=${data.first_coordinate[1].toFixed(2)}</div>
+                <div>Last Coordinate: θ=${data.last_coordinate[0].toFixed(2)}, ρ=${data.last_coordinate[1].toFixed(2)}</div>
+            `;
+        } else {
+            coordDisplay.innerHTML = 'No coordinates available';
+        }
+
+        // Add elements to preview
+        patternPreview.appendChild(imgContainer);
+        patternPreview.appendChild(coordDisplay);
+
     } catch (error) {
         logMessage(`Error previewing pattern: ${error.message}`, LOG_TYPE.ERROR);
+    }
+}
+
+// Update the currently playing preview to use PNG
+async function updateCurrentlyPlayingPattern(fileName) {
+    try {
+        const data = await getPreview(fileName);
+        
+        // Get the currently playing container
+        const container = document.getElementById('currently-playing-container');
+        if (!container) {
+            logMessage('Currently playing container not found', LOG_TYPE.ERROR);
+            return;
+        }
+
+        // Get the currently playing preview div
+        const previewDiv = container.querySelector('#currently-playing-preview');
+        if (!previewDiv) {
+            logMessage('Currently playing preview div not found', LOG_TYPE.ERROR);
+            return;
+        }
+
+        // Clear existing content
+        previewDiv.innerHTML = '';
+
+        // Create image container
+        const imgContainer = document.createElement('div');
+        imgContainer.className = 'preview-container';
+        
+        // Create and set up the image
+        const img = document.createElement('img');
+        img.src = data.preview_url;
+        img.alt = `Currently playing: ${fileName}`;
+        img.className = 'pattern-preview-image';
+        
+        // Add loading state
+        img.onload = () => {
+            img.classList.add('loaded');
+        };
+        
+        imgContainer.appendChild(img);
+
+        // Add image to the preview div
+        previewDiv.appendChild(imgContainer);
+
+    } catch (error) {
+        logMessage(`Error updating currently playing pattern: ${error.message}`, LOG_TYPE.ERROR);
     }
 }
 
@@ -1950,15 +2044,6 @@ function updateCurrentlyPlayingUI(status) {
     if (status.current_file && status.is_running) {
         document.body.classList.add('playing');
         container.style.display = 'flex';
-        
-        // Hide the preview container when a pattern is playing
-        const previewContainer = document.getElementById('pattern-preview-container');
-        if (previewContainer) {
-            // Clear any selected file highlights
-            document.querySelectorAll('#theta_rho_files .file-item').forEach(item => {
-                item.classList.remove('selected');
-            });
-        }
     } else {
         document.body.classList.remove('playing');
         container.style.display = 'none';
@@ -1993,7 +2078,7 @@ function updateCurrentlyPlayingUI(status) {
     if (status.current_file && lastPlayedFile !== status.current_file) {
         lastPlayedFile = status.current_file;
         const cleanFileName = status.current_file.replace('./patterns/', '');
-        previewPattern(cleanFileName, 'currently-playing-container');
+        updateCurrentlyPlayingPattern(cleanFileName);
     }
 
     // Update progress information
