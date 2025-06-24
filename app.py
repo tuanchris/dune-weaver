@@ -38,22 +38,31 @@ logger = logging.getLogger(__name__)
 async def start_at_time(target_hour=8, target_minute=0):
     """Background task to start operations at a specific time every day."""
     while True:
+        target_days = state.startup_days
+        if datetime.now().strftime('%A') not in target_days:
+            logger.info(f"Today is not a startup day. Skipping start check.")
+            await asyncio.sleep(60)
+        else:
+            logger.info(f"Today is a startup day: {datetime.now().strftime('%A')}. Checking for start time.")
         target_hour = state.startup_hour
         target_minute = state.startup_minute
         default_playlist = state.default_playlist
         now = datetime.now()
         logger.info(f"Checking if it's time to start operations: starttime: {target_hour}:{target_minute}...current time: {now.hour}:{+now.minute}")
         if now.hour == target_hour and now.minute == target_minute:
-            logger.info("Target time reached, starting operations.")
-            logger.info("Starting wled.")
-            LEDController.set_power(LEDController,1)
-            logger.info("Starting movement.")
-            if not (state.conn.is_connected() if state.conn else False):
-                logger.warning("Attempted to start without a connection")
-            else:
-                playlist_manager.run_playlist(default_playlist)
-            logger.info("Operations started at the target time.")
-            break
+            try:
+                logger.info("Target time reached, starting operations.")
+                logger.info("Starting wled.")
+                LEDController.set_power(LEDController,1)
+                logger.info("Starting movement.")
+                if not (state.conn.is_connected() if state.conn else False):
+                    logger.warning("Attempted to start without a connection")
+                else:
+                    playlist_manager.run_playlist(default_playlist)
+                logger.info("Operations started at the target time.")
+                break
+            except Exception as e:
+                logger.error(f"Error starting operations at scheduled time: {str(e)}")
         await asyncio.sleep(30)  # Check every 30 seconds
 
 async def stop_at_time(target_hour=17, target_minute=0):
@@ -64,16 +73,19 @@ async def stop_at_time(target_hour=17, target_minute=0):
         now = datetime.now()
         logger.info(f"Checking if it's time to stop operations: stoptime: {target_hour}:{target_minute}...current time: {now.hour}:{+now.minute}")
         if now.hour == target_hour and now.minute == target_minute:
-            logger.info("Target time reached, stopping operations.")
-            logger.info("Shutting down wled.")
-            set_off(state.led_controller)
-            logger.info("Stopping movement.")
-            if not (state.conn.is_connected() if state.conn else False):
-                logger.warning("Attempted to stop without a connection")
-            else:
-                pattern_manager.stop_actions()
-            logger.info("Operations stopped at the target time.")
-            break
+            try:
+                logger.info("Target time reached, stopping operations.")
+                logger.info("Shutting down wled.")
+                set_off(state.led_controller)
+                logger.info("Stopping movement.")
+                if not (state.conn.is_connected() if state.conn else False):
+                    logger.warning("Attempted to stop without a connection")
+                else:
+                    pattern_manager.stop_actions()
+                logger.info("Operations stopped at the target time.")
+                break
+            except Exception as e:
+                logger.error(f"Error stopping operations at scheduled time: {str(e)}")
         await asyncio.sleep(30)  # Check every 30 seconds
 
 
@@ -639,7 +651,21 @@ async def set_startup_time(request: Request):
         return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+@app.post("/set_startup_days")
+async def set_startup_days(request: Request):
+    logger.info("Setting startup days")
+    data = await request.json()
+    days = data.get("startup_days")
     
+    try:
+        state.startup_days = days
+        state.save()
+        logger.info(f"Startup days set to {state.startup_days}")
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+ 
 @app.post("/set_startup_playlist")
 async def set_startup_playlist(request: Request):
     data = await request.json()

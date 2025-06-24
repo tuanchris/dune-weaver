@@ -1820,6 +1820,32 @@ async function setStartupTime() {
     }
 }
 
+// Save Startup Days
+async function setStartupDays() {
+    const days = [];
+    if (document.getElementById('Weekdays').checked){
+        days.push('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday');
+    }
+    if (document.getElementById('Weekend').checked) {
+        days.push('Saturday', 'Sunday');
+    }
+    try {
+        const response = await fetch('/set_startup_days', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ startup_days: days })
+        });
+        const result = await response.json();
+        if (result.success) {
+            logMessage('Startup days saved!', LOG_TYPE.SUCCESS);
+        } else {
+            logMessage('Failed to save startup days: ' + result.error, LOG_TYPE.ERROR);
+        }
+    } catch (error) {
+        logMessage('Error saving startup days: ' + error.message, LOG_TYPE.ERROR);
+    }
+}
+
 // Populate the playlist dropdown with all playlists
 async function populateStartupPlaylistDropdown() {
     console.log('Populating startup playlist dropdown...');

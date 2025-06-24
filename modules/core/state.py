@@ -162,7 +162,8 @@ class AppState:
             "shutdown_hour": self.shutdown_hour,
             "startup_minute": self.startup_minute,
             "startup_hour": self.startup_hour,
-            "default_playlist": self.default_playlist
+            "default_playlist": self.default_playlist,
+            "startup_days": self.startup_days
         }
 
     def from_dict(self, data):
@@ -194,6 +195,7 @@ class AppState:
         self.startup_minute = data.get('startup_minute', 0)
         self.startup_hour = data.get('startup_hour', 0)
         self.default_playlist = data.get('default_playlist', None)
+        self.startup_days = data.get('startup_days', [])
 
     def save(self):
         """Save the current state to a JSON file."""
