@@ -15,7 +15,7 @@
 </head>
 <body>
 <header>
-    <h1 id="connection_status_header" class="status">Dune Weaver Controller Customized</h1>
+    <h1 id="connection_status_header" class="status">Dune Weaver Controller LIAM</h1>
 </header>
 <div class="app">
     <!-- Home Tab -->
@@ -387,10 +387,11 @@
                 </button>
             </div>
             <div class="action-buttons square">
-                <button onclick="stopExecution()" class="cancel"><i class="fa-solid fa-stop"></i><span class="small">Stop</span></button>
+                <button onclick="stopExecution()" class="cancel"><i class="fa-solid fa-stop"></i><span class="small">Stop<span></button>
                 <button onclick="moveToCenter()" class="cta"><i class="fa-regular fa-circle-dot"></i><span class="small">Move to Center</span></button>
                 <button onclick="moveToPerimeter()" class="cta"><i class="fa-solid fa-circle-notch"></i><span class="small">Move to Perimeter</span></button>
-                <button onclick="sendHomeCommand()" class="warn"><i class="fa-solid fa-house"></i><span class="small">Home</span></button>
+                <button onclick="sendHomeCommand()" class="warn"><i class="fa-solid fa-house"></i><span class="small">Home</span></button>  
+                <button onclick="ShutDown()" class="warn"><i class="fa-solid fa-house"></i><span class="small">Shutdown</span></button>
                 <div class="scrollable-selection">
                     <div class="selection-container">
                         <div id="clear_selection" class="selection-items">
@@ -490,6 +491,78 @@
                 </div>
             </section>
 
+            <section class = "startup_time">
+                <div class = "header">
+                    <h2>Startup Time</h2>
+                </div>
+                <div class="control-group">
+                    <div class="item">
+                        <input type="text" id = "startup_hour" placeholder="Hour (0-23)">
+                        <input type="text" id = "startup_minute" placeholder="Minute (0-59)">
+                        <button class="cta" onclick="setStartupTime()">
+                            <i class="fa-solid fa-save"></i>
+                            <span>Save</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class = startup_days>
+                <div class = "header">
+                    <h2>Startup Days</h2>
+                </div>
+                <div class="control-group">
+                    <div class="item">
+                        <label class="custom-input">
+                            <input type="checkbox" id="Weekdays">
+                            <span class="custom-checkbox"></span>
+                            Weekdays                        
+                        </label>
+                        <label class="custom-input">
+                            <input type="checkbox" id="Weekend">
+                            <span class="custom-checkbox"></span>
+                            Weekend
+                        </label>
+                        <button class="cta" onclick="setStartupDays()">
+                            <i class="fa-solid fa-save"></i>
+                            <span>Save</span>
+                    </div>
+                </div>
+            </section>
+
+
+            <section class = startup_playlist>
+                <div class = "header">
+                    <h2>Startup Playlist</h2>
+                </div>
+                <div class="control-group">
+                    <div class="item">
+                        <select id="startup_playlist" name="startup_playlist">
+                            <option value="none">None</option>
+                            <!-- Playlists will be populated here -->
+                        </select>
+                        <button class="cta" onclick="setStartupPlaylist()">
+                            <i class="fa-solid fa-save"></i>
+                            <span>Save</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <section class = "shutdown_time">
+                <div class = "header">
+                    <h2>Shutdown Time</h2>
+                </div>
+                <div class="control-group">
+                    <div class="item">
+                        <input type="text" id = "shutdown_hour" placeholder="Hour (0-23)">
+                        <input type="text" id = "shutdown_minute" placeholder="Minute (0-59)">
+                        <button class="cta" onclick="setShutdownTime()">
+                            <i class="fa-solid fa-save"></i>
+                            <span>Save</span>
+                    </div>
+                </div>
+            </section>
+
             <section class="software version">
                 <div class="header">
                     <h2>Software Version</h2>
@@ -566,7 +639,7 @@
     <!-- Messages will be appended here -->
 </div>
 
-<script src="../static/js/main.js"></script>
+<script src="../static/js/main.js?timestamp=now"></script>
 <script src="../static/js/image2sand.js"></script>
 <script src="../static/js/image2sand-init.js"></script>
 <script async src="../static/js/opencv.js" onload="console.log('OpenCV.js loaded successfully')"></script>

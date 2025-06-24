@@ -301,6 +301,10 @@ async function stopExecution() {
     }
 }
 
+async function ShutDown() {
+    logMessage('Shutting down the system...');
+}
+
 let isPaused = false;
 
 function togglePausePlay() {
@@ -1243,6 +1247,7 @@ async function confirmAddPlaylist() {
             // Refresh the playlist list
             loadAllPlaylists();
             populatePlaylistDropdown();
+            populateStartupPlaylistDropdown();
 
             // Hide the add playlist container
             toggleSecondaryButtons('add-playlist-container');
@@ -1336,6 +1341,7 @@ async function deleteCurrentPlaylist() {
             closeStickySection('playlist-editor');
             loadAllPlaylists();
             populatePlaylistDropdown();
+            populateStartupPlaylistDropdown();
         } else {
             logMessage(`Failed to delete playlist: ${result.error}`,  LOG_TYPE.ERROR);
         }
@@ -1637,8 +1643,11 @@ function formatSecondsToHMS(seconds) {
 // Function to start or stop updates based on visibility
 function toggleSettings() {
     const settingsContainer = document.getElementById('settings-container');
+    console.log('setttings')
     if (settingsContainer) {
         settingsContainer.classList.toggle('open');
+        console.log('populating')
+        populateStartupPlaylistDropdown();
     }
 }
 
@@ -1782,6 +1791,127 @@ function updateWledUI() {
     wledContainer.classList.remove('hidden');
     wledFrame.src = `http://${wledIp}`;
 
+}
+
+// Save the startup time
+async function setStartupTime() {
+    const hour = document.getElementById('startup_hour').value;
+    const minute = document.getElementById('startup_minute').value;
+
+    if (isNaN(hour) || isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+        logMessage('Invalid startup time.', LOG_TYPE.ERROR);
+        return;
+    }
+
+    try {
+        const response = await fetch('/set_startup_time', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ startup_hour: hour, startup_minute: minute })
+        });
+        const result = await response.json();
+        if (result.success) {
+            logMessage('Startup time saved!', LOG_TYPE.SUCCESS);
+        } else {
+            logMessage('Failed to save startup time: ' + result.error, LOG_TYPE.ERROR);
+        }
+    } catch (error) {
+        logMessage('Error saving startup time: ' + error.message, LOG_TYPE.ERROR);
+    }
+}
+
+// Save Startup Days
+async function setStartupDays() {
+    const days = [];
+    if (document.getElementById('Weekdays').checked){
+        days.push('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday');
+    }
+    if (document.getElementById('Weekend').checked) {
+        days.push('Saturday', 'Sunday');
+    }
+    try {
+        const response = await fetch('/set_startup_days', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ startup_days: days })
+        });
+        const result = await response.json();
+        if (result.success) {
+            logMessage('Startup days saved!', LOG_TYPE.SUCCESS);
+        } else {
+            logMessage('Failed to save startup days: ' + result.error, LOG_TYPE.ERROR);
+        }
+    } catch (error) {
+        logMessage('Error saving startup days: ' + error.message, LOG_TYPE.ERROR);
+    }
+}
+
+// Populate the playlist dropdown with all playlists
+async function populateStartupPlaylistDropdown() {
+    console.log('Populating startup playlist dropdown...');
+    const select = document.getElementById('startup_playlist');
+    if (!select) return;
+    select.innerHTML = '<option value="none">None</option>';
+    try {
+        const response = await fetch('/list_all_playlists');
+        const playlists = await response.json();
+        playlists.forEach(playlist => {
+            const option = document.createElement('option');
+            option.value = playlist;
+            option.textContent = playlist;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        logMessage('Failed to load playlists: ' + error, LOG_TYPE.ERROR);
+    }
+}
+
+// Save Startup Playlist
+async function setStartupPlaylist() {
+    const select = document.getElementById('startup_playlist');
+    const playlist = select.value;
+    try {
+        const response = await fetch('/set_startup_playlist', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ startup_playlist: playlist })
+        });
+        const result = await response.json();
+        if (result.success) {
+            logMessage('Startup playlist saved!', LOG_TYPE.SUCCESS);
+        } else {
+            logMessage('Failed to save startup playlist: ' + result.error, LOG_TYPE.ERROR);
+        }
+    } catch (error) {
+        logMessage('Error saving startup playlist: ' + error.message, LOG_TYPE.ERROR);
+    }
+}
+
+// Save the shutdown time
+async function setShutdownTime() {
+    const hour = document.getElementById('shutdown_hour').value;
+    const minute = document.getElementById('shutdown_minute').value;
+
+    if (isNaN(hour) || isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+        logMessage('Invalid shutdown time.', LOG_TYPE.ERROR);
+        return;
+    }
+
+    try {
+        const response = await fetch('/set_shutdown_time', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ shutdown_hour: hour, shutdown_minute: minute })
+        });
+        const result = await response.json();
+        if (result.success) {
+            logMessage('Shutdown time saved!', LOG_TYPE.SUCCESS);
+        } else {
+            logMessage('Failed to save shutdown time: ' + result.error, LOG_TYPE.ERROR);
+        }
+    } catch (error) {
+        logMessage('Error saving shutdown time: ' + error.message, LOG_TYPE.ERROR);
+    }
 }
 
 // Save or clear the WLED IP, updating both the browser and backend

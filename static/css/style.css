@@ -761,7 +761,7 @@ section .header .add-button {
 .action-buttons.square button {
     padding: 5px;
     aspect-ratio: 1 / 1;
-    width: calc(25% - 10px);
+    width: calc(20% - 10px);
     flex-direction: column;
     justify-content: center;
     align-items: center;
@@ -801,7 +801,7 @@ button i + span.small {
 
 .action-buttons button.small {
     flex: 0;
-    flex-basis: calc(25% - 10px);
+    flex-basis: calc(20% - 10px);
 }
 
 .action-buttons button.cta {

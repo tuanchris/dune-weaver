@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -35,25 +35,58 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+async def start_at_time(target_hour=8, target_minute=0):
+    """Background task to start operations at a specific time every day."""
+    while True:
+        target_days = state.startup_days
+        if datetime.now().strftime('%A') not in target_days:
+            logger.info(f"Today is not a startup day. Skipping start check.")
+            await asyncio.sleep(60)
+        else:
+            logger.info(f"Today is a startup day: {datetime.now().strftime('%A')}. Checking for start time.")
+        target_hour = state.startup_hour
+        target_minute = state.startup_minute
+        default_playlist = state.default_playlist
+        now = datetime.now()
+        logger.info(f"Checking if it's time to start operations: starttime: {target_hour}:{target_minute}...current time: {now.hour}:{+now.minute}")
+        if now.hour == target_hour and now.minute == target_minute:
+            try:
+                logger.info("Target time reached, starting operations.")
+                logger.info("Starting wled.")
+                LEDController.set_power(LEDController,1)
+                logger.info("Starting movement.")
+                if not (state.conn.is_connected() if state.conn else False):
+                    logger.warning("Attempted to start without a connection")
+                else:
+                    playlist_manager.run_playlist(default_playlist)
+                logger.info("Operations started at the target time.")
+                break
+            except Exception as e:
+                logger.error(f"Error starting operations at scheduled time: {str(e)}")
+        await asyncio.sleep(30)  # Check every 30 seconds
 
 async def stop_at_time(target_hour=17, target_minute=0):
     """Background task to stop operations at a specific time every day."""
     while True:
+        target_hour = state.shutdown_hour
+        target_minute = state.shutdown_minute
         now = datetime.now()
         logger.info(f"Checking if it's time to stop operations: stoptime: {target_hour}:{target_minute}...current time: {now.hour}:{+now.minute}")
         if now.hour == target_hour and now.minute == target_minute:
-            logger.info("Target time reached, stopping operations.")
-            logger.info("Shutting down wled.")
-            set_off(state.led_controller)
-            logger.info("Stopping movement.")
-            if not (state.conn.is_connected() if state.conn else False):
-                logger.warning("Attempted to stop without a connection")
-            else:
-                pattern_manager.stop_actions()
-            logger.info("Operations stopped at the target time.")
-            break
+            try:
+                logger.info("Target time reached, stopping operations.")
+                logger.info("Shutting down wled.")
+                set_off(state.led_controller)
+                logger.info("Stopping movement.")
+                if not (state.conn.is_connected() if state.conn else False):
+                    logger.warning("Attempted to stop without a connection")
+                else:
+                    pattern_manager.stop_actions()
+                logger.info("Operations stopped at the target time.")
+                break
+            except Exception as e:
+                logger.error(f"Error stopping operations at scheduled time: {str(e)}")
         await asyncio.sleep(30)  # Check every 30 seconds
-
 
 
 
@@ -67,7 +100,8 @@ async def lifespan(app: FastAPI):
     
     # Start background time logger
     # asyncio.create_task(log_time_periodically())
-    asyncio.create_task(stop_at_time(17, 0))
+    asyncio.create_task(start_at_time())
+    asyncio.create_task(stop_at_time())
     try:
         connection_manager.connect_device()
     except Exception as e:
@@ -600,6 +634,68 @@ async def update_software():
                 "details": error_log
             }
         )
+    
+@app.post("/set_startup_time")
+async def set_startup_time(request: Request):
+    data = await request.json()
+    hour = data.get("startup_hour")
+    minute = data.get("startup_minute")
+    logger.info(f"Setting startup time to {hour}:{minute}")
+    if hour is None or minute is None:
+        return {"success": False, "error": "Missing hour or minute"}
+    try:
+        state.startup_hour = int(hour)
+        state.startup_minute = int(minute)
+        state.save()
+        logger.info(f"Startup time set to {state.startup_hour}:{state.startup_minute}")
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/set_startup_days")
+async def set_startup_days(request: Request):
+    logger.info("Setting startup days")
+    data = await request.json()
+    days = data.get("startup_days")
+    
+    try:
+        state.startup_days = days
+        state.save()
+        logger.info(f"Startup days set to {state.startup_days}")
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+ 
+@app.post("/set_startup_playlist")
+async def set_startup_playlist(request: Request):
+    data = await request.json()
+    playlist_name = data.get("startup_playlist")
+    if not playlist_name:
+        return {"success": False, "error": "Missing playlist name"}
+    
+    try:
+        state.default_playlist = playlist_name
+        state.save()
+        logger.info(f"Startup playlist set to {state.default_playlist}")
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/set_shutdown_time")
+async def set_shutdown_time(request: Request):
+    data = await request.json()
+    hour = data.get("shutdown_hour")
+    minute = data.get("shutdown_minute")
+    if hour is None or minute is None:
+        return {"success": False, "error": "Missing hour or minute"}
+    try:
+        state.shutdown_hour = int(hour)
+        state.shutdown_minute = int(minute)
+        state.save()
+        logger.info(f"Shutdown time set to {state.shutdown_hour}:{state.shutdown_minute}")
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 @app.post("/set_wled_ip")
 async def set_wled_ip(request: WLEDRequest):
