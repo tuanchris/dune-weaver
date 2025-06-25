@@ -56,7 +56,7 @@
       @media (max-width: 640px) {
         nav.flex {
           display: grid;
-          grid-template-columns: repeat(6, 1fr);
+          grid-template-columns: repeat(5, 1fr);
           gap: 0;
         }
         nav.flex a {
@@ -254,6 +254,15 @@
     class="bg-gray-50"
     style="font-family: 'Plus Jakarta Sans', 'Noto Sans', sans-serif"
   >
+  <div
+          class="mt-2 w-full text-center px-4 z-50 pointer-events-none absolute"
+          id="status-message-container"
+  >
+      <p
+              class="text-base font-semibold opacity-0 transform -translate-y-2 transition-all duration-300 ease-in-out px-10 py-2 rounded-lg shadow-lg"
+              id="status-message"
+      ></p>
+  </div>
     <div
       class="relative flex size-full min-h-screen flex-col group/design-root overflow-x-hidden"
     >
@@ -277,19 +286,10 @@
             </h1>
             </a>
           </div>
-          <div
-            class="mt-2 w-full text-center px-4"
-            id="status-message-container"
-          >
-            <p
-              class="text-base font-semibold opacity-0 transform -translate-y-2 transition-all duration-300 ease-in-out px-10 py-2 rounded-lg shadow-lg"
-              id="status-message"
-            ></p>
-          </div>
           <div class="flex items-center gap-4">
             <button
               id="theme-toggle"
-              class="p-2 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              class="p-1.5 flex rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
               aria-label="Toggle dark mode"
             >
               <span class="material-icons" id="theme-toggle-icon">dark_mode</span>
@@ -299,7 +299,7 @@
         <main class="flex flex-1 justify-center px-4 sm:px-6 lg:px-8 pt-16 sm:pt-20">
           {% block content %}{% endblock %}
         </main>
-        
+
         <!-- Floating Preview Button -->
         <button
           id="toggle-preview-modal-btn"
@@ -308,7 +308,7 @@
         >
           <span class="material-icons text-xl">preview</span>
         </button>
-        
+
         <footer
           class="fixed bottom-0 left-0 right-0 z-10 bg-white border-t border-gray-200 shadow-t-sm"
         >
@@ -350,9 +350,9 @@
     </div>
     {% block scripts %}{% endblock %}
     <script src="/static/js/base.js"></script>
-    
+
     <!-- Player Preview Modal -->
-    <div id="playerPreviewModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden p-4">
+    <div id="playerPreviewModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 hidden p-4">
         <div class="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[95vh] flex flex-col">
             <div class="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
                 <h2 id="playerPreviewTitle" class="text-xl font-semibold text-gray-800">Pattern Preview</h2>
@@ -369,15 +369,16 @@
                     </div>
                 </div>
             </div>
-            
+
             <!-- Pattern Info and Controls -->
-            <div class="flex-shrink-0 p-4 border-b border-gray-200 flex items-center gap-4">
+            <div class="flex-shrink-0 p-4 border-b border-gray-200 flex items-center gap-4 flex-wrap">
                 <!-- Pattern Preview Image -->
                 <div class="flex-shrink-0">
-                    <img id="modal-pattern-preview-img" class="w-[126px] h-[126px] rounded-full border border-gray-300 object-cover dark:invert" src="">
+                    <img id="modal-pattern-preview-img"
+                         class="w-[126px] h-[126px] rounded-full border border-gray-300 object-cover dark:invert" src="">
                 </div>
-                
-                <div class="flex-grow">
+
+                <div class="flex-grow w-auto">
                     <div class="flex items-center justify-between mb-2">
                         <div class="min-w-0 max-w-[50%]">
                             <div class="overflow-hidden relative">
@@ -439,7 +440,7 @@
             </div>
         </div>
     </div>
-    
+
     <script>
       // Function to show status message
       function showStatusMessage(message, type = "success") {
@@ -503,16 +504,16 @@
       document.addEventListener('DOMContentLoaded', function() {
         const themeToggle = document.getElementById('theme-toggle');
         const themeToggleIcon = document.getElementById('theme-toggle-icon');
-        
+
         // Update icon based on current theme
         function updateThemeIcon() {
           const isDark = document.documentElement.classList.contains('dark');
           themeToggleIcon.textContent = isDark ? 'light_mode' : 'dark_mode';
         }
-        
+
         // Initial icon update
         updateThemeIcon();
-        
+
         // Theme toggle click handler
         themeToggle.addEventListener('click', () => {
           const isDark = document.documentElement.classList.toggle('dark');

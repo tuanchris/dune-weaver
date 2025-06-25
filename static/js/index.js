@@ -1447,8 +1447,8 @@ function setupAnimatedPreviewControls() {
         const pixelRatio = (window.devicePixelRatio || 1) * 2;
         
         // Set the display size (CSS pixels)
-        canvas.style.width = displaySize + 'px';
-        canvas.style.height = displaySize + 'px';
+        canvas.style.width = displaySize + '%';
+        canvas.style.height = displaySize + '%';
         
         // Set the actual canvas size (device pixels) - increased resolution
         canvas.width = displaySize * pixelRatio;
