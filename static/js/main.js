@@ -1795,28 +1795,98 @@ function updateWledUI() {
 
 // Save the startup time
 async function setStartupTime() {
-    const hour = document.getElementById('startup_hour').value;
-    const minute = document.getElementById('startup_minute').value;
+    logMessage('Saving startup time...');
+    const hour = document.getElementById('startup_hour');
+    const minute = document.getElementById('startup_minute');
+    const saveButton = document.querySelector('.startup_time button.cta');
 
-    if (isNaN(hour) || isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-        logMessage('Invalid startup time.', LOG_TYPE.ERROR);
-        return;
+    logMessage(`Startup time: ${hour.value}:${minute.value}`);
+    console.log(`Startup time: ${hour.value}:${minute.value}`);
+    
+    //if inputs disabled, clear the startup time
+    if (hour.disabled && minute.disabled) {
+        
+        //Clear the front-end inputs
+        logMessage('Clearing startup time...');
+        console.log('Clearing startup time...');
+        hour.value = "";
+        minute.value = "";
+        hour.disabled = false;
+        minute.disabled = false;
+        saveButton.innerHTML = '<i class="fa-solid fa-save"></i><span>Save</span>';
+
+        //Clear Backend startup time
+        try {
+            const response = await fetch('/set_startup_time', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ startup_hour: "", startup_minute: ""})
+            });
+            const result = await response.json();
+            if (result.success) {
+                logMessage('Startup time cleared!', LOG_TYPE.SUCCESS);
+            } else {
+                logMessage('Failed to clear startup time: ' + result.error, LOG_TYPE.ERROR);
+            }
+        } catch (error) {
+            logMessage('Error saving startup time: ' + error.message, LOG_TYPE.ERROR);
+        }
+    
+    //if inputs enabled, save the startup time
+    }else{
+
+        // Validate hour and minute inputs
+        const hourVal = parseInt(hour.value, 10);
+        const minuteVal = parseInt(minute.value, 10);
+        if (isNaN(hourVal) || isNaN(minuteVal) || hourVal < 0 || hourVal > 23 || minuteVal < 0 || minuteVal> 59) {
+            logMessage('Invalid startup time.', LOG_TYPE.ERROR);
+            return;
+        }
+
+        // Save the startup time to backend
+        try {
+            const response = await fetch('/set_startup_time', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ startup_hour: hourVal, startup_minute: minuteVal })
+            });
+            const result = await response.json();
+            if (result.success) {
+                logMessage('Startup time saved!', LOG_TYPE.SUCCESS);
+                logMessage('Loading Startup Time...');
+                // Update the UI to reflect the saved time
+                loadStartupTime()
+            } else {
+                logMessage('Failed to save startup time: ' + result.error, LOG_TYPE.ERROR);
+            }
+        } catch (error) {
+            logMessage('Error saving startup time: ' + error.message, LOG_TYPE.ERROR);
+        }
     }
+}
 
+async function loadStartupTime() {
+    const hourInput = document.getElementById('startup_hour');
+    const minuteInput = document.getElementById('startup_minute');
+    const saveButton = document.querySelector('.startup_time button.cta');
     try {
-        const response = await fetch('/set_startup_time', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ startup_hour: hour, startup_minute: minute })
-        });
-        const result = await response.json();
-        if (result.success) {
-            logMessage('Startup time saved!', LOG_TYPE.SUCCESS);
-        } else {
-            logMessage('Failed to save startup time: ' + result.error, LOG_TYPE.ERROR);
+        const response = await fetch('/get_startup_time');
+        const data = await response.json();
+        if ((data.startup_hour && data.startup_minute) || (data.startup_hour === "" && data.startup_minute === "")) {
+            console.log(`Fetched startup time: ${data.startup_hour}:${data.startup_minute}`);
+            var startup_hour = data.startup_hour;
+            var startup_minute = data.startup_minute;
         }
     } catch (error) {
-        logMessage('Error saving startup time: ' + error.message, LOG_TYPE.ERROR);
+            logMessage(`Error fetching startup time from backend: ${error.message}`, LOG_TYPE.ERROR);
+    }
+    console.log(`Loaded startup time: ${startup_hour}:${startup_minute}`);
+    if (startup_hour !== "" && startup_minute !== "") {
+        hourInput.value = startup_hour;
+        minuteInput.value = startup_minute;
+        hourInput.disabled = true;
+        minuteInput.disabled = true;
+        saveButton.innerHTML = '<i class="fa-solid fa-xmark"></i><span>Clear</span>';
     }
 }
 
@@ -1889,28 +1959,118 @@ async function setStartupPlaylist() {
 
 // Save the shutdown time
 async function setShutdownTime() {
-    const hour = document.getElementById('shutdown_hour').value;
-    const minute = document.getElementById('shutdown_minute').value;
+    logMessage('Saving shutdown time...');
+    const hour = document.getElementById('shutdown_hour');
+    const minute = document.getElementById('shutdown_minute');
+    const saveButton = document.querySelector('.shutdown_time button.cta');
 
-    if (isNaN(hour) || isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-        logMessage('Invalid shutdown time.', LOG_TYPE.ERROR);
-        return;
+    logMessage(`Shutdown time: ${hour.value}:${minute.value}`);
+    console.log(`Shutdown time: ${hour.value}:${minute.value}`);
+    
+    //if inputs disabled, clear the startup time
+    if (hour.disabled && minute.disabled) {
+        
+        //Clear the front-end inputs
+        logMessage('Clearing shutdown time...');
+        console.log('Clearing shutdown time...');
+        hour.value = "";
+        minute.value = "";
+        hour.disabled = false;
+        minute.disabled = false;
+        saveButton.innerHTML = '<i class="fa-solid fa-save"></i><span>Save</span>';
+
+        //Clear Backend shutdown time
+        try {
+            const response = await fetch('/set_shutdown_time', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ shutdown_hour: "", shutdown_minute: ""})
+            });
+            const result = await response.json();
+            if (result.success) {
+                logMessage('Shutdown time cleared!', LOG_TYPE.SUCCESS);
+            } else {
+                logMessage('Failed to clear shutdown time: ' + result.error, LOG_TYPE.ERROR);
+            }
+        } catch (error) {
+            logMessage('Error saving shutdown time: ' + error.message, LOG_TYPE.ERROR);
+        }
+    
+    //if inputs enabled, save the shutdown time
+    }else{
+
+        // Validate hour and minute inputs
+        const hourVal = parseInt(hour.value, 10);
+        const minuteVal = parseInt(minute.value, 10);
+        if (isNaN(hourVal) || isNaN(minuteVal) || hourVal < 0 || hourVal > 23 || minuteVal < 0 || minuteVal> 59) {
+            logMessage('Invalid startup time.', LOG_TYPE.ERROR);
+            return;
+        }
+
+        // Save the shutdown time to backend
+        try {
+            const response = await fetch('/set_shutdown_time', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ shutdown_hour: hourVal, shutdown_minute: minuteVal })
+            });
+            const result = await response.json();
+            if (result.success) {
+                logMessage('Shutdown time saved!', LOG_TYPE.SUCCESS);
+                logMessage('Loading Shutdown Time...');
+                // Update the UI to reflect the saved time
+                loadShutdownTime()
+            } else {
+                logMessage('Failed to save shutdown time: ' + result.error, LOG_TYPE.ERROR);
+            }
+        } catch (error) {
+            logMessage('Error saving shutdown time: ' + error.message, LOG_TYPE.ERROR);
+        }
     }
+}
 
+async function startLedTest() {
     try {
-        const response = await fetch('/set_shutdown_time', {
+        logMessage('Starting LED test...');
+        const response = await fetch('/start_led_test', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ shutdown_hour: hour, shutdown_minute: minute })
+            headers: { 'Content-Type': 'application/json' }
         });
+
         const result = await response.json();
         if (result.success) {
-            logMessage('Shutdown time saved!', LOG_TYPE.SUCCESS);
+            logMessage('LED test started successfully!', LOG_TYPE.SUCCESS);
         } else {
-            logMessage('Failed to save shutdown time: ' + result.error, LOG_TYPE.ERROR);
+            logMessage('Failed to start LED test: ' + result.error, LOG_TYPE.ERROR);
         }
     } catch (error) {
-        logMessage('Error saving shutdown time: ' + error.message, LOG_TYPE.ERROR);
+        logMessage('Error starting LED test: ' + error.message, LOG_TYPE.ERROR);
+    }
+}
+
+async function loadShutdownTime() {
+    const hourInput = document.getElementById('shutdown_hour');
+    const minuteInput = document.getElementById('shutdown_minute');
+    const saveButton = document.querySelector('.shutdown_time button.cta');
+    try {
+        const response = await fetch('/get_shutdown_time');
+        const data = await response.json();
+        if ((data.shutdown_hour && data.shutdown_minute) || (data.shutdown_hour === "" && data.shutdown_minute === "")) {
+            console.log(`Fetched shutdown time: ${data.shutdown_hour}:${data.shutdown_minute}`);
+            var shutdown_hour = data.shutdown_hour;
+            var shutdown_minute = data.shutdown_minute;
+        }
+    } catch (error) {
+            logMessage(`Error fetching shutdown time from backend: ${error.message}`, LOG_TYPE.ERROR);
+    }
+    console.log(`Loaded shutdown time: ${shutdown_hour}:${shutdown_minute}`);
+
+    if (shutdown_hour !== "" && shutdown_minute !== "") {
+        hourInput.value = shutdown_hour;
+        minuteInput.value = shutdown_minute;
+        hourInput.disabled = true;
+        minuteInput.disabled = true;
+        saveButton.innerHTML = '<i class="fa-solid fa-xmark"></i><span>Clear</span>';
     }
 }
 
@@ -2127,6 +2287,8 @@ document.addEventListener('DOMContentLoaded', () => {
     attachFullScreenListeners();
     loadWledIp();
     updateWledUI();
+    loadStartupTime(); // Load startup time
+    loadShutdownTime(); // Load shutdown time
 
     // Initialize WebSocket connection for status updates
     connectStatusWebSocket();

@@ -53,7 +53,7 @@ async def start_at_time(target_hour=8, target_minute=0):
             try:
                 logger.info("Target time reached, starting operations.")
                 logger.info("Starting wled.")
-                LEDController.set_power(LEDController,1)
+                LEDController.set_power(state.led_controller,1)
                 logger.info("Starting movement.")
                 if not (state.conn.is_connected() if state.conn else False):
                     logger.warning("Attempted to start without a connection")
@@ -641,11 +641,11 @@ async def set_startup_time(request: Request):
     hour = data.get("startup_hour")
     minute = data.get("startup_minute")
     logger.info(f"Setting startup time to {hour}:{minute}")
-    if hour is None or minute is None:
+    if hour is (None and not "") or minute is (None and not ""):
         return {"success": False, "error": "Missing hour or minute"}
     try:
-        state.startup_hour = int(hour)
-        state.startup_minute = int(minute)
+        state.startup_hour = hour if hour is not "" else ""
+        state.startup_minute = minute if minute is not "" else ""
         state.save()
         logger.info(f"Startup time set to {state.startup_hour}:{state.startup_minute}")
         return {"success": True}
@@ -686,16 +686,23 @@ async def set_shutdown_time(request: Request):
     data = await request.json()
     hour = data.get("shutdown_hour")
     minute = data.get("shutdown_minute")
-    if hour is None or minute is None:
+    logger.info(f"Setting shutdown time to {hour}:{minute}")
+    if hour is (None and not "") or minute is (None and not ""):
         return {"success": False, "error": "Missing hour or minute"}
     try:
-        state.shutdown_hour = int(hour)
-        state.shutdown_minute = int(minute)
+        state.shutdown_hour = hour if hour is not "" else ""
+        state.shutdown_minute = minute if minute is not "" else ""
         state.save()
         logger.info(f"Shutdown time set to {state.shutdown_hour}:{state.shutdown_minute}")
         return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
+    
+@app.post("/start_led_test")
+async def start_led_test():
+    await asyncio.sleep(10) 
+    effect_pattern_done(state.led_controller)
+    return {"success": True, "message": "LED test started"}
 
 @app.post("/set_wled_ip")
 async def set_wled_ip(request: WLEDRequest):
@@ -705,6 +712,15 @@ async def set_wled_ip(request: WLEDRequest):
     state.save()
     logger.info(f"WLED IP updated: {request.wled_ip}")
     return {"success": True, "wled_ip": state.wled_ip}
+
+@app.get("/get_startup_time")
+async def get_startup_time():
+    return {"success": True, "startup_hour": state.startup_hour, "startup_minute": state.startup_minute}
+
+@app.get("/get_shutdown_time")
+async def get_startup_time():
+    return {"success": True, "shutdown_hour": state.shutdown_hour, "shutdown_minute": state.shutdown_minute}
+
 
 @app.get("/get_wled_ip")
 async def get_wled_ip():
