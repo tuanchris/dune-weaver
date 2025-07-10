@@ -48,21 +48,24 @@ async def start_at_time(target_hour=8, target_minute=0):
         target_minute = state.startup_minute
         default_playlist = state.default_playlist
         now = datetime.now()
-        logger.info(f"Checking if it's time to start operations: starttime: {target_hour}:{target_minute}...current time: {now.hour}:{+now.minute}")
-        if now.hour == target_hour and now.minute == target_minute:
-            try:
-                logger.info("Target time reached, starting operations.")
-                logger.info("Starting wled.")
-                LEDController.set_power(state.led_controller,1)
-                logger.info("Starting movement.")
-                if not (state.conn.is_connected() if state.conn else False):
-                    logger.warning("Attempted to start without a connection")
-                else:
-                    playlist_manager.run_playlist(default_playlist)
-                logger.info("Operations started at the target time.")
-                break
-            except Exception as e:
-                logger.error(f"Error starting operations at scheduled time: {str(e)}")
+        if target_hour is "" or target_minute is "":
+            logger.info("Startup time not set, skipping start check.")
+        else:
+            logger.info(f"Checking if it's time to start operations: starttime: {target_hour}:{target_minute}...current time: {now.hour}:{+now.minute}")
+            if now.hour == target_hour and now.minute == target_minute:
+                try:
+                    logger.info("Target time reached, starting operations.")
+                    logger.info("Starting wled.")
+                    LEDController.set_power(state.led_controller,1)
+                    logger.info("Starting movement.")
+                    if not (state.conn.is_connected() if state.conn else False):
+                        logger.warning("Attempted to start without a connection")
+                    else:
+                        playlist_manager.run_playlist(default_playlist)
+                    logger.info("Operations started at the target time.")
+                    break
+                except Exception as e:
+                    logger.error(f"Error starting operations at scheduled time: {str(e)}")
         await asyncio.sleep(30)  # Check every 30 seconds
 
 async def stop_at_time(target_hour=17, target_minute=0):
@@ -71,21 +74,24 @@ async def stop_at_time(target_hour=17, target_minute=0):
         target_hour = state.shutdown_hour
         target_minute = state.shutdown_minute
         now = datetime.now()
-        logger.info(f"Checking if it's time to stop operations: stoptime: {target_hour}:{target_minute}...current time: {now.hour}:{+now.minute}")
-        if now.hour == target_hour and now.minute == target_minute:
-            try:
-                logger.info("Target time reached, stopping operations.")
-                logger.info("Shutting down wled.")
-                set_off(state.led_controller)
-                logger.info("Stopping movement.")
-                if not (state.conn.is_connected() if state.conn else False):
-                    logger.warning("Attempted to stop without a connection")
-                else:
-                    pattern_manager.stop_actions()
-                logger.info("Operations stopped at the target time.")
-                break
-            except Exception as e:
-                logger.error(f"Error stopping operations at scheduled time: {str(e)}")
+        if target_hour is "" or target_minute is "":
+            logger.info("Shutdown time not set, skipping stop check.")
+        else:
+            logger.info(f"Checking if it's time to stop operations: stoptime: {target_hour}:{target_minute}...current time: {now.hour}:{+now.minute}")
+            if now.hour == target_hour and now.minute == target_minute:
+                try:
+                    logger.info("Target time reached, stopping operations.")
+                    logger.info("Shutting down wled.")
+                    set_off(state.led_controller)
+                    logger.info("Stopping movement.")
+                    if not (state.conn.is_connected() if state.conn else False):
+                        logger.warning("Attempted to stop without a connection")
+                    else:
+                        pattern_manager.stop_actions()
+                    logger.info("Operations stopped at the target time.")
+                    break
+                except Exception as e:
+                    logger.error(f"Error stopping operations at scheduled time: {str(e)}")
         await asyncio.sleep(30)  # Check every 30 seconds
 
 
