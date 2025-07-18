@@ -61,9 +61,14 @@ async def start_at_time(target_hour=8, target_minute=0):
                     if not (state.conn.is_connected() if state.conn else False):
                         logger.warning("Attempted to start without a connection")
                     else:
-                        playlist_manager.run_playlist(default_playlist)
+                        asyncio.create_task(playlist_manager.run_playlist(
+                            default_playlist,
+                            pause_time=state.pause_time,
+                            clear_pattern=state.clear_pattern,
+                            run_mode='loop',
+                            shuffle=True))
                     logger.info("Operations started at the target time.")
-                    break
+                    await asyncio.sleep(60)
                 except Exception as e:
                     logger.error(f"Error starting operations at scheduled time: {str(e)}")
         await asyncio.sleep(30)  # Check every 30 seconds
@@ -89,7 +94,7 @@ async def stop_at_time(target_hour=17, target_minute=0):
                     else:
                         pattern_manager.stop_actions()
                     logger.info("Operations stopped at the target time.")
-                    break
+                    await asyncio.sleep(60)
                 except Exception as e:
                     logger.error(f"Error stopping operations at scheduled time: {str(e)}")
         await asyncio.sleep(30)  # Check every 30 seconds
