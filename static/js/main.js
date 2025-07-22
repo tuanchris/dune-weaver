@@ -1872,7 +1872,7 @@ async function loadStartupTime() {
     try {
         const response = await fetch('/get_startup_time');
         const data = await response.json();
-        if ((data.startup_hour && data.startup_minute) || (data.startup_hour === "" && data.startup_minute === "")) {
+        if ((!isNaN(data.startup_hour) && !isNaN(data.startup_minute)) || (data.startup_hour === "" && data.startup_minute === "")) {
             console.log(`Fetched startup time: ${data.startup_hour}:${data.startup_minute}`);
             var startup_hour = data.startup_hour;
             var startup_minute = data.startup_minute;
@@ -2029,6 +2029,32 @@ async function setShutdownTime() {
     }
 }
 
+async function loadShutdownTime() {
+    const hourInput = document.getElementById('shutdown_hour');
+    const minuteInput = document.getElementById('shutdown_minute');
+    const saveButton = document.querySelector('.shutdown_time button.cta');
+    try {
+        const response = await fetch('/get_shutdown_time');
+        const data = await response.json();
+        if ((!isNaN(data.shutdown_hour) && !isNaN(data.shutdown_minute)) || (data.shutdown_hour === "" && data.shutdown_minute === "")) {
+            console.log(`Fetched shutdown time: ${data.shutdown_hour}:${data.shutdown_minute}`);
+            var shutdown_hour = data.shutdown_hour;
+            var shutdown_minute = data.shutdown_minute;
+        }
+    } catch (error) {
+            logMessage(`Error fetching shutdown time from backend: ${error.message}`, LOG_TYPE.ERROR);
+    }
+    console.log(`Loaded shutdown time: ${shutdown_hour}:${shutdown_minute}`);
+
+    if (shutdown_hour !== "" && shutdown_minute !== "") {
+        hourInput.value = shutdown_hour;
+        minuteInput.value = shutdown_minute;
+        hourInput.disabled = true;
+        minuteInput.disabled = true;
+        saveButton.innerHTML = '<i class="fa-solid fa-xmark"></i><span>Clear</span>';
+    }
+}
+
 async function startLedTest() {
     try {
         logMessage('Starting LED test...');
@@ -2048,31 +2074,7 @@ async function startLedTest() {
     }
 }
 
-async function loadShutdownTime() {
-    const hourInput = document.getElementById('shutdown_hour');
-    const minuteInput = document.getElementById('shutdown_minute');
-    const saveButton = document.querySelector('.shutdown_time button.cta');
-    try {
-        const response = await fetch('/get_shutdown_time');
-        const data = await response.json();
-        if ((data.shutdown_hour && data.shutdown_minute) || (data.shutdown_hour === "" && data.shutdown_minute === "")) {
-            console.log(`Fetched shutdown time: ${data.shutdown_hour}:${data.shutdown_minute}`);
-            var shutdown_hour = data.shutdown_hour;
-            var shutdown_minute = data.shutdown_minute;
-        }
-    } catch (error) {
-            logMessage(`Error fetching shutdown time from backend: ${error.message}`, LOG_TYPE.ERROR);
-    }
-    console.log(`Loaded shutdown time: ${shutdown_hour}:${shutdown_minute}`);
 
-    if (shutdown_hour !== "" && shutdown_minute !== "") {
-        hourInput.value = shutdown_hour;
-        minuteInput.value = shutdown_minute;
-        hourInput.disabled = true;
-        minuteInput.disabled = true;
-        saveButton.innerHTML = '<i class="fa-solid fa-xmark"></i><span>Clear</span>';
-    }
-}
 
 // Save or clear the WLED IP, updating both the browser and backend
 async function saveWledIp() {
