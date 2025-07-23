@@ -63,8 +63,8 @@ async def start_at_time(target_hour=8, target_minute=0):
                     else:
                         asyncio.create_task(playlist_manager.run_playlist(
                             default_playlist,
-                            pause_time=state.pause_time,
-                            clear_pattern=state.clear_pattern,
+                            pause_time= 600, #10 minutes in seconds
+                            clear_pattern= 'adaptive',#adaptive clear pattern
                             run_mode='loop',
                             shuffle=True))
                     logger.info("Operations started at the target time.")
