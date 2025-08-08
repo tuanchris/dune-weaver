@@ -4,9 +4,19 @@
 
 ![Dune Weaver Gif](./static/IMG_7404.gif)
 
-Dune Weaver is a project for a mesmerizing, motorized sand table that draws intricate patterns in sand using a steel ball moved by a magnet. This project combines hardware and software, leveraging an Arduino for hardware control and a Python/FastAPI-based web interface for interaction. 
+Dune Weaver is a web-controlled kinetic sand table system that creates mesmerizing patterns in sand using a steel ball guided by magnets beneath the surface. This project seamlessly integrates hardware control with a modern web interface, featuring real-time pattern execution, playlist management, and synchronized lighting effects.
 
-### **Check out the wiki [here](https://github.com/tuanchris/dune-weaver/wiki/Wiring) for more details.**
+## 🌟 Key Features
+
+- **Web-Based Control Interface**: Modern, responsive web UI for pattern management and table control
+- **Real-Time Pattern Execution**: Live preview and control of pattern drawing with progress tracking
+- **Playlist System**: Queue multiple patterns for continuous execution
+- **WLED Integration**: Synchronized lighting effects during pattern execution
+- **Pattern Library**: Browse, upload, and manage custom patterns with preview generation
+- **Polar Coordinate System**: Specialized θ-ρ coordinate system optimized for radial designs
+- **Auto-Update System**: GitHub-integrated version management with update notifications
+
+### **📚 Complete Documentation: [Dune Weaver Wiki](https://github.com/tuanchris/dune-weaver/wiki)**
 
 ---
 
@@ -90,18 +100,84 @@ The project exposes RESTful APIs for various actions. Here are some key endpoint
  • Run Pattern: /run_theta_rho (POST)
  • Stop Execution: /stop_execution (POST)
 
-## Project Structure
+## 🚀 Quick Start
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/tuanchris/dune-weaver.git
+   cd dune-weaver
+   ```
+
+2. **Install dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   npm install
+   ```
+
+3. **Build CSS**:
+   ```bash
+   npm run build-css
+   ```
+
+4. **Start the application**:
+   ```bash
+   python main.py
+   ```
+
+5. **Open your browser** and navigate to `http://localhost:8080`
+
+## 📁 Project Structure
 
 ```
 dune-weaver/
-├── main.py             # FastAPI app and core logic
-├── patterns/           # Directory for theta-rho files
-├── static/             # Static files (CSS, JS)
-├── templates/          # HTML templates for the web interface
-├── README.md           # Project documentation
-├── requirements.txt    # Python dependencies
-└── arduino/            # Arduino firmware
+├── main.py                     # FastAPI application entry point
+├── VERSION                     # Current software version
+├── modules/
+│   ├── connection/             # Serial & WebSocket connection management
+│   ├── core/                   # Core business logic
+│   │   ├── cache_manager.py    # Pattern preview caching
+│   │   ├── pattern_manager.py  # Pattern file handling
+│   │   ├── playlist_manager.py # Playlist system
+│   │   ├── state.py           # Global state management
+│   │   └── version_manager.py  # GitHub version checking
+│   ├── led/                    # WLED integration
+│   ├── mqtt/                   # MQTT support
+│   └── update/                 # Software update management
+├── patterns/                   # Pattern files (.thr format)
+├── static/                     # Web assets (CSS, JS, images)
+├── templates/                  # HTML templates
+├── firmware/                   # Hardware controller firmware
+└── requirements.txt            # Python dependencies
 ```
 
-**Happy sand drawing with Dune Weaver! 🌟**
+## 🔧 Configuration
+
+The application uses several configuration methods:
+- **Environment Variables**: `LOG_LEVEL`, connection settings
+- **State Persistence**: Settings saved to `state.json`
+- **Version Management**: Automatic GitHub release checking
+
+## 🌐 API Endpoints
+
+Core API endpoints for integration:
+
+- **Pattern Management**: `/upload_theta_rho`, `/list_theta_rho_files`
+- **Execution Control**: `/run_theta_rho`, `/pause_execution`, `/stop_execution`
+- **Hardware Control**: `/connect`, `/send_home`, `/set_speed`
+- **Version Management**: `/api/version`, `/api/update`
+- **Real-time Updates**: WebSocket at `/ws/status`
+
+## 🤝 Contributing
+
+We welcome contributions! Please check out our [Contributing Guide](https://github.com/tuanchris/dune-weaver/wiki/Contributing) for details.
+
+## 📖 Documentation
+
+For detailed setup instructions, hardware assembly, and advanced configuration:
+
+**🔗 [Visit the Complete Wiki](https://github.com/tuanchris/dune-weaver/wiki)**
+
+---
+
+**Happy sand drawing with Dune Weaver! ✨**
 
