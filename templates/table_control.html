@@ -61,7 +61,7 @@
 
 {% block content %}
 <div class="layout-content-container flex flex-col w-full max-w-4xl gap-8 pt-2 pb-[75px]">
-  <div class="flex flex-wrap justify-between items-center gap-4 p-4 bg-white rounded-xl shadow-sm mt-8">
+  <div class="flex flex-wrap justify-between items-center gap-4 p-4 bg-white rounded-xl shadow-sm mt-2 sm:mt-8">
     <h1 class="text-slate-900 tracking-tight text-2xl sm:text-3xl font-bold leading-tight">
       Table Control
     </h1>
@@ -101,34 +101,46 @@
         Move to Perimeter
       </button>
     </div>
+    <div class="flex items-center justify-center mt-4">
+      <button
+        id="orientationHelpButton"
+        class="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+      >
+        <span class="material-icons-outlined text-lg">help_outline</span>
+        How to Align Pattern Orientation
+      </button>
+    </div>
   </section>
 
   <section class="bg-white p-6 rounded-xl shadow-lg">
     <h2 class="text-xl font-semibold text-slate-800 mb-5 border-b border-slate-200 pb-3">
       Speed Control
     </h2>
-    <div class="flex items-center gap-4">
-      <div class="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2">
+    <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+      <div class="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2 w-full sm:w-auto">
         <span class="text-sm font-medium text-slate-700">Current:</span>
         <span id="currentSpeedDisplay" class="text-sm font-semibold text-slate-900">-- mm/s</span>
       </div>
+      
+      <div class="flex flex-col sm:flex-row gap-3 w-full sm:flex-1">
         <div class="flex-1">
           <input
             type="number"
             id="speedInput"
-          class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-3 text-sm font-normal leading-normal transition-colors"
-          placeholder="Enter new speed..."
+            class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-3 text-sm font-normal leading-normal transition-colors"
+            placeholder="Enter new speed..."
             min="1"
             step="1"
           />
         </div>
         <button
           id="setSpeedButton"
-        class="flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-sky-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 h-10"
+          class="flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-sky-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 h-10 w-full sm:w-auto whitespace-nowrap"
         >
           <span class="material-icons-outlined text-lg">speed</span>
           Set Speed
         </button>
+      </div>
     </div>
   </section>
 
@@ -161,8 +173,79 @@
     </div>
   </section>
 </div>
+
+<!-- Pattern Orientation Help Modal -->
+<div id="orientationHelpModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden p-4">
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md">
+    <div class="p-6">
+      <div class="text-center mb-4">
+        <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-2">Pattern Orientation Alignment</h2>
+        <p class="text-gray-600 dark:text-gray-400 text-sm">
+          Follow these steps to align your patterns with their previews:
+        </p>
+      </div>
+      
+      <ol class="text-gray-700 dark:text-gray-300 text-sm space-y-3 mb-6">
+        <li class="flex items-start gap-3">
+          <span class="font-semibold text-blue-600 dark:text-blue-400 min-w-[20px]">1.</span>
+          <span>Look at your pattern preview and decide where the "bottom" of the pattern should be.</span>
+        </li>
+        <li class="flex items-start gap-3">
+          <span class="font-semibold text-blue-600 dark:text-blue-400 min-w-[20px]">2.</span>
+          <span><strong>Manually</strong> move the radial arm to point 90° to the right of where you want the pattern bottom to be.</span>
+        </li>
+        <li class="flex items-start gap-3">
+          <span class="font-semibold text-blue-600 dark:text-blue-400 min-w-[20px]">3.</span>
+          <span>Click the <strong>"Home"</strong> button to establish this as the reference position.</span>
+        </li>
+        <li class="flex items-start gap-3">
+          <span class="font-semibold text-blue-600 dark:text-blue-400 min-w-[20px]">4.</span>
+          <span>All patterns will now be oriented according to their previews!</span>
+        </li>
+      </ol>
+      
+      <div class="border-t border-gray-200 dark:border-gray-600 pt-4 mb-4">
+        <p class="text-amber-600 dark:text-amber-400 text-sm">
+          <strong>Important:</strong> Only perform this alignment when you want to change the orientation reference. Once set, this becomes your new "home" position.
+        </p>
+      </div>
+      
+      <div class="flex justify-center">
+        <button
+          id="closeOrientationHelpModal"
+          class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+        >
+          Got it
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script src="/static/js/table_control.js"></script>
+<script>
+// Pattern orientation help modal functionality
+document.addEventListener('DOMContentLoaded', function() {
+  const helpButton = document.getElementById('orientationHelpButton');
+  const modal = document.getElementById('orientationHelpModal');
+  const closeButton = document.getElementById('closeOrientationHelpModal');
+  
+  helpButton.addEventListener('click', () => {
+    modal.classList.remove('hidden');
+  });
+  
+  closeButton.addEventListener('click', () => {
+    modal.classList.add('hidden');
+  });
+  
+  // Close modal when clicking outside
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.classList.add('hidden');
+    }
+  });
+});
+</script>
 {% endblock %} 
