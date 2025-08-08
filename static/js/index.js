@@ -1456,15 +1456,50 @@ function setupAnimatedPreviewControls() {
     
     // Set responsive canvas size with ultra-high-DPI support
     const setCanvasSize = () => {
-        const isMobile = window.innerWidth < 768;
-        const displaySize = isMobile ? Math.min(window.innerWidth - 80, 400) : 800;
+        const container = canvas.parentElement;
+        const modal = document.getElementById('animatedPreviewModal');
+        if (!container || !modal) return;
+        
+        // Calculate available viewport space
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        
+        // Calculate modal content area (95vh max height - header - padding)
+        const modalMaxHeight = viewportHeight * 0.95;
+        const headerHeight = 80; // Approximate header height with padding
+        const modalPadding = 48; // Modal padding (p-6 = 24px each side)
+        const availableHeight = modalMaxHeight - headerHeight - modalPadding;
+        
+        // Calculate available width (max-w-4xl = 896px, but respect viewport)
+        const modalMaxWidth = Math.min(896, viewportWidth - 32); // Account for modal margin
+        const availableWidth = modalMaxWidth - modalPadding;
+        
+        // Calculate ideal canvas size (use 80% of available space as requested)
+        const targetHeight = availableHeight * 0.8;
+        const targetWidth = availableWidth * 0.8;
+        
+        // Use the smaller dimension to maintain square aspect ratio
+        let idealSize = Math.min(targetWidth, targetHeight);
+        
+        // Cap at reasonable maximum and minimum
+        idealSize = Math.min(idealSize, 800); // Maximum size cap
+        idealSize = Math.max(idealSize, 200); // Minimum size
+        
+        const displaySize = idealSize;
+        
+        console.log('Canvas sizing:', {
+            viewport: `${viewportWidth}x${viewportHeight}`,
+            availableModal: `${availableWidth}x${availableHeight}`,
+            target80pct: `${targetWidth}x${targetHeight}`,
+            finalSize: displaySize
+        });
         
         // Get device pixel ratio and multiply by 2 for higher resolution
         const pixelRatio = (window.devicePixelRatio || 1) * 2;
         
-        // Set the display size (CSS pixels)
-        canvas.style.width = displaySize + '%';
-        canvas.style.height = displaySize + '%';
+        // Set the display size (CSS pixels) - use pixels, not percentage
+        canvas.style.width = displaySize + 'px';
+        canvas.style.height = displaySize + 'px';
         
         // Set the actual canvas size (device pixels) - increased resolution
         canvas.width = displaySize * pixelRatio;
@@ -1488,8 +1523,12 @@ function setupAnimatedPreviewControls() {
     // Set initial size
     setCanvasSize();
     
-    // Handle window resize
-    window.addEventListener('resize', setCanvasSize);
+    // Handle window resize with debouncing
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(setCanvasSize, 16); // ~60fps update rate
+    });
     
     // Close modal
     closeBtn.onclick = closeAnimatedPreview;
