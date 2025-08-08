@@ -205,7 +205,7 @@ endblock %}
           <p class="text-slate-800 text-base font-medium leading-normal">
             Current Version
           </p>
-          <p class="text-slate-500 text-sm font-normal leading-normal">1.0.0</p>
+          <p id="currentVersionText" class="text-slate-500 text-sm font-normal leading-normal">Loading...</p>
         </div>
       </div>
       <div class="flex items-center gap-4 px-6 py-5">
@@ -218,14 +218,15 @@ endblock %}
           <p class="text-slate-800 text-base font-medium leading-normal">
             Latest Version
           </p>
-          <p class="text-slate-500 text-sm font-normal leading-normal">1.0.1</p>
+          <p id="latestVersionText" class="text-slate-500 text-sm font-normal leading-normal">Checking...</p>
         </div>
         <button
           id="updateSoftware"
-          class="flex items-center justify-center gap-1.5 min-w-[84px] cursor-pointer rounded-lg h-9 px-3 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium leading-normal tracking-[0.015em] transition-colors"
+          class="flex items-center justify-center gap-1.5 min-w-[84px] cursor-pointer rounded-lg h-9 px-3 bg-gray-400 text-white text-xs font-medium leading-normal tracking-[0.015em] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled
         >
-          <span class="material-icons text-base">download</span>
-          <span class="truncate">Update</span>
+          <span id="updateIcon" class="material-icons text-base">download</span>
+          <span id="updateText" class="truncate">Update</span>
         </button>
       </div>
     </div>

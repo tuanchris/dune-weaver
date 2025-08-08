@@ -165,7 +165,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         fetch('/get_wled_ip').then(response => response.json()).catch(() => ({ wled_ip: null })),
         
         // Load current version and check for updates
-        fetch('/check_software_update').then(response => response.json()).catch(() => ({ current_version: '1.0.0', update_available: false })),
+        fetch('/api/version').then(response => response.json()).catch(() => ({ current: '1.0.0', latest: '1.0.0', update_available: false })),
         
         // Load available serial ports
         fetch('/list_serial_ports').then(response => response.json()).catch(() => [])
@@ -183,12 +183,39 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         
         // Update version display
-        document.querySelector('.text-slate-500.text-sm.font-normal.leading-normal').textContent = updateData.current_version;
-        
-        // Show/hide update button
+        const currentVersionText = document.getElementById('currentVersionText');
+        const latestVersionText = document.getElementById('latestVersionText');
         const updateButton = document.getElementById('updateSoftware');
-        if (updateButton) {
-            updateButton.style.display = updateData.update_available ? 'flex' : 'none';
+        const updateIcon = document.getElementById('updateIcon');
+        const updateText = document.getElementById('updateText');
+        
+        if (currentVersionText) {
+            currentVersionText.textContent = updateData.current;
+        }
+        
+        if (latestVersionText) {
+            if (updateData.error) {
+                latestVersionText.textContent = 'Error checking updates';
+                latestVersionText.className = 'text-red-500 text-sm font-normal leading-normal';
+            } else {
+                latestVersionText.textContent = updateData.latest;
+                latestVersionText.className = 'text-slate-500 text-sm font-normal leading-normal';
+            }
+        }
+        
+        // Update button state
+        if (updateButton && updateIcon && updateText) {
+            if (updateData.update_available) {
+                updateButton.disabled = false;
+                updateButton.className = 'flex items-center justify-center gap-1.5 min-w-[84px] cursor-pointer rounded-lg h-9 px-3 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium leading-normal tracking-[0.015em] transition-colors';
+                updateIcon.textContent = 'download';
+                updateText.textContent = 'Update';
+            } else {
+                updateButton.disabled = true;
+                updateButton.className = 'flex items-center justify-center gap-1.5 min-w-[84px] cursor-pointer rounded-lg h-9 px-3 bg-gray-400 text-white text-xs font-medium leading-normal tracking-[0.015em] transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+                updateIcon.textContent = 'check';
+                updateText.textContent = 'Up to date';
+            }
         }
         
         // Update port selection
@@ -274,17 +301,31 @@ function setupEventListeners() {
     const updateSoftware = document.getElementById('updateSoftware');
     if (updateSoftware) {
         updateSoftware.addEventListener('click', async () => {
+            if (updateSoftware.disabled) {
+                return;
+            }
+            
             try {
-                const response = await fetch('/update_software', {
+                const response = await fetch('/api/update', {
                     method: 'POST'
                 });
-                if (response.ok) {
-                    logMessage('Software update started successfully', LOG_TYPE.SUCCESS);
+                const data = await response.json();
+                
+                if (data.success) {
+                    showStatusMessage('Software update started successfully', 'success');
+                } else if (data.manual_update_url) {
+                    // Show modal with manual update instructions, but use wiki link
+                    const wikiData = {
+                        ...data,
+                        manual_update_url: 'https://github.com/tuanchris/dune-weaver/wiki/Updating-software'
+                    };
+                    showUpdateInstructionsModal(wikiData);
                 } else {
-                    throw new Error('Failed to start software update');
+                    showStatusMessage(data.message || 'No updates available', 'info');
                 }
             } catch (error) {
                 logMessage(`Error updating software: ${error.message}`, LOG_TYPE.ERROR);
+                showStatusMessage('Failed to check for updates', 'error');
             }
         });
     }
@@ -343,7 +384,8 @@ function setupEventListeners() {
 document.addEventListener('DOMContentLoaded', function() {
     // Home button
     const homeButton = document.getElementById('homeButton');
-    homeButton.addEventListener('click', async () => {
+    if (homeButton) {
+        homeButton.addEventListener('click', async () => {
         try {
             const response = await fetch('/send_home', {
                 method: 'POST',
@@ -359,11 +401,13 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error sending home command:', error);
             updateStatus('Error: Failed to move to home position');
         }
-    });
+        });
+    }
 
     // Stop button
     const stopButton = document.getElementById('stopButton');
-    stopButton.addEventListener('click', async () => {
+    if (stopButton) {
+        stopButton.addEventListener('click', async () => {
         try {
             const response = await fetch('/stop_execution', {
                 method: 'POST',
@@ -379,11 +423,13 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error stopping execution:', error);
             updateStatus('Error: Failed to stop execution');
         }
-    });
+        });
+    }
 
     // Move to Center button
     const centerButton = document.getElementById('centerButton');
-    centerButton.addEventListener('click', async () => {
+    if (centerButton) {
+        centerButton.addEventListener('click', async () => {
         try {
             const response = await fetch('/move_to_center', {
                 method: 'POST',
@@ -399,11 +445,13 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error moving to center:', error);
             updateStatus('Error: Failed to move to center');
         }
-    });
+        });
+    }
 
     // Move to Perimeter button
     const perimeterButton = document.getElementById('perimeterButton');
-    perimeterButton.addEventListener('click', async () => {
+    if (perimeterButton) {
+        perimeterButton.addEventListener('click', async () => {
         try {
             const response = await fetch('/move_to_perimeter', {
                 method: 'POST',
@@ -419,7 +467,8 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error moving to perimeter:', error);
             updateStatus('Error: Failed to move to perimeter');
         }
-    });
+        });
+    }
 });
 
 // Function to update status
@@ -434,4 +483,69 @@ function updateStatus(message) {
             }, 3000);
         }
     }
+}
+
+// Function to show status messages (using existing base.js showStatusMessage if available)
+function showStatusMessage(message, type) {
+    if (typeof window.showStatusMessage === 'function') {
+        window.showStatusMessage(message, type);
+    } else {
+        // Fallback to console logging
+        console.log(`[${type}] ${message}`);
+    }
+}
+
+// Function to show update instructions modal
+function showUpdateInstructionsModal(data) {
+    // Create modal HTML
+    const modal = document.createElement('div');
+    modal.id = 'updateInstructionsModal';
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
+    modal.innerHTML = `
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md">
+            <div class="p-6">
+                <div class="text-center mb-4">
+                    <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-2">Manual Update Required</h2>
+                    <p class="text-gray-600 dark:text-gray-400 text-sm">
+                        ${data.message}
+                    </p>
+                </div>
+                
+                <div class="text-gray-700 dark:text-gray-300 text-sm mb-6">
+                    <p class="mb-3">${data.instructions}</p>
+                </div>
+                
+                <div class="flex gap-3 justify-center">
+                    <button id="openGitHubRelease" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
+                        View Update Instructions
+                    </button>
+                    <button id="closeUpdateModal" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Add event listeners
+    const openGitHubButton = modal.querySelector('#openGitHubRelease');
+    const closeButton = modal.querySelector('#closeUpdateModal');
+    
+    openGitHubButton.addEventListener('click', () => {
+        window.open(data.manual_update_url, '_blank');
+        document.body.removeChild(modal);
+    });
+    
+    closeButton.addEventListener('click', () => {
+        document.body.removeChild(modal);
+    });
+    
+    // Close on outside click
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            document.body.removeChild(modal);
+        }
+    });
 } 

@@ -22,6 +22,7 @@ from contextlib import asynccontextmanager
 from modules.led.led_controller import LEDController, effect_idle
 import math
 from modules.core.cache_manager import generate_all_image_previews, get_cache_path, generate_image_preview, get_pattern_metadata
+from modules.core.version_manager import version_manager
 import json
 import base64
 import time
@@ -839,6 +840,49 @@ def signal_handler(signum, frame):
     finally:
         logger.info("Exiting application...")
         os._exit(0)  # Force exit regardless of other threads
+
+@app.get("/api/version")
+async def get_version_info():
+    """Get current and latest version information"""
+    try:
+        version_info = await version_manager.get_version_info()
+        return JSONResponse(content=version_info)
+    except Exception as e:
+        logger.error(f"Error getting version info: {e}")
+        return JSONResponse(
+            content={
+                "current": version_manager.get_current_version(),
+                "latest": version_manager.get_current_version(),
+                "update_available": False,
+                "error": "Unable to check for updates"
+            },
+            status_code=200
+        )
+
+@app.post("/api/update")
+async def trigger_update():
+    """Trigger software update (placeholder for future implementation)"""
+    try:
+        # For now, just return the GitHub release URL
+        version_info = await version_manager.get_version_info()
+        if version_info.get("latest_release"):
+            return JSONResponse(content={
+                "success": False,
+                "message": "Automatic updates not implemented yet",
+                "manual_update_url": version_info["latest_release"].get("html_url"),
+                "instructions": "Please visit the GitHub release page to download and install the update manually"
+            })
+        else:
+            return JSONResponse(content={
+                "success": False,
+                "message": "No updates available"
+            })
+    except Exception as e:
+        logger.error(f"Error triggering update: {e}")
+        return JSONResponse(
+            content={"success": False, "message": "Failed to check for updates"},
+            status_code=500
+        )
 
 def entrypoint():
     import uvicorn
