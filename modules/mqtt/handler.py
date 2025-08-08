@@ -382,18 +382,32 @@ class MQTTHandler(BaseMQTTHandler):
                 self.callback_registry['set_speed'](speed)
             elif msg.topic == f"{self.device_id}/command/stop":
                 # Handle stop command
-                self.callback_registry['stop']()
+                callback = self.callback_registry['stop']
+                if asyncio.iscoroutinefunction(callback):
+                    asyncio.run_coroutine_threadsafe(callback(), self.main_loop)
+                else:
+                    callback()
                 # Clear both pattern and playlist selections
                 self._publish_pattern_state(None)
                 self._publish_playlist_state(None)
             elif msg.topic == f"{self.device_id}/command/pause":
                 # Handle pause command - only if in running state
                 if bool(self.state.current_playing_file) and not self.state.pause_requested:
-                    self.callback_registry['pause']()
+                    # Check if callback is async or sync
+                    callback = self.callback_registry['pause']
+                    if asyncio.iscoroutinefunction(callback):
+                        asyncio.run_coroutine_threadsafe(callback(), self.main_loop)
+                    else:
+                        callback()
             elif msg.topic == f"{self.device_id}/command/play":
                 # Handle play command - only if in paused state
                 if bool(self.state.current_playing_file) and self.state.pause_requested:
-                    self.callback_registry['resume']()
+                    # Check if callback is async or sync
+                    callback = self.callback_registry['resume']
+                    if asyncio.iscoroutinefunction(callback):
+                        asyncio.run_coroutine_threadsafe(callback(), self.main_loop)
+                    else:
+                        callback()
             elif msg.topic == f"{self.device_id}/playlist/mode/set":
                 mode = msg.payload.decode()
                 if mode in ["single", "loop"]:

@@ -11,22 +11,21 @@ from modules.connection.connection_manager import home
 from modules.core.state import state
 
 def create_mqtt_callbacks() -> Dict[str, Callable]:
-    """Create and return the MQTT callback registry."""
+    """Create and return the MQTT callback registry.
+    
+    Note: run_theta_rho_file and run_playlist are async functions,
+    while pause_execution, resume_execution, and stop_actions are sync functions.
+    The MQTT handler will check and handle both async and sync appropriately.
+    """
     def set_speed(speed):
         state.speed = speed
 
     return {
-        'run_pattern': lambda file_path: run_theta_rho_file(file_path),
-        'run_playlist': lambda playlist_name, run_mode="loop", pause_time=0, clear_pattern=None, shuffle=False: run_playlist(
-            playlist_name,
-            run_mode=run_mode,
-            pause_time=pause_time,
-            clear_pattern=clear_pattern,
-            shuffle=shuffle
-        ),
-        'stop': stop_actions,
-        'pause': pause_execution,
-        'resume': resume_execution,
+        'run_pattern': run_theta_rho_file,  # async function
+        'run_playlist': run_playlist,  # async function
+        'stop': stop_actions,  # sync function
+        'pause': pause_execution,  # sync function
+        'resume': resume_execution,  # sync function
         'home': home,
         'set_speed': set_speed
     }
