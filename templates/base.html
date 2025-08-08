@@ -351,6 +351,33 @@
     {% block scripts %}{% endblock %}
     <script src="/static/js/base.js"></script>
 
+    <!-- Cache Progress Modal -->
+    <div id="cacheProgressModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden p-4">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md">
+            <div class="p-6">
+                <div class="text-center">
+                    <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-2">Initializing Pattern Cache</h2>
+                    <p class="text-gray-600 dark:text-gray-400 mb-4">Preparing your pattern previews...</p>
+                    
+                    <div class="mb-4">
+                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                            <div id="cacheProgressBar" class="bg-blue-600 dark:bg-blue-400 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                        <div class="mt-2 flex justify-between text-sm text-gray-500 dark:text-gray-400">
+                            <span id="cacheProgressText">Starting...</span>
+                            <span id="cacheProgressPercentage">0%</span>
+                        </div>
+                    </div>
+                    
+                    <div class="text-sm text-gray-500 dark:text-gray-400">
+                        <p id="cacheCurrentStage">Preparing...</p>
+                        <p id="cacheCurrentFile" class="mt-1 truncate"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Player Preview Modal -->
     <div id="playerPreviewModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 hidden p-4">
         <div class="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[95vh] flex flex-col">
@@ -498,6 +525,152 @@
       document.addEventListener("DOMContentLoaded", checkInitialConnectionStatus);
 
       // Player bar toggle logic will be handled by base.js
+    </script>
+    
+    <script>
+      // Cache progress modal functionality
+      let cacheProgressSocket = null;
+      let cacheProgressCheckInterval = null;
+      
+      function initCacheProgressModal() {
+        const modal = document.getElementById('cacheProgressModal');
+        const progressBar = document.getElementById('cacheProgressBar');
+        const progressText = document.getElementById('cacheProgressText');
+        const progressPercentage = document.getElementById('cacheProgressPercentage');
+        const currentStage = document.getElementById('cacheCurrentStage');
+        const currentFile = document.getElementById('cacheCurrentFile');
+        
+        // Check if cache generation is needed on page load
+        fetch('/cache-progress')
+          .then(response => response.json())
+          .then(data => {
+            if (data.is_running) {
+              showCacheProgressModal();
+            }
+          })
+          .catch(error => {
+            console.error('Error checking initial cache progress:', error);
+          });
+        
+        function showCacheProgressModal() {
+          modal.classList.remove('hidden');
+          
+          // Connect to WebSocket for real-time updates
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const wsUrl = `${protocol}//${window.location.host}/ws/cache-progress`;
+          
+          cacheProgressSocket = new WebSocket(wsUrl);
+          
+          cacheProgressSocket.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            if (data.type === 'cache_progress') {
+              updateCacheProgress(data.data);
+            }
+          };
+          
+          cacheProgressSocket.onclose = function() {
+            // Fallback to polling if WebSocket fails
+            startProgressPolling();
+          };
+          
+          cacheProgressSocket.onerror = function() {
+            // Fallback to polling if WebSocket fails
+            startProgressPolling();
+          };
+        }
+        
+        function startProgressPolling() {
+          if (cacheProgressCheckInterval) {
+            clearInterval(cacheProgressCheckInterval);
+          }
+          
+          cacheProgressCheckInterval = setInterval(() => {
+            fetch('/cache-progress')
+              .then(response => response.json())
+              .then(data => updateCacheProgress(data))
+              .catch(error => console.error('Error fetching cache progress:', error));
+          }, 1000);
+        }
+        
+        function updateCacheProgress(data) {
+          if (!data.is_running && data.stage === 'complete') {
+            hideCacheProgressModal();
+            return;
+          }
+          
+          if (!data.is_running && data.stage === 'error') {
+            progressText.textContent = 'Error occurred';
+            currentStage.textContent = data.error || 'Unknown error';
+            currentFile.textContent = '';
+            return;
+          }
+          
+          if (!data.is_running) {
+            hideCacheProgressModal();
+            return;
+          }
+          
+          // Calculate progress percentage
+          const percentage = data.total_files > 0 ? Math.round((data.processed_files / data.total_files) * 100) : 0;
+          
+          // Update progress bar
+          progressBar.style.width = `${percentage}%`;
+          progressPercentage.textContent = `${percentage}%`;
+          
+          // Update text based on stage
+          let stageText = '';
+          let progressTextContent = '';
+          
+          switch (data.stage) {
+            case 'starting':
+              stageText = 'Initializing...';
+              progressTextContent = 'Getting ready...';
+              break;
+            case 'metadata':
+              stageText = 'Processing pattern metadata';
+              progressTextContent = `${data.processed_files} of ${data.total_files} patterns`;
+              break;
+            case 'images':
+              stageText = 'Generating pattern previews';
+              progressTextContent = `${data.processed_files} of ${data.total_files} previews`;
+              break;
+            default:
+              stageText = 'Processing...';
+              progressTextContent = `${data.processed_files} of ${data.total_files} files`;
+          }
+          
+          currentStage.textContent = stageText;
+          progressText.textContent = progressTextContent;
+          
+          // Update current file
+          if (data.current_file) {
+            currentFile.textContent = `Current: ${data.current_file}`;
+          } else {
+            currentFile.textContent = '';
+          }
+        }
+        
+        function hideCacheProgressModal() {
+          modal.classList.add('hidden');
+          
+          if (cacheProgressSocket) {
+            cacheProgressSocket.close();
+            cacheProgressSocket = null;
+          }
+          
+          if (cacheProgressCheckInterval) {
+            clearInterval(cacheProgressCheckInterval);
+            cacheProgressCheckInterval = null;
+          }
+        }
+        
+        // Expose functions globally for potential external use
+        window.showCacheProgressModal = showCacheProgressModal;
+        window.hideCacheProgressModal = hideCacheProgressModal;
+      }
+      
+      // Initialize when DOM is loaded
+      document.addEventListener('DOMContentLoaded', initCacheProgressModal);
     </script>
     <script>
       // Theme switching functionality

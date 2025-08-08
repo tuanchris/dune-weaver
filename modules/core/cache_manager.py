@@ -8,6 +8,16 @@ from modules.core.pattern_manager import list_theta_rho_files, THETA_RHO_DIR, pa
 
 logger = logging.getLogger(__name__)
 
+# Global cache progress state
+cache_progress = {
+    "is_running": False,
+    "total_files": 0,
+    "processed_files": 0,
+    "current_file": "",
+    "stage": "idle",  # idle, metadata, images, complete
+    "error": None
+}
+
 # Constants
 CACHE_DIR = os.path.join(THETA_RHO_DIR, "cached_images")
 METADATA_CACHE_FILE = "metadata_cache.json"  # Now in root directory
@@ -205,93 +215,138 @@ async def generate_image_preview(pattern_file):
         return False
 
 async def generate_all_image_previews():
-    """Generate image previews for all pattern files."""
-    ensure_cache_dir()
+    """Generate image previews for all pattern files with progress tracking."""
+    global cache_progress
     
-    pattern_files = [f for f in list_theta_rho_files() if f.endswith('.thr')]
-    
-    if not pattern_files:
-        logger.info("No .thr pattern files found. Skipping image preview generation.")
-        return
-    
-    patterns_to_cache = [f for f in pattern_files if needs_cache(f)]
-    total_files = len(patterns_to_cache)
-    skipped_files = len(pattern_files) - total_files
-    
-    if total_files == 0:
-        logger.info(f"All {skipped_files} pattern files already have image previews. Skipping image generation.")
-        return
+    try:
+        ensure_cache_dir()
         
-    logger.info(f"Generating image cache for {total_files} uncached .thr patterns ({skipped_files} already cached)...")
-    
-    batch_size = 5
-    successful = 0
-    for i in range(0, total_files, batch_size):
-        batch = patterns_to_cache[i:i + batch_size]
-        tasks = [generate_image_preview(file) for file in batch]
-        results = await asyncio.gather(*tasks)
-        successful += sum(1 for r in results if r)
+        pattern_files = [f for f in list_theta_rho_files() if f.endswith('.thr')]
         
-        # Log progress
-        progress = min(i + batch_size, total_files)
-        logger.info(f"Image cache generation progress: {progress}/{total_files} files processed")
-    
-    logger.info(f"Image cache generation completed: {successful}/{total_files} patterns cached successfully, {skipped_files} patterns skipped (already cached)")
+        if not pattern_files:
+            logger.info("No .thr pattern files found. Skipping image preview generation.")
+            return
+        
+        patterns_to_cache = [f for f in pattern_files if needs_cache(f)]
+        total_files = len(patterns_to_cache)
+        skipped_files = len(pattern_files) - total_files
+        
+        if total_files == 0:
+            logger.info(f"All {skipped_files} pattern files already have image previews. Skipping image generation.")
+            return
+            
+        # Update progress state
+        cache_progress.update({
+            "stage": "images",
+            "total_files": total_files,
+            "processed_files": 0,
+            "current_file": "",
+            "error": None
+        })
+        
+        logger.info(f"Generating image cache for {total_files} uncached .thr patterns ({skipped_files} already cached)...")
+        
+        batch_size = 5
+        successful = 0
+        for i in range(0, total_files, batch_size):
+            batch = patterns_to_cache[i:i + batch_size]
+            tasks = [generate_image_preview(file) for file in batch]
+            results = await asyncio.gather(*tasks)
+            successful += sum(1 for r in results if r)
+            
+            # Update progress
+            cache_progress["processed_files"] = min(i + batch_size, total_files)
+            if i < total_files:
+                cache_progress["current_file"] = patterns_to_cache[min(i + batch_size - 1, total_files - 1)]
+            
+            # Log progress
+            progress = min(i + batch_size, total_files)
+            logger.info(f"Image cache generation progress: {progress}/{total_files} files processed")
+        
+        logger.info(f"Image cache generation completed: {successful}/{total_files} patterns cached successfully, {skipped_files} patterns skipped (already cached)")
+        
+    except Exception as e:
+        logger.error(f"Error during image cache generation: {str(e)}")
+        cache_progress["error"] = str(e)
+        raise
 
 async def generate_metadata_cache():
-    """Generate metadata cache for all pattern files."""
-    logger.info("Starting metadata cache generation...")
+    """Generate metadata cache for all pattern files with progress tracking."""
+    global cache_progress
     
-    # Get all pattern files using the same function as the rest of the codebase
-    pattern_files = list_theta_rho_files()
-    
-    if not pattern_files:
-        logger.info("No pattern files found. Skipping metadata cache generation.")
-        return
-    
-    # Filter out files that already have valid metadata cache
-    files_to_process = []
-    for file_name in pattern_files:
-        if get_pattern_metadata(file_name) is None:
-            files_to_process.append(file_name)
-    
-    total_files = len(files_to_process)
-    skipped_files = len(pattern_files) - total_files
-    
-    if total_files == 0:
-        logger.info(f"All {skipped_files} files already have metadata cache. Skipping metadata generation.")
-        return
+    try:
+        logger.info("Starting metadata cache generation...")
         
-    logger.info(f"Generating metadata cache for {total_files} new files ({skipped_files} files already cached)...")
-    
-    # Process in batches
-    batch_size = 5
-    successful = 0
-    for i in range(0, total_files, batch_size):
-        batch = files_to_process[i:i + batch_size]
-        tasks = []
-        for file_name in batch:
-            pattern_path = os.path.join(THETA_RHO_DIR, file_name)
-            try:
-                # Parse file to get metadata
-                coordinates = await asyncio.to_thread(parse_theta_rho_file, pattern_path)
-                if coordinates:
-                    first_coord = {"x": coordinates[0][0], "y": coordinates[0][1]}
-                    last_coord = {"x": coordinates[-1][0], "y": coordinates[-1][1]}
-                    total_coords = len(coordinates)
-                    
-                    # Cache the metadata
-                    cache_pattern_metadata(file_name, first_coord, last_coord, total_coords)
-                    successful += 1
-                    logger.debug(f"Generated metadata for {file_name}")
-            except Exception as e:
-                logger.error(f"Failed to generate metadata for {file_name}: {str(e)}")
+        # Get all pattern files using the same function as the rest of the codebase
+        pattern_files = list_theta_rho_files()
         
-        # Log progress
-        progress = min(i + batch_size, total_files)
-        logger.info(f"Metadata cache generation progress: {progress}/{total_files} files processed")
-    
-    logger.info(f"Metadata cache generation completed: {successful}/{total_files} patterns cached successfully, {skipped_files} patterns skipped (already cached)")
+        if not pattern_files:
+            logger.info("No pattern files found. Skipping metadata cache generation.")
+            return
+        
+        # Filter out files that already have valid metadata cache
+        files_to_process = []
+        for file_name in pattern_files:
+            if get_pattern_metadata(file_name) is None:
+                files_to_process.append(file_name)
+        
+        total_files = len(files_to_process)
+        skipped_files = len(pattern_files) - total_files
+        
+        if total_files == 0:
+            logger.info(f"All {skipped_files} files already have metadata cache. Skipping metadata generation.")
+            return
+            
+        # Update progress state
+        cache_progress.update({
+            "stage": "metadata",
+            "total_files": total_files,
+            "processed_files": 0,
+            "current_file": "",
+            "error": None
+        })
+        
+        logger.info(f"Generating metadata cache for {total_files} new files ({skipped_files} files already cached)...")
+        
+        # Process in batches
+        batch_size = 5
+        successful = 0
+        for i in range(0, total_files, batch_size):
+            batch = files_to_process[i:i + batch_size]
+            tasks = []
+            for file_name in batch:
+                pattern_path = os.path.join(THETA_RHO_DIR, file_name)
+                try:
+                    # Parse file to get metadata
+                    coordinates = await asyncio.to_thread(parse_theta_rho_file, pattern_path)
+                    if coordinates:
+                        first_coord = {"x": coordinates[0][0], "y": coordinates[0][1]}
+                        last_coord = {"x": coordinates[-1][0], "y": coordinates[-1][1]}
+                        total_coords = len(coordinates)
+                        
+                        # Cache the metadata
+                        cache_pattern_metadata(file_name, first_coord, last_coord, total_coords)
+                        successful += 1
+                        logger.debug(f"Generated metadata for {file_name}")
+                        
+                        # Update current file being processed
+                        cache_progress["current_file"] = file_name
+                except Exception as e:
+                    logger.error(f"Failed to generate metadata for {file_name}: {str(e)}")
+            
+            # Update progress
+            cache_progress["processed_files"] = min(i + batch_size, total_files)
+            
+            # Log progress
+            progress = min(i + batch_size, total_files)
+            logger.info(f"Metadata cache generation progress: {progress}/{total_files} files processed")
+        
+        logger.info(f"Metadata cache generation completed: {successful}/{total_files} patterns cached successfully, {skipped_files} patterns skipped (already cached)")
+        
+    except Exception as e:
+        logger.error(f"Error during metadata cache generation: {str(e)}")
+        cache_progress["error"] = str(e)
+        raise
 
 async def rebuild_cache():
     """Rebuild the entire cache for all pattern files."""
@@ -327,3 +382,65 @@ async def rebuild_cache():
         logger.info(f"Image preview generation progress: {progress}/{total_files} files processed")
     
     logger.info(f"Cache rebuild completed: {successful}/{total_files} patterns cached successfully")
+
+async def generate_cache_background():
+    """Run cache generation in the background with progress tracking."""
+    global cache_progress
+    
+    try:
+        cache_progress.update({
+            "is_running": True,
+            "stage": "starting",
+            "total_files": 0,
+            "processed_files": 0,
+            "current_file": "",
+            "error": None
+        })
+        
+        # First generate metadata cache
+        await generate_metadata_cache()
+        
+        # Then generate image previews
+        await generate_all_image_previews()
+        
+        # Mark as complete
+        cache_progress.update({
+            "is_running": False,
+            "stage": "complete",
+            "current_file": "",
+            "error": None
+        })
+        
+        logger.info("Background cache generation completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Background cache generation failed: {str(e)}")
+        cache_progress.update({
+            "is_running": False,
+            "stage": "error",
+            "error": str(e)
+        })
+        raise
+
+def get_cache_progress():
+    """Get the current cache generation progress."""
+    global cache_progress
+    return cache_progress.copy()
+
+def is_cache_generation_needed():
+    """Check if cache generation is needed."""
+    pattern_files = [f for f in list_theta_rho_files() if f.endswith('.thr')]
+    
+    if not pattern_files:
+        return False
+    
+    # Check if any files need caching
+    patterns_to_cache = [f for f in pattern_files if needs_cache(f)]
+    
+    # Check metadata cache
+    files_needing_metadata = []
+    for file_name in pattern_files:
+        if get_pattern_metadata(file_name) is None:
+            files_needing_metadata.append(file_name)
+    
+    return len(patterns_to_cache) > 0 or len(files_needing_metadata) > 0

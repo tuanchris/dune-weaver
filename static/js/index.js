@@ -346,7 +346,9 @@ async function addPatternToBatch(pattern, element) {
         const loadingText = isNewUpload ? 'Generating preview...' : 'Loading...';
         element.innerHTML = `
             <div class="absolute inset-0 flex items-center justify-center bg-slate-100 rounded-full">
-                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-500"></div>
+                <div class="bg-slate-200 rounded-full h-8 w-8 flex items-center justify-center">
+                    <div class="bg-slate-500 rounded-full h-4 w-4"></div>
+                </div>
             </div>
             <div class="absolute inset-0 flex items-center justify-center">
                 <div class="text-xs text-slate-500 mt-12">${loadingText}</div>
@@ -662,7 +664,7 @@ function createPatternCard(pattern) {
     previewContainer.dataset.pattern = pattern;
     
     // Add loading indicator
-    previewContainer.innerHTML = '<div class="absolute inset-0 flex items-center justify-center"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-500"></div></div>';
+    previewContainer.innerHTML = '<div class="absolute inset-0 flex items-center justify-center"><div class="bg-slate-200 rounded-full h-8 w-8 flex items-center justify-center"><div class="bg-slate-500 rounded-full h-4 w-4"></div></div></div>';
     
     // Add play button overlay (hidden by default, shown on hover)
     const playOverlay = document.createElement('div');
@@ -1295,7 +1297,9 @@ async function cacheAllPreviews() {
             // Update button text with progress
             const overallProgress = Math.round(((startIndex + batchStart + BATCH_SIZE) / uncachedPatterns.length) * 100);
             cacheAllButton.innerHTML = `
-                <div class="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                <div class="bg-white bg-opacity-30 rounded-full h-4 w-4 flex items-center justify-center">
+                    <div class="bg-white rounded-full h-2 w-2"></div>
+                </div>
                 <span>Caching ${overallProgress}%</span>
             `;
 

@@ -318,7 +318,9 @@ html:not(.dark) #availablePatternsGrid .text-xs {
       <!-- Loading indicator -->
       <div id="patternsLoadingIndicator" class="flex items-center justify-center py-12 text-gray-500 dark:text-gray-400 hidden">
         <div class="flex items-center gap-3">
-          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-500 dark:border-gray-400"></div>
+          <div class="bg-gray-200 dark:bg-gray-700 rounded-full h-6 w-6 flex items-center justify-center">
+            <div class="bg-gray-500 dark:bg-gray-400 rounded-full h-3 w-3"></div>
+          </div>
           <span class="text-sm">Loading patterns...</span>
         </div>
       </div>
