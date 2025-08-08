@@ -187,37 +187,53 @@ async function openPlayerPreviewModal() {
 // Setup player preview canvas for modal
 function setupPlayerPreviewCanvas(ctx) {
     const canvas = ctx.canvas;
-    const container = canvas.parentElement;
+    const container = canvas.parentElement; // This is the div with max-w and max-h constraints
     const modal = document.getElementById('playerPreviewModal');
     
     if (!container || !modal) return;
     
-    // Get the modal's available height for the canvas area
-    const modalContent = modal.querySelector('.bg-white');
-    const modalHeader = modal.querySelector('.flex-shrink-0');
-    const modalControls = modal.querySelector('.flex-shrink-0:last-child');
+    // Calculate available viewport space directly
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
     
-    const modalHeight = modalContent.clientHeight;
-    const headerHeight = modalHeader ? modalHeader.clientHeight : 0;
-    const controlsHeight = modalControls ? modalControls.clientHeight : 0;
-    const padding = 32; // 2 * p-4 (16px each)
+    // Calculate maximum canvas size based on viewport and fixed estimates
+    // Modal uses max-w-5xl (1024px) but we want to be responsive to actual viewport
+    const modalMaxWidth = Math.min(1024, viewportWidth * 0.9); // Account for modal padding
+    const modalMaxHeight = viewportHeight * 0.95; // max-h-[95vh]
     
-    // Calculate available height for canvas
-    const availableHeight = modalHeight - headerHeight - controlsHeight - padding;
+    // Reserve space for modal header (~80px) and controls (~200px) and padding
+    const reservedSpace = 320; // Header + controls + padding
+    const availableModalHeight = modalMaxHeight - reservedSpace;
     
-    // Calculate the size (use the smaller of width or height to maintain aspect ratio)
-    const containerWidth = container.clientWidth;
-    const containerHeight = container.clientHeight;
-    const size = Math.min(containerWidth, containerHeight, availableHeight);
+    // Calculate canvas constraints (stay within original 800px max, but be responsive)
+    const maxCanvasSize = Math.min(800, modalMaxWidth - 64, availableModalHeight); // 64px for canvas area padding
+    
+    // Ensure minimum size
+    const finalSize = Math.max(200, maxCanvasSize);
+    
+    // Update container to exact size (override CSS constraints)
+    container.style.width = `${finalSize}px`;
+    container.style.height = `${finalSize}px`;
+    container.style.maxWidth = `${finalSize}px`;
+    container.style.maxHeight = `${finalSize}px`;
+    container.style.minWidth = `${finalSize}px`;
+    container.style.minHeight = `${finalSize}px`;
     
     // Set the internal canvas size for high-DPI rendering
     const pixelRatio = (window.devicePixelRatio || 1) * 2;
-    canvas.width = size * pixelRatio;
-    canvas.height = size * pixelRatio;
+    canvas.width = finalSize * pixelRatio;
+    canvas.height = finalSize * pixelRatio;
     
-    // Set the display size
-    canvas.style.width = `${size}px`;
-    canvas.style.height = `${size}px`;
+    // Set the display size (canvas fills its container)
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    
+    console.log('Canvas resized:', {
+        viewport: `${viewportWidth}x${viewportHeight}`,
+        modalMaxWidth,
+        availableModalHeight,
+        finalSize: finalSize
+    });
 }
 
 // Get interpolated coordinate at specific progress
@@ -727,14 +743,22 @@ function initializeWebSocket() {
     connectWebSocket();
 }
 
-// Add resize handler for responsive canvas
+// Add resize handler for responsive canvas with debouncing
+let resizeTimeout;
 window.addEventListener('resize', () => {
     const canvas = document.getElementById('playerPreviewCanvas');
     const modal = document.getElementById('playerPreviewModal');
+    
     if (canvas && modal && !modal.classList.contains('hidden')) {
-        const ctx = canvas.getContext('2d');
-        setupPlayerPreviewCanvas(ctx);
-        drawPlayerPreview(ctx, targetProgress);
+        // Clear previous timeout
+        clearTimeout(resizeTimeout);
+        
+        // Debounce resize calls to avoid excessive updates
+        resizeTimeout = setTimeout(() => {
+            const ctx = canvas.getContext('2d');
+            setupPlayerPreviewCanvas(ctx);
+            drawPlayerPreview(ctx, targetProgress);
+        }, 16); // ~60fps update rate
     }
 });
 
@@ -748,4 +772,207 @@ function handleFileChange(newFile) {
             playerPreviewData = null;
         }
     }
-} 
+}
+
+// Cache All Previews Prompt functionality
+let cacheAllInProgress = false;
+
+function shouldShowCacheAllPrompt() {
+    // Check if we've already shown the prompt
+    const promptShown = localStorage.getItem('cacheAllPromptShown');
+    console.log('shouldShowCacheAllPrompt - promptShown:', promptShown);
+    return !promptShown;
+}
+
+function showCacheAllPrompt(forceShow = false) {
+    console.log('showCacheAllPrompt called, forceShow:', forceShow);
+    if (!forceShow && !shouldShowCacheAllPrompt()) {
+        console.log('Cache all prompt already shown, skipping');
+        return;
+    }
+    
+    const modal = document.getElementById('cacheAllPromptModal');
+    if (modal) {
+        console.log('Showing cache all prompt modal');
+        modal.classList.remove('hidden');
+        // Store whether this was forced (manually triggered)
+        modal.dataset.manuallyTriggered = forceShow.toString();
+    } else {
+        console.log('Cache all prompt modal not found');
+    }
+}
+
+function hideCacheAllPrompt() {
+    const modal = document.getElementById('cacheAllPromptModal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
+function markCacheAllPromptAsShown() {
+    localStorage.setItem('cacheAllPromptShown', 'true');
+}
+
+function initializeCacheAllPrompt() {
+    const modal = document.getElementById('cacheAllPromptModal');
+    const skipBtn = document.getElementById('skipCacheAllBtn');
+    const startBtn = document.getElementById('startCacheAllBtn');
+    const closeBtn = document.getElementById('closeCacheAllBtn');
+    
+    if (!modal || !skipBtn || !startBtn || !closeBtn) {
+        return;
+    }
+
+    // Skip button handler
+    skipBtn.addEventListener('click', () => {
+        const wasManuallyTriggered = modal.dataset.manuallyTriggered === 'true';
+        hideCacheAllPrompt();
+        
+        // Only mark as shown if it was automatically shown (not manually triggered)
+        if (!wasManuallyTriggered) {
+            markCacheAllPromptAsShown();
+        }
+    });
+
+    // Close button handler (after completion)
+    closeBtn.addEventListener('click', () => {
+        const wasManuallyTriggered = modal.dataset.manuallyTriggered === 'true';
+        hideCacheAllPrompt();
+        
+        // Always mark as shown after successful completion
+        if (!wasManuallyTriggered) {
+            markCacheAllPromptAsShown();
+        }
+    });
+
+    // Start caching button handler
+    startBtn.addEventListener('click', async () => {
+        if (cacheAllInProgress) {
+            return;
+        }
+
+        cacheAllInProgress = true;
+        
+        // Hide buttons and show progress
+        document.getElementById('cacheAllButtons').classList.add('hidden');
+        document.getElementById('cacheAllProgress').classList.remove('hidden');
+
+        try {
+            await startCacheAllProcess();
+            
+            // Show completion message
+            document.getElementById('cacheAllProgress').classList.add('hidden');
+            document.getElementById('cacheAllComplete').classList.remove('hidden');
+        } catch (error) {
+            console.error('Error caching all previews:', error);
+            
+            // Show error and reset
+            document.getElementById('cacheAllProgressText').textContent = 'Error occurred during caching';
+            setTimeout(() => {
+                hideCacheAllPrompt();
+                markCacheAllPromptAsShown();
+            }, 3000);
+        } finally {
+            cacheAllInProgress = false;
+        }
+    });
+}
+
+async function startCacheAllProcess() {
+    try {
+        // Get list of patterns
+        const response = await fetch('/list_theta_rho_files');
+        const patterns = await response.json();
+        
+        if (!patterns || patterns.length === 0) {
+            throw new Error('No patterns found');
+        }
+
+        const progressBar = document.getElementById('cacheAllProgressBar');
+        const progressText = document.getElementById('cacheAllProgressText');
+        const progressPercentage = document.getElementById('cacheAllProgressPercentage');
+        
+        let completed = 0;
+        const batchSize = 5; // Process in small batches to avoid overwhelming the server
+
+        for (let i = 0; i < patterns.length; i += batchSize) {
+            const batch = patterns.slice(i, i + batchSize);
+            
+            // Update progress text
+            progressText.textContent = `Caching previews... (${Math.min(i + batchSize, patterns.length)}/${patterns.length})`;
+            
+            // Process batch
+            const batchPromises = batch.map(async (pattern) => {
+                try {
+                    const previewResponse = await fetch('/preview_thr', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ file_name: pattern })
+                    });
+                    
+                    if (previewResponse.ok) {
+                        const data = await previewResponse.json();
+                        if (data.preview_url) {
+                            // Pre-load the image to cache it
+                            return new Promise((resolve) => {
+                                const img = new Image();
+                                img.onload = () => resolve();
+                                img.onerror = () => resolve(); // Continue even if image fails
+                                img.src = data.preview_url;
+                            });
+                        }
+                    }
+                    return Promise.resolve();
+                } catch (error) {
+                    console.warn(`Failed to cache preview for ${pattern}:`, error);
+                    return Promise.resolve(); // Continue with other patterns
+                }
+            });
+
+            await Promise.all(batchPromises);
+            completed += batch.length;
+
+            // Update progress bar
+            const progress = Math.round((completed / patterns.length) * 100);
+            progressBar.style.width = `${progress}%`;
+            progressPercentage.textContent = `${progress}%`;
+
+            // Small delay between batches to prevent overwhelming the server
+            if (i + batchSize < patterns.length) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        }
+
+        progressText.textContent = `Completed! Cached ${patterns.length} previews.`;
+        
+    } catch (error) {
+        throw error;
+    }
+}
+
+// Function to be called after initial cache generation completes
+function onInitialCacheComplete() {
+    console.log('onInitialCacheComplete called');
+    // Show the cache all prompt after a short delay
+    setTimeout(() => {
+        console.log('Triggering cache all prompt after delay');
+        showCacheAllPrompt();
+    }, 1000);
+}
+
+// Initialize on DOM load
+document.addEventListener('DOMContentLoaded', () => {
+    initializeCacheAllPrompt();
+});
+
+// Make functions available globally for debugging
+window.onInitialCacheComplete = onInitialCacheComplete;
+window.showCacheAllPrompt = showCacheAllPrompt;
+window.testCacheAllPrompt = function() {
+    console.log('Manual test trigger');
+    // Clear localStorage for testing
+    localStorage.removeItem('cacheAllPromptShown');
+    showCacheAllPrompt();
+}; 

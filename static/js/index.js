@@ -1073,9 +1073,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // Setup cache all button
+        // Setup cache all button - now triggers the modal
         if (cacheAllButton) {
-            cacheAllButton.addEventListener('click', () => cacheAllPreviews());
+            cacheAllButton.addEventListener('click', () => {
+                // Always show the modal when manually clicked, using forceShow parameter
+                if (typeof showCacheAllPrompt === 'function') {
+                    showCacheAllPrompt(true); // true = forceShow
+                } else {
+                    // Fallback if function not available
+                    const modal = document.getElementById('cacheAllPromptModal');
+                    if (modal) {
+                        modal.classList.remove('hidden');
+                        modal.dataset.manuallyTriggered = 'true';
+                    }
+                }
+            });
         }
 
         // Load patterns on page load
