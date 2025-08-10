@@ -98,6 +98,8 @@ def list_theta_rho_files():
     for root, _, filenames in os.walk(THETA_RHO_DIR):
         for file in filenames:
             relative_path = os.path.relpath(os.path.join(root, file), THETA_RHO_DIR)
+            # Normalize path separators to always use forward slashes for consistency across platforms
+            relative_path = relative_path.replace(os.sep, '/')
             files.append(relative_path)
     logger.debug(f"Found {len(files)} theta-rho files")
     return [file for file in files if file.endswith('.thr')]
@@ -289,6 +291,11 @@ async def run_theta_rho_file(file_path, is_playlist=False):
             return
             
         connection_manager.check_idle()
+        
+        # Set LED back to idle when pattern completes normally (not stopped early)
+        if state.led_controller and not state.stop_requested:
+            effect_idle(state.led_controller)
+            logger.debug("LED effect set to idle after pattern completion")
         
         # Only clear state if not part of a playlist
         if not is_playlist:
@@ -545,7 +552,9 @@ def get_status():
         "speed": state.speed,
         "pause_time_remaining": state.pause_time_remaining,
         "original_pause_time": getattr(state, 'original_pause_time', None),
-        "connection_status": state.conn.is_connected() if state.conn else False
+        "connection_status": state.conn.is_connected() if state.conn else False,
+        "current_theta": state.current_theta,
+        "current_rho": state.current_rho
     }
     
     # Add playlist information if available
