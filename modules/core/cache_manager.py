@@ -56,10 +56,15 @@ def ensure_cache_dir():
 
 def get_cache_path(pattern_file):
     """Get the cache path for a pattern file."""
+    # Normalize path separators to handle both forward slashes and backslashes
+    pattern_file = pattern_file.replace('\\', '/')
+    
     # Create subdirectories in cache to match the pattern file structure
     cache_subpath = os.path.dirname(pattern_file)
     if cache_subpath:
         # Create the same subdirectory structure in cache (including custom_patterns)
+        # Convert forward slashes back to platform-specific separator for os.path.join
+        cache_subpath = cache_subpath.replace('/', os.sep)
         cache_dir = os.path.join(CACHE_DIR, cache_subpath)
     else:
         # For files in root pattern directory

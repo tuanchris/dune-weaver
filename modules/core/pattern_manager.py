@@ -98,6 +98,8 @@ def list_theta_rho_files():
     for root, _, filenames in os.walk(THETA_RHO_DIR):
         for file in filenames:
             relative_path = os.path.relpath(os.path.join(root, file), THETA_RHO_DIR)
+            # Normalize path separators to always use forward slashes for consistency across platforms
+            relative_path = relative_path.replace(os.sep, '/')
             files.append(relative_path)
     logger.debug(f"Found {len(files)} theta-rho files")
     return [file for file in files if file.endswith('.thr')]
