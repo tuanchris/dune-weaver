@@ -547,7 +547,9 @@ def get_status():
         "speed": state.speed,
         "pause_time_remaining": state.pause_time_remaining,
         "original_pause_time": getattr(state, 'original_pause_time', None),
-        "connection_status": state.conn.is_connected() if state.conn else False
+        "connection_status": state.conn.is_connected() if state.conn else False,
+        "current_theta": state.current_theta,
+        "current_rho": state.current_rho
     }
     
     # Add playlist information if available
