@@ -292,6 +292,11 @@ async def run_theta_rho_file(file_path, is_playlist=False):
             
         connection_manager.check_idle()
         
+        # Set LED back to idle when pattern completes normally (not stopped early)
+        if state.led_controller and not state.stop_requested:
+            effect_idle(state.led_controller)
+            logger.debug("LED effect set to idle after pattern completion")
+        
         # Only clear state if not part of a playlist
         if not is_playlist:
             state.current_playing_file = None
