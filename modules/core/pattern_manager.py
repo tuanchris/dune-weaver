@@ -109,7 +109,7 @@ def parse_theta_rho_file(file_path):
     coordinates = []
     try:
         logger.debug(f"Parsing theta-rho file: {file_path}")
-        with open(file_path, 'r') as file:
+        with open(file_path, 'r', encoding='utf-8') as file:
             for line in file:
                 line = line.strip()
                 if not line or line.startswith("#"):

@@ -42,6 +42,10 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+def normalize_file_path(file_path: str) -> str:
+    """Normalize file path separators for consistent cross-platform handling."""
+    return file_path.replace('\\', '/')
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -262,12 +266,21 @@ async def upload_theta_rho(file: UploadFile = File(...)):
         custom_patterns_dir = os.path.join(pattern_manager.THETA_RHO_DIR, "custom_patterns")
         os.makedirs(custom_patterns_dir, exist_ok=True)
         
-        file_path_in_patterns_dir = os.path.join("custom_patterns", file.filename)
+        # Use forward slashes for internal path representation to maintain consistency
+        file_path_in_patterns_dir = f"custom_patterns/{file.filename}"
         full_file_path = os.path.join(pattern_manager.THETA_RHO_DIR, file_path_in_patterns_dir)
         
-        # Save the uploaded file
-        with open(full_file_path, "wb") as f:
-            f.write(await file.read())
+        # Save the uploaded file with proper encoding for Windows compatibility
+        file_content = await file.read()
+        try:
+            # First try to decode as UTF-8 and re-encode to ensure proper encoding
+            text_content = file_content.decode('utf-8')
+            with open(full_file_path, "w", encoding='utf-8') as f:
+                f.write(text_content)
+        except UnicodeDecodeError:
+            # If UTF-8 decoding fails, save as binary (fallback)
+            with open(full_file_path, "wb") as f:
+                f.write(file_content)
         
         logger.info(f"File {file.filename} saved successfully")
         
@@ -304,7 +317,9 @@ async def get_theta_rho_coordinates(request: GetCoordinatesRequest):
             file_name = file_name[11:]  # Remove './patterns/' prefix
         elif file_name.startswith('patterns/'):
             file_name = file_name[9:]   # Remove 'patterns/' prefix
-            
+        
+        # Normalize file path for cross-platform compatibility
+        file_name = normalize_file_path(file_name)
         file_path = os.path.join(THETA_RHO_DIR, file_name)
         
         if not os.path.exists(file_path):
@@ -424,7 +439,9 @@ async def delete_theta_rho_file(request: DeleteFileRequest):
         logger.warning("Delete theta-rho file request received without filename")
         raise HTTPException(status_code=400, detail="No file name provided")
 
-    file_path = os.path.join(pattern_manager.THETA_RHO_DIR, request.file_name)
+    # Normalize file path for cross-platform compatibility
+    normalized_file_name = normalize_file_path(request.file_name)
+    file_path = os.path.join(pattern_manager.THETA_RHO_DIR, normalized_file_name)
     if not os.path.exists(file_path):
         logger.error(f"Attempted to delete non-existent file: {file_path}")
         raise HTTPException(status_code=404, detail="File not found")
@@ -436,7 +453,7 @@ async def delete_theta_rho_file(request: DeleteFileRequest):
         
         # Clean up cached preview image and metadata
         from modules.core.cache_manager import delete_pattern_cache
-        cache_cleanup_success = delete_pattern_cache(request.file_name)
+        cache_cleanup_success = delete_pattern_cache(normalized_file_name)
         if cache_cleanup_success:
             logger.info(f"Successfully cleaned up cache for {request.file_name}")
         else:
@@ -481,25 +498,27 @@ async def preview_thr(request: DeleteFileRequest):
         logger.warning("Preview theta-rho request received without filename")
         raise HTTPException(status_code=400, detail="No file name provided")
 
+    # Normalize file path for cross-platform compatibility
+    normalized_file_name = normalize_file_path(request.file_name)
     # Construct the full path to the pattern file to check existence
-    pattern_file_path = os.path.join(pattern_manager.THETA_RHO_DIR, request.file_name)
+    pattern_file_path = os.path.join(pattern_manager.THETA_RHO_DIR, normalized_file_name)
     if not os.path.exists(pattern_file_path):
         logger.error(f"Attempted to preview non-existent pattern file: {pattern_file_path}")
         raise HTTPException(status_code=404, detail="Pattern file not found")
 
     try:
-        cache_path = get_cache_path(request.file_name)
+        cache_path = get_cache_path(normalized_file_name)
         
         if not os.path.exists(cache_path):
             logger.info(f"Cache miss for {request.file_name}. Generating preview...")
             # Attempt to generate the preview if it's missing
-            success = await generate_image_preview(request.file_name)
+            success = await generate_image_preview(normalized_file_name)
             if not success or not os.path.exists(cache_path):
                 logger.error(f"Failed to generate or find preview for {request.file_name} after attempting generation.")
                 raise HTTPException(status_code=500, detail="Failed to generate preview image.")
 
         # Try to get coordinates from metadata cache first
-        metadata = get_pattern_metadata(request.file_name)
+        metadata = get_pattern_metadata(normalized_file_name)
         if metadata:
             first_coord_obj = metadata.get('first_coordinate')
             last_coord_obj = metadata.get('last_coordinate')
@@ -516,7 +535,8 @@ async def preview_thr(request: DeleteFileRequest):
 
         # Return JSON with preview URL and coordinates
         # URL encode the file_name for the preview URL
-        encoded_filename = request.file_name.replace('/', '--')
+        # Handle both forward slashes and backslashes for cross-platform compatibility
+        encoded_filename = normalized_file_name.replace('\\', '--').replace('/', '--')
         return {
             "preview_url": f"/preview/{encoded_filename}",
             "first_coordinate": first_coord_obj,
@@ -532,10 +552,20 @@ async def preview_thr(request: DeleteFileRequest):
 @app.get("/preview/{encoded_filename}")
 async def serve_preview(encoded_filename: str):
     """Serve a preview image for a pattern file."""
-    # Decode the filename by replacing -- with /
+    # Decode the filename by replacing -- with the original path separators
+    # First try forward slash (most common case), then backslash if needed
     file_name = encoded_filename.replace('--', '/')
-    cache_path = get_cache_path(file_name)
     
+    # Check if the decoded path exists, if not try backslash decoding
+    cache_path = get_cache_path(file_name)
+    if not os.path.exists(cache_path):
+        # Try with backslash for Windows paths
+        file_name_backslash = encoded_filename.replace('--', '\\')
+        cache_path_backslash = get_cache_path(file_name_backslash)
+        if os.path.exists(cache_path_backslash):
+            file_name = file_name_backslash
+            cache_path = cache_path_backslash
+    # cache_path is already determined above in the decoding logic
     if not os.path.exists(cache_path):
         logger.error(f"Preview image not found for {file_name}")
         raise HTTPException(status_code=404, detail="Preview image not found")
@@ -763,23 +793,25 @@ async def preview_thr_batch(request: dict):
     for file_name in file_names:
         t1 = time.time()
         try:
-            pattern_file_path = os.path.join(pattern_manager.THETA_RHO_DIR, file_name)
+            # Normalize file path for cross-platform compatibility
+            normalized_file_name = normalize_file_path(file_name)
+            pattern_file_path = os.path.join(pattern_manager.THETA_RHO_DIR, normalized_file_name)
             if not os.path.exists(pattern_file_path):
                 logger.warning(f"Pattern file not found: {pattern_file_path}")
                 results[file_name] = {"error": "Pattern file not found"}
                 continue
 
-            cache_path = get_cache_path(file_name)
+            cache_path = get_cache_path(normalized_file_name)
             
             if not os.path.exists(cache_path):
                 logger.info(f"Cache miss for {file_name}. Generating preview...")
-                success = await generate_image_preview(file_name)
+                success = await generate_image_preview(normalized_file_name)
                 if not success or not os.path.exists(cache_path):
                     logger.error(f"Failed to generate or find preview for {file_name}")
                     results[file_name] = {"error": "Failed to generate preview"}
                     continue
 
-            metadata = get_pattern_metadata(file_name)
+            metadata = get_pattern_metadata(normalized_file_name)
             if metadata:
                 first_coord_obj = metadata.get('first_coordinate')
                 last_coord_obj = metadata.get('last_coordinate')
