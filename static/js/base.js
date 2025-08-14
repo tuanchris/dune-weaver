@@ -510,23 +510,20 @@ function setupPlayerPreviewModalEvents() {
     
     // Close modal when clicking close button
     closeBtn.addEventListener('click', () => {
-        modal.classList.add('hidden');
-
+        setModalVisibility(false, true);
     });
     
     // Close modal when clicking outside
     modal.addEventListener('click', (e) => {
         if (e.target === modal) {
-            modal.classList.add('hidden');
-
+            setModalVisibility(false, true);
         }
     });
     
     // Close modal with Escape key
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
-            modal.classList.add('hidden');
-
+            setModalVisibility(false, true);
         }
     });
     
@@ -750,7 +747,7 @@ function togglePreviewModal() {
     if (isHidden) {
         openPlayerPreviewModal();
     } else {
-        modal.classList.add('hidden');
+        setModalVisibility(false, true);
         toggleBtn.classList.remove('active-tab');
         toggleBtn.classList.add('inactive-tab');
     }
