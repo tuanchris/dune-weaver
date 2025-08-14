@@ -581,25 +581,13 @@ def get_status():
 
 async def broadcast_progress():
     """Background task to broadcast progress updates."""
-    from app import active_status_connections
+    from main import broadcast_status_update
     while True:
         # Send status updates regardless of pattern_lock state
         status = get_status()
-        disconnected = set()
         
-        # Create a copy of the set for iteration
-        active_connections = active_status_connections.copy()
-        
-        for websocket in active_connections:
-            try:
-                await websocket.send_json(status)
-            except Exception as e:
-                logger.warning(f"Failed to send status update: {e}")
-                disconnected.add(websocket)
-        
-        # Clean up disconnected clients
-        if disconnected:
-            active_status_connections.difference_update(disconnected)
+        # Use the existing broadcast function from main.py
+        await broadcast_status_update(status)
             
         # Check if we should stop broadcasting
         if not state.current_playlist:

@@ -1,5 +1,11 @@
 // Global variables
 let allPatterns = [];
+
+// Helper function to normalize file paths for cross-platform compatibility
+function normalizeFilePath(filePath) {
+    if (!filePath) return '';
+    return filePath.replace('./patterns\\', '').replace('./patterns/', '').replace('patterns\\', '').replace('patterns/', '');
+}
 let selectedPattern = null;
 let previewObserver = null;
 let currentBatch = 0;
@@ -1219,7 +1225,7 @@ function updateCurrentlyPlayingUI(status) {
 
     // Update file name display
     if (status.current_file) {
-        const fileName = status.current_file.replace('./patterns/', '');
+        const fileName = normalizeFilePath(status.current_file);
         fileNameElement.textContent = fileName;
     } else {
         fileNameElement.textContent = 'No pattern playing';
@@ -1229,7 +1235,7 @@ function updateCurrentlyPlayingUI(status) {
     const nextFileElement = document.getElementById('next-file');
     if (nextFileElement) {
         if (status.playlist && status.playlist.next_file) {
-            const nextFileName = status.playlist.next_file.replace('./patterns/', '');
+            const nextFileName = normalizeFilePath(status.playlist.next_file);
             nextFileElement.textContent = `(Next: ${nextFileName})`;
             nextFileElement.style.display = 'block';
         } else {

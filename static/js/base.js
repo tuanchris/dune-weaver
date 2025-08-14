@@ -1,4 +1,11 @@
 // Player status bar functionality - Updated to fix logMessage errors
+
+// Helper function to normalize file paths for cross-platform compatibility
+function normalizeFilePath(filePath) {
+    if (!filePath) return '';
+    return filePath.replace('./patterns\\', '').replace('./patterns/', '').replace('patterns\\', '').replace('patterns/', '');
+}
+
 let ws = null;
 let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
@@ -66,7 +73,7 @@ function connectWebSocket() {
                 
                 // Check if current file has changed and reload preview data if needed
                 if (data.data.current_file) {
-                    const newFile = data.data.current_file.replace('./patterns/', '');
+                    const newFile = normalizeFilePath(data.data.current_file);
                     if (newFile !== currentPreviewFile) {
                         currentPreviewFile = newFile;
                         loadPlayerPreviewData(data.data.current_file);
@@ -395,7 +402,7 @@ async function loadPlayerPreviewData(pattern) {
         
         playerPreviewData = data.coordinates;
         // Store the filename for comparison
-        playerPreviewData.fileName = pattern.replace('./patterns/', '');
+        playerPreviewData.fileName = normalizeFilePath(pattern);
         
     } catch (error) {
         console.error(`Error loading player preview data: ${error.message}`);
@@ -626,7 +633,7 @@ async function exitModalSpeedEditMode(save = false) {
 // Helper function to clean up pattern names
 function getCleanPatternName(filePath) {
     if (!filePath) return '';
-    const fileName = filePath.replace('./patterns/', '');
+    const fileName = normalizeFilePath(filePath);
     return fileName.split('/').pop().replace('.thr', '');
 }
 
@@ -641,7 +648,7 @@ function syncModalControls(status) {
     // Pattern preview image
     const modalPatternPreviewImg = document.getElementById('modal-pattern-preview-img');
     if (modalPatternPreviewImg && status.current_file) {
-        const encodedFilename = status.current_file.replace('./patterns/', '').replace(/\//g, '--');
+        const encodedFilename = normalizeFilePath(status.current_file).replace(/[\\/]/g, '--');
         const previewUrl = `/preview/${encodedFilename}`;
         modalPatternPreviewImg.src = previewUrl;
     }

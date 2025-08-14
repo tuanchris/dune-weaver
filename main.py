@@ -44,7 +44,16 @@ logger = logging.getLogger(__name__)
 
 def normalize_file_path(file_path: str) -> str:
     """Normalize file path separators for consistent cross-platform handling."""
-    return file_path.replace('\\', '/')
+    # First normalize path separators
+    normalized = file_path.replace('\\', '/')
+    
+    # Remove any patterns directory prefixes that might be present
+    if normalized.startswith('./patterns/'):
+        normalized = normalized[11:]
+    elif normalized.startswith('patterns/'):
+        normalized = normalized[9:]
+    
+    return normalized
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -311,15 +320,8 @@ async def upload_theta_rho(file: UploadFile = File(...)):
 async def get_theta_rho_coordinates(request: GetCoordinatesRequest):
     """Get theta-rho coordinates for animated preview."""
     try:
-        # Handle file paths that may include the patterns directory prefix
-        file_name = request.file_name
-        if file_name.startswith('./patterns/'):
-            file_name = file_name[11:]  # Remove './patterns/' prefix
-        elif file_name.startswith('patterns/'):
-            file_name = file_name[9:]   # Remove 'patterns/' prefix
-        
-        # Normalize file path for cross-platform compatibility
-        file_name = normalize_file_path(file_name)
+        # Normalize file path for cross-platform compatibility and remove prefixes
+        file_name = normalize_file_path(request.file_name)
         file_path = os.path.join(THETA_RHO_DIR, file_name)
         
         if not os.path.exists(file_path):
@@ -353,7 +355,9 @@ async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTa
         file_path = pattern_manager.get_clear_pattern_file(request.file_name.split('.')[0])
         logger.info(f'Clear pattern file: {file_path}')
     if not file_path:
-        file_path = os.path.join(pattern_manager.THETA_RHO_DIR, request.file_name)
+        # Normalize file path for cross-platform compatibility
+        normalized_file_name = normalize_file_path(request.file_name)
+        file_path = os.path.join(pattern_manager.THETA_RHO_DIR, normalized_file_name)
     if not os.path.exists(file_path):
         logger.error(f'Theta-rho file not found: {file_path}')
         raise HTTPException(status_code=404, detail="File not found")
@@ -556,11 +560,15 @@ async def serve_preview(encoded_filename: str):
     # First try forward slash (most common case), then backslash if needed
     file_name = encoded_filename.replace('--', '/')
     
+    # Apply normalization to handle any remaining path prefixes
+    file_name = normalize_file_path(file_name)
+    
     # Check if the decoded path exists, if not try backslash decoding
     cache_path = get_cache_path(file_name)
     if not os.path.exists(cache_path):
         # Try with backslash for Windows paths
         file_name_backslash = encoded_filename.replace('--', '\\')
+        file_name_backslash = normalize_file_path(file_name_backslash)
         cache_path_backslash = get_cache_path(file_name_backslash)
         if os.path.exists(cache_path_backslash):
             file_name = file_name_backslash
