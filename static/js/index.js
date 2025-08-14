@@ -4,7 +4,17 @@ let allPatterns = [];
 // Helper function to normalize file paths for cross-platform compatibility
 function normalizeFilePath(filePath) {
     if (!filePath) return '';
-    return filePath.replace('./patterns\\', '').replace('./patterns/', '').replace('patterns\\', '').replace('patterns/', '');
+    // First normalize path separators
+    let normalized = filePath.replace(/\\/g, '/');
+    
+    // Remove only the patterns directory prefix, not patterns within the path
+    if (normalized.startsWith('./patterns/')) {
+        normalized = normalized.substring(11);
+    } else if (normalized.startsWith('patterns/')) {
+        normalized = normalized.substring(9);
+    }
+    
+    return normalized;
 }
 let selectedPattern = null;
 let previewObserver = null;

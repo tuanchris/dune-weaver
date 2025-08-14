@@ -44,10 +44,13 @@ logger = logging.getLogger(__name__)
 
 def normalize_file_path(file_path: str) -> str:
     """Normalize file path separators for consistent cross-platform handling."""
+    if not file_path:
+        return ''
+    
     # First normalize path separators
     normalized = file_path.replace('\\', '/')
     
-    # Remove any patterns directory prefixes that might be present
+    # Remove only the patterns directory prefix from the beginning, not patterns within the path
     if normalized.startswith('./patterns/'):
         normalized = normalized[11:]
     elif normalized.startswith('patterns/'):
