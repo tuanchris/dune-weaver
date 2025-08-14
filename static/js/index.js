@@ -954,6 +954,10 @@ function setupPreviewPanelEvents(pattern) {
             if (response.ok) {
                 showStatusMessage(`Running pattern: ${pattern.split('/').pop()}`, 'success');
                 hidePatternPreview();
+                // Show the preview modal when a pattern starts
+                if (typeof setModalVisibility === 'function') {
+                    setModalVisibility(true, false);
+                }
                 
             } else {
                 let errorMsg = data.detail || 'Failed to run pattern';

@@ -121,11 +121,6 @@ function connectWebSocket() {
                     }
                 }
                 
-                // Show modal if pattern is playing and modal is hidden, but only if user hasn't dismissed it
-                if (data.data.current_file && data.data.is_running && !userDismissedModal) {
-                    setModalVisibility(true, false);
-                }
-                
                 // Reset userDismissedModal flag if no pattern is playing
                 if (!data.data.current_file || !data.data.is_running) {
                     userDismissedModal = false;

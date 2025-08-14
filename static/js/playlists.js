@@ -1052,12 +1052,12 @@ async function runPlaylist() {
 
         if (response.ok) {
             showStatusMessage(`Started playlist: ${currentPlaylist}`, 'success');
-            // Show the preview modal
-            try {
-                if (window.openPlayerPreviewModal) {
-                    window.openPlayerPreviewModal();
-                }
-            } catch (e) {}
+            // Show the preview modal when a playlist starts
+            if (typeof setModalVisibility === 'function') {
+                setModalVisibility(true, false);
+            } else if (window.openPlayerPreviewModal) {
+                window.openPlayerPreviewModal();
+            }
         } else {
             let errorMsg = 'Failed to run playlist';
             let errorType = 'error';
