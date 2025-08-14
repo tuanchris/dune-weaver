@@ -10,3 +10,4 @@ patterns/cached_svg/
 patterns/cached_images/custom_*
 # Node.js and build files
 node_modules/
+*.log

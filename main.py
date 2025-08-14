@@ -422,9 +422,19 @@ async def delete_theta_rho_file(request: DeleteFileRequest):
         raise HTTPException(status_code=404, detail="File not found")
 
     try:
+        # Delete the pattern file
         os.remove(file_path)
         logger.info(f"Successfully deleted theta-rho file: {request.file_name}")
-        return {"success": True}
+        
+        # Clean up cached preview image and metadata
+        from modules.core.cache_manager import delete_pattern_cache
+        cache_cleanup_success = delete_pattern_cache(request.file_name)
+        if cache_cleanup_success:
+            logger.info(f"Successfully cleaned up cache for {request.file_name}")
+        else:
+            logger.warning(f"Cache cleanup failed for {request.file_name}, but pattern was deleted")
+        
+        return {"success": True, "cache_cleanup": cache_cleanup_success}
     except Exception as e:
         logger.error(f"Failed to delete theta-rho file {request.file_name}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

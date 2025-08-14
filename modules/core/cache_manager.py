@@ -83,6 +83,27 @@ def get_cache_path(pattern_file):
     safe_name = filename.replace('\\', '_')
     return os.path.join(cache_dir, f"{safe_name}.webp")
 
+def delete_pattern_cache(pattern_file):
+    """Delete cached preview image and metadata for a pattern file."""
+    try:
+        # Remove cached image
+        cache_path = get_cache_path(pattern_file)
+        if os.path.exists(cache_path):
+            os.remove(cache_path)
+            logger.info(f"Deleted cached image: {cache_path}")
+        
+        # Remove from metadata cache
+        metadata_cache = load_metadata_cache()
+        if pattern_file in metadata_cache:
+            del metadata_cache[pattern_file]
+            save_metadata_cache(metadata_cache)
+            logger.info(f"Removed {pattern_file} from metadata cache")
+        
+        return True
+    except Exception as e:
+        logger.error(f"Failed to delete cache for {pattern_file}: {str(e)}")
+        return False
+
 def load_metadata_cache():
     """Load the metadata cache from disk."""
     try:

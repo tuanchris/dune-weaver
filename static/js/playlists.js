@@ -173,6 +173,30 @@ async function getPreviewFromCache(pattern) {
 }
 
 // Save preview to IndexedDB cache with size management
+// Clear a specific pattern from IndexedDB cache
+async function clearPatternFromIndexedDB(pattern) {
+    try {
+        if (!previewCacheDB) await initPreviewCacheDB();
+        
+        const transaction = previewCacheDB.transaction([PREVIEW_CACHE_STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(PREVIEW_CACHE_STORE_NAME);
+        
+        await new Promise((resolve, reject) => {
+            const deleteRequest = store.delete(pattern);
+            deleteRequest.onsuccess = () => {
+                logMessage(`Cleared ${pattern} from IndexedDB cache`, LOG_TYPE.DEBUG);
+                resolve();
+            };
+            deleteRequest.onerror = () => {
+                logMessage(`Failed to clear ${pattern} from IndexedDB: ${deleteRequest.error}`, LOG_TYPE.WARNING);
+                reject(deleteRequest.error);
+            };
+        });
+    } catch (error) {
+        logMessage(`Error clearing pattern from IndexedDB: ${error.message}`, LOG_TYPE.WARNING);
+    }
+}
+
 async function savePreviewToCache(pattern, previewData) {
     try {
         if (!previewCacheDB) await initPreviewCacheDB();

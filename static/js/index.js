@@ -145,6 +145,30 @@ async function getPreviewFromCache(pattern) {
     }
 }
 
+// Clear a specific pattern from IndexedDB cache
+async function clearPatternFromIndexedDB(pattern) {
+    try {
+        if (!previewCacheDB) await initPreviewCacheDB();
+        
+        const transaction = previewCacheDB.transaction([PREVIEW_CACHE_STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(PREVIEW_CACHE_STORE_NAME);
+        
+        await new Promise((resolve, reject) => {
+            const deleteRequest = store.delete(pattern);
+            deleteRequest.onsuccess = () => {
+                logMessage(`Cleared ${pattern} from IndexedDB cache`, LOG_TYPE.DEBUG);
+                resolve();
+            };
+            deleteRequest.onerror = () => {
+                logMessage(`Failed to clear ${pattern} from IndexedDB: ${deleteRequest.error}`, LOG_TYPE.WARNING);
+                reject(deleteRequest.error);
+            };
+        });
+    } catch (error) {
+        logMessage(`Error clearing pattern from IndexedDB: ${error.message}`, LOG_TYPE.WARNING);
+    }
+}
+
 // Save preview to IndexedDB cache with size management
 async function savePreviewToCache(pattern, previewData) {
     try {
@@ -781,8 +805,53 @@ async function showPatternPreview(pattern) {
         // Setup preview panel events
         setupPreviewPanelEvents(pattern);
     } catch (error) {
-        logMessage(`Error showing preview: ${error.message}`, LOG_TYPE.ERROR);
+        logMessage(`Error showing preview for ${pattern}: ${error.message}`, LOG_TYPE.ERROR);
+        
+        // Show error state in preview panel instead of hiding it
+        showPreviewError(pattern, error.message);
     }
+}
+
+function showPreviewError(pattern, errorMessage) {
+    const previewPanel = document.getElementById('patternPreviewPanel');
+    const layoutContainer = document.querySelector('.layout-content-container');
+    
+    // Show error state in preview panel
+    const patternName = pattern.replace('.thr', '').split('/').pop();
+    document.getElementById('patternPreviewTitle').textContent = `Error: ${patternName}`;
+    
+    // Show error image or placeholder
+    const img = document.getElementById('patternPreviewImage');
+    img.src = 'data:image/svg+xml;base64,' + btoa(`
+        <svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
+            <rect width="100%" height="100%" fill="#f3f4f6"/>
+            <text x="50%" y="40%" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#6b7280">
+                Pattern Not Found
+            </text>
+            <text x="50%" y="60%" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#9ca3af">
+                ${patternName}
+            </text>
+            <text x="50%" y="75%" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#ef4444">
+                File may have been deleted
+            </text>
+        </svg>
+    `);
+    
+    // Clear coordinates
+    document.getElementById('firstCoordinate').textContent = '(0, 0)';
+    document.getElementById('lastCoordinate').textContent = '(0, 0)';
+    
+    // Show preview panel with error state
+    previewPanel.classList.remove('translate-x-full');
+    if (window.innerWidth >= 1024) {
+        layoutContainer.parentElement.classList.add('preview-open');
+        previewPanel.classList.remove('lg:opacity-0', 'lg:pointer-events-none');
+    } else {
+        layoutContainer.parentElement.classList.remove('preview-open');
+    }
+    
+    // Setup events so user can still close the panel
+    setupPreviewPanelEvents(pattern);
 }
 
 function hidePatternPreview() {
@@ -938,6 +1007,24 @@ function setupPreviewPanelEvents(pattern) {
                 if (result.success) {
                     logMessage(`Pattern deleted successfully: ${pattern}`, LOG_TYPE.SUCCESS);
                     showStatusMessage(`Pattern "${pattern.split('/').pop()}" deleted successfully`);
+                    
+                    // Clear from in-memory caches
+                    previewCache.delete(pattern);
+                    imageCache.delete(pattern);
+                    
+                    // Clear from IndexedDB cache
+                    await clearPatternFromIndexedDB(pattern);
+                    
+                    // Clear from localStorage patterns list cache
+                    const cachedPatterns = JSON.parse(localStorage.getItem(PATTERNS_CACHE_KEY) || '{}');
+                    if (cachedPatterns.data) {
+                        const index = cachedPatterns.data.indexOf(pattern);
+                        if (index > -1) {
+                            cachedPatterns.data.splice(index, 1);
+                            localStorage.setItem(PATTERNS_CACHE_KEY, JSON.stringify(cachedPatterns));
+                        }
+                    }
+                    
                     // Remove the pattern card
                     const selectedCard = document.querySelector('.pattern-card.selected');
                     if (selectedCard) {
