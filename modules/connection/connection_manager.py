@@ -146,7 +146,9 @@ def device_init(homing=True):
         logger.info(f'x, y; {machine_x}, {machine_y}')
         logger.info(f'State x, y; {state.machine_x}, {state.machine_y}')
         if homing:
-            home()
+            success = home()
+            if not success:
+                logger.error("Homing failed during device initialization")
     else:
         logger.info('Machine position known, skipping home')
         logger.info(f'Theta: {state.current_theta}, rho: {state.current_rho}')
@@ -374,32 +376,78 @@ def get_machine_steps(timeout=10):
         logger.error(f"Failed to get all machine parameters after {timeout}s. Missing: {', '.join(missing)}")
         return False
 
-def home():
+def home(timeout=15):
     """
     Perform homing by checking device configuration and sending the appropriate commands.
+    
+    Args:
+        timeout: Maximum time in seconds to wait for homing to complete (default: 15)
     """
-    try:
-        if state.homing:
-            logger.info("Using sensorless homing")
-            state.conn.send("$H\n")
-            state.conn.send("G1 Y0 F100\n")
-        else:
-            homing_speed = 400
-            if state.table_type == 'dune_weaver_mini':
-                homing_speed = 120
-            logger.info("Sensorless homing not supported. Using crash homing")
-            logger.info(f"Homing with speed {homing_speed}")
-            if state.gear_ratio == 6.25:
-                send_grbl_coordinates(0, - 30, homing_speed, home=True)
-                state.machine_y -= 30
+    import threading
+    
+    # Flag to track if homing completed
+    homing_complete = threading.Event()
+    homing_success = False
+    
+    def home_internal():
+        nonlocal homing_success
+        try:
+            if state.homing:
+                logger.info("Using sensorless homing")
+                state.conn.send("$H\n")
+                state.conn.send("G1 Y0 F100\n")
             else:
-                send_grbl_coordinates(0, -22, homing_speed, home=True)
-                state.machine_y -= 22
+                homing_speed = 400
+                if state.table_type == 'dune_weaver_mini':
+                    homing_speed = 120
+                logger.info("Sensorless homing not supported. Using crash homing")
+                logger.info(f"Homing with speed {homing_speed}")
+                if state.gear_ratio == 6.25:
+                    result = send_grbl_coordinates(0, - 30, homing_speed, home=True)
+                    if result == False:
+                        logger.error("Homing failed - send_grbl_coordinates returned False")
+                        homing_complete.set()
+                        return
+                    state.machine_y -= 30
+                else:
+                    result = send_grbl_coordinates(0, -22, homing_speed, home=True)
+                    if result == False:
+                        logger.error("Homing failed - send_grbl_coordinates returned False")
+                        homing_complete.set()
+                        return
+                    state.machine_y -= 22
 
-        state.current_theta = state.current_rho = 0
-    except Exception as e:
-        logger.error(f"Error homing: {e}")
+            state.current_theta = state.current_rho = 0
+            homing_success = True
+            homing_complete.set()
+        except Exception as e:
+            logger.error(f"Error during homing: {e}")
+            homing_complete.set()
+    
+    # Start homing in a separate thread
+    homing_thread = threading.Thread(target=home_internal)
+    homing_thread.daemon = True
+    homing_thread.start()
+    
+    # Wait for homing to complete or timeout
+    if not homing_complete.wait(timeout):
+        logger.error(f"Homing timeout after {timeout} seconds")
+        # Try to stop any ongoing movement
+        try:
+            if state.conn and state.conn.is_connected():
+                state.conn.send("!\n")  # Send feed hold
+                time.sleep(0.1)
+                state.conn.send("\x18\n")  # Send reset
+        except Exception as e:
+            logger.error(f"Error stopping movement after timeout: {e}")
         return False
+    
+    if not homing_success:
+        logger.error("Homing failed")
+        return False
+    
+    logger.info("Homing completed successfully")
+    return True
 
 def check_idle():
     """

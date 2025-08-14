@@ -388,8 +388,16 @@ async def send_home():
         if not (state.conn.is_connected() if state.conn else False):
             logger.warning("Attempted to move to home without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
-        connection_manager.home()
+        
+        # Run homing with 15 second timeout
+        success = await asyncio.to_thread(connection_manager.home)
+        if not success:
+            logger.error("Homing failed or timed out")
+            raise HTTPException(status_code=500, detail="Homing failed or timed out after 15 seconds")
+        
         return {"success": True}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to send home command: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
