@@ -35,6 +35,22 @@ let modalLastProgress = 0; // Last known progress for modal
 let modalTargetProgress = 0; // Target progress for modal
 let modalAnimationStartTime = 0; // Start time for modal animation
 let userDismissedModal = false; // Track if user has manually dismissed the modal
+
+// Function to set modal visibility
+function setModalVisibility(show, userAction = false) {
+    const modal = document.getElementById('playerPreviewModal');
+    if (!modal) return;
+    
+    if (show) {
+        modal.classList.remove('hidden');
+    } else {
+        modal.classList.add('hidden');
+    }
+    
+    if (userAction) {
+        userDismissedModal = !show;
+    }
+}
 let currentPreviewFile = null; // Track the current file for preview data
 
 function connectWebSocket() {
