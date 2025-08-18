@@ -70,6 +70,25 @@ async def lifespan(app: FastAPI):
         connection_manager.connect_device()
     except Exception as e:
         logger.warning(f"Failed to auto-connect to serial port: {str(e)}")
+    
+    # Check if kiosk mode is enabled and auto-play playlist (right after connection attempt)
+    if state.kiosk_enabled and state.kiosk_playlist:
+        logger.info(f"Kiosk mode enabled, checking for connection before auto-playing playlist: {state.kiosk_playlist}")
+        try:
+            # Check if we have a valid connection before starting playlist
+            if state.conn and hasattr(state.conn, 'is_connected') and state.conn.is_connected():
+                logger.info(f"Connection available, starting auto-play playlist: {state.kiosk_playlist} with options: run_mode={state.kiosk_run_mode}, pause_time={state.kiosk_pause_time}, clear_pattern={state.kiosk_clear_pattern}, shuffle={state.kiosk_shuffle}")
+                asyncio.create_task(playlist_manager.run_playlist(
+                    state.kiosk_playlist,
+                    pause_time=state.kiosk_pause_time,
+                    clear_pattern=state.kiosk_clear_pattern,
+                    run_mode=state.kiosk_run_mode,
+                    shuffle=state.kiosk_shuffle
+                ))
+            else:
+                logger.warning("No hardware connection available, skipping kiosk mode auto-play")
+        except Exception as e:
+            logger.error(f"Failed to auto-play kiosk playlist: {str(e)}")
         
     try:
         mqtt_handler = mqtt.init_mqtt()
@@ -97,6 +116,14 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Pydantic models for request/response validation
 class ConnectRequest(BaseModel):
     port: Optional[str] = None
+
+class KioskModeRequest(BaseModel):
+    enabled: bool
+    playlist: Optional[str] = None
+    run_mode: Optional[str] = "loop"
+    pause_time: Optional[float] = 5.0
+    clear_pattern: Optional[str] = "adaptive"
+    shuffle: Optional[bool] = False
 
 class CoordinateRequest(BaseModel):
     theta: float
@@ -216,6 +243,37 @@ async def index(request: Request):
 @app.get("/settings")
 async def settings(request: Request):
     return templates.TemplateResponse("settings.html", {"request": request})
+
+@app.get("/api/kiosk-mode")
+async def get_kiosk_mode():
+    """Get current kiosk mode settings."""
+    return {
+        "enabled": state.kiosk_enabled,
+        "playlist": state.kiosk_playlist,
+        "run_mode": state.kiosk_run_mode,
+        "pause_time": state.kiosk_pause_time,
+        "clear_pattern": state.kiosk_clear_pattern,
+        "shuffle": state.kiosk_shuffle
+    }
+
+@app.post("/api/kiosk-mode")
+async def set_kiosk_mode(request: KioskModeRequest):
+    """Update kiosk mode settings."""
+    state.kiosk_enabled = request.enabled
+    if request.playlist is not None:
+        state.kiosk_playlist = request.playlist
+    if request.run_mode is not None:
+        state.kiosk_run_mode = request.run_mode
+    if request.pause_time is not None:
+        state.kiosk_pause_time = request.pause_time
+    if request.clear_pattern is not None:
+        state.kiosk_clear_pattern = request.clear_pattern
+    if request.shuffle is not None:
+        state.kiosk_shuffle = request.shuffle
+    state.save()
+    
+    logger.info(f"Kiosk mode {'enabled' if request.enabled else 'disabled'}, playlist: {request.playlist}")
+    return {"success": True, "message": "Kiosk mode settings updated"}
 
 @app.get("/list_serial_ports")
 async def list_ports():

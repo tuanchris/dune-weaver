@@ -548,4 +548,93 @@ function showUpdateInstructionsModal(data) {
             document.body.removeChild(modal);
         }
     });
-} 
+}
+
+// Kiosk Mode Functions
+async function initializeKioskMode() {
+    const kioskToggle = document.getElementById('kioskModeToggle');
+    const kioskSettings = document.getElementById('kioskSettings');
+    const kioskPlaylistSelect = document.getElementById('kioskPlaylistSelect');
+    const kioskRunModeSelect = document.getElementById('kioskRunModeSelect');
+    const kioskPauseTimeInput = document.getElementById('kioskPauseTimeInput');
+    const kioskClearPatternSelect = document.getElementById('kioskClearPatternSelect');
+    const kioskShuffleToggle = document.getElementById('kioskShuffleToggle');
+    
+    // Load current kiosk settings
+    try {
+        const response = await fetch('/api/kiosk-mode');
+        const data = await response.json();
+        
+        kioskToggle.checked = data.enabled;
+        if (data.enabled) {
+            kioskSettings.style.display = 'block';
+        }
+        
+        // Set current values
+        kioskRunModeSelect.value = data.run_mode || 'loop';
+        kioskPauseTimeInput.value = data.pause_time || 5.0;
+        kioskClearPatternSelect.value = data.clear_pattern || 'adaptive';
+        kioskShuffleToggle.checked = data.shuffle || false;
+        
+        // Load playlists for selection
+        const playlistsResponse = await fetch('/list_all_playlists');
+        const playlists = await playlistsResponse.json();
+        
+        // Clear and populate playlist select
+        kioskPlaylistSelect.innerHTML = '<option value="">Select a playlist...</option>';
+        playlists.forEach(playlist => {
+            const option = document.createElement('option');
+            option.value = playlist;
+            option.textContent = playlist;
+            if (playlist === data.playlist) {
+                option.selected = true;
+            }
+            kioskPlaylistSelect.appendChild(option);
+        });
+    } catch (error) {
+        logMessage(`Error loading kiosk settings: ${error.message}`, LOG_TYPE.ERROR);
+    }
+    
+    // Function to save settings
+    async function saveSettings() {
+        try {
+            const response = await fetch('/api/kiosk-mode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    enabled: kioskToggle.checked,
+                    playlist: kioskPlaylistSelect.value || null,
+                    run_mode: kioskRunModeSelect.value,
+                    pause_time: parseFloat(kioskPauseTimeInput.value) || 0,
+                    clear_pattern: kioskClearPatternSelect.value,
+                    shuffle: kioskShuffleToggle.checked
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to save settings');
+            }
+        } catch (error) {
+            logMessage(`Error saving kiosk settings: ${error.message}`, LOG_TYPE.ERROR);
+        }
+    }
+    
+    // Toggle kiosk settings visibility and save
+    kioskToggle.addEventListener('change', async () => {
+        kioskSettings.style.display = kioskToggle.checked ? 'block' : 'none';
+        await saveSettings();
+    });
+    
+    // Save when any setting changes
+    kioskPlaylistSelect.addEventListener('change', saveSettings);
+    kioskRunModeSelect.addEventListener('change', saveSettings);
+    kioskPauseTimeInput.addEventListener('change', saveSettings);
+    kioskPauseTimeInput.addEventListener('input', saveSettings); // Save as user types
+    kioskClearPatternSelect.addEventListener('change', saveSettings);
+    kioskShuffleToggle.addEventListener('change', saveSettings);
+}
+
+// Initialize kiosk mode when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    initializeKioskMode();
+}); 

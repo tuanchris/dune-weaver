@@ -46,6 +46,15 @@ class AppState:
         self._playlist_mode = "loop"
         self._pause_time = 0
         self._clear_pattern = "none"
+        
+        # Kiosk mode settings
+        self.kiosk_enabled = False
+        self.kiosk_playlist = None  # Playlist to auto-play in kiosk mode
+        self.kiosk_run_mode = "loop"  # "single" or "loop" 
+        self.kiosk_pause_time = 5.0  # Pause between patterns in seconds
+        self.kiosk_clear_pattern = "adaptive"  # Clear pattern option
+        self.kiosk_shuffle = False  # Shuffle playlist
+        
         self.load()
 
     @property
@@ -159,6 +168,12 @@ class AppState:
             "clear_pattern": self._clear_pattern,
             "port": self.port,
             "wled_ip": self.wled_ip,
+            "kiosk_enabled": self.kiosk_enabled,
+            "kiosk_playlist": self.kiosk_playlist,
+            "kiosk_run_mode": self.kiosk_run_mode,
+            "kiosk_pause_time": self.kiosk_pause_time,
+            "kiosk_clear_pattern": self.kiosk_clear_pattern,
+            "kiosk_shuffle": self.kiosk_shuffle,
         }
 
     def from_dict(self, data):
@@ -185,6 +200,12 @@ class AppState:
         self._clear_pattern = data.get("clear_pattern", "none")
         self.port = data.get("port", None)
         self.wled_ip = data.get('wled_ip', None)
+        self.kiosk_enabled = data.get("kiosk_enabled", False)
+        self.kiosk_playlist = data.get("kiosk_playlist", None)
+        self.kiosk_run_mode = data.get("kiosk_run_mode", "loop")
+        self.kiosk_pause_time = data.get("kiosk_pause_time", 5.0)
+        self.kiosk_clear_pattern = data.get("kiosk_clear_pattern", "adaptive")
+        self.kiosk_shuffle = data.get("kiosk_shuffle", False)
 
     def save(self):
         """Save the current state to a JSON file."""
