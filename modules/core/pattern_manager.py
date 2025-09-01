@@ -156,6 +156,41 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
     # Get patterns for current table type, fallback to standard patterns if type not found
     table_patterns = clear_patterns.get(state.table_type, clear_patterns['dune_weaver'])
     
+    # Check for custom patterns first
+    if state.custom_clear_from_out and clear_pattern_mode in ['clear_from_out', 'adaptive']:
+        if clear_pattern_mode == 'adaptive':
+            # For adaptive mode, check if we should use custom pattern
+            if path:
+                coordinates = parse_theta_rho_file(path)
+                if coordinates and coordinates[0][1] < 0.5:
+                    # Use custom clear_from_out if set
+                    custom_path = os.path.join('./patterns', state.custom_clear_from_out)
+                    if os.path.exists(custom_path):
+                        logger.debug(f"Using custom clear_from_out: {custom_path}")
+                        return custom_path
+        elif clear_pattern_mode == 'clear_from_out':
+            custom_path = os.path.join('./patterns', state.custom_clear_from_out)
+            if os.path.exists(custom_path):
+                logger.debug(f"Using custom clear_from_out: {custom_path}")
+                return custom_path
+    
+    if state.custom_clear_from_in and clear_pattern_mode in ['clear_from_in', 'adaptive']:
+        if clear_pattern_mode == 'adaptive':
+            # For adaptive mode, check if we should use custom pattern
+            if path:
+                coordinates = parse_theta_rho_file(path)
+                if coordinates and coordinates[0][1] >= 0.5:
+                    # Use custom clear_from_in if set
+                    custom_path = os.path.join('./patterns', state.custom_clear_from_in)
+                    if os.path.exists(custom_path):
+                        logger.debug(f"Using custom clear_from_in: {custom_path}")
+                        return custom_path
+        elif clear_pattern_mode == 'clear_from_in':
+            custom_path = os.path.join('./patterns', state.custom_clear_from_in)
+            if os.path.exists(custom_path):
+                logger.debug(f"Using custom clear_from_in: {custom_path}")
+                return custom_path
+    
     logger.debug(f"Clear pattern mode: {clear_pattern_mode} for table type: {state.table_type}")
     
     if clear_pattern_mode == "random":
@@ -175,7 +210,7 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
         if first_rho < 0.5:
             return table_patterns['clear_from_out']
         else:
-            return random.choice([table_patterns['clear_from_in'], table_patterns['clear_sideway']])
+            return table_patterns['clear_from_in']
     else:
         if clear_pattern_mode not in table_patterns:
             return False

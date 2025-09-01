@@ -46,6 +46,8 @@ class AppState:
         self._playlist_mode = "loop"
         self._pause_time = 0
         self._clear_pattern = "none"
+        self.custom_clear_from_in = None  # Custom clear from center pattern
+        self.custom_clear_from_out = None  # Custom clear from perimeter pattern
         self.load()
 
     @property
@@ -157,6 +159,8 @@ class AppState:
             "playlist_mode": self._playlist_mode,
             "pause_time": self._pause_time,
             "clear_pattern": self._clear_pattern,
+            "custom_clear_from_in": self.custom_clear_from_in,
+            "custom_clear_from_out": self.custom_clear_from_out,
             "port": self.port,
             "wled_ip": self.wled_ip,
         }
@@ -183,6 +187,8 @@ class AppState:
         self._playlist_mode = data.get("playlist_mode", "loop")
         self._pause_time = data.get("pause_time", 0)
         self._clear_pattern = data.get("clear_pattern", "none")
+        self.custom_clear_from_in = data.get("custom_clear_from_in", None)
+        self.custom_clear_from_out = data.get("custom_clear_from_out", None)
         self.port = data.get("port", None)
         self.wled_ip = data.get('wled_ip', None)
 

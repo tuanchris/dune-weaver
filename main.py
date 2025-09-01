@@ -784,6 +784,47 @@ async def skip_pattern():
     state.skip_requested = True
     return {"success": True}
 
+@app.get("/api/custom_clear_patterns")
+async def get_custom_clear_patterns():
+    """Get the currently configured custom clear patterns."""
+    return {
+        "success": True,
+        "custom_clear_from_in": state.custom_clear_from_in,
+        "custom_clear_from_out": state.custom_clear_from_out
+    }
+
+@app.post("/api/custom_clear_patterns")
+async def set_custom_clear_patterns(request: dict):
+    """Set custom clear patterns for clear_from_in and clear_from_out."""
+    try:
+        # Validate that the patterns exist if they're provided
+        if "custom_clear_from_in" in request and request["custom_clear_from_in"]:
+            pattern_path = os.path.join(pattern_manager.THETA_RHO_DIR, request["custom_clear_from_in"])
+            if not os.path.exists(pattern_path):
+                raise HTTPException(status_code=400, detail=f"Pattern file not found: {request['custom_clear_from_in']}")
+            state.custom_clear_from_in = request["custom_clear_from_in"]
+        elif "custom_clear_from_in" in request:
+            state.custom_clear_from_in = None
+            
+        if "custom_clear_from_out" in request and request["custom_clear_from_out"]:
+            pattern_path = os.path.join(pattern_manager.THETA_RHO_DIR, request["custom_clear_from_out"])
+            if not os.path.exists(pattern_path):
+                raise HTTPException(status_code=400, detail=f"Pattern file not found: {request['custom_clear_from_out']}")
+            state.custom_clear_from_out = request["custom_clear_from_out"]
+        elif "custom_clear_from_out" in request:
+            state.custom_clear_from_out = None
+        
+        state.save()
+        logger.info(f"Custom clear patterns updated - in: {state.custom_clear_from_in}, out: {state.custom_clear_from_out}")
+        return {
+            "success": True,
+            "custom_clear_from_in": state.custom_clear_from_in,
+            "custom_clear_from_out": state.custom_clear_from_out
+        }
+    except Exception as e:
+        logger.error(f"Failed to set custom clear patterns: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/preview_thr_batch")
 async def preview_thr_batch(request: dict):
     start = time.time()

@@ -72,6 +72,46 @@ endblock %}
 .dark .text-gray-400 {
   color: #9ca3af;
 }
+
+/* Autocomplete suggestions dark mode */
+.dark #clearFromInSuggestions,
+.dark #clearFromOutSuggestions {
+  background-color: #262626;
+  border-color: #404040;
+}
+.dark .suggestion-item {
+  color: #e5e5e5;
+}
+.dark .suggestion-item:hover {
+  background-color: #404040;
+}
+.dark .suggestion-item.selected {
+  background-color: #0c7ff2;
+  color: white;
+}
+
+/* Light mode autocomplete styles */
+.suggestion-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  color: #1f2937;
+  transition: background-color 0.15s;
+}
+.suggestion-item:hover {
+  background-color: #f3f4f6;
+}
+.suggestion-item.selected {
+  background-color: #0c7ff2;
+  color: white;
+}
+.suggestion-item mark {
+  background-color: #fef3c7;
+  font-weight: 600;
+}
+.dark .suggestion-item mark {
+  background-color: #92400e;
+  color: #fef3c7;
+}
 {% endblock %}
 
 {% block content %}
@@ -143,6 +183,82 @@ endblock %}
             Select a port and click 'Connect' to establish a connection.
           </p>
         </label>
+      </div>
+    </div>
+  </section>
+  <section class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <h2
+      class="text-slate-800 text-xl sm:text-2xl font-semibold leading-tight tracking-[-0.01em] px-6 py-4 border-b border-slate-200"
+    >
+      Clear Pattern Configuration
+    </h2>
+    <div class="px-6 py-5 space-y-6">
+      <p class="text-sm text-slate-600">
+        Customize the clear patterns used when transitioning between patterns. These patterns are used to clear the sand before drawing a new pattern.
+      </p>
+      
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="flex flex-col gap-1.5">
+          <label for="customClearFromInInput" class="text-slate-700 text-sm font-medium leading-normal">Clear From Center Pattern</label>
+          <div class="relative">
+            <input
+              id="customClearFromInInput"
+              type="text"
+              class="form-input w-full resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 pr-10 text-base font-normal leading-normal transition-colors"
+              placeholder="Type to search patterns or leave empty for default"
+              autocomplete="off"
+            />
+            <button
+              type="button"
+              id="clearFromInClear"
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hidden"
+              aria-label="Clear selection"
+              title="Clear selection"
+            >
+              <span class="material-icons text-xl">close</span>
+            </button>
+            <div id="clearFromInSuggestions" class="absolute z-10 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-60 overflow-y-auto hidden"></div>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">
+            Pattern to use when clearing from the center outward.
+          </p>
+        </div>
+
+        <div class="flex flex-col gap-1.5">
+          <label for="customClearFromOutInput" class="text-slate-700 text-sm font-medium leading-normal">Clear From Perimeter Pattern</label>
+          <div class="relative">
+            <input
+              id="customClearFromOutInput"
+              type="text"
+              class="form-input w-full resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 pr-10 text-base font-normal leading-normal transition-colors"
+              placeholder="Type to search patterns or leave empty for default"
+              autocomplete="off"
+            />
+            <button
+              type="button"
+              id="clearFromOutClear"
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hidden"
+              aria-label="Clear selection"
+              title="Clear selection"
+            >
+              <span class="material-icons text-xl">close</span>
+            </button>
+            <div id="clearFromOutSuggestions" class="absolute z-10 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-60 overflow-y-auto hidden"></div>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">
+            Pattern to use when clearing from the perimeter inward.
+          </p>
+        </div>
+      </div>
+
+      <div class="flex justify-end">
+        <button
+          id="saveClearPatterns"
+          class="flex items-center justify-center gap-2 min-w-[140px] cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors"
+        >
+          <span class="material-icons text-lg">save</span>
+          <span class="truncate">Save Clear Patterns</span>
+        </button>
       </div>
     </div>
   </section>
