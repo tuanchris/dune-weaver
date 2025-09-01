@@ -820,6 +820,57 @@ async function loadAvailablePatterns(forceRefresh = false) {
     }
 }
 
+// Update selection count display
+function updateSelectionCount() {
+    const countElement = document.getElementById('selectionCount');
+    if (countElement) {
+        const count = selectedPatterns.size;
+        countElement.textContent = `${count} selected`;
+    }
+}
+
+// Select all visible patterns
+function selectAllPatterns() {
+    const patterns = filteredPatterns.length > 0 ? filteredPatterns : availablePatterns;
+    patterns.forEach(pattern => {
+        selectedPatterns.add(pattern);
+    });
+    updatePatternSelection();
+    updateSelectionCount();
+}
+
+// Deselect all patterns
+function deselectAllPatterns() {
+    selectedPatterns.clear();
+    updatePatternSelection();
+    updateSelectionCount();
+}
+
+// Update visual selection state for all pattern cards
+function updatePatternSelection() {
+    const cards = document.querySelectorAll('#availablePatternsGrid .group');
+    cards.forEach(card => {
+        const patternName = card.dataset.pattern;
+        const addBtn = card.querySelector('.absolute.top-2.right-2');
+        
+        if (selectedPatterns.has(patternName)) {
+            card.classList.add('ring-2', 'ring-blue-500');
+            if (addBtn) {
+                addBtn.classList.remove('opacity-0', 'bg-white', 'dark:bg-gray-700');
+                addBtn.classList.add('opacity-100', 'bg-blue-500', 'text-white');
+                addBtn.querySelector('.material-icons').textContent = 'check';
+            }
+        } else {
+            card.classList.remove('ring-2', 'ring-blue-500');
+            if (addBtn) {
+                addBtn.classList.remove('opacity-100', 'bg-blue-500', 'text-white');
+                addBtn.classList.add('opacity-0', 'bg-white', 'dark:bg-gray-700');
+                addBtn.querySelector('.material-icons').textContent = 'add';
+            }
+        }
+    });
+}
+
 // Display available patterns in modal
 function displayAvailablePatterns() {
     const grid = document.getElementById('availablePatternsGrid');
@@ -881,6 +932,7 @@ function displayAvailablePatterns() {
                 addBtn.classList.add('opacity-100', 'bg-blue-500', 'text-white');
                 addBtn.querySelector('.material-icons').textContent = 'check';
             }
+            updateSelectionCount();
         });
 
         // Show add button on hover
@@ -1217,6 +1269,7 @@ function setupEventListeners() {
     // Add patterns button
     document.getElementById('addPatternsBtn').addEventListener('click', async () => {
         await loadAvailablePatterns();
+        updateSelectionCount();
         document.getElementById('addPatternsModal').classList.remove('hidden');
         // Focus search input when modal opens
         setTimeout(() => {
@@ -1248,10 +1301,15 @@ function setupEventListeners() {
     document.getElementById('cancelAddPatternsBtn').addEventListener('click', () => {
         selectedPatterns.clear();
         clearSearch();
+        updateSelectionCount();
         document.getElementById('addPatternsModal').classList.add('hidden');
     });
 
     document.getElementById('confirmAddPatternsBtn').addEventListener('click', addSelectedPatternsToPlaylist);
+    
+    // Select All and Deselect All buttons
+    document.getElementById('selectAllBtn').addEventListener('click', selectAllPatterns);
+    document.getElementById('deselectAllBtn').addEventListener('click', deselectAllPatterns);
 
     // Handle Enter key in new playlist name input
     document.getElementById('newPlaylistName').addEventListener('keypress', (e) => {

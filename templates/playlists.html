@@ -294,8 +294,8 @@ html:not(.dark) #availablePatternsGrid .text-xs {
       <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Add Patterns to Playlist</h3>
     </div>
     
-    <!-- Search Bar -->
-    <div class="mb-4 flex-shrink-0">
+    <!-- Search Bar and Select All -->
+    <div class="mb-4 flex-shrink-0 space-y-3">
       <div class="relative">
         <span class="material-icons absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 text-lg">search</span>
         <input 
@@ -307,6 +307,29 @@ html:not(.dark) #availablePatternsGrid .text-xs {
         <button id="clearSearchBtn" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hidden">
           <span class="material-icons text-lg">clear</span>
         </button>
+      </div>
+      
+      <!-- Select All / Deselect All buttons -->
+      <div class="flex items-center justify-between">
+        <div class="flex gap-2">
+          <button 
+            id="selectAllBtn" 
+            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors duration-150"
+          >
+            <span class="material-icons text-base">check_box</span>
+            <span>Select All</span>
+          </button>
+          <button 
+            id="deselectAllBtn" 
+            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors duration-150"
+          >
+            <span class="material-icons text-base">check_box_outline_blank</span>
+            <span>Deselect All</span>
+          </button>
+        </div>
+        <span id="selectionCount" class="text-xs text-gray-500 dark:text-gray-400">
+          0 selected
+        </span>
       </div>
     </div>
     
