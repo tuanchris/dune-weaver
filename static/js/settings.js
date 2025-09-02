@@ -174,8 +174,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         fetch('/list_theta_rho_files').then(response => response.json()).catch(() => []),
         
         // Load current custom clear patterns
-        fetch('/api/custom_clear_patterns').then(response => response.json()).catch(() => ({ custom_clear_from_in: null, custom_clear_from_out: null }))
-    ]).then(([statusData, wledData, updateData, ports, patterns, clearPatterns]) => {
+        fetch('/api/custom_clear_patterns').then(response => response.json()).catch(() => ({ custom_clear_from_in: null, custom_clear_from_out: null })),
+        
+        // Load current clear pattern speed
+        fetch('/api/clear_pattern_speed').then(response => response.json()).catch(() => ({ clear_pattern_speed: 200 }))
+    ]).then(([statusData, wledData, updateData, ports, patterns, clearPatterns, clearSpeedData]) => {
         // Update connection status
         setCachedConnectionStatus(statusData);
         updateConnectionUI(statusData);
@@ -267,6 +270,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             initializeAutocomplete('customClearFromOutInput', 'clearFromOutSuggestions', 'clearFromOutClear', patterns);
             
             console.log('Autocomplete initialized with', patterns.length, 'patterns');
+        }
+        
+        // Set clear pattern speed
+        const clearPatternSpeedInput = document.getElementById('clearPatternSpeedInput');
+        if (clearPatternSpeedInput && clearSpeedData && clearSpeedData.clear_pattern_speed) {
+            clearPatternSpeedInput.value = clearSpeedData.clear_pattern_speed;
         }
     }).catch(error => {
         logMessage(`Error initializing settings page: ${error.message}`, LOG_TYPE.ERROR);
@@ -451,6 +460,43 @@ function setupEventListeners() {
                 }
             } catch (error) {
                 showStatusMessage(`Failed to save clear patterns: ${error.message}`, 'error');
+            }
+        });
+    }
+    
+    // Save clear pattern speed button
+    const saveClearSpeed = document.getElementById('saveClearSpeed');
+    if (saveClearSpeed) {
+        saveClearSpeed.addEventListener('click', async () => {
+            const clearPatternSpeedInput = document.getElementById('clearPatternSpeedInput');
+            
+            if (!clearPatternSpeedInput) {
+                return;
+            }
+            
+            const speed = parseInt(clearPatternSpeedInput.value);
+            
+            // Validate speed
+            if (isNaN(speed) || speed < 50 || speed > 2000) {
+                showStatusMessage('Clear pattern speed must be between 50 and 2000', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/clear_pattern_speed', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ clear_pattern_speed: speed })
+                });
+                
+                if (response.ok) {
+                    showStatusMessage('Clear pattern speed saved successfully', 'success');
+                } else {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to save clear pattern speed');
+                }
+            } catch (error) {
+                showStatusMessage(`Failed to save clear pattern speed: ${error.message}`, 'error');
             }
         });
     }

@@ -266,6 +266,43 @@ endblock %}
     <h2
       class="text-slate-800 text-xl sm:text-2xl font-semibold leading-tight tracking-[-0.01em] px-6 py-4 border-b border-slate-200"
     >
+      Clearing Pattern Speed
+    </h2>
+    <div class="px-6 py-5 space-y-6">
+      <p class="text-sm text-slate-600">
+        Set a custom speed for clearing patterns. This allows you to run clearing patterns at a different speed than regular patterns. If this is set, the speed will be used but won't be updated in the pattern preivew. 
+      </p>
+      
+      <div class="flex flex-col gap-1.5">
+        <label for="clearPatternSpeedInput" class="text-slate-700 text-sm font-medium leading-normal">
+          Clearing Speed (steps per minute)
+        </label>
+        <div class="flex gap-3 items-center">
+          <input
+            id="clearPatternSpeedInput"
+            type="number"
+            min="50"
+            max="2000"
+            step="50"
+            class="form-input flex-1 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-normal leading-normal transition-colors"
+            placeholder="200"
+            value=""
+          />
+          <button
+            id="saveClearSpeed"
+            class="flex items-center justify-center gap-2 min-w-[120px] cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors"
+          >
+            <span class="material-icons text-lg">save</span>
+            <span class="truncate">Save Speed</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <h2
+      class="text-slate-800 text-xl sm:text-2xl font-semibold leading-tight tracking-[-0.01em] px-6 py-4 border-b border-slate-200"
+    >
       WLED Configuration
     </h2>
     <div class="px-6 py-5 space-y-6">

@@ -46,6 +46,7 @@ class AppState:
         self._playlist_mode = "loop"
         self._pause_time = 0
         self._clear_pattern = "none"
+        self._clear_pattern_speed = 200  # Default speed for clearing patterns
         self.custom_clear_from_in = None  # Custom clear from center pattern
         self.custom_clear_from_out = None  # Custom clear from perimeter pattern
         self.load()
@@ -135,6 +136,14 @@ class AppState:
     @clear_pattern.setter
     def clear_pattern(self, value):
         self._clear_pattern = value
+        
+    @property
+    def clear_pattern_speed(self):
+        return self._clear_pattern_speed
+
+    @clear_pattern_speed.setter
+    def clear_pattern_speed(self, value):
+        self._clear_pattern_speed = value
 
     def to_dict(self):
         """Return a dictionary representation of the state."""
@@ -159,6 +168,7 @@ class AppState:
             "playlist_mode": self._playlist_mode,
             "pause_time": self._pause_time,
             "clear_pattern": self._clear_pattern,
+            "clear_pattern_speed": self._clear_pattern_speed,
             "custom_clear_from_in": self.custom_clear_from_in,
             "custom_clear_from_out": self.custom_clear_from_out,
             "port": self.port,
@@ -187,6 +197,7 @@ class AppState:
         self._playlist_mode = data.get("playlist_mode", "loop")
         self._pause_time = data.get("pause_time", 0)
         self._clear_pattern = data.get("clear_pattern", "none")
+        self._clear_pattern_speed = data.get("clear_pattern_speed", 200)
         self.custom_clear_from_in = data.get("custom_clear_from_in", None)
         self.custom_clear_from_out = data.get("custom_clear_from_out", None)
         self.port = data.get("port", None)

@@ -825,6 +825,38 @@ async def set_custom_clear_patterns(request: dict):
         logger.error(f"Failed to set custom clear patterns: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/clear_pattern_speed")
+async def get_clear_pattern_speed():
+    """Get the current clearing pattern speed setting."""
+    return {
+        "success": True,
+        "clear_pattern_speed": state.clear_pattern_speed
+    }
+
+@app.post("/api/clear_pattern_speed")
+async def set_clear_pattern_speed(request: dict):
+    """Set the clearing pattern speed."""
+    try:
+        speed = int(request.get("clear_pattern_speed", 200))
+        
+        # Validate speed range (same as regular speed limits)
+        if not (50 <= speed <= 2000):
+            raise HTTPException(status_code=400, detail="Speed must be between 50 and 2000")
+        
+        state.clear_pattern_speed = speed
+        state.save()
+        
+        logger.info(f"Clear pattern speed updated to {speed}")
+        return {
+            "success": True,
+            "clear_pattern_speed": state.clear_pattern_speed
+        }
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid speed value")
+    except Exception as e:
+        logger.error(f"Failed to set clear pattern speed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/preview_thr_batch")
 async def preview_thr_batch(request: dict):
     start = time.time()

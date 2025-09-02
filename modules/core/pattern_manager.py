@@ -256,6 +256,15 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                 state.execution_progress = None
             return
 
+        # Determine if this is a clearing pattern and set appropriate speed
+        is_clear_file = is_clear_pattern(file_path)
+        pattern_speed = state.clear_pattern_speed if is_clear_file else state.speed
+        
+        if is_clear_file:
+            logger.info(f"Running clearing pattern at speed {pattern_speed}")
+        else:
+            logger.info(f"Running normal pattern at speed {pattern_speed}")
+
         state.execution_progress = (0, total_coordinates, None, 0)
         
         # stop actions without resetting the playlist
@@ -304,7 +313,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                     if state.led_controller:
                         effect_playing(state.led_controller)
 
-                move_polar(theta, rho)
+                move_polar(theta, rho, pattern_speed)
                 
                 # Update progress for all coordinates including the first one
                 pbar.update(1)
@@ -496,7 +505,7 @@ def stop_actions(clear_playlist = True):
         # Ensure we still update machine position even if there's an error
         connection_manager.update_machine_position()
 
-def move_polar(theta, rho):
+def move_polar(theta, rho, speed=None):
     """
     This functions take in a pair of theta rho coordinate, compute the distance to travel based on current theta, rho,
     and translate the motion to gcode jog command and sent to grbl. 
@@ -510,6 +519,7 @@ def move_polar(theta, rho):
     Args:
         theta (_type_): _description_
         rho (_type_): _description_
+        speed (int, optional): Speed override. If None, uses state.speed
     """
     # Adding soft limit to reduce hardware sound
     # soft_limit_inner = 0.01
@@ -545,9 +555,12 @@ def move_polar(theta, rho):
     new_x_abs = state.machine_x + x_increment
     new_y_abs = state.machine_y + y_increment
     
-    # dynamic_speed = compute_dynamic_speed(rho, max_speed=state.speed)
+    # Use provided speed or fall back to state.speed
+    actual_speed = speed if speed is not None else state.speed
     
-    connection_manager.send_grbl_coordinates(round(new_x_abs, 3), round(new_y_abs,3), state.speed)
+    # dynamic_speed = compute_dynamic_speed(rho, max_speed=actual_speed)
+    
+    connection_manager.send_grbl_coordinates(round(new_x_abs, 3), round(new_y_abs,3), actual_speed)
     state.current_theta = theta
     state.current_rho = rho
     state.machine_x = new_x_abs
