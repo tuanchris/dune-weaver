@@ -182,7 +182,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="layout-content-container flex flex-col w-full max-w-5xl h-[calc(100vh-8rem)]">
+<div class="layout-content-container flex flex-col w-full max-w-5xl mb-24">
     <div class="flex-none bg-gray-50 py-4">
         <div class="flex flex-wrap items-center justify-between gap-4 mt-2 sm:mt-8">
             <h2 class="text-gray-900 text-3xl font-bold leading-tight tracking-tight">
@@ -219,6 +219,7 @@
                         type="file"
                         id="patternFileInput"
                         accept=".thr"
+                        multiple
                         class="hidden"
                 />
                 <button
@@ -231,10 +232,12 @@
             </div>
         </div>
     </div>
-    <section class="flex-1 overflow-y-auto px-4 py-6">
+    <section class="px-4 py-6">
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-5 md:gap-6">
             <!-- All patterns will be populated here -->
         </div>
+        <!-- Spacer to allow scrolling past last patterns -->
+        <div style="height: 200px; background: transparent;"></div>
     </section>
 </div>
 
@@ -385,33 +388,7 @@
 {% block scripts %}
 <script src="/static/js/index.js"></script>
 <script>
-// Add event listener for file input change
-document.getElementById('patternFileInput').addEventListener('change', async function(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  try {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const response = await fetch('/upload_theta_rho', {
-      method: 'POST',
-      body: formData
-    });
-
-    const result = await response.json();
-    if (result.success) {
-      // Refresh the pattern list
-      loadPatterns();
-      // Clear the file input
-      e.target.value = '';
-    } else {
-      console.error('Failed to upload pattern:', result.error);
-    }
-  } catch (error) {
-    console.error('Error uploading pattern:', error);
-  }
-});
+// File upload is handled in index.js
 
 // Update delete button state when pattern is selected
 function updateDeleteButtonState(patternName) {

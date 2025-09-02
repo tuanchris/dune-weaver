@@ -343,7 +343,7 @@ function initPreviewObserver() {
             }
         });
     }, {
-        rootMargin: '200px 0px', // Reduced margin for more precise loading
+        rootMargin: '200px 0px',
         threshold: 0.1
     });
 }
@@ -402,6 +402,16 @@ async function addPatternToBatch(pattern, element) {
     // Process batch immediately if it's full or if it's a new upload
     if (pendingPatterns.size >= LAZY_BATCH_SIZE || isNewUpload) {
         processPendingBatch();
+    } else {
+        // Set a timeout to process smaller batches if they don't fill up
+        if (batchTimeout) {
+            clearTimeout(batchTimeout);
+        }
+        batchTimeout = setTimeout(() => {
+            if (pendingPatterns.size > 0) {
+                processPendingBatch();
+            }
+        }, 500); // Process after 500ms if batch doesn't fill up
     }
 }
 
@@ -416,6 +426,8 @@ function updatePreviewElement(element, imageUrl) {
         requestAnimationFrame(() => {
             img.style.opacity = '1';
         });
+        // Mark element as loaded to prevent duplicate loading attempts
+        element.dataset.loaded = 'true';
     };
     img.src = imageUrl;
     img.alt = 'Pattern Preview';
@@ -424,6 +436,12 @@ function updatePreviewElement(element, imageUrl) {
 // Process pending patterns in batches
 async function processPendingBatch() {
     if (pendingPatterns.size === 0) return;
+    
+    // Clear any pending timeout since we're processing now
+    if (batchTimeout) {
+        clearTimeout(batchTimeout);
+        batchTimeout = null;
+    }
     
     // Create a copy of current pending patterns and clear the original
     const currentBatch = new Map(pendingPatterns);
@@ -1273,57 +1291,95 @@ function updateCurrentlyPlayingUI(status) {
 
 // Setup upload event handlers
 function setupUploadEventHandlers() {
-    // Upload file input handler
+    // Upload file input handler - supports multiple files
     document.getElementById('patternFileInput').addEventListener('change', async function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+
+        const totalFiles = files.length;
+        const fileArray = Array.from(files);
+        let successCount = 0;
+        let failCount = 0;
+        
+        // Show initial progress message
+        showStatusMessage(`Uploading ${totalFiles} pattern${totalFiles > 1 ? 's' : ''}...`);
 
         try {
-            const formData = new FormData();
-            formData.append('file', file);
-
-            const response = await fetch('/upload_theta_rho', {
-                method: 'POST',
-                body: formData
-            });
-
-            const result = await response.json();
-            if (result.success) {
-                showStatusMessage(`Pattern "${file.name}" uploaded successfully`);
+            // Upload files sequentially to avoid overwhelming the server
+            for (let i = 0; i < fileArray.length; i++) {
+                const file = fileArray[i];
                 
-                // Clear any existing cache for this pattern to ensure fresh loading
-                const newPatternPath = `custom_patterns/${file.name}`;
-                previewCache.delete(newPatternPath);
+                try {
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    const response = await fetch('/upload_theta_rho', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const result = await response.json();
+                    if (result.success) {
+                        successCount++;
+                        
+                        // Clear any existing cache for this pattern to ensure fresh loading
+                        const newPatternPath = `custom_patterns/${file.name}`;
+                        previewCache.delete(newPatternPath);
+                        
+                        logMessage(`Successfully uploaded: ${file.name}`, LOG_TYPE.SUCCESS);
+                    } else {
+                        failCount++;
+                        logMessage(`Failed to upload ${file.name}: ${result.error}`, LOG_TYPE.ERROR);
+                    }
+                } catch (fileError) {
+                    failCount++;
+                    logMessage(`Error uploading ${file.name}: ${fileError.message}`, LOG_TYPE.ERROR);
+                }
+                
+                // Update progress
+                const progress = i + 1;
+                showStatusMessage(`Uploading patterns... ${progress}/${totalFiles}`);
+            }
+            
+            // Show final result
+            if (successCount > 0) {
+                const message = failCount > 0 
+                    ? `Uploaded ${successCount} pattern${successCount > 1 ? 's' : ''}, ${failCount} failed`
+                    : `Successfully uploaded ${successCount} pattern${successCount > 1 ? 's' : ''}`;
+                showStatusMessage(message);
                 
                 // Add a small delay to allow backend preview generation to complete
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 
-                // Refresh the pattern list (force refresh since new pattern was uploaded)
+                // Refresh the pattern list (force refresh since new patterns were uploaded)
                 await loadPatterns(true);
                 
-                // Clear the file input
-                e.target.value = '';
-                
-                // Trigger preview loading for newly uploaded patterns with extended retry
+                // Trigger preview loading for newly uploaded patterns
                 setTimeout(() => {
-                    const newPatternCard = document.querySelector(`[data-pattern="${newPatternPath}"]`);
-                    if (newPatternCard) {
-                        const previewContainer = newPatternCard.querySelector('.pattern-preview');
-                        if (previewContainer) {
-                            // Clear any existing retry count and force reload
-                            previewContainer.dataset.retryCount = '0';
-                            previewContainer.dataset.hasTriedIndividual = 'false';
-                            previewContainer.dataset.isNewUpload = 'true';
-                            addPatternToBatch(newPatternPath, previewContainer);
+                    fileArray.forEach(file => {
+                        const newPatternPath = `custom_patterns/${file.name}`;
+                        const newPatternCard = document.querySelector(`[data-pattern="${newPatternPath}"]`);
+                        if (newPatternCard) {
+                            const previewContainer = newPatternCard.querySelector('.pattern-preview');
+                            if (previewContainer) {
+                                previewContainer.dataset.retryCount = '0';
+                                previewContainer.dataset.hasTriedIndividual = 'false';
+                                previewContainer.dataset.isNewUpload = 'true';
+                                addPatternToBatch(newPatternPath, previewContainer);
+                            }
                         }
-                    }
+                    });
                 }, 500);
             } else {
-                showStatusMessage(`Failed to upload pattern: ${result.error}`, 'error');
+                showStatusMessage(`Failed to upload all ${totalFiles} pattern${totalFiles > 1 ? 's' : ''}`, 'error');
             }
+            
+            // Clear the file input
+            e.target.value = '';
+            
         } catch (error) {
-            console.error('Error uploading pattern:', error);
-            showStatusMessage(`Error uploading pattern: ${error.message}`, 'error');
+            console.error('Error during batch upload:', error);
+            showStatusMessage(`Error uploading patterns: ${error.message}`, 'error');
         }
     });
 

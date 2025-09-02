@@ -211,11 +211,11 @@ async def websocket_cache_progress_endpoint(websocket: WebSocket):
 # FastAPI routes
 @app.get("/")
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("index.html", {"request": request, "app_name": state.app_name})
 
 @app.get("/settings")
 async def settings(request: Request):
-    return templates.TemplateResponse("settings.html", {"request": request})
+    return templates.TemplateResponse("settings.html", {"request": request, "app_name": state.app_name})
 
 @app.get("/list_serial_ports")
 async def list_ports():
@@ -857,6 +857,24 @@ async def set_clear_pattern_speed(request: dict):
         logger.error(f"Failed to set clear pattern speed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/app-name")
+async def get_app_name():
+    """Get current application name."""
+    return {"app_name": state.app_name}
+
+@app.post("/api/app-name")
+async def set_app_name(request: dict):
+    """Update application name."""
+    app_name = request.get("app_name", "").strip()
+    if not app_name:
+        app_name = "Dune Weaver"  # Reset to default if empty
+    
+    state.app_name = app_name
+    state.save()
+    
+    logger.info(f"Application name updated to: {app_name}")
+    return {"success": True, "app_name": app_name}
+
 @app.post("/preview_thr_batch")
 async def preview_thr_batch(request: dict):
     start = time.time()
@@ -927,19 +945,19 @@ async def preview_thr_batch(request: dict):
 @app.get("/playlists")
 async def playlists(request: Request):
     logger.debug("Rendering playlists page")
-    return templates.TemplateResponse("playlists.html", {"request": request})
+    return templates.TemplateResponse("playlists.html", {"request": request, "app_name": state.app_name})
 
 @app.get("/image2sand")
 async def image2sand(request: Request):
-    return templates.TemplateResponse("image2sand.html", {"request": request})
+    return templates.TemplateResponse("image2sand.html", {"request": request, "app_name": state.app_name})
 
 @app.get("/wled")
 async def wled(request: Request):
-    return templates.TemplateResponse("wled.html", {"request": request})
+    return templates.TemplateResponse("wled.html", {"request": request, "app_name": state.app_name})
 
 @app.get("/table_control")
 async def table_control(request: Request):
-    return templates.TemplateResponse("table_control.html", {"request": request})
+    return templates.TemplateResponse("table_control.html", {"request": request, "app_name": state.app_name})
 
 @app.get("/cache-progress")
 async def get_cache_progress_endpoint():

@@ -1,4 +1,4 @@
-{% extends "base.html" %} {% block title %}Settings - Kinetic Sand Table{%
+{% extends "base.html" %} {% block title %}Settings - {{ app_name or 'Dune Weaver' }}{%
 endblock %}
 
 {% block additional_styles %}
@@ -125,6 +125,49 @@ endblock %}
       Settings
     </h1>
   </div>
+  <section class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <h2
+      class="text-slate-800 text-xl sm:text-2xl font-semibold leading-tight tracking-[-0.01em] px-6 py-4 border-b border-slate-200"
+    >
+      Application Settings
+    </h2>
+    <div class="px-6 py-5 space-y-6">
+      <label class="flex flex-col gap-1.5">
+        <span class="text-slate-700 text-sm font-medium leading-normal"
+          >Application Name</span
+        >
+        <div class="flex gap-3 items-center">
+          <div class="relative flex-1">
+            <input
+              id="appNameInput"
+              class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 pr-10 text-base font-normal leading-normal transition-colors"
+              placeholder="e.g., Dune Weaver"
+              value="Dune Weaver"
+            />
+            <button
+              type="button"
+              onclick="document.getElementById('appNameInput').value='Dune Weaver';"
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+              aria-label="Reset to default"
+              title="Reset to default"
+            >
+              <span class="material-icons">restart_alt</span>
+            </button>
+          </div>
+          <button
+            id="saveAppName"
+            class="flex items-center justify-center gap-2 min-w-[140px] cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors flex-shrink-0"
+          >
+            <span class="material-icons text-lg">save</span>
+            <span class="truncate">Save Name</span>
+          </button>
+        </div>
+        <p class="text-xs text-slate-500 mt-2">
+          This name will appear in the browser tab and at the top of every page.
+        </p>
+      </label>
+    </div>
+  </section>
   <section class="bg-white rounded-xl shadow-sm overflow-hidden">
     <h2
       class="text-slate-800 text-xl sm:text-2xl font-semibold leading-tight tracking-[-0.01em] px-6 py-4 border-b border-slate-200"

@@ -177,8 +177,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         fetch('/api/custom_clear_patterns').then(response => response.json()).catch(() => ({ custom_clear_from_in: null, custom_clear_from_out: null })),
         
         // Load current clear pattern speed
-        fetch('/api/clear_pattern_speed').then(response => response.json()).catch(() => ({ clear_pattern_speed: 200 }))
-    ]).then(([statusData, wledData, updateData, ports, patterns, clearPatterns, clearSpeedData]) => {
+        fetch('/api/clear_pattern_speed').then(response => response.json()).catch(() => ({ clear_pattern_speed: 200 })),
+        
+        // Load current app name
+        fetch('/api/app-name').then(response => response.json()).catch(() => ({ app_name: 'Dune Weaver' }))
+    ]).then(([statusData, wledData, updateData, ports, patterns, clearPatterns, clearSpeedData, appNameData]) => {
         // Update connection status
         setCachedConnectionStatus(statusData);
         updateConnectionUI(statusData);
@@ -277,6 +280,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (clearPatternSpeedInput && clearSpeedData && clearSpeedData.clear_pattern_speed) {
             clearPatternSpeedInput.value = clearSpeedData.clear_pattern_speed;
         }
+        
+        // Update app name
+        const appNameInput = document.getElementById('appNameInput');
+        if (appNameInput && appNameData.app_name) {
+            appNameInput.value = appNameData.app_name;
+        }
     }).catch(error => {
         logMessage(`Error initializing settings page: ${error.message}`, LOG_TYPE.ERROR);
     });
@@ -287,6 +296,50 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // Setup event listeners
 function setupEventListeners() {
+    // Save App Name
+    const saveAppNameButton = document.getElementById('saveAppName');
+    const appNameInput = document.getElementById('appNameInput');
+    if (saveAppNameButton && appNameInput) {
+        saveAppNameButton.addEventListener('click', async () => {
+            const appName = appNameInput.value.trim() || 'Dune Weaver';
+            
+            try {
+                const response = await fetch('/api/app-name', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ app_name: appName })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    showStatusMessage('Application name updated successfully. Refresh the page to see changes.', 'success');
+                    
+                    // Update the page title and header immediately
+                    document.title = `Settings - ${data.app_name}`;
+                    const headerTitle = document.querySelector('h1.text-gray-800');
+                    if (headerTitle) {
+                        // Update just the text content, preserving the connection status dot
+                        const textNode = headerTitle.childNodes[0];
+                        if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+                            textNode.textContent = data.app_name;
+                        }
+                    }
+                } else {
+                    throw new Error('Failed to save application name');
+                }
+            } catch (error) {
+                showStatusMessage(`Failed to save application name: ${error.message}`, 'error');
+            }
+        });
+        
+        // Handle Enter key in app name input
+        appNameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                saveAppNameButton.click();
+            }
+        });
+    }
+    
     // Save/Clear WLED configuration
     const saveWledConfig = document.getElementById('saveWledConfig');
     const wledIpInput = document.getElementById('wledIpInput');

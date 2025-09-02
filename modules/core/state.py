@@ -49,6 +49,10 @@ class AppState:
         self._clear_pattern_speed = 200  # Default speed for clearing patterns
         self.custom_clear_from_in = None  # Custom clear from center pattern
         self.custom_clear_from_out = None  # Custom clear from perimeter pattern
+        
+        # Application name setting
+        self.app_name = "Dune Weaver"  # Default app name
+        
         self.load()
 
     @property
@@ -173,6 +177,7 @@ class AppState:
             "custom_clear_from_out": self.custom_clear_from_out,
             "port": self.port,
             "wled_ip": self.wled_ip,
+            "app_name": self.app_name,
         }
 
     def from_dict(self, data):
@@ -202,6 +207,7 @@ class AppState:
         self.custom_clear_from_out = data.get("custom_clear_from_out", None)
         self.port = data.get("port", None)
         self.wled_ip = data.get('wled_ip', None)
+        self.app_name = data.get("app_name", "Dune Weaver")
 
     def save(self):
         """Save the current state to a JSON file."""
