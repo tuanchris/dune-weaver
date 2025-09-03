@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Playlists - Kinetic Sand Table{% endblock %}
+{% block title %}Playlists - {{ app_name or 'Dune Weaver' }}{% endblock %}
 
 {% block additional_styles %}
 /* Minimal custom styles - rely on Tailwind utilities */
@@ -291,11 +291,11 @@ html:not(.dark) #availablePatternsGrid .text-xs {
 <div id="addPatternsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
   <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-4xl mx-4 max-h-[80vh] overflow-hidden flex flex-col">
     <div class="flex items-center justify-between mb-4 flex-shrink-0">
-      <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Add Patterns to Playlist</h3>
+      <h3 id="modalTitle" class="text-lg font-semibold text-gray-900 dark:text-gray-100">Add Patterns to Playlist</h3>
     </div>
     
-    <!-- Search Bar -->
-    <div class="mb-4 flex-shrink-0">
+    <!-- Search Bar and Controls -->
+    <div class="mb-4 flex-shrink-0 space-y-3">
       <div class="relative">
         <span class="material-icons absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 text-lg">search</span>
         <input 
@@ -307,6 +307,43 @@ html:not(.dark) #availablePatternsGrid .text-xs {
         <button id="clearSearchBtn" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hidden">
           <span class="material-icons text-lg">clear</span>
         </button>
+      </div>
+      
+      <!-- Sort and Filter Controls -->
+      <div class="flex flex-wrap gap-3 items-center">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-medium text-gray-700 dark:text-gray-300">Sort by:</span>
+          <select id="sortFieldSelect" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-2 py-1">
+            <option value="name">Name</option>
+            <option value="date">Date Modified</option>
+            <option value="coordinates">Coordinates</option>
+            <option value="favorite">Favorite</option>
+          </select>
+          <button id="sortDirectionBtn" class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400" title="Toggle sort direction">
+            <span class="material-icons text-sm" id="sortDirectionIcon">arrow_upward</span>
+          </button>
+        </div>
+        
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-medium text-gray-700 dark:text-gray-300">Folder:</span>
+          <select id="categoryFilterSelect" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-2 py-1">
+            <option value="all">All</option>
+          </select>
+        </div>
+      </div>
+      
+      <!-- Smart Toggle Select All button -->
+      <div class="flex items-center justify-between">
+        <button 
+          id="toggleSelectAllBtn" 
+          class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors duration-150"
+        >
+          <span class="material-icons text-base" id="toggleSelectAllIcon">check_box_outline_blank</span>
+          <span id="toggleSelectAllText">Select All</span>
+        </button>
+        <span id="selectionCount" class="text-xs text-gray-500 dark:text-gray-400">
+          0 selected
+        </span>
       </div>
     </div>
     
@@ -333,7 +370,7 @@ html:not(.dark) #availablePatternsGrid .text-xs {
     
     <div class="flex gap-3 justify-end mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
       <button id="cancelAddPatternsBtn" class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors duration-150">Cancel</button>
-      <button id="confirmAddPatternsBtn" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors duration-150">Add Selected</button>
+      <button id="confirmAddPatternsBtn" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors duration-150">Save</button>
     </div>
   </div>
 </div>

@@ -18,7 +18,7 @@
       onload="this.rel='stylesheet'"
       rel="stylesheet"
     />
-    <title>{% block title %}Kinetic Sand Table{% endblock %}</title>
+    <title>{% block title %}{{ app_name or 'Dune Weaver' }}{% endblock %}</title>
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
@@ -266,7 +266,7 @@
     <div
       class="relative flex size-full min-h-screen flex-col group/design-root overflow-x-hidden"
     >
-      <div class="layout-container flex h-full grow flex-col">
+      <div class="layout-container flex min-h-full grow flex-col">
         <header
           class="fixed top-0 left-0 right-0 z-10 flex items-center justify-between whitespace-nowrap border-b border-solid border-b-gray-200 bg-white px-4 sm:px-6 md:px-10 py-3 sm:py-4 shadow-sm"
         >
@@ -278,7 +278,7 @@
             <h1
               class="text-gray-800 text-xl font-bold leading-tight tracking-tight flex items-center gap-2"
             >
-              Dune Weaver
+              {{ app_name or 'Dune Weaver' }}
               <span
                 id="connectionStatusDot"
                 class="inline-block size-2 rounded-full bg-red-500 ml-2 align-middle"

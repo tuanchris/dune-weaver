@@ -168,8 +168,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         fetch('/api/version').then(response => response.json()).catch(() => ({ current: '1.0.0', latest: '1.0.0', update_available: false })),
         
         // Load available serial ports
-        fetch('/list_serial_ports').then(response => response.json()).catch(() => [])
-    ]).then(([statusData, wledData, updateData, ports]) => {
+        fetch('/list_serial_ports').then(response => response.json()).catch(() => []),
+        
+        // Load available pattern files for clear pattern selection
+        fetch('/list_theta_rho_files').then(response => response.json()).catch(() => []),
+        
+        // Load current custom clear patterns
+        fetch('/api/custom_clear_patterns').then(response => response.json()).catch(() => ({ custom_clear_from_in: null, custom_clear_from_out: null })),
+        
+        // Load current clear pattern speed
+        fetch('/api/clear_pattern_speed').then(response => response.json()).catch(() => ({ clear_pattern_speed: 200 })),
+        
+        // Load current app name
+        fetch('/api/app-name').then(response => response.json()).catch(() => ({ app_name: 'Dune Weaver' }))
+    ]).then(([statusData, wledData, updateData, ports, patterns, clearPatterns, clearSpeedData, appNameData]) => {
         // Update connection status
         setCachedConnectionStatus(statusData);
         updateConnectionUI(statusData);
@@ -239,6 +251,41 @@ document.addEventListener('DOMContentLoaded', async () => {
                 portSelect.value = ports[0];
             }
         }
+        
+        // Initialize autocomplete for clear patterns
+        const clearFromInInput = document.getElementById('customClearFromInInput');
+        const clearFromOutInput = document.getElementById('customClearFromOutInput');
+        
+        if (clearFromInInput && clearFromOutInput && patterns && Array.isArray(patterns)) {
+            // Store patterns globally for autocomplete
+            window.availablePatterns = patterns;
+            
+            // Set current values if they exist
+            if (clearPatterns && clearPatterns.custom_clear_from_in) {
+                clearFromInInput.value = clearPatterns.custom_clear_from_in;
+            }
+            if (clearPatterns && clearPatterns.custom_clear_from_out) {
+                clearFromOutInput.value = clearPatterns.custom_clear_from_out;
+            }
+            
+            // Initialize autocomplete for both inputs
+            initializeAutocomplete('customClearFromInInput', 'clearFromInSuggestions', 'clearFromInClear', patterns);
+            initializeAutocomplete('customClearFromOutInput', 'clearFromOutSuggestions', 'clearFromOutClear', patterns);
+            
+            console.log('Autocomplete initialized with', patterns.length, 'patterns');
+        }
+        
+        // Set clear pattern speed
+        const clearPatternSpeedInput = document.getElementById('clearPatternSpeedInput');
+        if (clearPatternSpeedInput && clearSpeedData && clearSpeedData.clear_pattern_speed) {
+            clearPatternSpeedInput.value = clearSpeedData.clear_pattern_speed;
+        }
+        
+        // Update app name
+        const appNameInput = document.getElementById('appNameInput');
+        if (appNameInput && appNameData.app_name) {
+            appNameInput.value = appNameData.app_name;
+        }
     }).catch(error => {
         logMessage(`Error initializing settings page: ${error.message}`, LOG_TYPE.ERROR);
     });
@@ -249,6 +296,50 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // Setup event listeners
 function setupEventListeners() {
+    // Save App Name
+    const saveAppNameButton = document.getElementById('saveAppName');
+    const appNameInput = document.getElementById('appNameInput');
+    if (saveAppNameButton && appNameInput) {
+        saveAppNameButton.addEventListener('click', async () => {
+            const appName = appNameInput.value.trim() || 'Dune Weaver';
+            
+            try {
+                const response = await fetch('/api/app-name', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ app_name: appName })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    showStatusMessage('Application name updated successfully. Refresh the page to see changes.', 'success');
+                    
+                    // Update the page title and header immediately
+                    document.title = `Settings - ${data.app_name}`;
+                    const headerTitle = document.querySelector('h1.text-gray-800');
+                    if (headerTitle) {
+                        // Update just the text content, preserving the connection status dot
+                        const textNode = headerTitle.childNodes[0];
+                        if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+                            textNode.textContent = data.app_name;
+                        }
+                    }
+                } else {
+                    throw new Error('Failed to save application name');
+                }
+            } catch (error) {
+                showStatusMessage(`Failed to save application name: ${error.message}`, 'error');
+            }
+        });
+        
+        // Handle Enter key in app name input
+        appNameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                saveAppNameButton.click();
+            }
+        });
+    }
+    
     // Save/Clear WLED configuration
     const saveWledConfig = document.getElementById('saveWledConfig');
     const wledIpInput = document.getElementById('wledIpInput');
@@ -375,6 +466,90 @@ function setupEventListeners() {
                 }
             } catch (error) {
                 logMessage(`Error disconnecting device: ${error.message}`, LOG_TYPE.ERROR);
+            }
+        });
+    }
+    
+    // Save custom clear patterns button
+    const saveClearPatterns = document.getElementById('saveClearPatterns');
+    if (saveClearPatterns) {
+        saveClearPatterns.addEventListener('click', async () => {
+            const clearFromInInput = document.getElementById('customClearFromInInput');
+            const clearFromOutInput = document.getElementById('customClearFromOutInput');
+            
+            if (!clearFromInInput || !clearFromOutInput) {
+                return;
+            }
+            
+            // Validate that the entered patterns exist (if not empty)
+            const inValue = clearFromInInput.value.trim();
+            const outValue = clearFromOutInput.value.trim();
+            
+            if (inValue && window.availablePatterns && !window.availablePatterns.includes(inValue)) {
+                showStatusMessage(`Pattern not found: ${inValue}`, 'error');
+                return;
+            }
+            
+            if (outValue && window.availablePatterns && !window.availablePatterns.includes(outValue)) {
+                showStatusMessage(`Pattern not found: ${outValue}`, 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/custom_clear_patterns', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        custom_clear_from_in: inValue || null,
+                        custom_clear_from_out: outValue || null
+                    })
+                });
+                
+                if (response.ok) {
+                    showStatusMessage('Clear patterns saved successfully', 'success');
+                } else {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to save clear patterns');
+                }
+            } catch (error) {
+                showStatusMessage(`Failed to save clear patterns: ${error.message}`, 'error');
+            }
+        });
+    }
+    
+    // Save clear pattern speed button
+    const saveClearSpeed = document.getElementById('saveClearSpeed');
+    if (saveClearSpeed) {
+        saveClearSpeed.addEventListener('click', async () => {
+            const clearPatternSpeedInput = document.getElementById('clearPatternSpeedInput');
+            
+            if (!clearPatternSpeedInput) {
+                return;
+            }
+            
+            const speed = parseInt(clearPatternSpeedInput.value);
+            
+            // Validate speed
+            if (isNaN(speed) || speed < 50 || speed > 2000) {
+                showStatusMessage('Clear pattern speed must be between 50 and 2000', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/clear_pattern_speed', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ clear_pattern_speed: speed })
+                });
+                
+                if (response.ok) {
+                    showStatusMessage('Clear pattern speed saved successfully', 'success');
+                } else {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to save clear pattern speed');
+                }
+            } catch (error) {
+                showStatusMessage(`Failed to save clear pattern speed: ${error.message}`, 'error');
             }
         });
     }
@@ -548,4 +723,178 @@ function showUpdateInstructionsModal(data) {
             document.body.removeChild(modal);
         }
     });
+}
+
+// Autocomplete functionality
+function initializeAutocomplete(inputId, suggestionsId, clearButtonId, patterns) {
+    const input = document.getElementById(inputId);
+    const suggestionsDiv = document.getElementById(suggestionsId);
+    const clearButton = document.getElementById(clearButtonId);
+    let selectedIndex = -1;
+    
+    if (!input || !suggestionsDiv) return;
+    
+    // Function to update clear button visibility
+    function updateClearButton() {
+        if (clearButton) {
+            if (input.value.trim()) {
+                clearButton.classList.remove('hidden');
+            } else {
+                clearButton.classList.add('hidden');
+            }
+        }
+    }
+    
+    // Format pattern name for display
+    function formatPatternName(pattern) {
+        return pattern.replace('.thr', '').replace(/_/g, ' ');
+    }
+    
+    // Filter patterns based on input
+    function filterPatterns(searchTerm) {
+        if (!searchTerm) return patterns.slice(0, 20); // Show first 20 when empty
+        
+        const term = searchTerm.toLowerCase();
+        return patterns.filter(pattern => {
+            const name = pattern.toLowerCase();
+            return name.includes(term);
+        }).sort((a, b) => {
+            // Prioritize patterns that start with the search term
+            const aStarts = a.toLowerCase().startsWith(term);
+            const bStarts = b.toLowerCase().startsWith(term);
+            if (aStarts && !bStarts) return -1;
+            if (!aStarts && bStarts) return 1;
+            return a.localeCompare(b);
+        }).slice(0, 20); // Limit to 20 results
+    }
+    
+    // Highlight matching text
+    function highlightMatch(text, searchTerm) {
+        if (!searchTerm) return text;
+        
+        const regex = new RegExp(`(${searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+        return text.replace(regex, '<mark>$1</mark>');
+    }
+    
+    // Show suggestions
+    function showSuggestions(searchTerm) {
+        const filtered = filterPatterns(searchTerm);
+        
+        if (filtered.length === 0 && searchTerm) {
+            suggestionsDiv.innerHTML = '<div class="suggestion-item" style="cursor: default; color: #9ca3af;">No patterns found</div>';
+            suggestionsDiv.classList.remove('hidden');
+            return;
+        }
+        
+        suggestionsDiv.innerHTML = filtered.map((pattern, index) => {
+            const displayName = formatPatternName(pattern);
+            const highlighted = highlightMatch(displayName, searchTerm);
+            return `<div class="suggestion-item" data-value="${pattern}" data-index="${index}">${highlighted}</div>`;
+        }).join('');
+        
+        suggestionsDiv.classList.remove('hidden');
+        selectedIndex = -1;
+    }
+    
+    // Hide suggestions
+    function hideSuggestions() {
+        setTimeout(() => {
+            suggestionsDiv.classList.add('hidden');
+            selectedIndex = -1;
+        }, 200);
+    }
+    
+    // Select suggestion
+    function selectSuggestion(value) {
+        input.value = value;
+        hideSuggestions();
+        updateClearButton();
+    }
+    
+    // Handle keyboard navigation
+    function handleKeyboard(e) {
+        const items = suggestionsDiv.querySelectorAll('.suggestion-item[data-value]');
+        
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+            updateSelection(items);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            selectedIndex = Math.max(selectedIndex - 1, -1);
+            updateSelection(items);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (selectedIndex >= 0 && items[selectedIndex]) {
+                selectSuggestion(items[selectedIndex].dataset.value);
+            } else if (items.length === 1) {
+                selectSuggestion(items[0].dataset.value);
+            }
+        } else if (e.key === 'Escape') {
+            hideSuggestions();
+        }
+    }
+    
+    // Update visual selection
+    function updateSelection(items) {
+        items.forEach((item, index) => {
+            if (index === selectedIndex) {
+                item.classList.add('selected');
+                item.scrollIntoView({ block: 'nearest' });
+            } else {
+                item.classList.remove('selected');
+            }
+        });
+    }
+    
+    // Event listeners
+    input.addEventListener('input', (e) => {
+        const value = e.target.value.trim();
+        updateClearButton();
+        if (value.length > 0 || e.target === document.activeElement) {
+            showSuggestions(value);
+        } else {
+            hideSuggestions();
+        }
+    });
+    
+    input.addEventListener('focus', () => {
+        const value = input.value.trim();
+        showSuggestions(value);
+    });
+    
+    input.addEventListener('blur', hideSuggestions);
+    
+    input.addEventListener('keydown', handleKeyboard);
+    
+    // Click handler for suggestions
+    suggestionsDiv.addEventListener('click', (e) => {
+        const item = e.target.closest('.suggestion-item[data-value]');
+        if (item) {
+            selectSuggestion(item.dataset.value);
+        }
+    });
+    
+    // Mouse hover handler
+    suggestionsDiv.addEventListener('mouseover', (e) => {
+        const item = e.target.closest('.suggestion-item[data-value]');
+        if (item) {
+            selectedIndex = parseInt(item.dataset.index);
+            const items = suggestionsDiv.querySelectorAll('.suggestion-item[data-value]');
+            updateSelection(items);
+        }
+    });
+    
+    // Clear button handler
+    if (clearButton) {
+        clearButton.addEventListener('click', () => {
+            input.value = '';
+            updateClearButton();
+            hideSuggestions();
+            input.focus();
+        });
+    }
+    
+    // Initialize clear button visibility
+    updateClearButton();
 } 

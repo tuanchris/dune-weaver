@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Table Control - Kinetic Sand Table{% endblock %}
+{% block title %}Table Control - {{ app_name or 'Dune Weaver' }}{% endblock %}
 
 {% block additional_styles %}
 /* Dark mode styles for table control page */
@@ -188,7 +188,7 @@
       <ol class="text-gray-700 dark:text-gray-300 text-sm space-y-3 mb-6">
         <li class="flex items-start gap-3">
           <span class="font-semibold text-blue-600 dark:text-blue-400 min-w-[20px]">1.</span>
-          <span>Look at your pattern preview and decide where the "bottom" of the pattern should be.</span>
+          <span><strong>Home the table</strong> then select move to perimeter. Look at your pattern preview and decide where the "bottom" of the pattern should be.</span>
         </li>
         <li class="flex items-start gap-3">
           <span class="font-semibold text-blue-600 dark:text-blue-400 min-w-[20px]">2.</span>

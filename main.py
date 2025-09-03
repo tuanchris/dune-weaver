@@ -211,11 +211,11 @@ async def websocket_cache_progress_endpoint(websocket: WebSocket):
 # FastAPI routes
 @app.get("/")
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("index.html", {"request": request, "app_name": state.app_name})
 
 @app.get("/settings")
 async def settings(request: Request):
-    return templates.TemplateResponse("settings.html", {"request": request})
+    return templates.TemplateResponse("settings.html", {"request": request, "app_name": state.app_name})
 
 @app.get("/list_serial_ports")
 async def list_ports():
@@ -268,6 +268,66 @@ async def list_theta_rho_files():
     logger.debug("Listing theta-rho files")
     files = pattern_manager.list_theta_rho_files()
     return sorted(files)
+
+@app.get("/list_theta_rho_files_with_metadata")
+async def list_theta_rho_files_with_metadata():
+    """Get list of theta-rho files with metadata for sorting and filtering."""
+    from modules.core.cache_manager import get_pattern_metadata
+    
+    files = pattern_manager.list_theta_rho_files()
+    files_with_metadata = []
+    
+    for file_path in files:
+        try:
+            full_path = os.path.join(pattern_manager.THETA_RHO_DIR, file_path)
+            
+            # Get file stats
+            file_stat = os.stat(full_path)
+            
+            # Get cached metadata
+            metadata = get_pattern_metadata(file_path)
+            
+            # Extract full folder path from file path
+            path_parts = file_path.split('/')
+            if len(path_parts) > 1:
+                # Get everything except the filename (join all folder parts)
+                category = '/'.join(path_parts[:-1])
+            else:
+                category = 'root'
+            
+            # Get file name without extension
+            file_name = os.path.splitext(os.path.basename(file_path))[0]
+            
+            # Use modification time (mtime) for "date modified"
+            date_modified = file_stat.st_mtime
+            
+            file_info = {
+                'path': file_path,
+                'name': file_name,
+                'category': category,
+                'date_modified': date_modified,
+                'coordinates_count': metadata.get('total_coordinates', 0) if metadata else 0
+            }
+            
+            files_with_metadata.append(file_info)
+            
+        except Exception as e:
+            logger.warning(f"Error getting metadata for {file_path}: {str(e)}")
+            # Include file with minimal info if metadata fails
+            path_parts = file_path.split('/')
+            if len(path_parts) > 1:
+                category = '/'.join(path_parts[:-1])
+            else:
+                category = 'root'
+            files_with_metadata.append({
+                'path': file_path,
+                'name': os.path.splitext(os.path.basename(file_path))[0],
+                'category': category,
+                'date_modified': 0,
+                'coordinates_count': 0
+            })
+    
+    return files_with_metadata
 
 @app.post("/upload_theta_rho")
 async def upload_theta_rho(file: UploadFile = File(...)):
@@ -784,6 +844,97 @@ async def skip_pattern():
     state.skip_requested = True
     return {"success": True}
 
+@app.get("/api/custom_clear_patterns")
+async def get_custom_clear_patterns():
+    """Get the currently configured custom clear patterns."""
+    return {
+        "success": True,
+        "custom_clear_from_in": state.custom_clear_from_in,
+        "custom_clear_from_out": state.custom_clear_from_out
+    }
+
+@app.post("/api/custom_clear_patterns")
+async def set_custom_clear_patterns(request: dict):
+    """Set custom clear patterns for clear_from_in and clear_from_out."""
+    try:
+        # Validate that the patterns exist if they're provided
+        if "custom_clear_from_in" in request and request["custom_clear_from_in"]:
+            pattern_path = os.path.join(pattern_manager.THETA_RHO_DIR, request["custom_clear_from_in"])
+            if not os.path.exists(pattern_path):
+                raise HTTPException(status_code=400, detail=f"Pattern file not found: {request['custom_clear_from_in']}")
+            state.custom_clear_from_in = request["custom_clear_from_in"]
+        elif "custom_clear_from_in" in request:
+            state.custom_clear_from_in = None
+            
+        if "custom_clear_from_out" in request and request["custom_clear_from_out"]:
+            pattern_path = os.path.join(pattern_manager.THETA_RHO_DIR, request["custom_clear_from_out"])
+            if not os.path.exists(pattern_path):
+                raise HTTPException(status_code=400, detail=f"Pattern file not found: {request['custom_clear_from_out']}")
+            state.custom_clear_from_out = request["custom_clear_from_out"]
+        elif "custom_clear_from_out" in request:
+            state.custom_clear_from_out = None
+        
+        state.save()
+        logger.info(f"Custom clear patterns updated - in: {state.custom_clear_from_in}, out: {state.custom_clear_from_out}")
+        return {
+            "success": True,
+            "custom_clear_from_in": state.custom_clear_from_in,
+            "custom_clear_from_out": state.custom_clear_from_out
+        }
+    except Exception as e:
+        logger.error(f"Failed to set custom clear patterns: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/clear_pattern_speed")
+async def get_clear_pattern_speed():
+    """Get the current clearing pattern speed setting."""
+    return {
+        "success": True,
+        "clear_pattern_speed": state.clear_pattern_speed
+    }
+
+@app.post("/api/clear_pattern_speed")
+async def set_clear_pattern_speed(request: dict):
+    """Set the clearing pattern speed."""
+    try:
+        speed = int(request.get("clear_pattern_speed", 200))
+        
+        # Validate speed range (same as regular speed limits)
+        if not (50 <= speed <= 2000):
+            raise HTTPException(status_code=400, detail="Speed must be between 50 and 2000")
+        
+        state.clear_pattern_speed = speed
+        state.save()
+        
+        logger.info(f"Clear pattern speed updated to {speed}")
+        return {
+            "success": True,
+            "clear_pattern_speed": state.clear_pattern_speed
+        }
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid speed value")
+    except Exception as e:
+        logger.error(f"Failed to set clear pattern speed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/app-name")
+async def get_app_name():
+    """Get current application name."""
+    return {"app_name": state.app_name}
+
+@app.post("/api/app-name")
+async def set_app_name(request: dict):
+    """Update application name."""
+    app_name = request.get("app_name", "").strip()
+    if not app_name:
+        app_name = "Dune Weaver"  # Reset to default if empty
+    
+    state.app_name = app_name
+    state.save()
+    
+    logger.info(f"Application name updated to: {app_name}")
+    return {"success": True, "app_name": app_name}
+
 @app.post("/preview_thr_batch")
 async def preview_thr_batch(request: dict):
     start = time.time()
@@ -854,19 +1005,19 @@ async def preview_thr_batch(request: dict):
 @app.get("/playlists")
 async def playlists(request: Request):
     logger.debug("Rendering playlists page")
-    return templates.TemplateResponse("playlists.html", {"request": request})
+    return templates.TemplateResponse("playlists.html", {"request": request, "app_name": state.app_name})
 
 @app.get("/image2sand")
 async def image2sand(request: Request):
-    return templates.TemplateResponse("image2sand.html", {"request": request})
+    return templates.TemplateResponse("image2sand.html", {"request": request, "app_name": state.app_name})
 
 @app.get("/wled")
 async def wled(request: Request):
-    return templates.TemplateResponse("wled.html", {"request": request})
+    return templates.TemplateResponse("wled.html", {"request": request, "app_name": state.app_name})
 
 @app.get("/table_control")
 async def table_control(request: Request):
-    return templates.TemplateResponse("table_control.html", {"request": request})
+    return templates.TemplateResponse("table_control.html", {"request": request, "app_name": state.app_name})
 
 @app.get("/cache-progress")
 async def get_cache_progress_endpoint():

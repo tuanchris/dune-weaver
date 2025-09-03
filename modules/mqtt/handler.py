@@ -48,6 +48,8 @@ class MQTTHandler(BaseMQTTHandler):
         self.pattern_select_topic = f"{self.device_id}/pattern/set"
         self.playlist_select_topic = f"{self.device_id}/playlist/set"
         self.speed_topic = f"{self.device_id}/speed/set"
+        self.completion_topic = f"{self.device_id}/state/completion"
+        self.time_remaining_topic = f"{self.device_id}/state/time_remaining"
 
         # Store current state
         self.current_file = ""
@@ -233,6 +235,33 @@ class MQTTHandler(BaseMQTTHandler):
         }
         self._publish_discovery("select", "clear_pattern", clear_pattern_config)
 
+        # Completion Percentage Sensor
+        completion_config = {
+            "name": f"{self.device_name} Completion",
+            "unique_id": f"{self.device_id}_completion",
+            "state_topic": self.completion_topic,
+            "device": base_device,
+            "icon": "mdi:progress-clock",
+            "unit_of_measurement": "%",
+            "state_class": "measurement",
+            "entity_category": "diagnostic"
+        }
+        self._publish_discovery("sensor", "completion", completion_config)
+
+        # Time Remaining Sensor
+        time_remaining_config = {
+            "name": f"{self.device_name} Time Remaining",
+            "unique_id": f"{self.device_id}_time_remaining",
+            "state_topic": self.time_remaining_topic,
+            "device": base_device,
+            "icon": "mdi:timer-sand",
+            "unit_of_measurement": "s",
+            "device_class": "duration",
+            "state_class": "measurement",
+            "entity_category": "diagnostic"
+        }
+        self._publish_discovery("sensor", "time_remaining", time_remaining_config)
+
     def _publish_discovery(self, component: str, config_type: str, config: dict):
         """Helper method to publish HA discovery configs."""
         if not self.is_enabled:
@@ -293,6 +322,23 @@ class MQTTHandler(BaseMQTTHandler):
         serial_port = state.port if serial_connected else None
         serial_status = f"connected to {serial_port}" if serial_connected else "disconnected"
         self.client.publish(self.serial_state_topic, serial_status, retain=True)
+        
+    def _publish_progress_state(self):
+        """Helper to publish completion percentage and time remaining."""
+        if state.execution_progress:
+            current, total, remaining_time, elapsed_time = state.execution_progress
+            completion_percentage = (current / total * 100) if total > 0 else 0
+            
+            # Publish completion percentage (rounded to 1 decimal place)
+            self.client.publish(self.completion_topic, round(completion_percentage, 1), retain=True)
+            
+            # Publish time remaining (rounded to nearest second, defaulting to 0 if None)
+            time_remaining_seconds = round(remaining_time) if remaining_time is not None else 0
+            self.client.publish(self.time_remaining_topic, max(0, time_remaining_seconds), retain=True)
+        else:
+            # No pattern running, publish zeros
+            self.client.publish(self.completion_topic, 0, retain=True)
+            self.client.publish(self.time_remaining_topic, 0, retain=True)
 
     def update_state(self, current_file=None, is_running=None, playlist=None, playlist_name=None):
         """Update state in Home Assistant. Only publishes the attributes that are explicitly passed."""
@@ -448,6 +494,7 @@ class MQTTHandler(BaseMQTTHandler):
                 self._publish_pattern_state()
                 self._publish_playlist_state()
                 self._publish_serial_state()
+                self._publish_progress_state()
                 
                 # Update speed state
                 self.client.publish(f"{self.speed_topic}/state", self.state.speed, retain=True)
@@ -491,6 +538,7 @@ class MQTTHandler(BaseMQTTHandler):
             self._publish_pattern_state()
             self._publish_playlist_state()
             self._publish_serial_state()
+            self._publish_progress_state()
             
             # Setup Home Assistant discovery
             self.setup_ha_discovery()

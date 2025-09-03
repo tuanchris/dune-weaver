@@ -182,59 +182,88 @@
 {% endblock %}
 
 {% block content %}
-<div class="layout-content-container flex flex-col w-full max-w-5xl h-[calc(100vh-8rem)]">
+<div class="layout-content-container flex flex-col w-full max-w-5xl mb-24">
     <div class="flex-none bg-gray-50 py-4">
-        <div class="flex flex-wrap items-center justify-between gap-4 mt-2 sm:mt-8">
-            <h2 class="text-gray-900 text-3xl font-bold leading-tight tracking-tight">
-                Browse Patterns
-            </h2>
-
-            <button
-                    id="cacheAllButton"
-                    class="inline-flex gap-2 transition-colors items-center justify-center rounded-lg px-4 py-2.5 text-xs sm:text-sm font-semibold text-gray-900 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-            >
-                <span class="material-icons text-sm pr-2">cached</span>
-                Cache All Previews
-            </button>
-
-            <div class="relative w-full sm:w-auto flex grow gap-2 items-center flex-wrap">
-                <div class="flex gap-2 flex-1">
-                    <div class="relative flex-1">
-                        <input
-                                id="patternSearch"
-                                class="form-input block w-full h-11 rounded-lg border-gray-300 bg-gray-50 py-2.5 p-4 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm"
-                                placeholder="Search patterns..."
-                                type="search"
-                        />
-                        <button
-                                id="searchButton"
-                                class="inline-flex absolute top-0 right-0 h-11 w-11 items-center justify-center rounded-lg bg-blue-600 p-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                        >
-                            <span class="material-icons text-sm font-semibold text-white">search</span>
-                        </button>
-                    </div>
-                </div>
-                <!-- Add Pattern Button -->
-                <input
-                        type="file"
-                        id="patternFileInput"
-                        accept=".thr"
-                        class="hidden"
-                />
+        <div class="mt-2 sm:mt-8">
+            <!-- Header Row -->
+            <div class="flex items-center justify-between gap-2 mb-4">
+                <h2 class="text-gray-900 text-3xl font-bold leading-tight tracking-tight">
+                    Browse Patterns
+                </h2>
                 <button
-                        aria-label="Add new pattern"
-                        class="inline-flex items-center justify-center rounded-lg h-11 w-11 bg-blue-600 text-white shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ml-2 text-xl font-bold"
-                        onclick="document.getElementById('patternFileInput').click()"
+                        id="cacheAllButton"
+                        class="inline-flex gap-1 sm:gap-2 transition-colors items-center justify-center rounded-lg px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold text-gray-900 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 shrink-0"
                 >
-                    <span class="material-icons">add</span>
+                    <span class="material-icons text-sm pr-1 sm:pr-2">cached</span>
+                    <span class="hidden sm:inline">Cache All Previews</span>
+                    <span class="sm:hidden">Cache</span>
                 </button>
             </div>
+            
+            <!-- Controls Row -->
+            <div class="flex gap-1 sm:gap-2 items-center text-xs sm:text-sm min-w-0 overflow-x-auto mb-4">
+                <div class="flex items-center gap-1">
+                    <span class="text-xs font-medium text-gray-700 hidden sm:inline">Sort:</span>
+                    <select id="browseSortFieldSelect" class="text-xs rounded border border-gray-300 bg-white text-gray-900 px-1 sm:px-2 py-1 min-w-0 flex-shrink" disabled>
+                        <option value="name">Name</option>
+                        <option value="date">Date Modified</option>
+                        <option value="coordinates">Coordinates</option>
+                        <option value="favorite">Favorite</option>
+                    </select>
+                    <button id="browseSortDirectionBtn" class="p-1 rounded hover:bg-gray-200 text-gray-500 opacity-50 cursor-not-allowed" title="Loading..." disabled>
+                        <span class="material-icons text-sm" id="browseSortDirectionIcon">arrow_upward</span>
+                    </button>
+                </div>
+                
+                <div class="flex items-center gap-1 min-w-0">
+                    <span class="text-xs font-medium text-gray-700 hidden sm:inline">Folder:</span>
+                    <select id="browseCategoryFilterSelect" class="text-xs rounded border border-gray-300 bg-white text-gray-900 px-1 sm:px-2 py-1 min-w-0 flex-shrink" disabled>
+                        <option value="all">All Folders (loading...)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="relative w-full sm:w-auto flex grow gap-2 items-center flex-wrap">
+            <div class="flex gap-2 flex-1">
+                <div class="relative flex-1">
+                    <input
+                            id="patternSearch"
+                            class="form-input block w-full h-11 rounded-lg border-gray-300 bg-gray-50 py-2.5 p-4 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm"
+                            placeholder="Search patterns..."
+                            type="search"
+                    />
+                    <button
+                            id="searchButton"
+                            class="inline-flex absolute top-0 right-0 h-11 w-11 items-center justify-center rounded-lg bg-blue-600 p-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                    >
+                        <span class="material-icons text-sm font-semibold text-white">search</span>
+                    </button>
+                </div>
+            </div>
+            <!-- Add Pattern Button -->
+            <input
+                    type="file"
+                    id="patternFileInput"
+                    accept=".thr"
+                    multiple
+                    class="hidden"
+            />
+            <button
+                    aria-label="Add new pattern"
+                    class="inline-flex items-center justify-center rounded-lg h-11 w-11 bg-blue-600 text-white shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ml-2 text-xl font-bold"
+                    onclick="document.getElementById('patternFileInput').click()"
+            >
+                <span class="material-icons">add</span>
+            </button>
         </div>
     </div>
-    <section class="flex-1 overflow-y-auto px-4 py-6">
+    <section class="px-4 py-6">
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-5 md:gap-6">
             <!-- All patterns will be populated here -->
         </div>
+        <!-- Spacer to allow scrolling past last patterns -->
+        <div style="height: 200px; background: transparent;"></div>
     </section>
 </div>
 
@@ -385,33 +414,7 @@
 {% block scripts %}
 <script src="/static/js/index.js"></script>
 <script>
-// Add event listener for file input change
-document.getElementById('patternFileInput').addEventListener('change', async function(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  try {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const response = await fetch('/upload_theta_rho', {
-      method: 'POST',
-      body: formData
-    });
-
-    const result = await response.json();
-    if (result.success) {
-      // Refresh the pattern list
-      loadPatterns();
-      // Clear the file input
-      e.target.value = '';
-    } else {
-      console.error('Failed to upload pattern:', result.error);
-    }
-  } catch (error) {
-    console.error('Error uploading pattern:', error);
-  }
-});
+// File upload is handled in index.js
 
 // Update delete button state when pattern is selected
 function updateDeleteButtonState(patternName) {

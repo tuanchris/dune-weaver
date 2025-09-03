@@ -127,6 +127,31 @@ def parse_theta_rho_file(file_path):
         logger.debug(f"Parsed {len(coordinates)} coordinates from {file_path}")
     return coordinates
 
+def get_first_rho_from_cache(file_path):
+    """Get the first rho value from cached metadata, falling back to file parsing if needed."""
+    try:
+        # Import cache_manager locally to avoid circular import
+        from modules.core import cache_manager
+        
+        # Try to get from metadata cache first
+        file_name = os.path.basename(file_path)
+        metadata = cache_manager.get_pattern_metadata(file_name)
+        
+        if metadata and 'first_coordinate' in metadata:
+            # In the cache, 'x' is theta and 'y' is rho
+            return metadata['first_coordinate']['y']
+        
+        # Fallback to parsing the file if not in cache
+        logger.debug(f"Metadata not cached for {file_name}, parsing file")
+        coordinates = parse_theta_rho_file(file_path)
+        if coordinates:
+            return coordinates[0][1]  # Return rho value
+        
+        return None
+    except Exception as e:
+        logger.warning(f"Error getting first rho from cache for {file_path}: {str(e)}")
+        return None
+
 def get_clear_pattern_file(clear_pattern_mode, path=None):
     """Return a .thr file path based on pattern_name and table type."""
     if not clear_pattern_mode or clear_pattern_mode == 'none':
@@ -156,6 +181,41 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
     # Get patterns for current table type, fallback to standard patterns if type not found
     table_patterns = clear_patterns.get(state.table_type, clear_patterns['dune_weaver'])
     
+    # Check for custom patterns first
+    if state.custom_clear_from_out and clear_pattern_mode in ['clear_from_out', 'adaptive']:
+        if clear_pattern_mode == 'adaptive':
+            # For adaptive mode, use cached metadata to check first rho
+            if path:
+                first_rho = get_first_rho_from_cache(path)
+                if first_rho is not None and first_rho < 0.5:
+                    # Use custom clear_from_out if set
+                    custom_path = os.path.join('./patterns', state.custom_clear_from_out)
+                    if os.path.exists(custom_path):
+                        logger.debug(f"Using custom clear_from_out: {custom_path}")
+                        return custom_path
+        elif clear_pattern_mode == 'clear_from_out':
+            custom_path = os.path.join('./patterns', state.custom_clear_from_out)
+            if os.path.exists(custom_path):
+                logger.debug(f"Using custom clear_from_out: {custom_path}")
+                return custom_path
+    
+    if state.custom_clear_from_in and clear_pattern_mode in ['clear_from_in', 'adaptive']:
+        if clear_pattern_mode == 'adaptive':
+            # For adaptive mode, use cached metadata to check first rho
+            if path:
+                first_rho = get_first_rho_from_cache(path)
+                if first_rho is not None and first_rho >= 0.5:
+                    # Use custom clear_from_in if set
+                    custom_path = os.path.join('./patterns', state.custom_clear_from_in)
+                    if os.path.exists(custom_path):
+                        logger.debug(f"Using custom clear_from_in: {custom_path}")
+                        return custom_path
+        elif clear_pattern_mode == 'clear_from_in':
+            custom_path = os.path.join('./patterns', state.custom_clear_from_in)
+            if os.path.exists(custom_path):
+                logger.debug(f"Using custom clear_from_in: {custom_path}")
+                return custom_path
+    
     logger.debug(f"Clear pattern mode: {clear_pattern_mode} for table type: {state.table_type}")
     
     if clear_pattern_mode == "random":
@@ -166,16 +226,16 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
             logger.warning("No path provided for adaptive clear pattern")
             return random.choice(list(table_patterns.values()))
             
-        coordinates = parse_theta_rho_file(path)
-        if not coordinates:
-            logger.warning("No valid coordinates found in file for adaptive clear pattern")
+        # Use cached metadata to get first rho value
+        first_rho = get_first_rho_from_cache(path)
+        if first_rho is None:
+            logger.warning("Could not determine first rho value for adaptive clear pattern")
             return random.choice(list(table_patterns.values()))
             
-        first_rho = coordinates[0][1]
         if first_rho < 0.5:
             return table_patterns['clear_from_out']
         else:
-            return random.choice([table_patterns['clear_from_in'], table_patterns['clear_sideway']])
+            return table_patterns['clear_from_in']
     else:
         if clear_pattern_mode not in table_patterns:
             return False
@@ -220,6 +280,15 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                 state.current_playing_file = None
                 state.execution_progress = None
             return
+
+        # Determine if this is a clearing pattern and set appropriate speed
+        is_clear_file = is_clear_pattern(file_path)
+        pattern_speed = state.clear_pattern_speed if is_clear_file else state.speed
+        
+        if is_clear_file:
+            logger.info(f"Running clearing pattern at speed {pattern_speed}")
+        else:
+            logger.info(f"Running normal pattern at speed {pattern_speed}")
 
         state.execution_progress = (0, total_coordinates, None, 0)
         
@@ -269,7 +338,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                     if state.led_controller:
                         effect_playing(state.led_controller)
 
-                move_polar(theta, rho)
+                move_polar(theta, rho, pattern_speed)
                 
                 # Update progress for all coordinates including the first one
                 pbar.update(1)
@@ -461,7 +530,7 @@ def stop_actions(clear_playlist = True):
         # Ensure we still update machine position even if there's an error
         connection_manager.update_machine_position()
 
-def move_polar(theta, rho):
+def move_polar(theta, rho, speed=None):
     """
     This functions take in a pair of theta rho coordinate, compute the distance to travel based on current theta, rho,
     and translate the motion to gcode jog command and sent to grbl. 
@@ -475,6 +544,7 @@ def move_polar(theta, rho):
     Args:
         theta (_type_): _description_
         rho (_type_): _description_
+        speed (int, optional): Speed override. If None, uses state.speed
     """
     # Adding soft limit to reduce hardware sound
     # soft_limit_inner = 0.01
@@ -510,9 +580,12 @@ def move_polar(theta, rho):
     new_x_abs = state.machine_x + x_increment
     new_y_abs = state.machine_y + y_increment
     
-    # dynamic_speed = compute_dynamic_speed(rho, max_speed=state.speed)
+    # Use provided speed or fall back to state.speed
+    actual_speed = speed if speed is not None else state.speed
     
-    connection_manager.send_grbl_coordinates(round(new_x_abs, 3), round(new_y_abs,3), state.speed)
+    # dynamic_speed = compute_dynamic_speed(rho, max_speed=actual_speed)
+    
+    connection_manager.send_grbl_coordinates(round(new_x_abs, 3), round(new_y_abs,3), actual_speed)
     state.current_theta = theta
     state.current_rho = rho
     state.machine_x = new_x_abs

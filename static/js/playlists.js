@@ -11,11 +11,16 @@ const LOG_TYPE = {
 let allPlaylists = [];
 let currentPlaylist = null;
 let availablePatterns = [];
+let availablePatternsWithMetadata = []; // Enhanced pattern data with metadata
 let filteredPatterns = [];
 let selectedPatterns = new Set();
 let previewCache = new Map();
 let intersectionObserver = null;
 let searchTimeout = null;
+
+// Sorting and filtering state
+let currentSort = { field: 'name', direction: 'asc' };
+let currentFilters = { category: 'all' };
 
 // Mobile navigation state
 let isMobileView = false;
@@ -653,16 +658,61 @@ async function displayPlaylistPatterns(patterns) {
         return;
     }
 
-    // No more pre-loading - all patterns will use lazy loading
+    // Clear grid and add all pattern cards
     patternsGrid.innerHTML = '';
+    
     patterns.forEach(pattern => {
         const patternCard = createPatternCard(pattern, true);
         patternsGrid.appendChild(patternCard);
-        
-        // Set up lazy loading for ALL patterns
         patternCard.dataset.pattern = pattern;
+        
+        // Set up lazy loading for patterns outside viewport
         intersectionObserver.observe(patternCard);
     });
+    
+    // After DOM is updated, immediately load previews for visible patterns
+    // Use requestAnimationFrame to ensure DOM layout is complete
+    requestAnimationFrame(() => {
+        setTimeout(() => {
+            loadVisiblePlaylistPreviews();
+        }, 50); // Small delay to ensure grid layout is complete
+    });
+}
+
+// Load previews for patterns currently visible in the playlist
+async function loadVisiblePlaylistPreviews() {
+    const visiblePatterns = new Map();
+    const patternCards = document.querySelectorAll('#patternsGrid [data-pattern]');
+    
+    patternCards.forEach(card => {
+        const pattern = card.dataset.pattern;
+        const previewContainer = card.querySelector('.pattern-preview');
+        
+        // Skip if pattern is already displayed (has an img element) or if already in memory cache
+        if (!pattern || previewCache.has(pattern) || previewContainer.querySelector('img')) return;
+        
+        // Check if card is visible in viewport
+        const rect = card.getBoundingClientRect();
+        const isVisible = rect.top < window.innerHeight && rect.bottom > 0;
+        
+        if (isVisible) {
+            visiblePatterns.set(pattern, card);
+            // Remove from intersection observer since we're loading it immediately
+            intersectionObserver.unobserve(card);
+        }
+    });
+    
+    if (visiblePatterns.size > 0) {
+        logMessage(`Loading ${visiblePatterns.size} visible playlist previews not found in cache`, LOG_TYPE.DEBUG);
+        
+        // Add visible patterns to pending batch
+        for (const [pattern, element] of visiblePatterns) {
+            pendingPatterns.set(pattern, element);
+        }
+        
+        // Process batch immediately for visible patterns
+        await processPendingBatch();
+    }
 }
 
 // Create a pattern card
@@ -673,10 +723,13 @@ function createPatternCard(pattern, showRemove = false) {
     const previewContainer = document.createElement('div');
     previewContainer.className = 'w-full aspect-square bg-cover rounded-full shadow-sm group-hover:shadow-md transition-shadow duration-150 border border-gray-200 dark:border-gray-700 pattern-preview relative';
     
-    // Only set preview image if already available in memory cache
+    // Check in-memory cache first
     const previewData = previewCache.get(pattern);
     if (previewData && !previewData.error && previewData.image_data) {
         previewContainer.innerHTML = `<img src="${previewData.image_data}" alt="Pattern Preview" class="w-full h-full object-cover rounded-full" />`;
+    } else {
+        // Try to load from IndexedDB cache asynchronously
+        loadPreviewFromCache(pattern, previewContainer);
     }
 
     const patternName = document.createElement('p');
@@ -700,21 +753,210 @@ function createPatternCard(pattern, showRemove = false) {
     return card;
 }
 
-// Search and filter patterns
-function searchPatterns(query) {
-    const normalizedQuery = query.toLowerCase().trim();
+// Load preview from IndexedDB cache and update the preview container
+async function loadPreviewFromCache(pattern, previewContainer) {
+    try {
+        const cachedData = await getPreviewFromCache(pattern);
+        if (cachedData && !cachedData.error && cachedData.image_data) {
+            // Add to in-memory cache for faster future access
+            previewCache.set(pattern, cachedData);
+            // Update the preview container
+            if (previewContainer && !previewContainer.querySelector('img')) {
+                previewContainer.innerHTML = `<img src="${cachedData.image_data}" alt="Pattern Preview" class="w-full h-full object-cover rounded-full" />`;
+            }
+        }
+    } catch (error) {
+        logMessage(`Error loading preview from cache for ${pattern}: ${error.message}`, LOG_TYPE.WARNING);
+    }
+}
+
+// Sort patterns by specified field and direction
+function sortPatterns(patterns, sortField, sortDirection) {
+    return patterns.sort((a, b) => {
+        let aVal, bVal;
+        
+        switch (sortField) {
+            case 'name':
+                aVal = a.name.toLowerCase();
+                bVal = b.name.toLowerCase();
+                break;
+            case 'date':
+                aVal = a.date_modified;
+                bVal = b.date_modified;
+                break;
+            case 'coordinates':
+                aVal = a.coordinates_count;
+                bVal = b.coordinates_count;
+                break;
+            case 'favorite':
+                // Check if patterns are in favorites (access global favoritePatterns)
+                const aIsFavorite = window.favoritePatterns ? window.favoritePatterns.has(a.path) : false;
+                const bIsFavorite = window.favoritePatterns ? window.favoritePatterns.has(b.path) : false;
+                
+                if (aIsFavorite && !bIsFavorite) return sortDirection === 'asc' ? -1 : 1;
+                if (!aIsFavorite && bIsFavorite) return sortDirection === 'asc' ? 1 : -1;
+                
+                // Both have same favorite status, sort by name as secondary sort
+                aVal = a.name.toLowerCase();
+                bVal = b.name.toLowerCase();
+                break;
+            default:
+                aVal = a.name.toLowerCase();
+                bVal = b.name.toLowerCase();
+        }
+        
+        let result = 0;
+        if (aVal < bVal) result = -1;
+        else if (aVal > bVal) result = 1;
+        
+        return sortDirection === 'asc' ? result : -result;
+    });
+}
+
+// Filter patterns based on current filters
+function filterPatterns(patterns, filters, searchQuery = '') {
+    return patterns.filter(pattern => {
+        // Category filter
+        if (filters.category !== 'all' && pattern.category !== filters.category) {
+            return false;
+        }
+        
+        // Search query filter
+        if (searchQuery.trim()) {
+            const normalizedQuery = searchQuery.toLowerCase().trim();
+            const patternName = pattern.name.toLowerCase();
+            const category = pattern.category.toLowerCase();
+            return patternName.includes(normalizedQuery) || category.includes(normalizedQuery);
+        }
+        
+        return true;
+    });
+}
+
+// Apply sorting and filtering to patterns
+function applyPatternsFilteringAndSorting() {
+    const searchQuery = document.getElementById('patternSearchInput')?.value || '';
     
-    if (!normalizedQuery) {
-        filteredPatterns = [...availablePatterns];
-    } else {
-        filteredPatterns = availablePatterns.filter(pattern => {
-            const patternName = pattern.replace('.thr', '').split('/').pop().toLowerCase();
-            return patternName.includes(normalizedQuery);
-        });
+    // Check if enhanced metadata is available
+    if (!availablePatternsWithMetadata || availablePatternsWithMetadata.length === 0) {
+        // Fallback to basic search if metadata not loaded yet
+        if (searchQuery.trim()) {
+            filteredPatterns = availablePatterns.filter(pattern => 
+                pattern.toLowerCase().includes(searchQuery.toLowerCase())
+            );
+        } else {
+            filteredPatterns = [...availablePatterns];
+        }
+        displayAvailablePatterns();
+        return;
     }
     
+    // Start with all available patterns with metadata
+    let patterns = [...availablePatternsWithMetadata];
+    
+    // Apply filters
+    patterns = filterPatterns(patterns, currentFilters, searchQuery);
+    
+    // Apply sorting
+    patterns = sortPatterns(patterns, currentSort.field, currentSort.direction);
+    
+    // Update filtered patterns (convert back to path format for compatibility)
+    filteredPatterns = patterns.map(p => p.path);
+    
+    // Update display
     displayAvailablePatterns();
+    updateSortAndFilterUI();
 }
+
+// Search and filter patterns (updated to work with metadata)
+function searchPatterns(query) {
+    applyPatternsFilteringAndSorting();
+}
+
+// Update sort and filter UI to reflect current state
+function updateSortAndFilterUI() {
+    // Update sort direction icon
+    const sortDirectionIcon = document.getElementById('sortDirectionIcon');
+    if (sortDirectionIcon) {
+        sortDirectionIcon.textContent = currentSort.direction === 'asc' ? 'arrow_upward' : 'arrow_downward';
+    }
+    
+    // Update sort field select
+    const sortFieldSelect = document.getElementById('sortFieldSelect');
+    if (sortFieldSelect) {
+        sortFieldSelect.value = currentSort.field;
+    }
+    
+    // Update filter selects
+    const categorySelect = document.getElementById('categoryFilterSelect');
+    if (categorySelect) {
+        categorySelect.value = currentFilters.category;
+    }
+}
+
+// Populate category filter dropdown with available categories (subfolders)
+function updateCategoryFilter() {
+    const categorySelect = document.getElementById('categoryFilterSelect');
+    if (!categorySelect) return;
+    
+    // Check if metadata is available
+    if (!availablePatternsWithMetadata || availablePatternsWithMetadata.length === 0) {
+        // Show basic options if metadata not loaded
+        categorySelect.innerHTML = '<option value="all">All Folders (loading...)</option>';
+        return;
+    }
+    
+    // Get unique categories (subfolders)
+    const categories = [...new Set(availablePatternsWithMetadata.map(p => p.category))].sort();
+    
+    // Clear existing options except "All"
+    categorySelect.innerHTML = '<option value="all">All Folders</option>';
+    
+    // Add category options
+    categories.forEach(category => {
+        if (category) {
+            const option = document.createElement('option');
+            option.value = category;
+            // Display friendly names for full paths
+            if (category === 'root') {
+                option.textContent = 'Root Folder';
+            } else {
+                // For full paths, show the path but make it more readable
+                const displayName = category
+                    .split('/')
+                    .map(part => part.charAt(0).toUpperCase() + part.slice(1).replace('_', ' '))
+                    .join(' › ');
+                option.textContent = displayName;
+            }
+            categorySelect.appendChild(option);
+        }
+    });
+}
+
+// Handle sort field change
+function handleSortFieldChange() {
+    const sortFieldSelect = document.getElementById('sortFieldSelect');
+    if (sortFieldSelect) {
+        currentSort.field = sortFieldSelect.value;
+        applyPatternsFilteringAndSorting();
+    }
+}
+
+// Handle sort direction toggle
+function handleSortDirectionToggle() {
+    currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+    applyPatternsFilteringAndSorting();
+}
+
+// Handle category filter change
+function handleCategoryFilterChange() {
+    const categorySelect = document.getElementById('categoryFilterSelect');
+    if (categorySelect) {
+        currentFilters.category = categorySelect.value;
+        applyPatternsFilteringAndSorting();
+    }
+}
+
 
 // Handle search input
 function handleSearchInput() {
@@ -785,7 +1027,7 @@ async function removePatternFromPlaylist(pattern) {
     }
 }
 
-// Load available patterns for adding (no caching)
+// Load available patterns for adding (with metadata for sorting/filtering)
 async function loadAvailablePatterns(forceRefresh = false) {
     const loadingIndicator = document.getElementById('patternsLoadingIndicator');
     const grid = document.getElementById('availablePatternsGrid');
@@ -797,20 +1039,45 @@ async function loadAvailablePatterns(forceRefresh = false) {
     noResultsMessage.classList.add('hidden');
     
     try {
-        logMessage('Fetching fresh patterns list from server', LOG_TYPE.DEBUG);
-        const response = await fetch('/list_theta_rho_files');
-        if (response.ok) {
-            const patterns = await response.json();
-            const thrPatterns = patterns.filter(file => file.endsWith('.thr'));
-            availablePatterns = [...thrPatterns];
-            filteredPatterns = [...availablePatterns];
-            // Show patterns immediately - all lazy loading now
-            displayAvailablePatterns();
-            if (forceRefresh) {
-                showStatusMessage('Patterns list refreshed successfully', 'success');
-            }
-        } else {
+        // First load basic patterns list for fast initial display
+        logMessage('Fetching basic patterns list from server', LOG_TYPE.DEBUG);
+        const basicResponse = await fetch('/list_theta_rho_files');
+        if (!basicResponse.ok) {
             throw new Error('Failed to load available patterns');
+        }
+        
+        const patterns = await basicResponse.json();
+        const thrPatterns = patterns.filter(file => file.endsWith('.thr'));
+        availablePatterns = [...thrPatterns];
+        filteredPatterns = [...availablePatterns];
+        
+        // Show patterns immediately for fast loading
+        displayAvailablePatterns();
+        
+        // Then load metadata in background
+        setTimeout(async () => {
+            try {
+                logMessage('Loading enhanced metadata in background', LOG_TYPE.DEBUG);
+                const metadataResponse = await fetch('/list_theta_rho_files_with_metadata');
+                if (metadataResponse.ok) {
+                    const patternsWithMetadata = await metadataResponse.json();
+                    availablePatternsWithMetadata = [...patternsWithMetadata];
+                    
+                    // Update category filter dropdown now that we have metadata
+                    updateCategoryFilter();
+                    
+                    logMessage(`Enhanced metadata loaded for ${patternsWithMetadata.length} patterns`, LOG_TYPE.DEBUG);
+                } else {
+                    logMessage('Failed to load enhanced metadata - using basic functionality', LOG_TYPE.WARNING);
+                }
+            } catch (metadataError) {
+                logMessage(`Error loading enhanced metadata: ${metadataError.message}`, LOG_TYPE.WARNING);
+                // Continue with basic functionality
+            }
+        }, 100);
+        
+        if (forceRefresh) {
+            showStatusMessage('Patterns list refreshed successfully', 'success');
         }
     } catch (error) {
         logMessage(`Error loading available patterns: ${error.message}`, LOG_TYPE.ERROR);
@@ -818,6 +1085,85 @@ async function loadAvailablePatterns(forceRefresh = false) {
     } finally {
         loadingIndicator.classList.add('hidden');
     }
+}
+
+// Update selection count display
+function updateSelectionCount() {
+    const countElement = document.getElementById('selectionCount');
+    if (countElement) {
+        const count = selectedPatterns.size;
+        countElement.textContent = `${count} selected`;
+    }
+    updateToggleSelectAllButton();
+}
+
+// Smart toggle for Select All / Deselect All
+function toggleSelectAll() {
+    const patterns = filteredPatterns.length > 0 ? filteredPatterns : availablePatterns;
+    const allSelected = patterns.length > 0 && patterns.every(pattern => selectedPatterns.has(pattern));
+    
+    if (allSelected) {
+        // Deselect all
+        selectedPatterns.clear();
+    } else {
+        // Select all
+        patterns.forEach(pattern => {
+            selectedPatterns.add(pattern);
+        });
+    }
+    
+    updatePatternSelection();
+    updateSelectionCount();
+}
+
+// Update the toggle button text and icon based on selection state
+function updateToggleSelectAllButton() {
+    const patterns = filteredPatterns.length > 0 ? filteredPatterns : availablePatterns;
+    const allSelected = patterns.length > 0 && patterns.every(pattern => selectedPatterns.has(pattern));
+    
+    const icon = document.getElementById('toggleSelectAllIcon');
+    const text = document.getElementById('toggleSelectAllText');
+    
+    if (icon && text) {
+        if (allSelected) {
+            icon.textContent = 'check_box';
+            text.textContent = 'Deselect All';
+        } else {
+            icon.textContent = 'check_box_outline_blank';
+            text.textContent = 'Select All';
+        }
+    }
+}
+
+// Select all visible patterns (legacy function - keep for compatibility)
+function selectAllPatterns() {
+    const patterns = filteredPatterns.length > 0 ? filteredPatterns : availablePatterns;
+    patterns.forEach(pattern => {
+        selectedPatterns.add(pattern);
+    });
+    updatePatternSelection();
+    updateSelectionCount();
+}
+
+// Deselect all patterns (legacy function - keep for compatibility)
+function deselectAllPatterns() {
+    selectedPatterns.clear();
+    updatePatternSelection();
+    updateSelectionCount();
+}
+
+// Update visual selection state for all pattern cards
+function updatePatternSelection() {
+    const cards = document.querySelectorAll('#availablePatternsGrid .group');
+    cards.forEach(card => {
+        const patternName = card.dataset.pattern;
+        
+        if (selectedPatterns.has(patternName)) {
+            card.classList.add('ring-2', 'ring-blue-500');
+        } else {
+            card.classList.remove('ring-2', 'ring-blue-500');
+        }
+    });
 }
 
 // Display available patterns in modal
@@ -835,32 +1181,29 @@ function displayAvailablePatterns() {
         return;
     }
 
-    filteredPatterns.forEach((pattern, index) => {
+    filteredPatterns.forEach((pattern) => {
         const card = document.createElement('div');
-        card.className = 'flex flex-col gap-2 cursor-pointer transition-all duration-150 hover:scale-105';
+        const isSelected = selectedPatterns.has(pattern);
+        
+        // Add blue ring if already selected
+        card.className = `group flex flex-col gap-2 cursor-pointer transition-all duration-150 hover:scale-105 ${isSelected ? 'ring-2 ring-blue-500' : ''}`;
         card.dataset.pattern = pattern;
         
         card.innerHTML = `
             <div class="w-full bg-center aspect-square bg-cover rounded-full border border-gray-200 dark:border-gray-700 relative pattern-preview">
-                <div class="absolute top-2 right-2 size-6 rounded-full shadow-md opacity-0 transition-opacity duration-150 flex items-center justify-center">
-                    <span class="material-icons text-sm text-gray-600 dark:text-gray-300">add</span>
-                </div>
             </div>
             <p class="text-xs text-gray-700 dark:text-gray-300 font-medium truncate text-center">${pattern.replace('.thr', '').split('/').pop()}</p>
         `;
 
         const previewContainer = card.querySelector('.pattern-preview');
-        const addBtn = card.querySelector('.absolute.top-2');
         
-        // Only set preview image if already available in memory cache
+        // Check in-memory cache first
         const previewData = previewCache.get(pattern);
         if (previewData && !previewData.error && previewData.image_data) {
             previewContainer.innerHTML = `<img src="${previewData.image_data}" alt="Pattern Preview" class="w-full h-full object-cover rounded-full" />`;
-            // Re-add the add button
-            const addBtnContainer = document.createElement('div');
-            addBtnContainer.className = 'absolute top-2 right-2 size-6 rounded-full bg-white dark:bg-gray-700 shadow-md opacity-0 transition-opacity duration-150 flex items-center justify-center';
-            addBtnContainer.innerHTML = '<span class="material-icons text-sm text-gray-600 dark:text-gray-300">add</span>';
-            previewContainer.appendChild(addBtnContainer);
+        } else {
+            // Try to load from IndexedDB cache asynchronously
+            loadPreviewFromCache(pattern, previewContainer);
         }
         
         // Set up lazy loading for ALL patterns
@@ -871,61 +1214,60 @@ function displayAvailablePatterns() {
             if (selectedPatterns.has(pattern)) {
                 selectedPatterns.delete(pattern);
                 card.classList.remove('ring-2', 'ring-blue-500');
-                addBtn.classList.remove('opacity-100', 'bg-blue-500', 'text-white');
-                addBtn.classList.add('opacity-0', 'bg-white', 'dark:bg-gray-700');
-                addBtn.querySelector('.material-icons').textContent = 'add';
             } else {
                 selectedPatterns.add(pattern);
                 card.classList.add('ring-2', 'ring-blue-500');
-                addBtn.classList.remove('opacity-0', 'bg-white', 'dark:bg-gray-700');
-                addBtn.classList.add('opacity-100', 'bg-blue-500', 'text-white');
-                addBtn.querySelector('.material-icons').textContent = 'check';
             }
-        });
-
-        // Show add button on hover
-        card.addEventListener('mouseenter', () => {
-            if (!selectedPatterns.has(pattern)) {
-                addBtn.classList.remove('opacity-0');
-                addBtn.classList.add('opacity-100');
-            }
-        });
-
-        card.addEventListener('mouseleave', () => {
-            if (!selectedPatterns.has(pattern)) {
-                addBtn.classList.remove('opacity-100');
-                addBtn.classList.add('opacity-0');
-            }
+            updateSelectionCount();
         });
 
         grid.appendChild(card);
     });
     
-    // Trigger preview loading for visible patterns after displaying
-    triggerPreviewLoadingForVisible();
+    // Trigger immediate preview loading for visible patterns in modal
+    requestAnimationFrame(() => {
+        setTimeout(() => {
+            loadVisibleModalPreviews();
+        }, 50); // Small delay to ensure modal layout is complete
+    });
 }
 
-// Trigger preview loading for currently visible patterns
-function triggerPreviewLoadingForVisible() {
-    // Get all pattern cards currently in the DOM
-    const patternCards = document.querySelectorAll('[data-pattern]');
+// Load previews for patterns currently visible in the modal
+async function loadVisibleModalPreviews() {
+    const visiblePatterns = new Map();
+    const patternCards = document.querySelectorAll('#availablePatternsGrid [data-pattern]');
     
     patternCards.forEach(card => {
         const pattern = card.dataset.pattern;
         const previewContainer = card.querySelector('.pattern-preview');
         
-        // Check if this pattern needs preview loading
-        if (pattern && !previewCache.has(pattern) && !pendingPatterns.has(pattern)) {
-            // Add to batch for immediate loading
-            addPatternToBatch(pattern, previewContainer);
+        // Skip if pattern is already displayed (has an img element) or if already in memory cache
+        if (!pattern || previewCache.has(pattern) || previewContainer.querySelector('img')) return;
+        
+        // Check if card is visible in viewport
+        const rect = card.getBoundingClientRect();
+        const isVisible = rect.top < window.innerHeight && rect.bottom > 0;
+        
+        if (isVisible) {
+            visiblePatterns.set(pattern, card);
+            // Remove from intersection observer since we're loading it immediately
+            intersectionObserver.unobserve(card);
         }
     });
     
-    // Process any pending previews immediately
-    if (pendingPatterns.size > 0) {
-        processPendingBatch();
+    if (visiblePatterns.size > 0) {
+        logMessage(`Loading ${visiblePatterns.size} visible modal previews not found in cache`, LOG_TYPE.DEBUG);
+        
+        // Add visible patterns to pending batch
+        for (const [pattern, element] of visiblePatterns) {
+            pendingPatterns.set(pattern, element);
+        }
+        
+        // Process batch immediately for visible patterns
+        await processPendingBatch();
     }
 }
+
 
 // Add pattern to pending batch for efficient loading
 async function addPatternToBatch(pattern, element) {
@@ -990,41 +1332,35 @@ function updatePreviewElement(element, imageData) {
     }
 }
 
-// Add selected patterns to playlist
+// Save selected patterns to playlist (replaces entire playlist)
 async function addSelectedPatternsToPlaylist() {
-    if (selectedPatterns.size === 0 || !currentPlaylist) return;
+    if (!currentPlaylist) return;
 
     try {
-        // Get current playlist data
-        const response = await fetch(`/get_playlist?name=${encodeURIComponent(currentPlaylist)}`);
-        if (response.ok) {
-            const playlistData = await response.json();
-            const currentFiles = playlistData.files || [];
-            const newFiles = Array.from(selectedPatterns).filter(pattern => !currentFiles.includes(pattern));
-            const updatedFiles = [...currentFiles, ...newFiles];
-            
-            // Update playlist
-            const updateResponse = await fetch('/modify_playlist', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    playlist_name: currentPlaylist,
-                    files: updatedFiles
-                })
-            });
+        // Simply replace the playlist with the selected patterns
+        const updatedFiles = Array.from(selectedPatterns);
+        
+        // Update playlist
+        const updateResponse = await fetch('/modify_playlist', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                playlist_name: currentPlaylist,
+                files: updatedFiles
+            })
+        });
 
-            if (updateResponse.ok) {
-                showStatusMessage(`Added ${newFiles.length} patterns to playlist`, 'success');
-                selectedPatterns.clear();
-                document.getElementById('addPatternsModal').classList.add('hidden');
-                await loadPlaylistPatterns(currentPlaylist);
-            } else {
-                throw new Error('Failed to update playlist');
-            }
+        if (updateResponse.ok) {
+            showStatusMessage(`Playlist "${currentPlaylist}" saved successfully`, 'success');
+            selectedPatterns.clear();
+            document.getElementById('addPatternsModal').classList.add('hidden');
+            await loadPlaylistPatterns(currentPlaylist);
+        } else {
+            throw new Error('Failed to update playlist');
         }
     } catch (error) {
-        logMessage(`Error adding patterns: ${error.message}`, LOG_TYPE.ERROR);
-        showStatusMessage('Failed to add patterns', 'error');
+        logMessage(`Error saving playlist: ${error.message}`, LOG_TYPE.ERROR);
+        showStatusMessage('Failed to save playlist', 'error');
     }
 }
 
@@ -1216,7 +1552,28 @@ function setupEventListeners() {
 
     // Add patterns button
     document.getElementById('addPatternsBtn').addEventListener('click', async () => {
+        // Load current playlist patterns first
+        if (currentPlaylist) {
+            const response = await fetch(`/get_playlist?name=${encodeURIComponent(currentPlaylist)}`);
+            if (response.ok) {
+                const playlistData = await response.json();
+                const currentFiles = playlistData.files || [];
+                // Pre-select current patterns
+                selectedPatterns.clear();
+                currentFiles.forEach(pattern => selectedPatterns.add(pattern));
+            }
+        }
+        
         await loadAvailablePatterns();
+        updatePatternSelection();
+        updateSelectionCount();
+        
+        // Update modal title
+        const modalTitle = document.getElementById('modalTitle');
+        if (modalTitle) {
+            modalTitle.textContent = currentPlaylist ? `Edit Patterns for "${currentPlaylist}"` : 'Add Patterns to Playlist';
+        }
+        
         document.getElementById('addPatternsModal').classList.remove('hidden');
         // Focus search input when modal opens
         setTimeout(() => {
@@ -1227,6 +1584,11 @@ function setupEventListeners() {
     // Search functionality
     document.getElementById('patternSearchInput').addEventListener('input', handleSearchInput);
     document.getElementById('clearSearchBtn').addEventListener('click', clearSearch);
+    
+    // Sort and filter controls
+    document.getElementById('sortFieldSelect').addEventListener('change', handleSortFieldChange);
+    document.getElementById('sortDirectionBtn').addEventListener('click', handleSortDirectionToggle);
+    document.getElementById('categoryFilterSelect').addEventListener('change', handleCategoryFilterChange);
     
     // Handle Enter key in search input
     document.getElementById('patternSearchInput').addEventListener('keypress', (e) => {
@@ -1248,10 +1610,17 @@ function setupEventListeners() {
     document.getElementById('cancelAddPatternsBtn').addEventListener('click', () => {
         selectedPatterns.clear();
         clearSearch();
+        updateSelectionCount();
         document.getElementById('addPatternsModal').classList.add('hidden');
     });
 
     document.getElementById('confirmAddPatternsBtn').addEventListener('click', addSelectedPatternsToPlaylist);
+    
+    // Smart Toggle Select All button
+    const toggleSelectBtn = document.getElementById('toggleSelectAllBtn');
+    if (toggleSelectBtn) {
+        toggleSelectBtn.addEventListener('click', toggleSelectAll);
+    }
 
     // Handle Enter key in new playlist name input
     document.getElementById('newPlaylistName').addEventListener('keypress', (e) => {
