@@ -653,16 +653,62 @@ async function displayPlaylistPatterns(patterns) {
         return;
     }
 
-    // No more pre-loading - all patterns will use lazy loading
+    // Clear grid and add all pattern cards
     patternsGrid.innerHTML = '';
+    const visiblePatterns = new Map();
+    
     patterns.forEach(pattern => {
         const patternCard = createPatternCard(pattern, true);
         patternsGrid.appendChild(patternCard);
-        
-        // Set up lazy loading for ALL patterns
         patternCard.dataset.pattern = pattern;
+        
+        // Set up lazy loading for patterns outside viewport
         intersectionObserver.observe(patternCard);
     });
+    
+    // After DOM is updated, immediately load previews for visible patterns
+    // Use requestAnimationFrame to ensure DOM layout is complete
+    requestAnimationFrame(() => {
+        setTimeout(() => {
+            loadVisiblePlaylistPreviews();
+        }, 50); // Small delay to ensure grid layout is complete
+    });
+}
+
+// Load previews for patterns currently visible in the playlist
+async function loadVisiblePlaylistPreviews() {
+    const visiblePatterns = new Map();
+    const patternCards = document.querySelectorAll('#patternsGrid [data-pattern]');
+    
+    patternCards.forEach(card => {
+        const pattern = card.dataset.pattern;
+        const previewContainer = card.querySelector('.pattern-preview');
+        
+        // Skip if pattern is already displayed (has an img element) or if already in memory cache
+        if (!pattern || previewCache.has(pattern) || previewContainer.querySelector('img')) return;
+        
+        // Check if card is visible in viewport
+        const rect = card.getBoundingClientRect();
+        const isVisible = rect.top < window.innerHeight && rect.bottom > 0;
+        
+        if (isVisible) {
+            visiblePatterns.set(pattern, card);
+            // Remove from intersection observer since we're loading it immediately
+            intersectionObserver.unobserve(card);
+        }
+    });
+    
+    if (visiblePatterns.size > 0) {
+        logMessage(`Loading ${visiblePatterns.size} visible playlist previews not found in cache`, LOG_TYPE.DEBUG);
+        
+        // Add visible patterns to pending batch
+        for (const [pattern, element] of visiblePatterns) {
+            pendingPatterns.set(pattern, element);
+        }
+        
+        // Process batch immediately for visible patterns
+        await processPendingBatch();
+    }
 }
 
 // Create a pattern card
@@ -673,10 +719,13 @@ function createPatternCard(pattern, showRemove = false) {
     const previewContainer = document.createElement('div');
     previewContainer.className = 'w-full aspect-square bg-cover rounded-full shadow-sm group-hover:shadow-md transition-shadow duration-150 border border-gray-200 dark:border-gray-700 pattern-preview relative';
     
-    // Only set preview image if already available in memory cache
+    // Check in-memory cache first
     const previewData = previewCache.get(pattern);
     if (previewData && !previewData.error && previewData.image_data) {
         previewContainer.innerHTML = `<img src="${previewData.image_data}" alt="Pattern Preview" class="w-full h-full object-cover rounded-full" />`;
+    } else {
+        // Try to load from IndexedDB cache asynchronously
+        loadPreviewFromCache(pattern, previewContainer);
     }
 
     const patternName = document.createElement('p');
@@ -698,6 +747,23 @@ function createPatternCard(pattern, showRemove = false) {
     }
 
     return card;
+}
+
+// Load preview from IndexedDB cache and update the preview container
+async function loadPreviewFromCache(pattern, previewContainer) {
+    try {
+        const cachedData = await getPreviewFromCache(pattern);
+        if (cachedData && !cachedData.error && cachedData.image_data) {
+            // Add to in-memory cache for faster future access
+            previewCache.set(pattern, cachedData);
+            // Update the preview container
+            if (previewContainer && !previewContainer.querySelector('img')) {
+                previewContainer.innerHTML = `<img src="${cachedData.image_data}" alt="Pattern Preview" class="w-full h-full object-cover rounded-full" />`;
+            }
+        }
+    } catch (error) {
+        logMessage(`Error loading preview from cache for ${pattern}: ${error.message}`, LOG_TYPE.WARNING);
+    }
 }
 
 // Search and filter patterns
@@ -930,10 +996,13 @@ function displayAvailablePatterns() {
 
         const previewContainer = card.querySelector('.pattern-preview');
         
-        // Only set preview image if already available in memory cache
+        // Check in-memory cache first
         const previewData = previewCache.get(pattern);
         if (previewData && !previewData.error && previewData.image_data) {
             previewContainer.innerHTML = `<img src="${previewData.image_data}" alt="Pattern Preview" class="w-full h-full object-cover rounded-full" />`;
+        } else {
+            // Try to load from IndexedDB cache asynchronously
+            loadPreviewFromCache(pattern, previewContainer);
         }
         
         // Set up lazy loading for ALL patterns
@@ -954,31 +1023,50 @@ function displayAvailablePatterns() {
         grid.appendChild(card);
     });
     
-    // Trigger preview loading for visible patterns after displaying
-    triggerPreviewLoadingForVisible();
+    // Trigger immediate preview loading for visible patterns in modal
+    requestAnimationFrame(() => {
+        setTimeout(() => {
+            loadVisibleModalPreviews();
+        }, 50); // Small delay to ensure modal layout is complete
+    });
 }
 
-// Trigger preview loading for currently visible patterns
-function triggerPreviewLoadingForVisible() {
-    // Get all pattern cards currently in the DOM
-    const patternCards = document.querySelectorAll('[data-pattern]');
+// Load previews for patterns currently visible in the modal
+async function loadVisibleModalPreviews() {
+    const visiblePatterns = new Map();
+    const patternCards = document.querySelectorAll('#availablePatternsGrid [data-pattern]');
     
     patternCards.forEach(card => {
         const pattern = card.dataset.pattern;
         const previewContainer = card.querySelector('.pattern-preview');
         
-        // Check if this pattern needs preview loading
-        if (pattern && !previewCache.has(pattern) && !pendingPatterns.has(pattern)) {
-            // Add to batch for immediate loading
-            addPatternToBatch(pattern, previewContainer);
+        // Skip if pattern is already displayed (has an img element) or if already in memory cache
+        if (!pattern || previewCache.has(pattern) || previewContainer.querySelector('img')) return;
+        
+        // Check if card is visible in viewport
+        const rect = card.getBoundingClientRect();
+        const isVisible = rect.top < window.innerHeight && rect.bottom > 0;
+        
+        if (isVisible) {
+            visiblePatterns.set(pattern, card);
+            // Remove from intersection observer since we're loading it immediately
+            intersectionObserver.unobserve(card);
         }
     });
     
-    // Process any pending previews immediately
-    if (pendingPatterns.size > 0) {
-        processPendingBatch();
+    if (visiblePatterns.size > 0) {
+        logMessage(`Loading ${visiblePatterns.size} visible modal previews not found in cache`, LOG_TYPE.DEBUG);
+        
+        // Add visible patterns to pending batch
+        for (const [pattern, element] of visiblePatterns) {
+            pendingPatterns.set(pattern, element);
+        }
+        
+        // Process batch immediately for visible patterns
+        await processPendingBatch();
     }
 }
+
 
 // Add pattern to pending batch for efficient loading
 async function addPatternToBatch(pattern, element) {
