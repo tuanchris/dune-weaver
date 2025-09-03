@@ -951,6 +951,9 @@ window.addEventListener('resize', () => {
         layoutContainer.parentElement.classList.remove('preview-open');
         previewPanel.classList.add('lg:opacity-0', 'lg:pointer-events-none');
     }
+    
+    // Update category filter display names for new screen size
+    updateBrowseCategoryFilter();
 });
 
 // Setup preview panel events
@@ -1325,10 +1328,22 @@ function updateBrowseCategoryFilter() {
                 option.textContent = 'Root Folder';
             } else {
                 // For full paths, show the path but make it more readable
-                const displayName = category
+                const parts = category
                     .split('/')
-                    .map(part => part.charAt(0).toUpperCase() + part.slice(1).replace('_', ' '))
-                    .join(' › ');
+                    .map(part => part.charAt(0).toUpperCase() + part.slice(1).replace('_', ' '));
+                
+                // Check if we're on a small screen and truncate if necessary
+                const isSmallScreen = window.innerWidth < 640; // sm breakpoint
+                let displayName;
+                
+                if (isSmallScreen && parts.length > 1) {
+                    // On small screens, show only the last part with "..." if nested
+                    displayName = '...' + parts[parts.length - 1];
+                } else {
+                    // Full path with separators
+                    displayName = parts.join(' › ');
+                }
+                
                 option.textContent = displayName;
             }
             categorySelect.appendChild(option);
