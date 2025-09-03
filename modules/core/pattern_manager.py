@@ -127,6 +127,31 @@ def parse_theta_rho_file(file_path):
         logger.debug(f"Parsed {len(coordinates)} coordinates from {file_path}")
     return coordinates
 
+def get_first_rho_from_cache(file_path):
+    """Get the first rho value from cached metadata, falling back to file parsing if needed."""
+    try:
+        # Import cache_manager locally to avoid circular import
+        from modules.core import cache_manager
+        
+        # Try to get from metadata cache first
+        file_name = os.path.basename(file_path)
+        metadata = cache_manager.get_pattern_metadata(file_name)
+        
+        if metadata and 'first_coordinate' in metadata:
+            # In the cache, 'x' is theta and 'y' is rho
+            return metadata['first_coordinate']['y']
+        
+        # Fallback to parsing the file if not in cache
+        logger.debug(f"Metadata not cached for {file_name}, parsing file")
+        coordinates = parse_theta_rho_file(file_path)
+        if coordinates:
+            return coordinates[0][1]  # Return rho value
+        
+        return None
+    except Exception as e:
+        logger.warning(f"Error getting first rho from cache for {file_path}: {str(e)}")
+        return None
+
 def get_clear_pattern_file(clear_pattern_mode, path=None):
     """Return a .thr file path based on pattern_name and table type."""
     if not clear_pattern_mode or clear_pattern_mode == 'none':
@@ -159,10 +184,10 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
     # Check for custom patterns first
     if state.custom_clear_from_out and clear_pattern_mode in ['clear_from_out', 'adaptive']:
         if clear_pattern_mode == 'adaptive':
-            # For adaptive mode, check if we should use custom pattern
+            # For adaptive mode, use cached metadata to check first rho
             if path:
-                coordinates = parse_theta_rho_file(path)
-                if coordinates and coordinates[0][1] < 0.5:
+                first_rho = get_first_rho_from_cache(path)
+                if first_rho is not None and first_rho < 0.5:
                     # Use custom clear_from_out if set
                     custom_path = os.path.join('./patterns', state.custom_clear_from_out)
                     if os.path.exists(custom_path):
@@ -176,10 +201,10 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
     
     if state.custom_clear_from_in and clear_pattern_mode in ['clear_from_in', 'adaptive']:
         if clear_pattern_mode == 'adaptive':
-            # For adaptive mode, check if we should use custom pattern
+            # For adaptive mode, use cached metadata to check first rho
             if path:
-                coordinates = parse_theta_rho_file(path)
-                if coordinates and coordinates[0][1] >= 0.5:
+                first_rho = get_first_rho_from_cache(path)
+                if first_rho is not None and first_rho >= 0.5:
                     # Use custom clear_from_in if set
                     custom_path = os.path.join('./patterns', state.custom_clear_from_in)
                     if os.path.exists(custom_path):
@@ -201,12 +226,12 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
             logger.warning("No path provided for adaptive clear pattern")
             return random.choice(list(table_patterns.values()))
             
-        coordinates = parse_theta_rho_file(path)
-        if not coordinates:
-            logger.warning("No valid coordinates found in file for adaptive clear pattern")
+        # Use cached metadata to get first rho value
+        first_rho = get_first_rho_from_cache(path)
+        if first_rho is None:
+            logger.warning("Could not determine first rho value for adaptive clear pattern")
             return random.choice(list(table_patterns.values()))
             
-        first_rho = coordinates[0][1]
         if first_rho < 0.5:
             return table_patterns['clear_from_out']
         else:
