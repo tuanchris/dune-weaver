@@ -22,6 +22,86 @@ cache_progress = {
 CACHE_DIR = os.path.join(THETA_RHO_DIR, "cached_images")
 METADATA_CACHE_FILE = "metadata_cache.json"  # Now in root directory
 
+# Cache schema version - increment when structure changes
+CACHE_SCHEMA_VERSION = 1
+
+# Expected cache schema structure
+EXPECTED_CACHE_SCHEMA = {
+    'version': CACHE_SCHEMA_VERSION,
+    'structure': {
+        'mtime': 'number',
+        'metadata': {
+            'first_coordinate': {'x': 'number', 'y': 'number'},
+            'last_coordinate': {'x': 'number', 'y': 'number'},
+            'total_coordinates': 'number'
+        }
+    }
+}
+
+def validate_cache_schema(cache_data):
+    """Validate that cache data matches the expected schema structure."""
+    try:
+        # Check if version info exists
+        if not isinstance(cache_data, dict):
+            return False
+        
+        # Check for version field - if missing, it's old format
+        cache_version = cache_data.get('version')
+        if cache_version is None:
+            logger.info("Cache file missing version info - treating as outdated schema")
+            return False
+        
+        # Check if version matches current expected version
+        if cache_version != CACHE_SCHEMA_VERSION:
+            logger.info(f"Cache schema version mismatch: found {cache_version}, expected {CACHE_SCHEMA_VERSION}")
+            return False
+        
+        # Check if data section exists
+        if 'data' not in cache_data:
+            logger.warning("Cache file missing 'data' section")
+            return False
+        
+        # Validate structure of a few entries if they exist
+        data_section = cache_data.get('data', {})
+        if data_section and isinstance(data_section, dict):
+            # Check first entry structure
+            for pattern_file, entry in list(data_section.items())[:1]:  # Just check first entry
+                if not isinstance(entry, dict):
+                    return False
+                if 'mtime' not in entry or 'metadata' not in entry:
+                    return False
+                metadata = entry.get('metadata', {})
+                required_fields = ['first_coordinate', 'last_coordinate', 'total_coordinates']
+                if not all(field in metadata for field in required_fields):
+                    return False
+                # Validate coordinate structure
+                for coord_field in ['first_coordinate', 'last_coordinate']:
+                    coord = metadata.get(coord_field)
+                    if not isinstance(coord, dict) or 'x' not in coord or 'y' not in coord:
+                        return False
+        
+        return True
+    except Exception as e:
+        logger.warning(f"Error validating cache schema: {str(e)}")
+        return False
+
+def invalidate_cache():
+    """Delete only the metadata cache file, preserving image cache."""
+    try:
+        # Delete metadata cache file only
+        if os.path.exists(METADATA_CACHE_FILE):
+            os.remove(METADATA_CACHE_FILE)
+            logger.info("Deleted outdated metadata cache file")
+        
+        # Keep image cache directory intact - images are still valid
+        # Just ensure the cache directory structure exists
+        ensure_cache_dir()
+        
+        return True
+    except Exception as e:
+        logger.error(f"Failed to invalidate metadata cache: {str(e)}")
+        return False
+
 def ensure_cache_dir():
     """Ensure the cache directory exists with proper permissions."""
     try:
@@ -29,8 +109,12 @@ def ensure_cache_dir():
         
         # Initialize metadata cache if it doesn't exist
         if not os.path.exists(METADATA_CACHE_FILE):
+            initial_cache = {
+                'version': CACHE_SCHEMA_VERSION,
+                'data': {}
+            }
             with open(METADATA_CACHE_FILE, 'w') as f:
-                json.dump({}, f)
+                json.dump(initial_cache, f)
             try:
                 os.chmod(METADATA_CACHE_FILE, 0o644)  # More conservative permissions
             except (OSError, PermissionError) as e:
@@ -94,8 +178,10 @@ def delete_pattern_cache(pattern_file):
         
         # Remove from metadata cache
         metadata_cache = load_metadata_cache()
-        if pattern_file in metadata_cache:
-            del metadata_cache[pattern_file]
+        data_section = metadata_cache.get('data', {})
+        if pattern_file in data_section:
+            del data_section[pattern_file]
+            metadata_cache['data'] = data_section
             save_metadata_cache(metadata_cache)
             logger.info(f"Removed {pattern_file} from metadata cache")
         
@@ -105,31 +191,68 @@ def delete_pattern_cache(pattern_file):
         return False
 
 def load_metadata_cache():
-    """Load the metadata cache from disk."""
+    """Load the metadata cache from disk with schema validation."""
     try:
         if os.path.exists(METADATA_CACHE_FILE):
             with open(METADATA_CACHE_FILE, 'r') as f:
-                return json.load(f)
+                cache_data = json.load(f)
+            
+            # Validate schema
+            if not validate_cache_schema(cache_data):
+                logger.info("Cache schema validation failed - invalidating cache")
+                invalidate_cache()
+                # Return empty cache structure after invalidation
+                return {
+                    'version': CACHE_SCHEMA_VERSION,
+                    'data': {}
+                }
+            
+            return cache_data
     except Exception as e:
-        logger.warning(f"Failed to load metadata cache: {str(e)}")
-    return {}
+        logger.warning(f"Failed to load metadata cache: {str(e)} - invalidating cache")
+        try:
+            invalidate_cache()
+        except Exception as invalidate_error:
+            logger.error(f"Failed to invalidate corrupted cache: {str(invalidate_error)}")
+    
+    # Return empty cache structure
+    return {
+        'version': CACHE_SCHEMA_VERSION,
+        'data': {}
+    }
 
 def save_metadata_cache(cache_data):
-    """Save the metadata cache to disk."""
+    """Save the metadata cache to disk with version info."""
     try:
         ensure_cache_dir()
+        
+        # Ensure cache data has proper structure
+        if not isinstance(cache_data, dict) or 'version' not in cache_data:
+            # Convert old format or create new structure
+            if isinstance(cache_data, dict) and 'data' not in cache_data:
+                # Old format - wrap existing data
+                structured_cache = {
+                    'version': CACHE_SCHEMA_VERSION,
+                    'data': cache_data
+                }
+            else:
+                structured_cache = cache_data
+        else:
+            structured_cache = cache_data
+        
         with open(METADATA_CACHE_FILE, 'w') as f:
-            json.dump(cache_data, f, indent=2)
+            json.dump(structured_cache, f, indent=2)
     except Exception as e:
         logger.error(f"Failed to save metadata cache: {str(e)}")
 
 def get_pattern_metadata(pattern_file):
     """Get cached metadata for a pattern file."""
     cache_data = load_metadata_cache()
+    data_section = cache_data.get('data', {})
     
     # Check if we have cached metadata and if the file hasn't changed
-    if pattern_file in cache_data:
-        cached_entry = cache_data[pattern_file]
+    if pattern_file in data_section:
+        cached_entry = data_section[pattern_file]
         pattern_path = os.path.join(THETA_RHO_DIR, pattern_file)
         
         try:
@@ -145,10 +268,11 @@ def cache_pattern_metadata(pattern_file, first_coord, last_coord, total_coords):
     """Cache metadata for a pattern file."""
     try:
         cache_data = load_metadata_cache()
+        data_section = cache_data.get('data', {})
         pattern_path = os.path.join(THETA_RHO_DIR, pattern_file)
         file_mtime = os.path.getmtime(pattern_path)
         
-        cache_data[pattern_file] = {
+        data_section[pattern_file] = {
             'mtime': file_mtime,
             'metadata': {
                 'first_coordinate': first_coord,
@@ -157,6 +281,7 @@ def cache_pattern_metadata(pattern_file, first_coord, last_coord, total_coords):
             }
         }
         
+        cache_data['data'] = data_section
         save_metadata_cache(cache_data)
         logger.debug(f"Cached metadata for {pattern_file}")
     except Exception as e:

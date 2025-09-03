@@ -269,6 +269,66 @@ async def list_theta_rho_files():
     files = pattern_manager.list_theta_rho_files()
     return sorted(files)
 
+@app.get("/list_theta_rho_files_with_metadata")
+async def list_theta_rho_files_with_metadata():
+    """Get list of theta-rho files with metadata for sorting and filtering."""
+    from modules.core.cache_manager import get_pattern_metadata
+    
+    files = pattern_manager.list_theta_rho_files()
+    files_with_metadata = []
+    
+    for file_path in files:
+        try:
+            full_path = os.path.join(pattern_manager.THETA_RHO_DIR, file_path)
+            
+            # Get file stats
+            file_stat = os.stat(full_path)
+            
+            # Get cached metadata
+            metadata = get_pattern_metadata(file_path)
+            
+            # Extract full folder path from file path
+            path_parts = file_path.split('/')
+            if len(path_parts) > 1:
+                # Get everything except the filename (join all folder parts)
+                category = '/'.join(path_parts[:-1])
+            else:
+                category = 'root'
+            
+            # Get file name without extension
+            file_name = os.path.splitext(os.path.basename(file_path))[0]
+            
+            # Use modification time (mtime) for "date modified"
+            date_modified = file_stat.st_mtime
+            
+            file_info = {
+                'path': file_path,
+                'name': file_name,
+                'category': category,
+                'date_modified': date_modified,
+                'coordinates_count': metadata.get('total_coordinates', 0) if metadata else 0
+            }
+            
+            files_with_metadata.append(file_info)
+            
+        except Exception as e:
+            logger.warning(f"Error getting metadata for {file_path}: {str(e)}")
+            # Include file with minimal info if metadata fails
+            path_parts = file_path.split('/')
+            if len(path_parts) > 1:
+                category = '/'.join(path_parts[:-1])
+            else:
+                category = 'root'
+            files_with_metadata.append({
+                'path': file_path,
+                'name': os.path.splitext(os.path.basename(file_path))[0],
+                'category': category,
+                'date_modified': 0,
+                'coordinates_count': 0
+            })
+    
+    return files_with_metadata
+
 @app.post("/upload_theta_rho")
 async def upload_theta_rho(file: UploadFile = File(...)):
     """Upload a theta-rho file."""

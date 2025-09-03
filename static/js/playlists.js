@@ -11,11 +11,16 @@ const LOG_TYPE = {
 let allPlaylists = [];
 let currentPlaylist = null;
 let availablePatterns = [];
+let availablePatternsWithMetadata = []; // Enhanced pattern data with metadata
 let filteredPatterns = [];
 let selectedPatterns = new Set();
 let previewCache = new Map();
 let intersectionObserver = null;
 let searchTimeout = null;
+
+// Sorting and filtering state
+let currentSort = { field: 'name', direction: 'asc' };
+let currentFilters = { category: 'all' };
 
 // Mobile navigation state
 let isMobileView = false;
@@ -655,7 +660,6 @@ async function displayPlaylistPatterns(patterns) {
 
     // Clear grid and add all pattern cards
     patternsGrid.innerHTML = '';
-    const visiblePatterns = new Map();
     
     patterns.forEach(pattern => {
         const patternCard = createPatternCard(pattern, true);
@@ -766,21 +770,181 @@ async function loadPreviewFromCache(pattern, previewContainer) {
     }
 }
 
-// Search and filter patterns
-function searchPatterns(query) {
-    const normalizedQuery = query.toLowerCase().trim();
+// Sort patterns by specified field and direction
+function sortPatterns(patterns, sortField, sortDirection) {
+    return patterns.sort((a, b) => {
+        let aVal, bVal;
+        
+        switch (sortField) {
+            case 'name':
+                aVal = a.name.toLowerCase();
+                bVal = b.name.toLowerCase();
+                break;
+            case 'date':
+                aVal = a.date_modified;
+                bVal = b.date_modified;
+                break;
+            case 'coordinates':
+                aVal = a.coordinates_count;
+                bVal = b.coordinates_count;
+                break;
+            default:
+                aVal = a.name.toLowerCase();
+                bVal = b.name.toLowerCase();
+        }
+        
+        let result = 0;
+        if (aVal < bVal) result = -1;
+        else if (aVal > bVal) result = 1;
+        
+        return sortDirection === 'asc' ? result : -result;
+    });
+}
+
+// Filter patterns based on current filters
+function filterPatterns(patterns, filters, searchQuery = '') {
+    return patterns.filter(pattern => {
+        // Category filter
+        if (filters.category !== 'all' && pattern.category !== filters.category) {
+            return false;
+        }
+        
+        // Search query filter
+        if (searchQuery.trim()) {
+            const normalizedQuery = searchQuery.toLowerCase().trim();
+            const patternName = pattern.name.toLowerCase();
+            const category = pattern.category.toLowerCase();
+            return patternName.includes(normalizedQuery) || category.includes(normalizedQuery);
+        }
+        
+        return true;
+    });
+}
+
+// Apply sorting and filtering to patterns
+function applyPatternsFilteringAndSorting() {
+    const searchQuery = document.getElementById('patternSearchInput')?.value || '';
     
-    if (!normalizedQuery) {
-        filteredPatterns = [...availablePatterns];
-    } else {
-        filteredPatterns = availablePatterns.filter(pattern => {
-            const patternName = pattern.replace('.thr', '').split('/').pop().toLowerCase();
-            return patternName.includes(normalizedQuery);
-        });
+    // Check if enhanced metadata is available
+    if (!availablePatternsWithMetadata || availablePatternsWithMetadata.length === 0) {
+        // Fallback to basic search if metadata not loaded yet
+        if (searchQuery.trim()) {
+            filteredPatterns = availablePatterns.filter(pattern => 
+                pattern.toLowerCase().includes(searchQuery.toLowerCase())
+            );
+        } else {
+            filteredPatterns = [...availablePatterns];
+        }
+        displayAvailablePatterns();
+        return;
     }
     
+    // Start with all available patterns with metadata
+    let patterns = [...availablePatternsWithMetadata];
+    
+    // Apply filters
+    patterns = filterPatterns(patterns, currentFilters, searchQuery);
+    
+    // Apply sorting
+    patterns = sortPatterns(patterns, currentSort.field, currentSort.direction);
+    
+    // Update filtered patterns (convert back to path format for compatibility)
+    filteredPatterns = patterns.map(p => p.path);
+    
+    // Update display
     displayAvailablePatterns();
+    updateSortAndFilterUI();
 }
+
+// Search and filter patterns (updated to work with metadata)
+function searchPatterns(query) {
+    applyPatternsFilteringAndSorting();
+}
+
+// Update sort and filter UI to reflect current state
+function updateSortAndFilterUI() {
+    // Update sort direction icon
+    const sortDirectionIcon = document.getElementById('sortDirectionIcon');
+    if (sortDirectionIcon) {
+        sortDirectionIcon.textContent = currentSort.direction === 'asc' ? 'arrow_upward' : 'arrow_downward';
+    }
+    
+    // Update sort field select
+    const sortFieldSelect = document.getElementById('sortFieldSelect');
+    if (sortFieldSelect) {
+        sortFieldSelect.value = currentSort.field;
+    }
+    
+    // Update filter selects
+    const categorySelect = document.getElementById('categoryFilterSelect');
+    if (categorySelect) {
+        categorySelect.value = currentFilters.category;
+    }
+}
+
+// Populate category filter dropdown with available categories (subfolders)
+function updateCategoryFilter() {
+    const categorySelect = document.getElementById('categoryFilterSelect');
+    if (!categorySelect) return;
+    
+    // Check if metadata is available
+    if (!availablePatternsWithMetadata || availablePatternsWithMetadata.length === 0) {
+        // Show basic options if metadata not loaded
+        categorySelect.innerHTML = '<option value="all">All Folders (loading...)</option>';
+        return;
+    }
+    
+    // Get unique categories (subfolders)
+    const categories = [...new Set(availablePatternsWithMetadata.map(p => p.category))].sort();
+    
+    // Clear existing options except "All"
+    categorySelect.innerHTML = '<option value="all">All Folders</option>';
+    
+    // Add category options
+    categories.forEach(category => {
+        if (category) {
+            const option = document.createElement('option');
+            option.value = category;
+            // Display friendly names for full paths
+            if (category === 'root') {
+                option.textContent = 'Root Folder';
+            } else {
+                // For full paths, show the path but make it more readable
+                const displayName = category
+                    .split('/')
+                    .map(part => part.charAt(0).toUpperCase() + part.slice(1).replace('_', ' '))
+                    .join(' › ');
+                option.textContent = displayName;
+            }
+            categorySelect.appendChild(option);
+        }
+    });
+}
+
+// Handle sort field change
+function handleSortFieldChange() {
+    const sortFieldSelect = document.getElementById('sortFieldSelect');
+    if (sortFieldSelect) {
+        currentSort.field = sortFieldSelect.value;
+        applyPatternsFilteringAndSorting();
+    }
+}
+
+// Handle sort direction toggle
+function handleSortDirectionToggle() {
+    currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+    applyPatternsFilteringAndSorting();
+}
+
+// Handle category filter change
+function handleCategoryFilterChange() {
+    const categorySelect = document.getElementById('categoryFilterSelect');
+    if (categorySelect) {
+        currentFilters.category = categorySelect.value;
+        applyPatternsFilteringAndSorting();
+    }
+}
+
 
 // Handle search input
 function handleSearchInput() {
@@ -851,7 +1015,7 @@ async function removePatternFromPlaylist(pattern) {
     }
 }
 
-// Load available patterns for adding (no caching)
+// Load available patterns for adding (with metadata for sorting/filtering)
 async function loadAvailablePatterns(forceRefresh = false) {
     const loadingIndicator = document.getElementById('patternsLoadingIndicator');
     const grid = document.getElementById('availablePatternsGrid');
@@ -863,20 +1027,45 @@ async function loadAvailablePatterns(forceRefresh = false) {
     noResultsMessage.classList.add('hidden');
     
     try {
-        logMessage('Fetching fresh patterns list from server', LOG_TYPE.DEBUG);
-        const response = await fetch('/list_theta_rho_files');
-        if (response.ok) {
-            const patterns = await response.json();
-            const thrPatterns = patterns.filter(file => file.endsWith('.thr'));
-            availablePatterns = [...thrPatterns];
-            filteredPatterns = [...availablePatterns];
-            // Show patterns immediately - all lazy loading now
-            displayAvailablePatterns();
-            if (forceRefresh) {
-                showStatusMessage('Patterns list refreshed successfully', 'success');
-            }
-        } else {
+        // First load basic patterns list for fast initial display
+        logMessage('Fetching basic patterns list from server', LOG_TYPE.DEBUG);
+        const basicResponse = await fetch('/list_theta_rho_files');
+        if (!basicResponse.ok) {
             throw new Error('Failed to load available patterns');
+        }
+        
+        const patterns = await basicResponse.json();
+        const thrPatterns = patterns.filter(file => file.endsWith('.thr'));
+        availablePatterns = [...thrPatterns];
+        filteredPatterns = [...availablePatterns];
+        
+        // Show patterns immediately for fast loading
+        displayAvailablePatterns();
+        
+        // Then load metadata in background
+        setTimeout(async () => {
+            try {
+                logMessage('Loading enhanced metadata in background', LOG_TYPE.DEBUG);
+                const metadataResponse = await fetch('/list_theta_rho_files_with_metadata');
+                if (metadataResponse.ok) {
+                    const patternsWithMetadata = await metadataResponse.json();
+                    availablePatternsWithMetadata = [...patternsWithMetadata];
+                    
+                    // Update category filter dropdown now that we have metadata
+                    updateCategoryFilter();
+                    
+                    logMessage(`Enhanced metadata loaded for ${patternsWithMetadata.length} patterns`, LOG_TYPE.DEBUG);
+                } else {
+                    logMessage('Failed to load enhanced metadata - using basic functionality', LOG_TYPE.WARNING);
+                }
+            } catch (metadataError) {
+                logMessage(`Error loading enhanced metadata: ${metadataError.message}`, LOG_TYPE.WARNING);
+                // Continue with basic functionality
+            }
+        }, 100);
+        
+        if (forceRefresh) {
+            showStatusMessage('Patterns list refreshed successfully', 'success');
         }
     } catch (error) {
         logMessage(`Error loading available patterns: ${error.message}`, LOG_TYPE.ERROR);
@@ -1383,6 +1572,11 @@ function setupEventListeners() {
     // Search functionality
     document.getElementById('patternSearchInput').addEventListener('input', handleSearchInput);
     document.getElementById('clearSearchBtn').addEventListener('click', clearSearch);
+    
+    // Sort and filter controls
+    document.getElementById('sortFieldSelect').addEventListener('change', handleSortFieldChange);
+    document.getElementById('sortDirectionBtn').addEventListener('click', handleSortDirectionToggle);
+    document.getElementById('categoryFilterSelect').addEventListener('change', handleCategoryFilterChange);
     
     // Handle Enter key in search input
     document.getElementById('patternSearchInput').addEventListener('keypress', (e) => {

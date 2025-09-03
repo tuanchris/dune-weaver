@@ -189,13 +189,38 @@
                 Browse Patterns
             </h2>
 
-            <button
-                    id="cacheAllButton"
-                    class="inline-flex gap-2 transition-colors items-center justify-center rounded-lg px-4 py-2.5 text-xs sm:text-sm font-semibold text-gray-900 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-            >
-                <span class="material-icons text-sm pr-2">cached</span>
-                Cache All Previews
-            </button>
+            <div class="flex items-center gap-2 sm:gap-4 flex-wrap">
+                <button
+                        id="cacheAllButton"
+                        class="inline-flex gap-1 sm:gap-2 transition-colors items-center justify-center rounded-lg px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold text-gray-900 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 shrink-0"
+                >
+                    <span class="material-icons text-sm pr-1 sm:pr-2">cached</span>
+                    <span class="hidden sm:inline">Cache All Previews</span>
+                    <span class="sm:hidden">Cache</span>
+                </button>
+                
+                <!-- Sort and Filter Controls for Browse Page -->
+                <div class="flex gap-1 sm:gap-2 items-center text-xs sm:text-sm">
+                    <div class="flex items-center gap-1">
+                        <span class="text-xs font-medium text-gray-700 hidden sm:inline">Sort:</span>
+                        <select id="browseSortFieldSelect" class="text-xs rounded border border-gray-300 bg-white text-gray-900 px-1 sm:px-2 py-1" disabled>
+                            <option value="name">Name</option>
+                            <option value="date">Date Modified</option>
+                            <option value="coordinates">Coordinates</option>
+                        </select>
+                        <button id="browseSortDirectionBtn" class="p-1 rounded hover:bg-gray-200 text-gray-500 opacity-50 cursor-not-allowed" title="Loading..." disabled>
+                            <span class="material-icons text-sm" id="browseSortDirectionIcon">arrow_upward</span>
+                        </button>
+                    </div>
+                    
+                    <div class="flex items-center gap-1">
+                        <span class="text-xs font-medium text-gray-700 hidden sm:inline">Folder:</span>
+                        <select id="browseCategoryFilterSelect" class="text-xs rounded border border-gray-300 bg-white text-gray-900 px-1 sm:px-2 py-1" disabled>
+                            <option value="all">All Folders (loading...)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
 
             <div class="relative w-full sm:w-auto flex grow gap-2 items-center flex-wrap">
                 <div class="flex gap-2 flex-1">

@@ -1,5 +1,8 @@
 // Global variables
 let allPatterns = [];
+let allPatternsWithMetadata = []; // Enhanced pattern data with metadata
+let currentSort = { field: 'name', direction: 'asc' };
+let currentFilters = { category: 'all' };
 
 // Helper function to normalize file paths for cross-platform compatibility
 function normalizeFilePath(filePath) {
@@ -639,33 +642,52 @@ async function loadPatterns(forceRefresh = false) {
     try {
         logMessage('Loading patterns...', LOG_TYPE.INFO);
         
-        logMessage('Fetching fresh patterns list from server', LOG_TYPE.DEBUG);
-        const response = await fetch('/list_theta_rho_files');
-        const allFiles = await response.json();
-        logMessage(`Received ${allFiles.length} files from server`, LOG_TYPE.INFO);
+        // First load basic patterns list for fast initial display
+        logMessage('Fetching basic patterns list from server', LOG_TYPE.DEBUG);
+        const basicResponse = await fetch('/list_theta_rho_files');
+        const basicPatterns = await basicResponse.json();
+        const thrPatterns = basicPatterns.filter(file => file.endsWith('.thr'));
+        logMessage(`Received ${thrPatterns.length} basic patterns from server`, LOG_TYPE.INFO);
+        
+        // Store basic patterns and display immediately
+        let patterns = [...thrPatterns];
+        allPatterns = patterns;
+        
+        // Sort patterns alphabetically to match final enhanced sorting
+        const sortedPatterns = patterns.sort((a, b) => a.localeCompare(b));
 
-        // Filter for .thr files
-        let patterns = allFiles.filter(file => file.endsWith('.thr'));
-        logMessage(`Filtered to ${patterns.length} .thr files`, LOG_TYPE.INFO);
+        allPatterns = sortedPatterns;
+        
+        // Display basic patterns immediately for fast initial load
+        logMessage('Displaying initial patterns...', LOG_TYPE.INFO);
+        displayPatternBatch();
+        logMessage('Initial patterns loaded successfully.', LOG_TYPE.SUCCESS);
+        
+        // Load metadata in background for enhanced features
+        setTimeout(async () => {
+            try {
+            logMessage('Loading enhanced metadata...', LOG_TYPE.DEBUG);
+            const metadataResponse = await fetch('/list_theta_rho_files_with_metadata');
+            const patternsWithMetadata = await metadataResponse.json();
+            
+            // Store enhanced patterns data
+            allPatternsWithMetadata = [...patternsWithMetadata];
+            
+            // Update category filter dropdown now that we have metadata
+            updateBrowseCategoryFilter();
+            
+            // Enable sort controls and display patterns consistently
+            enableSortControls();
+            
+            logMessage(`Enhanced metadata loaded for ${patternsWithMetadata.length} patterns`, LOG_TYPE.SUCCESS);
+            } catch (metadataError) {
+                logMessage(`Failed to load enhanced metadata: ${metadataError.message}`, LOG_TYPE.WARNING);
+                // No fallback needed - basic patterns already displayed
+            }
+        }, 100); // Small delay to let initial render complete
         if (forceRefresh) {
             showStatusMessage('Patterns list refreshed successfully', 'success');
         }
-        
-        // Sort patterns with custom_patterns on top and all alphabetically sorted
-        const sortedPatterns = patterns.sort((a, b) => {
-            const isCustomA = a.startsWith('custom_patterns/');
-            const isCustomB = b.startsWith('custom_patterns/');
-
-            if (isCustomA && !isCustomB) return -1;
-            if (!isCustomA && isCustomB) return 1;
-            return a.localeCompare(b);
-        });
-
-        allPatterns = sortedPatterns;
-        currentBatch = 0;
-        logMessage('Displaying initial batch of patterns...', LOG_TYPE.INFO);
-        displayPatternBatch();
-        logMessage('Initial batch loaded successfully.', LOG_TYPE.SUCCESS);
     } catch (error) {
         logMessage(`Error loading patterns: ${error.message}`, LOG_TYPE.ERROR);
         console.error('Full error:', error);
@@ -1103,47 +1125,247 @@ function setupPreviewPanelEvents(pattern) {
 }
 
 // Search patterns
-function searchPatterns(query) {
-    if (!query) {
-        // If search is empty, clear grid and show all patterns
-        const patternGrid = document.querySelector('.grid');
-        if (patternGrid) {
-            patternGrid.innerHTML = '';
+// Sort patterns by specified field and direction
+function sortPatterns(patterns, sortField, sortDirection) {
+    return patterns.sort((a, b) => {
+        let aVal, bVal;
+        
+        switch (sortField) {
+            case 'name':
+                aVal = a.name.toLowerCase();
+                bVal = b.name.toLowerCase();
+                break;
+            case 'date':
+                aVal = a.date_modified;
+                bVal = b.date_modified;
+                break;
+            case 'coordinates':
+                aVal = a.coordinates_count;
+                bVal = b.coordinates_count;
+                break;
+            default:
+                aVal = a.name.toLowerCase();
+                bVal = b.name.toLowerCase();
         }
-        // Reset current batch and display from beginning
-        currentBatch = 0;
-        displayPatternBatch();
+        
+        let result = 0;
+        if (aVal < bVal) result = -1;
+        else if (aVal > bVal) result = 1;
+        
+        return sortDirection === 'asc' ? result : -result;
+    });
+}
+
+// Filter patterns based on current filters
+function filterPatterns(patterns, filters, searchQuery = '') {
+    return patterns.filter(pattern => {
+        // Category filter
+        if (filters.category !== 'all' && pattern.category !== filters.category) {
+            return false;
+        }
+        
+        // Search query filter
+        if (searchQuery.trim()) {
+            const normalizedQuery = searchQuery.toLowerCase().trim();
+            const patternName = pattern.name.toLowerCase();
+            const category = pattern.category.toLowerCase();
+            return patternName.includes(normalizedQuery) || category.includes(normalizedQuery);
+        }
+        
+        return true;
+    });
+}
+
+// Apply sorting and filtering to patterns
+function applyPatternsFilteringAndSorting() {
+    const searchQuery = document.getElementById('patternSearch')?.value || '';
+    
+    // Check if enhanced metadata is available
+    if (!allPatternsWithMetadata || allPatternsWithMetadata.length === 0) {
+        // Fallback to basic search if metadata not loaded yet
+        if (searchQuery.trim()) {
+            const filteredPatterns = allPatterns.filter(pattern => 
+                pattern.toLowerCase().includes(searchQuery.toLowerCase())
+            );
+            displayFilteredPatterns(filteredPatterns);
+        } else {
+            // Just display current batch if no search
+            displayPatternBatch();
+        }
         return;
     }
+    
+    // Start with all available patterns with metadata
+    let patterns = [...allPatternsWithMetadata];
+    
+    // Apply filters
+    patterns = filterPatterns(patterns, currentFilters, searchQuery);
+    
+    // Apply sorting
+    patterns = sortPatterns(patterns, currentSort.field, currentSort.direction);
+    
+    // Update filtered patterns (convert back to path format for compatibility)
+    const filteredPatterns = patterns.map(p => p.path);
+    
+    // Display filtered patterns
+    displayFilteredPatterns(filteredPatterns);
+    updateBrowseSortAndFilterUI();
+}
 
-    const searchInput = query.toLowerCase();
+// Display filtered patterns
+function displayFilteredPatterns(filteredPatterns) {
     const patternGrid = document.querySelector('.grid');
-    if (!patternGrid) {
-        logMessage('Pattern grid not found in the DOM', LOG_TYPE.ERROR);
-        return;
-    }
-
-    // Clear existing patterns
+    if (!patternGrid) return;
+    
     patternGrid.innerHTML = '';
     
-    // Filter patterns
-    const filteredPatterns = allPatterns.filter(pattern => 
-        pattern.toLowerCase().includes(searchInput)
-    );
-
-    // Display filtered patterns
+    if (filteredPatterns.length === 0) {
+        patternGrid.innerHTML = '<div class="col-span-full text-center text-gray-500 py-8">No patterns found</div>';
+        return;
+    }
+    
     filteredPatterns.forEach(pattern => {
         const patternCard = createPatternCard(pattern);
         patternGrid.appendChild(patternCard);
     });
-
+    
     // Give the browser a chance to render the cards
     requestAnimationFrame(() => {
         // Trigger preview loading for the search results
         triggerPreviewLoadingForVisible();
     });
+    
+    logMessage(`Displaying ${filteredPatterns.length} patterns`, LOG_TYPE.INFO);
+}
 
-    logMessage(`Showing ${filteredPatterns.length} patterns matching "${query}"`, LOG_TYPE.INFO);
+function searchPatterns(query) {
+    // Update the search input if called programmatically
+    const searchInput = document.getElementById('patternSearch');
+    if (searchInput && searchInput.value !== query) {
+        searchInput.value = query;
+    }
+    
+    applyPatternsFilteringAndSorting();
+}
+
+// Update sort and filter UI to reflect current state
+function updateBrowseSortAndFilterUI() {
+    // Update sort direction icon
+    const sortDirectionIcon = document.getElementById('browseSortDirectionIcon');
+    if (sortDirectionIcon) {
+        sortDirectionIcon.textContent = currentSort.direction === 'asc' ? 'arrow_upward' : 'arrow_downward';
+    }
+    
+    // Update sort field select
+    const sortFieldSelect = document.getElementById('browseSortFieldSelect');
+    if (sortFieldSelect) {
+        sortFieldSelect.value = currentSort.field;
+    }
+    
+    // Update filter selects
+    const categorySelect = document.getElementById('browseCategoryFilterSelect');
+    if (categorySelect) {
+        categorySelect.value = currentFilters.category;
+    }
+}
+
+// Populate category filter dropdown with available categories (subfolders)
+function updateBrowseCategoryFilter() {
+    const categorySelect = document.getElementById('browseCategoryFilterSelect');
+    if (!categorySelect) return;
+    
+    // Check if metadata is available
+    if (!allPatternsWithMetadata || allPatternsWithMetadata.length === 0) {
+        // Show basic options if metadata not loaded
+        categorySelect.innerHTML = '<option value="all">All Folders (loading...)</option>';
+        return;
+    }
+    
+    // Get unique categories (subfolders)
+    const categories = [...new Set(allPatternsWithMetadata.map(p => p.category))].sort();
+    
+    // Clear existing options except "All"
+    categorySelect.innerHTML = '<option value="all">All Folders</option>';
+    
+    // Add category options
+    categories.forEach(category => {
+        if (category) {
+            const option = document.createElement('option');
+            option.value = category;
+            // Display friendly names for full paths
+            if (category === 'root') {
+                option.textContent = 'Root Folder';
+            } else {
+                // For full paths, show the path but make it more readable
+                const displayName = category
+                    .split('/')
+                    .map(part => part.charAt(0).toUpperCase() + part.slice(1).replace('_', ' '))
+                    .join(' › ');
+                option.textContent = displayName;
+            }
+            categorySelect.appendChild(option);
+        }
+    });
+}
+
+// Handle sort field change
+function handleBrowseSortFieldChange() {
+    const sortFieldSelect = document.getElementById('browseSortFieldSelect');
+    if (sortFieldSelect) {
+        currentSort.field = sortFieldSelect.value;
+        applyPatternsFilteringAndSorting();
+    }
+}
+
+// Handle sort direction toggle
+function handleBrowseSortDirectionToggle() {
+    currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+    applyPatternsFilteringAndSorting();
+}
+
+// Handle category filter change
+function handleBrowseCategoryFilterChange() {
+    const categorySelect = document.getElementById('browseCategoryFilterSelect');
+    if (categorySelect) {
+        currentFilters.category = categorySelect.value;
+        applyPatternsFilteringAndSorting();
+    }
+}
+
+// Enable sort controls when metadata is loaded
+function enableSortControls() {
+    const browseSortFieldSelect = document.getElementById('browseSortFieldSelect');
+    const browseSortDirectionBtn = document.getElementById('browseSortDirectionBtn');
+    const browseCategoryFilterSelect = document.getElementById('browseCategoryFilterSelect');
+    
+    if (browseSortFieldSelect) {
+        browseSortFieldSelect.disabled = false;
+        // Ensure dropdown shows the current sort field
+        browseSortFieldSelect.value = currentSort.field;
+    }
+    
+    if (browseSortDirectionBtn) {
+        browseSortDirectionBtn.disabled = false;
+        browseSortDirectionBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        browseSortDirectionBtn.classList.add('hover:bg-gray-200');
+        browseSortDirectionBtn.title = 'Toggle sort direction';
+        
+        // Update direction icon
+        const sortDirectionIcon = document.getElementById('browseSortDirectionIcon');
+        if (sortDirectionIcon) {
+            sortDirectionIcon.textContent = currentSort.direction === 'asc' ? 'arrow_upward' : 'arrow_downward';
+        }
+    }
+    
+    if (browseCategoryFilterSelect) {
+        browseCategoryFilterSelect.disabled = false;
+    }
+    
+    // Only apply sorting if user has changed from defaults or if patterns need to be refreshed
+    // If already showing patterns with default sort (name, asc), don't reorder unnecessarily
+    if (currentSort.field !== 'name' || currentSort.direction !== 'asc' || currentFilters.category !== 'all') {
+        applyPatternsFilteringAndSorting();
+    }
 }
 
 // Filter patterns by category
@@ -1196,6 +1418,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                     searchPatterns('');
                 }
             });
+        }
+        
+        // Sort and filter controls for browse page
+        const browseSortFieldSelect = document.getElementById('browseSortFieldSelect');
+        const browseSortDirectionBtn = document.getElementById('browseSortDirectionBtn');
+        const browseCategoryFilterSelect = document.getElementById('browseCategoryFilterSelect');
+        
+        if (browseSortFieldSelect) {
+            browseSortFieldSelect.addEventListener('change', handleBrowseSortFieldChange);
+        }
+        if (browseSortDirectionBtn) {
+            browseSortDirectionBtn.addEventListener('click', handleBrowseSortDirectionToggle);
+        }
+        if (browseCategoryFilterSelect) {
+            browseCategoryFilterSelect.addEventListener('change', handleBrowseCategoryFilterChange);
         }
 
         // Setup cache all button - now triggers the modal
