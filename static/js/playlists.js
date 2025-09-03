@@ -827,9 +827,48 @@ function updateSelectionCount() {
         const count = selectedPatterns.size;
         countElement.textContent = `${count} selected`;
     }
+    updateToggleSelectAllButton();
 }
 
-// Select all visible patterns
+// Smart toggle for Select All / Deselect All
+function toggleSelectAll() {
+    const patterns = filteredPatterns.length > 0 ? filteredPatterns : availablePatterns;
+    const allSelected = patterns.length > 0 && patterns.every(pattern => selectedPatterns.has(pattern));
+    
+    if (allSelected) {
+        // Deselect all
+        selectedPatterns.clear();
+    } else {
+        // Select all
+        patterns.forEach(pattern => {
+            selectedPatterns.add(pattern);
+        });
+    }
+    
+    updatePatternSelection();
+    updateSelectionCount();
+}
+
+// Update the toggle button text and icon based on selection state
+function updateToggleSelectAllButton() {
+    const patterns = filteredPatterns.length > 0 ? filteredPatterns : availablePatterns;
+    const allSelected = patterns.length > 0 && patterns.every(pattern => selectedPatterns.has(pattern));
+    
+    const icon = document.getElementById('toggleSelectAllIcon');
+    const text = document.getElementById('toggleSelectAllText');
+    
+    if (icon && text) {
+        if (allSelected) {
+            icon.textContent = 'check_box';
+            text.textContent = 'Deselect All';
+        } else {
+            icon.textContent = 'check_box_outline_blank';
+            text.textContent = 'Select All';
+        }
+    }
+}
+
+// Select all visible patterns (legacy function - keep for compatibility)
 function selectAllPatterns() {
     const patterns = filteredPatterns.length > 0 ? filteredPatterns : availablePatterns;
     patterns.forEach(pattern => {
@@ -839,7 +878,7 @@ function selectAllPatterns() {
     updateSelectionCount();
 }
 
-// Deselect all patterns
+// Deselect all patterns (legacy function - keep for compatibility)
 function deselectAllPatterns() {
     selectedPatterns.clear();
     updatePatternSelection();
@@ -851,22 +890,11 @@ function updatePatternSelection() {
     const cards = document.querySelectorAll('#availablePatternsGrid .group');
     cards.forEach(card => {
         const patternName = card.dataset.pattern;
-        const addBtn = card.querySelector('.absolute.top-2.right-2');
         
         if (selectedPatterns.has(patternName)) {
             card.classList.add('ring-2', 'ring-blue-500');
-            if (addBtn) {
-                addBtn.classList.remove('opacity-0', 'bg-white', 'dark:bg-gray-700');
-                addBtn.classList.add('opacity-100', 'bg-blue-500', 'text-white');
-                addBtn.querySelector('.material-icons').textContent = 'check';
-            }
         } else {
             card.classList.remove('ring-2', 'ring-blue-500');
-            if (addBtn) {
-                addBtn.classList.remove('opacity-100', 'bg-blue-500', 'text-white');
-                addBtn.classList.add('opacity-0', 'bg-white', 'dark:bg-gray-700');
-                addBtn.querySelector('.material-icons').textContent = 'add';
-            }
         }
     });
 }
@@ -886,32 +914,26 @@ function displayAvailablePatterns() {
         return;
     }
 
-    filteredPatterns.forEach((pattern, index) => {
+    filteredPatterns.forEach((pattern) => {
         const card = document.createElement('div');
-        card.className = 'flex flex-col gap-2 cursor-pointer transition-all duration-150 hover:scale-105';
+        const isSelected = selectedPatterns.has(pattern);
+        
+        // Add blue ring if already selected
+        card.className = `group flex flex-col gap-2 cursor-pointer transition-all duration-150 hover:scale-105 ${isSelected ? 'ring-2 ring-blue-500' : ''}`;
         card.dataset.pattern = pattern;
         
         card.innerHTML = `
             <div class="w-full bg-center aspect-square bg-cover rounded-full border border-gray-200 dark:border-gray-700 relative pattern-preview">
-                <div class="absolute top-2 right-2 size-6 rounded-full shadow-md opacity-0 transition-opacity duration-150 flex items-center justify-center">
-                    <span class="material-icons text-sm text-gray-600 dark:text-gray-300">add</span>
-                </div>
             </div>
             <p class="text-xs text-gray-700 dark:text-gray-300 font-medium truncate text-center">${pattern.replace('.thr', '').split('/').pop()}</p>
         `;
 
         const previewContainer = card.querySelector('.pattern-preview');
-        const addBtn = card.querySelector('.absolute.top-2');
         
         // Only set preview image if already available in memory cache
         const previewData = previewCache.get(pattern);
         if (previewData && !previewData.error && previewData.image_data) {
             previewContainer.innerHTML = `<img src="${previewData.image_data}" alt="Pattern Preview" class="w-full h-full object-cover rounded-full" />`;
-            // Re-add the add button
-            const addBtnContainer = document.createElement('div');
-            addBtnContainer.className = 'absolute top-2 right-2 size-6 rounded-full bg-white dark:bg-gray-700 shadow-md opacity-0 transition-opacity duration-150 flex items-center justify-center';
-            addBtnContainer.innerHTML = '<span class="material-icons text-sm text-gray-600 dark:text-gray-300">add</span>';
-            previewContainer.appendChild(addBtnContainer);
         }
         
         // Set up lazy loading for ALL patterns
@@ -922,32 +944,11 @@ function displayAvailablePatterns() {
             if (selectedPatterns.has(pattern)) {
                 selectedPatterns.delete(pattern);
                 card.classList.remove('ring-2', 'ring-blue-500');
-                addBtn.classList.remove('opacity-100', 'bg-blue-500', 'text-white');
-                addBtn.classList.add('opacity-0', 'bg-white', 'dark:bg-gray-700');
-                addBtn.querySelector('.material-icons').textContent = 'add';
             } else {
                 selectedPatterns.add(pattern);
                 card.classList.add('ring-2', 'ring-blue-500');
-                addBtn.classList.remove('opacity-0', 'bg-white', 'dark:bg-gray-700');
-                addBtn.classList.add('opacity-100', 'bg-blue-500', 'text-white');
-                addBtn.querySelector('.material-icons').textContent = 'check';
             }
             updateSelectionCount();
-        });
-
-        // Show add button on hover
-        card.addEventListener('mouseenter', () => {
-            if (!selectedPatterns.has(pattern)) {
-                addBtn.classList.remove('opacity-0');
-                addBtn.classList.add('opacity-100');
-            }
-        });
-
-        card.addEventListener('mouseleave', () => {
-            if (!selectedPatterns.has(pattern)) {
-                addBtn.classList.remove('opacity-100');
-                addBtn.classList.add('opacity-0');
-            }
         });
 
         grid.appendChild(card);
@@ -1042,41 +1043,35 @@ function updatePreviewElement(element, imageData) {
     }
 }
 
-// Add selected patterns to playlist
+// Save selected patterns to playlist (replaces entire playlist)
 async function addSelectedPatternsToPlaylist() {
-    if (selectedPatterns.size === 0 || !currentPlaylist) return;
+    if (!currentPlaylist) return;
 
     try {
-        // Get current playlist data
-        const response = await fetch(`/get_playlist?name=${encodeURIComponent(currentPlaylist)}`);
-        if (response.ok) {
-            const playlistData = await response.json();
-            const currentFiles = playlistData.files || [];
-            const newFiles = Array.from(selectedPatterns).filter(pattern => !currentFiles.includes(pattern));
-            const updatedFiles = [...currentFiles, ...newFiles];
-            
-            // Update playlist
-            const updateResponse = await fetch('/modify_playlist', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    playlist_name: currentPlaylist,
-                    files: updatedFiles
-                })
-            });
+        // Simply replace the playlist with the selected patterns
+        const updatedFiles = Array.from(selectedPatterns);
+        
+        // Update playlist
+        const updateResponse = await fetch('/modify_playlist', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                playlist_name: currentPlaylist,
+                files: updatedFiles
+            })
+        });
 
-            if (updateResponse.ok) {
-                showStatusMessage(`Added ${newFiles.length} patterns to playlist`, 'success');
-                selectedPatterns.clear();
-                document.getElementById('addPatternsModal').classList.add('hidden');
-                await loadPlaylistPatterns(currentPlaylist);
-            } else {
-                throw new Error('Failed to update playlist');
-            }
+        if (updateResponse.ok) {
+            showStatusMessage(`Playlist "${currentPlaylist}" saved successfully`, 'success');
+            selectedPatterns.clear();
+            document.getElementById('addPatternsModal').classList.add('hidden');
+            await loadPlaylistPatterns(currentPlaylist);
+        } else {
+            throw new Error('Failed to update playlist');
         }
     } catch (error) {
-        logMessage(`Error adding patterns: ${error.message}`, LOG_TYPE.ERROR);
-        showStatusMessage('Failed to add patterns', 'error');
+        logMessage(`Error saving playlist: ${error.message}`, LOG_TYPE.ERROR);
+        showStatusMessage('Failed to save playlist', 'error');
     }
 }
 
@@ -1268,8 +1263,28 @@ function setupEventListeners() {
 
     // Add patterns button
     document.getElementById('addPatternsBtn').addEventListener('click', async () => {
+        // Load current playlist patterns first
+        if (currentPlaylist) {
+            const response = await fetch(`/get_playlist?name=${encodeURIComponent(currentPlaylist)}`);
+            if (response.ok) {
+                const playlistData = await response.json();
+                const currentFiles = playlistData.files || [];
+                // Pre-select current patterns
+                selectedPatterns.clear();
+                currentFiles.forEach(pattern => selectedPatterns.add(pattern));
+            }
+        }
+        
         await loadAvailablePatterns();
+        updatePatternSelection();
         updateSelectionCount();
+        
+        // Update modal title
+        const modalTitle = document.getElementById('modalTitle');
+        if (modalTitle) {
+            modalTitle.textContent = currentPlaylist ? `Edit Patterns for "${currentPlaylist}"` : 'Add Patterns to Playlist';
+        }
+        
         document.getElementById('addPatternsModal').classList.remove('hidden');
         // Focus search input when modal opens
         setTimeout(() => {
@@ -1307,9 +1322,11 @@ function setupEventListeners() {
 
     document.getElementById('confirmAddPatternsBtn').addEventListener('click', addSelectedPatternsToPlaylist);
     
-    // Select All and Deselect All buttons
-    document.getElementById('selectAllBtn').addEventListener('click', selectAllPatterns);
-    document.getElementById('deselectAllBtn').addEventListener('click', deselectAllPatterns);
+    // Smart Toggle Select All button
+    const toggleSelectBtn = document.getElementById('toggleSelectAllBtn');
+    if (toggleSelectBtn) {
+        toggleSelectBtn.addEventListener('click', toggleSelectAll);
+    }
 
     // Handle Enter key in new playlist name input
     document.getElementById('newPlaylistName').addEventListener('keypress', (e) => {

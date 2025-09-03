@@ -291,7 +291,7 @@ html:not(.dark) #availablePatternsGrid .text-xs {
 <div id="addPatternsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
   <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-4xl mx-4 max-h-[80vh] overflow-hidden flex flex-col">
     <div class="flex items-center justify-between mb-4 flex-shrink-0">
-      <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Add Patterns to Playlist</h3>
+      <h3 id="modalTitle" class="text-lg font-semibold text-gray-900 dark:text-gray-100">Add Patterns to Playlist</h3>
     </div>
     
     <!-- Search Bar and Select All -->
@@ -309,24 +309,15 @@ html:not(.dark) #availablePatternsGrid .text-xs {
         </button>
       </div>
       
-      <!-- Select All / Deselect All buttons -->
+      <!-- Smart Toggle Select All button -->
       <div class="flex items-center justify-between">
-        <div class="flex gap-2">
-          <button 
-            id="selectAllBtn" 
-            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors duration-150"
-          >
-            <span class="material-icons text-base">check_box</span>
-            <span>Select All</span>
-          </button>
-          <button 
-            id="deselectAllBtn" 
-            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors duration-150"
-          >
-            <span class="material-icons text-base">check_box_outline_blank</span>
-            <span>Deselect All</span>
-          </button>
-        </div>
+        <button 
+          id="toggleSelectAllBtn" 
+          class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors duration-150"
+        >
+          <span class="material-icons text-base" id="toggleSelectAllIcon">check_box_outline_blank</span>
+          <span id="toggleSelectAllText">Select All</span>
+        </button>
         <span id="selectionCount" class="text-xs text-gray-500 dark:text-gray-400">
           0 selected
         </span>
@@ -356,7 +347,7 @@ html:not(.dark) #availablePatternsGrid .text-xs {
     
     <div class="flex gap-3 justify-end mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
       <button id="cancelAddPatternsBtn" class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors duration-150">Cancel</button>
-      <button id="confirmAddPatternsBtn" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors duration-150">Add Selected</button>
+      <button id="confirmAddPatternsBtn" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors duration-150">Save</button>
     </div>
   </div>
 </div>
