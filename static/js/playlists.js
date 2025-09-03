@@ -788,6 +788,18 @@ function sortPatterns(patterns, sortField, sortDirection) {
                 aVal = a.coordinates_count;
                 bVal = b.coordinates_count;
                 break;
+            case 'favorite':
+                // Check if patterns are in favorites (access global favoritePatterns)
+                const aIsFavorite = window.favoritePatterns ? window.favoritePatterns.has(a.path) : false;
+                const bIsFavorite = window.favoritePatterns ? window.favoritePatterns.has(b.path) : false;
+                
+                if (aIsFavorite && !bIsFavorite) return sortDirection === 'asc' ? -1 : 1;
+                if (!aIsFavorite && bIsFavorite) return sortDirection === 'asc' ? 1 : -1;
+                
+                // Both have same favorite status, sort by name as secondary sort
+                aVal = a.name.toLowerCase();
+                bVal = b.name.toLowerCase();
+                break;
             default:
                 aVal = a.name.toLowerCase();
                 bVal = b.name.toLowerCase();

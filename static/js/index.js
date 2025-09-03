@@ -735,29 +735,42 @@ function displayPatternBatch() {
 // Create a pattern card element
 function createPatternCard(pattern) {
     const card = document.createElement('div');
-    card.className = 'pattern-card flex flex-col items-center gap-3 bg-gray-50';
+    card.className = 'pattern-card group relative flex flex-col items-center gap-3 bg-gray-50';
     card.dataset.pattern = pattern;
     
     // Create preview container with proper styling for loading indicator
     const previewContainer = document.createElement('div');
-    previewContainer.className = 'w-32 h-32 rounded-full shadow-md relative pattern-preview group';
+    previewContainer.className = 'w-32 h-32 rounded-full shadow-md relative pattern-preview';
     previewContainer.dataset.pattern = pattern;
     
     // Add loading indicator
     previewContainer.innerHTML = '<div class="absolute inset-0 flex items-center justify-center"><div class="bg-slate-200 rounded-full h-8 w-8 flex items-center justify-center"><div class="bg-slate-500 rounded-full h-4 w-4"></div></div></div>';
     
-    // Add play button overlay (hidden by default, shown on hover)
+    // Add play button overlay (centered, hidden by default, shown on hover)
     const playOverlay = document.createElement('div');
     playOverlay.className = 'absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer';
     playOverlay.innerHTML = '<div class="bg-white rounded-full p-2 shadow-lg flex items-center justify-center w-10 h-10"><span class="material-icons text-lg text-gray-800">play_arrow</span></div>';
-    
-    // Add click handler for play button (separate from card click)
+    playOverlay.title = 'Preview pattern';
     playOverlay.addEventListener('click', (e) => {
         e.stopPropagation(); // Prevent card selection
         openAnimatedPreview(pattern);
     });
-    
     previewContainer.appendChild(playOverlay);
+    
+    // Add heart favorite button (top-right corner)
+    const heartButton = document.createElement('div');
+    const isAlreadyFavorite = favoritePatterns.has(pattern);
+    const heartOpacity = isAlreadyFavorite ? 'opacity-100' : 'opacity-0 group-hover:opacity-100';
+    heartButton.className = `absolute top-2 right-2 w-7 h-7 cursor-pointer ${heartOpacity} transition-opacity duration-200 z-10 bg-white/90 rounded-full shadow-sm flex items-center justify-center`;
+    const heartIcon = isAlreadyFavorite ? 'favorite' : 'favorite_border';
+    const heartColor = isAlreadyFavorite ? 'text-red-500 hover:text-red-600' : 'text-gray-400 hover:text-red-500';
+    heartButton.innerHTML = `<span class="material-icons text-lg ${heartColor} transition-colors" id="heart-${pattern.replace(/[^a-zA-Z0-9]/g, '_')}">${heartIcon}</span>`;
+    heartButton.title = isAlreadyFavorite ? 'Remove from favorites' : 'Add to favorites';
+    heartButton.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent card selection
+        toggleFavorite(pattern);
+    });
+    // Note: Heart button will be added to card, not previewContainer to avoid circular clipping
     
     // Create pattern name
     const patternName = document.createElement('p');
@@ -778,6 +791,9 @@ function createPatternCard(pattern) {
 
     card.appendChild(previewContainer);
     card.appendChild(patternName);
+    
+    // Add heart button to card (not previewContainer) to avoid circular clipping
+    card.appendChild(heartButton);
     
     return card;
 }
@@ -1143,6 +1159,18 @@ function sortPatterns(patterns, sortField, sortDirection) {
                 aVal = a.coordinates_count;
                 bVal = b.coordinates_count;
                 break;
+            case 'favorite':
+                // Sort by favorite status first, then by name as secondary sort
+                const aIsFavorite = favoritePatterns.has(a.path);
+                const bIsFavorite = favoritePatterns.has(b.path);
+                
+                if (aIsFavorite && !bIsFavorite) return sortDirection === 'asc' ? -1 : 1;
+                if (!aIsFavorite && bIsFavorite) return sortDirection === 'asc' ? 1 : -1;
+                
+                // Both have same favorite status, sort by name as secondary sort
+                aVal = a.name.toLowerCase();
+                bVal = b.name.toLowerCase();
+                break;
             default:
                 aVal = a.name.toLowerCase();
                 bVal = b.name.toLowerCase();
@@ -1452,7 +1480,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // Load patterns on page load
+        // Load favorites first, then patterns
+        await loadFavorites();
         await loadPatterns();
         
         logMessage('Patterns page initialized successfully', LOG_TYPE.SUCCESS);
@@ -2174,4 +2203,143 @@ function closeAnimatedPreview() {
     speedValue.textContent = '1x';
     progressSlider.value = 0;
     progressValue.textContent = '0%';
+}
+
+// Global set to track favorite patterns
+let favoritePatterns = new Set();
+// Make favoritePatterns available globally for other scripts
+window.favoritePatterns = favoritePatterns;
+
+// Load favorites from server on page load
+async function loadFavorites() {
+    try {
+        const response = await fetch('/get_playlist?name=Favorites');
+        if (response.ok) {
+            const playlist = await response.json();
+            favoritePatterns = new Set(playlist.files);
+            window.favoritePatterns = favoritePatterns; // Keep window reference updated
+            updateAllHeartIcons();
+        }
+    } catch (error) {
+        // Favorites playlist doesn't exist yet - that's OK
+        console.debug('Favorites playlist not found, will create when needed');
+    }
+}
+
+// Toggle favorite status
+async function toggleFavorite(pattern) {
+    const heartIcon = document.getElementById('heart-' + pattern.replace(/[^a-zA-Z0-9]/g, '_'));
+    if (!heartIcon) return;
+    
+    try {
+        if (favoritePatterns.has(pattern)) {
+            // Remove from favorites
+            await removeFromFavorites(pattern);
+            favoritePatterns.delete(pattern);
+            heartIcon.textContent = 'favorite_border';
+            heartIcon.className = 'material-icons text-lg text-gray-400 hover:text-red-500 transition-colors';
+            // Make heart only visible on hover when not favorited
+            heartIcon.parentElement.className = heartIcon.parentElement.className.replace('opacity-100', 'opacity-0 group-hover:opacity-100');
+            showStatusMessage('Removed from favorites', 'success');
+        } else {
+            // Add to favorites
+            await addToFavorites(pattern);
+            favoritePatterns.add(pattern);
+            heartIcon.textContent = 'favorite';
+            heartIcon.className = 'material-icons text-lg text-red-500 hover:text-red-600 transition-colors';
+            // Make heart permanently visible when favorited
+            heartIcon.parentElement.className = heartIcon.parentElement.className.replace('opacity-0 group-hover:opacity-100', 'opacity-100');
+            showStatusMessage('Added to favorites', 'success');
+        }
+    } catch (error) {
+        console.error('Error toggling favorite:', error);
+        showStatusMessage('Failed to update favorites', 'error');
+    }
+}
+
+// Add pattern to favorites playlist
+async function addToFavorites(pattern) {
+    try {
+        // First, check if Favorites playlist exists
+        const checkResponse = await fetch('/get_playlist?name=Favorites');
+        
+        if (checkResponse.ok) {
+            // Playlist exists, add to it
+            const response = await fetch('/add_to_playlist', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    playlist_name: 'Favorites',
+                    pattern: pattern
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to add to favorites playlist');
+            }
+        } else {
+            // Playlist doesn't exist, create it with this pattern
+            const response = await fetch('/create_playlist', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    playlist_name: 'Favorites',
+                    files: [pattern]
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to create favorites playlist');
+            }
+        }
+    } catch (error) {
+        throw new Error(`Failed to add to favorites: ${error.message}`);
+    }
+}
+
+// Remove pattern from favorites playlist
+async function removeFromFavorites(pattern) {
+    try {
+        // Get current favorites playlist
+        const getResponse = await fetch('/get_playlist?name=Favorites');
+        if (!getResponse.ok) return; // No favorites playlist
+        
+        const currentFavorites = await getResponse.json();
+        const updatedFavorites = currentFavorites.files.filter(p => p !== pattern);
+        
+        // Update the playlist
+        const updateResponse = await fetch('/modify_playlist', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                playlist_name: 'Favorites',
+                files: updatedFavorites
+            })
+        });
+        
+        if (!updateResponse.ok) {
+            throw new Error('Failed to update favorites playlist');
+        }
+    } catch (error) {
+        throw new Error(`Failed to remove from favorites: ${error.message}`);
+    }
+}
+
+// Update all heart icons based on current favorites
+function updateAllHeartIcons() {
+    favoritePatterns.forEach(pattern => {
+        const heartIcon = document.getElementById('heart-' + pattern.replace(/[^a-zA-Z0-9]/g, '_'));
+        if (heartIcon) {
+            heartIcon.textContent = 'favorite';
+            heartIcon.className = 'material-icons text-lg text-red-500 hover:text-red-600 transition-colors';
+            // Make heart permanently visible when favorited
+            heartIcon.parentElement.className = heartIcon.parentElement.className.replace('opacity-0 group-hover:opacity-100', 'opacity-100');
+        }
+    });
 } 
