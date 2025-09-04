@@ -70,6 +70,25 @@ async def lifespan(app: FastAPI):
         connection_manager.connect_device()
     except Exception as e:
         logger.warning(f"Failed to auto-connect to serial port: {str(e)}")
+    
+    # Check if auto_play mode is enabled and auto-play playlist (right after connection attempt)
+    if state.auto_play_enabled and state.auto_play_playlist:
+        logger.info(f"auto_play mode enabled, checking for connection before auto-playing playlist: {state.auto_play_playlist}")
+        try:
+            # Check if we have a valid connection before starting playlist
+            if state.conn and hasattr(state.conn, 'is_connected') and state.conn.is_connected():
+                logger.info(f"Connection available, starting auto-play playlist: {state.auto_play_playlist} with options: run_mode={state.auto_play_run_mode}, pause_time={state.auto_play_pause_time}, clear_pattern={state.auto_play_clear_pattern}, shuffle={state.auto_play_shuffle}")
+                asyncio.create_task(playlist_manager.run_playlist(
+                    state.auto_play_playlist,
+                    pause_time=state.auto_play_pause_time,
+                    clear_pattern=state.auto_play_clear_pattern,
+                    run_mode=state.auto_play_run_mode,
+                    shuffle=state.auto_play_shuffle
+                ))
+            else:
+                logger.warning("No hardware connection available, skipping auto_play mode auto-play")
+        except Exception as e:
+            logger.error(f"Failed to auto-play auto_play playlist: {str(e)}")
         
     try:
         mqtt_handler = mqtt.init_mqtt()
@@ -97,6 +116,14 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Pydantic models for request/response validation
 class ConnectRequest(BaseModel):
     port: Optional[str] = None
+
+class auto_playModeRequest(BaseModel):
+    enabled: bool
+    playlist: Optional[str] = None
+    run_mode: Optional[str] = "loop"
+    pause_time: Optional[float] = 5.0
+    clear_pattern: Optional[str] = "adaptive"
+    shuffle: Optional[bool] = False
 
 class CoordinateRequest(BaseModel):
     theta: float
@@ -217,6 +244,37 @@ async def index(request: Request):
 async def settings(request: Request):
     return templates.TemplateResponse("settings.html", {"request": request, "app_name": state.app_name})
 
+@app.get("/api/auto_play-mode")
+async def get_auto_play_mode():
+    """Get current auto_play mode settings."""
+    return {
+        "enabled": state.auto_play_enabled,
+        "playlist": state.auto_play_playlist,
+        "run_mode": state.auto_play_run_mode,
+        "pause_time": state.auto_play_pause_time,
+        "clear_pattern": state.auto_play_clear_pattern,
+        "shuffle": state.auto_play_shuffle
+    }
+
+@app.post("/api/auto_play-mode")
+async def set_auto_play_mode(request: auto_playModeRequest):
+    """Update auto_play mode settings."""
+    state.auto_play_enabled = request.enabled
+    if request.playlist is not None:
+        state.auto_play_playlist = request.playlist
+    if request.run_mode is not None:
+        state.auto_play_run_mode = request.run_mode
+    if request.pause_time is not None:
+        state.auto_play_pause_time = request.pause_time
+    if request.clear_pattern is not None:
+        state.auto_play_clear_pattern = request.clear_pattern
+    if request.shuffle is not None:
+        state.auto_play_shuffle = request.shuffle
+    state.save()
+    
+    logger.info(f"auto_play mode {'enabled' if request.enabled else 'disabled'}, playlist: {request.playlist}")
+    return {"success": True, "message": "auto_play mode settings updated"}
+
 @app.get("/list_serial_ports")
 async def list_ports():
     logger.debug("Listing available serial ports")
@@ -271,20 +329,29 @@ async def list_theta_rho_files():
 
 @app.get("/list_theta_rho_files_with_metadata")
 async def list_theta_rho_files_with_metadata():
-    """Get list of theta-rho files with metadata for sorting and filtering."""
+    """Get list of theta-rho files with metadata for sorting and filtering.
+    
+    Optimized to process files asynchronously and support request cancellation.
+    """
     from modules.core.cache_manager import get_pattern_metadata
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
     
     files = pattern_manager.list_theta_rho_files()
     files_with_metadata = []
     
-    for file_path in files:
+    # Use ThreadPoolExecutor for I/O-bound operations
+    executor = ThreadPoolExecutor(max_workers=4)
+    
+    def process_file(file_path):
+        """Process a single file and return its metadata."""
         try:
             full_path = os.path.join(pattern_manager.THETA_RHO_DIR, file_path)
             
             # Get file stats
             file_stat = os.stat(full_path)
             
-            # Get cached metadata
+            # Get cached metadata (this should be fast if cached)
             metadata = get_pattern_metadata(file_path)
             
             # Extract full folder path from file path
@@ -301,15 +368,13 @@ async def list_theta_rho_files_with_metadata():
             # Use modification time (mtime) for "date modified"
             date_modified = file_stat.st_mtime
             
-            file_info = {
+            return {
                 'path': file_path,
                 'name': file_name,
                 'category': category,
                 'date_modified': date_modified,
                 'coordinates_count': metadata.get('total_coordinates', 0) if metadata else 0
             }
-            
-            files_with_metadata.append(file_info)
             
         except Exception as e:
             logger.warning(f"Error getting metadata for {file_path}: {str(e)}")
@@ -319,13 +384,25 @@ async def list_theta_rho_files_with_metadata():
                 category = '/'.join(path_parts[:-1])
             else:
                 category = 'root'
-            files_with_metadata.append({
+            return {
                 'path': file_path,
                 'name': os.path.splitext(os.path.basename(file_path))[0],
                 'category': category,
                 'date_modified': 0,
                 'coordinates_count': 0
-            })
+            }
+    
+    # Process files in parallel using asyncio
+    loop = asyncio.get_event_loop()
+    tasks = [loop.run_in_executor(executor, process_file, file_path) for file_path in files]
+    
+    # Process results as they complete
+    for task in asyncio.as_completed(tasks):
+        try:
+            result = await task
+            files_with_metadata.append(result)
+        except Exception as e:
+            logger.error(f"Error processing file: {str(e)}")
     
     return files_with_metadata
 

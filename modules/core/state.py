@@ -53,6 +53,14 @@ class AppState:
         # Application name setting
         self.app_name = "Dune Weaver"  # Default app name
         
+        # auto_play mode settings
+        self.auto_play_enabled = False
+        self.auto_play_playlist = None  # Playlist to auto-play in auto_play mode
+        self.auto_play_run_mode = "loop"  # "single" or "loop" 
+        self.auto_play_pause_time = 5.0  # Pause between patterns in seconds
+        self.auto_play_clear_pattern = "adaptive"  # Clear pattern option
+        self.auto_play_shuffle = False  # Shuffle playlist
+        
         self.load()
 
     @property
@@ -178,6 +186,12 @@ class AppState:
             "port": self.port,
             "wled_ip": self.wled_ip,
             "app_name": self.app_name,
+            "auto_play_enabled": self.auto_play_enabled,
+            "auto_play_playlist": self.auto_play_playlist,
+            "auto_play_run_mode": self.auto_play_run_mode,
+            "auto_play_pause_time": self.auto_play_pause_time,
+            "auto_play_clear_pattern": self.auto_play_clear_pattern,
+            "auto_play_shuffle": self.auto_play_shuffle,
         }
 
     def from_dict(self, data):
@@ -208,6 +222,12 @@ class AppState:
         self.port = data.get("port", None)
         self.wled_ip = data.get('wled_ip', None)
         self.app_name = data.get("app_name", "Dune Weaver")
+        self.auto_play_enabled = data.get("auto_play_enabled", False)
+        self.auto_play_playlist = data.get("auto_play_playlist", None)
+        self.auto_play_run_mode = data.get("auto_play_run_mode", "loop")
+        self.auto_play_pause_time = data.get("auto_play_pause_time", 5.0)
+        self.auto_play_clear_pattern = data.get("auto_play_clear_pattern", "adaptive")
+        self.auto_play_shuffle = data.get("auto_play_shuffle", False)
 
     def save(self):
         """Save the current state to a JSON file."""

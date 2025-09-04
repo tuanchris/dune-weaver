@@ -1551,34 +1551,48 @@ function setupEventListeners() {
     });
 
     // Add patterns button
-    document.getElementById('addPatternsBtn').addEventListener('click', async () => {
-        // Load current playlist patterns first
-        if (currentPlaylist) {
-            const response = await fetch(`/get_playlist?name=${encodeURIComponent(currentPlaylist)}`);
-            if (response.ok) {
-                const playlistData = await response.json();
-                const currentFiles = playlistData.files || [];
-                // Pre-select current patterns
-                selectedPatterns.clear();
-                currentFiles.forEach(pattern => selectedPatterns.add(pattern));
-            }
-        }
-        
-        await loadAvailablePatterns();
-        updatePatternSelection();
-        updateSelectionCount();
-        
-        // Update modal title
+    document.getElementById('addPatternsBtn').addEventListener('click', () => {
+        // Update modal title immediately
         const modalTitle = document.getElementById('modalTitle');
         if (modalTitle) {
             modalTitle.textContent = currentPlaylist ? `Edit Patterns for "${currentPlaylist}"` : 'Add Patterns to Playlist';
         }
         
+        // Show modal immediately for better responsiveness
         document.getElementById('addPatternsModal').classList.remove('hidden');
+        
         // Focus search input when modal opens
         setTimeout(() => {
             document.getElementById('patternSearchInput').focus();
         }, 100);
+        
+        // Load data asynchronously after modal is visible
+        const loadModalData = async () => {
+            try {
+                // Load current playlist patterns first if editing
+                if (currentPlaylist) {
+                    const response = await fetch(`/get_playlist?name=${encodeURIComponent(currentPlaylist)}`);
+                    if (response.ok) {
+                        const playlistData = await response.json();
+                        const currentFiles = playlistData.files || [];
+                        // Pre-select current patterns
+                        selectedPatterns.clear();
+                        currentFiles.forEach(pattern => selectedPatterns.add(pattern));
+                    }
+                }
+                
+                // Load available patterns
+                await loadAvailablePatterns();
+                updatePatternSelection();
+                updateSelectionCount();
+            } catch (error) {
+                console.error('Failed to load modal data:', error);
+                showStatusMessage('Failed to load patterns', 'error');
+            }
+        };
+        
+        // Start loading data without blocking
+        loadModalData();
     });
 
     // Search functionality
@@ -1646,15 +1660,10 @@ function setupEventListeners() {
 }
 
 // Initialize playlists page
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
     try {
-        // Initialize intersection observer for lazy loading
+        // Initialize UI immediately for fast page load
         initializeIntersectionObserver();
-        
-        // Initialize IndexedDB preview cache
-        await initPreviewCacheDB();
-        
-        // Setup event listeners
         setupEventListeners();
         
         // Initialize mobile view state
@@ -1672,13 +1681,46 @@ document.addEventListener('DOMContentLoaded', async () => {
         restorePlaybackSettings();
         setupPlaybackSettingsPersistence();
         
-        // Load playlists
-        await loadPlaylists();
+        // Show loading indicator for playlists
+        const playlistsNav = document.getElementById('playlistsNav');
+        if (playlistsNav) {
+            playlistsNav.innerHTML = `
+                <div class="flex items-center justify-center py-8 text-gray-500 dark:text-gray-400">
+                    <div class="flex items-center gap-2">
+                        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500"></div>
+                        <span class="text-sm">Loading playlists...</span>
+                    </div>
+                </div>
+            `;
+        }
         
-        // Check serial connection status
-        await checkSerialStatus();
+        // Load data asynchronously without blocking page render
+        Promise.all([
+            // Initialize IndexedDB preview cache
+            initPreviewCacheDB().catch(err => {
+                console.error('Failed to init preview cache:', err);
+                return null;
+            }),
+            
+            // Load playlists
+            loadPlaylists().catch(err => {
+                console.error('Failed to load playlists:', err);
+                showStatusMessage('Failed to load playlists', 'error');
+                return null;
+            }),
+            
+            // Check serial connection status
+            checkSerialStatus().catch(err => {
+                console.error('Failed to check serial status:', err);
+                return null;
+            })
+        ]).then(() => {
+            logMessage('Playlists page initialized successfully', LOG_TYPE.SUCCESS);
+        }).catch(error => {
+            logMessage(`Error during initialization: ${error.message}`, LOG_TYPE.ERROR);
+            showStatusMessage('Failed to initialize playlists page', 'error');
+        });
         
-        logMessage('Playlists page initialized successfully', LOG_TYPE.SUCCESS);
     } catch (error) {
         logMessage(`Error during initialization: ${error.message}`, LOG_TYPE.ERROR);
         showStatusMessage('Failed to initialize playlists page', 'error');
