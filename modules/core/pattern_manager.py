@@ -283,7 +283,11 @@ async def run_theta_rho_file(file_path, is_playlist=False):
 
         # Determine if this is a clearing pattern and set appropriate speed
         is_clear_file = is_clear_pattern(file_path)
-        pattern_speed = state.clear_pattern_speed if is_clear_file else state.speed
+        # Use clear_pattern_speed if it's set and this is a clear file, otherwise use state.speed
+        if is_clear_file and state.clear_pattern_speed is not None:
+            pattern_speed = state.clear_pattern_speed
+        else:
+            pattern_speed = state.speed
         
         if is_clear_file:
             logger.info(f"Running clearing pattern at speed {pattern_speed}")

@@ -277,8 +277,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Set clear pattern speed
         const clearPatternSpeedInput = document.getElementById('clearPatternSpeedInput');
-        if (clearPatternSpeedInput && clearSpeedData && clearSpeedData.clear_pattern_speed) {
-            clearPatternSpeedInput.value = clearSpeedData.clear_pattern_speed;
+        const effectiveClearSpeed = document.getElementById('effectiveClearSpeed');
+        if (clearPatternSpeedInput && clearSpeedData) {
+            // Only set value if clear_pattern_speed is not null
+            if (clearSpeedData.clear_pattern_speed !== null && clearSpeedData.clear_pattern_speed !== undefined) {
+                clearPatternSpeedInput.value = clearSpeedData.clear_pattern_speed;
+                if (effectiveClearSpeed) {
+                    effectiveClearSpeed.textContent = `Current: ${clearSpeedData.clear_pattern_speed} steps/min`;
+                }
+            } else {
+                // Leave empty to show placeholder for default
+                clearPatternSpeedInput.value = '';
+                if (effectiveClearSpeed && clearSpeedData.effective_speed) {
+                    effectiveClearSpeed.textContent = `Using default pattern speed: ${clearSpeedData.effective_speed} steps/min`;
+                }
+            }
         }
         
         // Update app name
@@ -527,12 +540,18 @@ function setupEventListeners() {
                 return;
             }
             
-            const speed = parseInt(clearPatternSpeedInput.value);
-            
-            // Validate speed
-            if (isNaN(speed) || speed < 50 || speed > 2000) {
-                showStatusMessage('Clear pattern speed must be between 50 and 2000', 'error');
-                return;
+            let speed;
+            if (clearPatternSpeedInput.value === '' || clearPatternSpeedInput.value === null) {
+                // Empty value means use default (None)
+                speed = null;
+            } else {
+                speed = parseInt(clearPatternSpeedInput.value);
+                
+                // Validate speed only if it's not null
+                if (isNaN(speed) || speed < 50 || speed > 2000) {
+                    showStatusMessage('Clear pattern speed must be between 50 and 2000, or leave empty for default', 'error');
+                    return;
+                }
             }
             
             try {
@@ -543,7 +562,22 @@ function setupEventListeners() {
                 });
                 
                 if (response.ok) {
-                    showStatusMessage('Clear pattern speed saved successfully', 'success');
+                    const data = await response.json();
+                    if (speed === null) {
+                        showStatusMessage(`Clear pattern speed set to default (${data.effective_speed} steps/min)`, 'success');
+                    } else {
+                        showStatusMessage(`Clear pattern speed set to ${speed} steps/min`, 'success');
+                    }
+                    
+                    // Update the effective speed display
+                    const effectiveClearSpeed = document.getElementById('effectiveClearSpeed');
+                    if (effectiveClearSpeed) {
+                        if (speed === null) {
+                            effectiveClearSpeed.textContent = `Using default pattern speed: ${data.effective_speed} steps/min`;
+                        } else {
+                            effectiveClearSpeed.textContent = `Current: ${speed} steps/min`;
+                        }
+                    }
                 } else {
                     const error = await response.json();
                     throw new Error(error.detail || 'Failed to save clear pattern speed');

@@ -11,7 +11,7 @@ class AppState:
         # Private variables for properties
         self._current_playing_file = None
         self._pause_requested = False
-        self._speed = 130
+        self._speed = 100
         self._current_playlist = None
         self._current_playlist_name = None  # New variable for playlist name
         
@@ -46,7 +46,7 @@ class AppState:
         self._playlist_mode = "loop"
         self._pause_time = 0
         self._clear_pattern = "none"
-        self._clear_pattern_speed = 200  # Default speed for clearing patterns
+        self._clear_pattern_speed = None  # None means use state.speed as default
         self.custom_clear_from_in = None  # Custom clear from center pattern
         self.custom_clear_from_out = None  # Custom clear from perimeter pattern
         
@@ -202,7 +202,7 @@ class AppState:
         self._playlist_mode = data.get("playlist_mode", "loop")
         self._pause_time = data.get("pause_time", 0)
         self._clear_pattern = data.get("clear_pattern", "none")
-        self._clear_pattern_speed = data.get("clear_pattern_speed", 200)
+        self._clear_pattern_speed = data.get("clear_pattern_speed", None)
         self.custom_clear_from_in = data.get("custom_clear_from_in", None)
         self.custom_clear_from_out = data.get("custom_clear_from_out", None)
         self.port = data.get("port", None)

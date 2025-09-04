@@ -244,7 +244,7 @@ endblock %}
       <div class="bg-slate-50 rounded-lg p-4 space-y-4">
         <h3 class="text-slate-800 text-base font-semibold">Clearing Speed</h3>
         <p class="text-sm text-slate-600">
-          Set a custom speed for clearing patterns. This allows clearing patterns to run at a different speed than regular patterns.
+          Set a custom speed for clearing patterns. Leave empty to use the default pattern speed. This allows clearing patterns to run at a different speed than regular patterns.
         </p>
         <div class="flex flex-col gap-1.5">
           <label for="clearPatternSpeedInput" class="text-slate-700 text-sm font-medium leading-normal">
@@ -258,7 +258,7 @@ endblock %}
               max="2000"
               step="50"
               class="form-input flex-1 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-normal leading-normal transition-colors"
-              placeholder="200"
+              placeholder="Default (use pattern speed)"
               value=""
             />
             <button
@@ -269,6 +269,7 @@ endblock %}
               <span class="truncate">Save Speed</span>
             </button>
           </div>
+          <div id="effectiveClearSpeed" class="text-xs text-slate-500 mt-1"></div>
         </div>
       </div>
 

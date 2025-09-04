@@ -890,26 +890,33 @@ async def get_clear_pattern_speed():
     """Get the current clearing pattern speed setting."""
     return {
         "success": True,
-        "clear_pattern_speed": state.clear_pattern_speed
+        "clear_pattern_speed": state.clear_pattern_speed,
+        "effective_speed": state.clear_pattern_speed if state.clear_pattern_speed is not None else state.speed
     }
 
 @app.post("/api/clear_pattern_speed")
 async def set_clear_pattern_speed(request: dict):
     """Set the clearing pattern speed."""
     try:
-        speed = int(request.get("clear_pattern_speed", 200))
+        # If speed is None or "none", use default behavior (state.speed)
+        speed_value = request.get("clear_pattern_speed")
+        if speed_value is None or speed_value == "none" or speed_value == "":
+            speed = None
+        else:
+            speed = int(speed_value)
         
-        # Validate speed range (same as regular speed limits)
-        if not (50 <= speed <= 2000):
+        # Validate speed range (same as regular speed limits) only if speed is not None
+        if speed is not None and not (50 <= speed <= 2000):
             raise HTTPException(status_code=400, detail="Speed must be between 50 and 2000")
         
         state.clear_pattern_speed = speed
         state.save()
         
-        logger.info(f"Clear pattern speed updated to {speed}")
+        logger.info(f"Clear pattern speed set to {speed if speed is not None else 'default (state.speed)'}")
         return {
             "success": True,
-            "clear_pattern_speed": state.clear_pattern_speed
+            "clear_pattern_speed": state.clear_pattern_speed,
+            "effective_speed": state.clear_pattern_speed if state.clear_pattern_speed is not None else state.speed
         }
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid speed value")
