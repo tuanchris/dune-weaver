@@ -361,7 +361,7 @@ def get_machine_steps(timeout=10):
             state.table_type = 'dune_weaver_mini'
         elif y_steps_per_mm >= 320:
             state.table_type = 'dune_weaver_pro'
-        elif y_steps_per_mm == 287.5:
+        elif y_steps_per_mm == 287:
             state.table_type = 'dune_weaver'
         else:
             state.table_type = None

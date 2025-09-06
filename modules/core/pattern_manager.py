@@ -281,18 +281,14 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                 state.execution_progress = None
             return
 
-        # Determine if this is a clearing pattern and set appropriate speed
+        # Determine if this is a clearing pattern
         is_clear_file = is_clear_pattern(file_path)
-        # Use clear_pattern_speed if it's set and this is a clear file, otherwise use state.speed
-        if is_clear_file and state.clear_pattern_speed is not None:
-            pattern_speed = state.clear_pattern_speed
-        else:
-            pattern_speed = state.speed
         
         if is_clear_file:
-            logger.info(f"Running clearing pattern at speed {pattern_speed}")
+            initial_speed = state.clear_pattern_speed if state.clear_pattern_speed is not None else state.speed
+            logger.info(f"Running clearing pattern at initial speed {initial_speed}")
         else:
-            logger.info(f"Running normal pattern at speed {pattern_speed}")
+            logger.info(f"Running normal pattern at initial speed {state.speed}")
 
         state.execution_progress = (0, total_coordinates, None, 0)
         
@@ -342,7 +338,14 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                     if state.led_controller:
                         effect_playing(state.led_controller)
 
-                move_polar(theta, rho, pattern_speed)
+                # Dynamically determine the speed for each movement
+                # Use clear_pattern_speed if it's set and this is a clear file, otherwise use state.speed
+                if is_clear_file and state.clear_pattern_speed is not None:
+                    current_speed = state.clear_pattern_speed
+                else:
+                    current_speed = state.speed
+                    
+                move_polar(theta, rho, current_speed)
                 
                 # Update progress for all coordinates including the first one
                 pbar.update(1)
