@@ -1,4 +1,4 @@
-"""MQTT module for Dune Weaver Flask application."""
+"""MQTT module for Dune Weaver application."""
 from .factory import create_mqtt_handler
 import logging
 
