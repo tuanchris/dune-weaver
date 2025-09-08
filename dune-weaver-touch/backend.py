@@ -1,6 +1,7 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQml import QmlElement
 from PySide6.QtWebSockets import QWebSocket
+from PySide6.QtNetwork import QAbstractSocket
 import aiohttp
 import asyncio
 import json
@@ -65,17 +66,15 @@ class Backend(QObject):
     screenTimeoutChanged = Signal(int)  # New signal for timeout changes
     pauseBetweenPatternsChanged = Signal(int)  # New signal for pause changes
     
+    # Backend connection status signals
+    backendConnectionChanged = Signal(bool)  # True = backend reachable, False = unreachable
+    reconnectStatusChanged = Signal(str)  # Current reconnection status message
+    
     def __init__(self):
         super().__init__()
         self.base_url = "http://localhost:8080"
         
-        # WebSocket for status
-        self.ws = QWebSocket()
-        self.ws.connected.connect(self._on_ws_connected)
-        self.ws.textMessageReceived.connect(self._on_ws_message)
-        self.ws.open("ws://localhost:8080/ws/status")
-        
-        # Status properties
+        # Initialize all status properties first
         self._current_file = ""
         self._progress = 0
         self._is_running = False
@@ -86,6 +85,24 @@ class Backend(QObject):
         self._current_speed = 130
         self._auto_play_on_boot = False
         self._pause_between_patterns = 0  # Default: no pause (0 seconds)
+        
+        # Backend connection status
+        self._backend_connected = False
+        self._reconnect_status = "Connecting to backend..."
+        
+        # WebSocket for status with reconnection
+        self.ws = QWebSocket()
+        self.ws.connected.connect(self._on_ws_connected)
+        self.ws.disconnected.connect(self._on_ws_disconnected)
+        self.ws.errorOccurred.connect(self._on_ws_error)
+        self.ws.textMessageReceived.connect(self._on_ws_message)
+        
+        # WebSocket reconnection management
+        self._reconnect_timer = QTimer()
+        self._reconnect_timer.timeout.connect(self._attempt_ws_reconnect)
+        self._reconnect_timer.setSingleShot(True)
+        self._reconnect_attempts = 0
+        self._reconnect_delay = 1000  # Fixed 1 second delay between retries
         
         # Screen management
         self._screen_on = True
@@ -108,6 +125,10 @@ class Backend(QObject):
         
         # Use QTimer to defer session initialization until event loop is running
         QTimer.singleShot(100, self._delayed_init)
+        
+        # Start initial WebSocket connection (after all attributes are initialized)
+        # Use QTimer to ensure it happens after constructor completes
+        QTimer.singleShot(200, self._attempt_ws_reconnect)
     
     @Slot()
     def _delayed_init(self):
@@ -127,7 +148,9 @@ class Backend(QObject):
     async def _init_session(self):
         """Initialize aiohttp session"""
         if not self._session_initialized:
-            self.session = aiohttp.ClientSession()
+            # Create connector with SSL disabled for localhost
+            connector = aiohttp.TCPConnector(ssl=False)
+            self.session = aiohttp.ClientSession(connector=connector)
             self._session_initialized = True
     
     # Properties
@@ -167,12 +190,89 @@ class Backend(QObject):
     def autoPlayOnBoot(self):
         return self._auto_play_on_boot
     
+    @Property(bool, notify=backendConnectionChanged)
+    def backendConnected(self):
+        return self._backend_connected
+    
+    @Property(str, notify=reconnectStatusChanged)
+    def reconnectStatus(self):
+        return self._reconnect_status
+    
     # WebSocket handlers
     @Slot()
     def _on_ws_connected(self):
-        print("WebSocket connected")
+        print("✅ WebSocket connected successfully")
         self._is_connected = True
+        self._backend_connected = True
+        self._reconnect_attempts = 0  # Reset reconnection counter
+        self._reconnect_status = "Connected to backend"
         self.connectionChanged.emit()
+        self.backendConnectionChanged.emit(True)
+        self.reconnectStatusChanged.emit("Connected to backend")
+        
+        # Load initial settings when we connect
+        self.loadControlSettings()
+    
+    @Slot()
+    def _on_ws_disconnected(self):
+        print("❌ WebSocket disconnected")
+        self._is_connected = False
+        self._backend_connected = False
+        self._reconnect_status = "Backend connection lost..."
+        self.connectionChanged.emit()
+        self.backendConnectionChanged.emit(False)
+        self.reconnectStatusChanged.emit("Backend connection lost...")
+        # Start reconnection attempts
+        self._schedule_reconnect()
+    
+    @Slot()
+    def _on_ws_error(self, error):
+        print(f"❌ WebSocket error: {error}")
+        self._is_connected = False
+        self._backend_connected = False
+        self._reconnect_status = f"Backend error: {error}"
+        self.connectionChanged.emit()
+        self.backendConnectionChanged.emit(False)
+        self.reconnectStatusChanged.emit(f"Backend error: {error}")
+        # Start reconnection attempts
+        self._schedule_reconnect()
+    
+    def _schedule_reconnect(self):
+        """Schedule a reconnection attempt with fixed 1-second delay."""
+        # Always retry - no maximum attempts for touch interface
+        status_msg = f"Reconnecting in 1s... (attempt {self._reconnect_attempts + 1})"
+        print(f"🔄 {status_msg}")
+        self._reconnect_status = status_msg
+        self.reconnectStatusChanged.emit(status_msg)
+        self._reconnect_timer.start(self._reconnect_delay)  # Always 1 second
+    
+    @Slot()
+    def _attempt_ws_reconnect(self):
+        """Attempt to reconnect WebSocket."""
+        if self.ws.state() == QAbstractSocket.SocketState.ConnectedState:
+            print("✅ WebSocket already connected")
+            return
+            
+        self._reconnect_attempts += 1
+        status_msg = f"Connecting to backend... (attempt {self._reconnect_attempts})"
+        print(f"🔄 {status_msg}")
+        self._reconnect_status = status_msg
+        self.reconnectStatusChanged.emit(status_msg)
+        
+        # Close existing connection if any
+        if self.ws.state() != QAbstractSocket.SocketState.UnconnectedState:
+            self.ws.close()
+        
+        # Attempt new connection
+        self.ws.open("ws://localhost:8080/ws/status")
+    
+    @Slot()
+    def retryConnection(self):
+        """Manually retry connection (reset attempts and try again)."""
+        print("🔄 Manual connection retry requested")
+        self._reconnect_attempts = 0
+        self._reconnect_timer.stop()  # Stop any scheduled reconnect
+        self._attempt_ws_reconnect()
     
     @Slot(str)
     def _on_ws_message(self, message):
@@ -617,12 +717,13 @@ class Backend(QObject):
     
     async def _load_settings(self):
         if not self.session:
-            self.errorOccurred.emit("Backend not ready")
+            print("⚠️ Session not ready for loading settings")
             return
         
         try:
             # Load auto play setting from the working endpoint
-            async with self.session.get(f"{self.base_url}/api/auto_play-mode") as resp:
+            timeout = aiohttp.ClientTimeout(total=5)  # 5 second timeout
+            async with self.session.get(f"{self.base_url}/api/auto_play-mode", timeout=timeout) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     self._auto_play_on_boot = data.get("enabled", False)
@@ -631,7 +732,7 @@ class Backend(QObject):
             
             # Serial status will be handled by WebSocket updates automatically
             # But we still load the initial port info if connected
-            async with self.session.get(f"{self.base_url}/serial_status") as resp:
+            async with self.session.get(f"{self.base_url}/serial_status", timeout=timeout) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     initial_connected = data.get("connected", False)
@@ -651,9 +752,18 @@ class Backend(QObject):
             print("✅ Settings loaded - WebSocket will handle real-time updates")
             self.settingsLoaded.emit()
             
+        except aiohttp.ClientConnectorError as e:
+            print(f"⚠️ Cannot connect to backend at {self.base_url}: {e}")
+            # Don't emit error - this is expected when backend is down
+            # WebSocket will handle reconnection
+        except asyncio.TimeoutError:
+            print(f"⏰ Timeout loading settings from {self.base_url}")
+            # Don't emit error - expected when backend is slow/down
         except Exception as e:
-            print(f"💥 Exception loading settings: {e}")
-            self.errorOccurred.emit(str(e))
+            print(f"💥 Unexpected error loading settings: {e}")
+            # Only emit error for unexpected issues
+            if "ssl" not in str(e).lower():
+                self.errorOccurred.emit(str(e))
     
     # Screen Management Properties
     @Property(bool, notify=screenStateChanged)

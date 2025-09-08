@@ -59,6 +59,17 @@ ApplicationWindow {
         onScreenStateChanged: function(isOn) {
             console.log("🖥️ Screen state changed:", isOn ? "ON" : "OFF")
         }
+        
+        onBackendConnectionChanged: function(connected) {
+            console.log("🔗 Backend connection changed:", connected)
+            if (connected && stackView.currentItem.toString().indexOf("ConnectionSplash") !== -1) {
+                console.log("✅ Backend connected, switching to main view")
+                stackView.replace(mainSwipeView)
+            } else if (!connected && stackView.currentItem.toString().indexOf("ConnectionSplash") === -1) {
+                console.log("❌ Backend disconnected, switching to splash screen")
+                stackView.replace(connectionSplash)
+            }
+        }
     }
     
     // Global touch/mouse handler for activity tracking
@@ -91,7 +102,21 @@ ApplicationWindow {
     StackView {
         id: stackView
         anchors.fill: parent
-        initialItem: mainSwipeView
+        initialItem: backend.backendConnected ? mainSwipeView : connectionSplash
+        
+        Component {
+            id: connectionSplash
+            
+            ConnectionSplash {
+                statusText: backend.reconnectStatus
+                showRetryButton: backend.reconnectStatus === "Cannot connect to backend"
+                
+                onRetryConnection: {
+                    console.log("🔄 Manual retry requested")
+                    backend.retryConnection()
+                }
+            }
+        }
         
         Component {
             id: mainSwipeView
