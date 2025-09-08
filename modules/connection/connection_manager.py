@@ -139,7 +139,7 @@ def device_init(homing=True):
             logger.info(f"x_steps_per_mm: {state.x_steps_per_mm}, y_steps_per_mm: {state.y_steps_per_mm}, gear_ratio: {state.gear_ratio}")
     except:
         logger.fatal("Not GRBL firmware")
-        pass
+        return False
 
     machine_x, machine_y = get_machine_position()
     if machine_x != state.machine_x or machine_y != state.machine_y:
@@ -170,9 +170,8 @@ def connect_device(homing=True):
     elif ports:
         state.conn = SerialConnection(ports[0])
     else:
-        logger.warning("No serial ports found. Falling back to WebSocket.")
+        logger.error("Auto connect failed.")
         # state.conn = WebSocketConnection('ws://fluidnc.local:81')
-        return
     if (state.conn.is_connected() if state.conn else False):
         device_init(homing)
         
