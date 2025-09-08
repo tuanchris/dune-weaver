@@ -1,0 +1,19 @@
+[Unit]
+Description=Dune Weaver Touch Interface
+After=graphical.target
+Wants=graphical.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/dune-weaver-touch
+Environment=DISPLAY=:0
+Environment=QT_QPA_PLATFORM=eglfs
+Environment=QT_QPA_EGLFS_ALWAYS_SET_MODE=1
+ExecStart=/home/pi/dune-weaver-touch/venv/bin/python /home/pi/dune-weaver-touch/main.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical.target

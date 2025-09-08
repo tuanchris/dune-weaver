@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -e
+BL="/sys/class/backlight/$(ls /sys/class/backlight | head -n1)"
+# Unblank framebuffer first
+echo 0 | sudo tee /sys/class/graphics/fb0/blank >/dev/null
+# Then restore backlight
+if [ -e "$BL/bl_power" ]; then
+    echo 0 | sudo tee "$BL/bl_power"
+else
+    MAX=$(cat "$BL/max_brightness")
+    echo "$MAX" | sudo tee "$BL/brightness"
+fi
