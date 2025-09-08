@@ -137,6 +137,8 @@ def device_init(homing=True):
     try:
         if get_machine_steps():
             logger.info(f"x_steps_per_mm: {state.x_steps_per_mm}, y_steps_per_mm: {state.y_steps_per_mm}, gear_ratio: {state.gear_ratio}")
+        else: 
+            logger.fatal("Failed to get machine steps")
     except:
         logger.fatal("Not GRBL firmware")
         return False
