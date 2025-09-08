@@ -3,7 +3,7 @@ import os
 import asyncio
 import logging
 from pathlib import Path
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QUrl, QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterType
 from qasync import QEventLoop
@@ -52,9 +52,6 @@ def main():
     qmlRegisterType(PatternModel, "DuneWeaver", 1, 0, "PatternModel")
     qmlRegisterType(PlaylistModel, "DuneWeaver", 1, 0, "PlaylistModel")
     
-    # Run startup tasks in background
-    asyncio.create_task(startup_tasks())
-    
     # Load QML
     engine = QQmlApplicationEngine()
     qml_file = Path(__file__).parent / "qml" / "main.qml"
@@ -62,6 +59,22 @@ def main():
     
     if not engine.rootObjects():
         return -1
+    
+    # Schedule startup tasks after a brief delay to ensure event loop is running
+    def schedule_startup():
+        try:
+            # Check if we're in an event loop context
+            current_loop = asyncio.get_running_loop()
+            current_loop.create_task(startup_tasks())
+        except RuntimeError:
+            # No running loop, create task directly
+            asyncio.create_task(startup_tasks())
+    
+    # Use QTimer to delay startup tasks
+    startup_timer = QTimer()
+    startup_timer.timeout.connect(schedule_startup)
+    startup_timer.setSingleShot(True)
+    startup_timer.start(100)  # 100ms delay
     
     with loop:
         loop.run_forever()
