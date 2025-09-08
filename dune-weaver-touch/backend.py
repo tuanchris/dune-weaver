@@ -21,6 +21,34 @@ class Backend(QObject):
     SETTINGS_FILE = "touch_settings.json"
     DEFAULT_SCREEN_TIMEOUT = 300  # 5 minutes in seconds
     
+    # Predefined timeout options (in seconds)
+    TIMEOUT_OPTIONS = {
+        "30 seconds": 30,
+        "1 minute": 60, 
+        "5 minutes": 300,
+        "10 minutes": 600,
+        "Never": 0  # 0 means never timeout
+    }
+    
+    # Predefined speed options 
+    SPEED_OPTIONS = {
+        "50": 50,
+        "100": 100,
+        "200": 200,
+        "300": 300,
+        "500": 500
+    }
+    
+    # Predefined pause between patterns options (in seconds)
+    PAUSE_OPTIONS = {
+        "0s": 0,        # No pause
+        "1 min": 60,    # 1 minute
+        "5 min": 300,   # 5 minutes  
+        "15 min": 900,  # 15 minutes
+        "30 min": 1800, # 30 minutes
+        "1 hour": 3600  # 1 hour
+    }
+    
     # Signals
     statusChanged = Signal()
     progressChanged = Signal()
@@ -35,6 +63,7 @@ class Backend(QObject):
     settingsLoaded = Signal()
     screenStateChanged = Signal(bool)  # True = on, False = off
     screenTimeoutChanged = Signal(int)  # New signal for timeout changes
+    pauseBetweenPatternsChanged = Signal(int)  # New signal for pause changes
     
     def __init__(self):
         super().__init__()
@@ -56,6 +85,7 @@ class Backend(QObject):
         self._current_port = ""
         self._current_speed = 130
         self._auto_play_on_boot = False
+        self._pause_between_patterns = 0  # Default: no pause (0 seconds)
         
         # Screen management
         self._screen_on = True
@@ -552,9 +582,12 @@ class Backend(QObject):
                     settings = json.load(f)
                     
                 screen_timeout = settings.get('screen_timeout', self.DEFAULT_SCREEN_TIMEOUT)
-                if isinstance(screen_timeout, (int, float)) and screen_timeout > 0:
+                if isinstance(screen_timeout, (int, float)) and screen_timeout >= 0:
                     self._screen_timeout = int(screen_timeout)
-                    print(f"🖥️ Loaded screen timeout from local settings: {self._screen_timeout}s")
+                    if screen_timeout == 0:
+                        print(f"🖥️ Loaded screen timeout from local settings: Never (0s)")
+                    else:
+                        print(f"🖥️ Loaded screen timeout from local settings: {self._screen_timeout}s")
                 else:
                     print(f"⚠️ Invalid screen timeout in settings, using default: {self.DEFAULT_SCREEN_TIMEOUT}s")
             else:
@@ -643,6 +676,142 @@ class Backend(QObject):
             
             # Emit change signal for QML
             self.screenTimeoutChanged.emit(timeout)
+    
+    @Slot(result='QStringList')
+    def getScreenTimeoutOptions(self):
+        """Get list of screen timeout options for QML"""
+        return list(self.TIMEOUT_OPTIONS.keys())
+    
+    @Slot(result=str)
+    def getCurrentScreenTimeoutOption(self):
+        """Get current screen timeout as option string"""
+        current_timeout = self._screen_timeout
+        for option, value in self.TIMEOUT_OPTIONS.items():
+            if value == current_timeout:
+                return option
+        # If custom value, return closest match or custom description
+        if current_timeout == 0:
+            return "Never"
+        elif current_timeout < 60:
+            return f"{current_timeout} seconds"
+        elif current_timeout < 3600:
+            minutes = current_timeout // 60
+            return f"{minutes} minute{'s' if minutes != 1 else ''}"
+        else:
+            hours = current_timeout // 3600
+            return f"{hours} hour{'s' if hours != 1 else ''}"
+    
+    @Slot(str)
+    def setScreenTimeoutByOption(self, option):
+        """Set screen timeout by option string"""
+        if option in self.TIMEOUT_OPTIONS:
+            timeout_value = self.TIMEOUT_OPTIONS[option]
+            # Don't call the setter method, just assign to trigger the property setter
+            if self._screen_timeout != timeout_value:
+                old_timeout = self._screen_timeout
+                self._screen_timeout = timeout_value
+                print(f"🖥️ Screen timeout changed from {old_timeout}s to {timeout_value}s ({option})")
+                
+                # Save to local settings
+                self._save_local_settings()
+                
+                # Emit change signal for QML
+                self.screenTimeoutChanged.emit(timeout_value)
+        else:
+            print(f"⚠️ Unknown timeout option: {option}")
+    
+    @Slot(result='QStringList')
+    def getSpeedOptions(self):
+        """Get list of speed options for QML"""
+        return list(self.SPEED_OPTIONS.keys())
+    
+    @Slot(result=str)
+    def getCurrentSpeedOption(self):
+        """Get current speed as option string"""
+        current_speed = self._current_speed
+        for option, value in self.SPEED_OPTIONS.items():
+            if value == current_speed:
+                return option
+        # If custom value, return as string
+        return str(current_speed)
+    
+    @Slot(str)
+    def setSpeedByOption(self, option):
+        """Set speed by option string"""
+        if option in self.SPEED_OPTIONS:
+            speed_value = self.SPEED_OPTIONS[option]
+            # Don't call setter method, just assign directly  
+            if self._current_speed != speed_value:
+                old_speed = self._current_speed
+                self._current_speed = speed_value
+                print(f"⚡ Speed changed from {old_speed} to {speed_value} ({option})")
+                
+                # Send to main application
+                asyncio.create_task(self._set_speed_async(speed_value))
+                
+                # Emit change signal for QML
+                self.speedChanged.emit(speed_value)
+        else:
+            print(f"⚠️ Unknown speed option: {option}")
+    
+    async def _set_speed_async(self, speed):
+        """Send speed to main application asynchronously"""
+        if not self.session:
+            return
+        try:
+            async with self.session.post(f"{self.base_url}/set_speed", json={"speed": speed}) as resp:
+                if resp.status == 200:
+                    print(f"✅ Speed set successfully: {speed}")
+                else:
+                    print(f"❌ Failed to set speed: {resp.status}")
+        except Exception as e:
+            print(f"💥 Exception setting speed: {e}")
+    
+    # Pause Between Patterns Methods
+    @Slot(result='QStringList')
+    def getPauseOptions(self):
+        """Get list of pause between patterns options for QML"""
+        return list(self.PAUSE_OPTIONS.keys())
+    
+    @Slot(result=str)
+    def getCurrentPauseOption(self):
+        """Get current pause between patterns as option string"""
+        current_pause = self._pause_between_patterns
+        for option, value in self.PAUSE_OPTIONS.items():
+            if value == current_pause:
+                return option
+        # If custom value, return descriptive string
+        if current_pause == 0:
+            return "0s"
+        elif current_pause < 60:
+            return f"{current_pause}s"
+        elif current_pause < 3600:
+            minutes = current_pause // 60
+            return f"{minutes} min"
+        else:
+            hours = current_pause // 3600
+            return f"{hours} hour"
+    
+    @Slot(str)
+    def setPauseByOption(self, option):
+        """Set pause between patterns by option string"""
+        if option in self.PAUSE_OPTIONS:
+            pause_value = self.PAUSE_OPTIONS[option]
+            if self._pause_between_patterns != pause_value:
+                old_pause = self._pause_between_patterns
+                self._pause_between_patterns = pause_value
+                print(f"⏸️ Pause between patterns changed from {old_pause}s to {pause_value}s ({option})")
+                
+                # Emit change signal for QML
+                self.pauseBetweenPatternsChanged.emit(pause_value)
+        else:
+            print(f"⚠️ Unknown pause option: {option}")
+    
+    # Property for pause between patterns
+    @Property(int, notify=pauseBetweenPatternsChanged)
+    def pauseBetweenPatterns(self):
+        """Get current pause between patterns in seconds"""
+        return self._pause_between_patterns
     
     # Screen Control Methods
     @Slot()
@@ -776,7 +945,7 @@ class Backend(QObject):
     
     def _check_screen_timeout(self):
         """Check if screen should be turned off due to inactivity"""
-        if self._screen_on:
+        if self._screen_on and self._screen_timeout > 0:  # Only check if timeout is enabled
             idle_time = time.time() - self._last_activity
             # Log every 10 seconds when getting close to timeout
             if idle_time > self._screen_timeout - 10 and idle_time % 10 < 1:
@@ -787,6 +956,7 @@ class Backend(QObject):
                 self._turn_screen_off()
                 # Add delay before starting touch monitoring to avoid catching residual events
                 QTimer.singleShot(1000, self._start_touch_monitoring)  # 1 second delay
+        # If timeout is 0 (Never), screen stays on indefinitely
     
     def _start_touch_monitoring(self):
         """Start monitoring touch input for wake-up"""

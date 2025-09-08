@@ -18,7 +18,7 @@ Page {
     property var currentPlaylistPatterns: []
     
     // Playlist execution settings
-    property real pauseTime: 5.0
+    property real pauseTime: backend ? backend.pauseBetweenPatterns : 0
     property string clearPattern: "adaptive"
     property string runMode: "single"
     property bool shuffle: false
@@ -554,56 +554,209 @@ Page {
                                         }
                                     }
                                     
-                                    // Pause time
+                                    // Pause Between Patterns
                                     Column {
                                         Layout.fillWidth: true
-                                        spacing: 8
+                                        spacing: 15
                                         
                                         Label {
-                                            text: "Pause Between Patterns:"
+                                            text: "Pause between patterns:"
                                             font.pixelSize: 12
                                             color: "#666"
                                             font.bold: true
                                         }
                                         
+                                        // Touch-friendly button row for pause options
                                         RowLayout {
-                                            width: parent.width
-                                            spacing: 10
+                                            id: pauseGrid
+                                            Layout.fillWidth: true
+                                            spacing: 8
                                             
-                                            TextField {
-                                                Layout.preferredWidth: 140
-                                                Layout.preferredHeight: 20
-                                                text: Math.round(pauseTime).toString()
-                                                font.pixelSize: 12
-                                                horizontalAlignment: TextInput.AlignHCenter
-                                                maximumLength: 10
-                                                inputMethodHints: Qt.ImhDigitsOnly
-                                                validator: IntValidator {
-                                                    bottom: 0
-                                                    top: 99999
+                                            property string currentSelection: backend ? backend.getCurrentPauseOption() : "0s"
+                                            
+                                            // 0s button
+                                            Rectangle {
+                                                Layout.preferredWidth: 60
+                                                Layout.preferredHeight: 40
+                                                color: pauseGrid.currentSelection === "0s" ? "#2196F3" : "#f0f0f0"
+                                                border.color: pauseGrid.currentSelection === "0s" ? "#1976D2" : "#ccc"
+                                                border.width: 2
+                                                radius: 8
+                                                
+                                                Label {
+                                                    anchors.centerIn: parent
+                                                    text: "0s"
+                                                    font.pixelSize: 12
+                                                    font.bold: true
+                                                    color: pauseGrid.currentSelection === "0s" ? "white" : "#333"
                                                 }
-                                                onTextChanged: {
-                                                    var newValue = parseInt(text)
-                                                    if (!isNaN(newValue) && newValue >= 0 && newValue <= 99999) {
-                                                        pauseTime = newValue
+                                                
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    onClicked: {
+                                                        if (backend) {
+                                                            backend.setPauseByOption("0s")
+                                                            pauseGrid.currentSelection = "0s"
+                                                            pauseTime = 0
+                                                        }
                                                     }
                                                 }
-                                                background: Rectangle {
-                                                    color: "white"
-                                                    border.color: "#e5e7eb"
-                                                    border.width: 1
-                                                    radius: 6
+                                            }
+                                            
+                                            // 1 min button
+                                            Rectangle {
+                                                Layout.preferredWidth: 60
+                                                Layout.preferredHeight: 40
+                                                color: pauseGrid.currentSelection === "1 min" ? "#2196F3" : "#f0f0f0"
+                                                border.color: pauseGrid.currentSelection === "1 min" ? "#1976D2" : "#ccc"
+                                                border.width: 2
+                                                radius: 8
+                                                
+                                                Label {
+                                                    anchors.centerIn: parent
+                                                    text: "1m"
+                                                    font.pixelSize: 12
+                                                    font.bold: true
+                                                    color: pauseGrid.currentSelection === "1 min" ? "white" : "#333"
+                                                }
+                                                
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    onClicked: {
+                                                        if (backend) {
+                                                            backend.setPauseByOption("1 min")
+                                                            pauseGrid.currentSelection = "1 min"
+                                                            pauseTime = 60
+                                                        }
+                                                    }
                                                 }
                                             }
                                             
-                                            Label {
-                                                text: "seconds"
-                                                font.pixelSize: 11
-                                                color: "#666"
+                                            // 5 min button
+                                            Rectangle {
+                                                Layout.preferredWidth: 60
+                                                Layout.preferredHeight: 40
+                                                color: pauseGrid.currentSelection === "5 min" ? "#2196F3" : "#f0f0f0"
+                                                border.color: pauseGrid.currentSelection === "5 min" ? "#1976D2" : "#ccc"
+                                                border.width: 2
+                                                radius: 8
+                                                
+                                                Label {
+                                                    anchors.centerIn: parent
+                                                    text: "5m"
+                                                    font.pixelSize: 12
+                                                    font.bold: true
+                                                    color: pauseGrid.currentSelection === "5 min" ? "white" : "#333"
+                                                }
+                                                
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    onClicked: {
+                                                        if (backend) {
+                                                            backend.setPauseByOption("5 min")
+                                                            pauseGrid.currentSelection = "5 min"
+                                                            pauseTime = 300
+                                                        }
+                                                    }
+                                                }
                                             }
                                             
-                                            Item { 
-                                                Layout.fillWidth: true 
+                                            // 15 min button
+                                            Rectangle {
+                                                Layout.preferredWidth: 60
+                                                Layout.preferredHeight: 40
+                                                color: pauseGrid.currentSelection === "15 min" ? "#2196F3" : "#f0f0f0"
+                                                border.color: pauseGrid.currentSelection === "15 min" ? "#1976D2" : "#ccc"
+                                                border.width: 2
+                                                radius: 8
+                                                
+                                                Label {
+                                                    anchors.centerIn: parent
+                                                    text: "15m"
+                                                    font.pixelSize: 12
+                                                    font.bold: true
+                                                    color: pauseGrid.currentSelection === "15 min" ? "white" : "#333"
+                                                }
+                                                
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    onClicked: {
+                                                        if (backend) {
+                                                            backend.setPauseByOption("15 min")
+                                                            pauseGrid.currentSelection = "15 min"
+                                                            pauseTime = 900
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            
+                                            // 30 min button
+                                            Rectangle {
+                                                Layout.preferredWidth: 60
+                                                Layout.preferredHeight: 40
+                                                color: pauseGrid.currentSelection === "30 min" ? "#2196F3" : "#f0f0f0"
+                                                border.color: pauseGrid.currentSelection === "30 min" ? "#1976D2" : "#ccc"
+                                                border.width: 2
+                                                radius: 8
+                                                
+                                                Label {
+                                                    anchors.centerIn: parent
+                                                    text: "30m"
+                                                    font.pixelSize: 12
+                                                    font.bold: true
+                                                    color: pauseGrid.currentSelection === "30 min" ? "white" : "#333"
+                                                }
+                                                
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    onClicked: {
+                                                        if (backend) {
+                                                            backend.setPauseByOption("30 min")
+                                                            pauseGrid.currentSelection = "30 min"
+                                                            pauseTime = 1800
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            
+                                            // 1 hour button
+                                            Rectangle {
+                                                Layout.preferredWidth: 60
+                                                Layout.preferredHeight: 40
+                                                color: pauseGrid.currentSelection === "1 hour" ? "#2196F3" : "#f0f0f0"
+                                                border.color: pauseGrid.currentSelection === "1 hour" ? "#1976D2" : "#ccc"
+                                                border.width: 2
+                                                radius: 8
+                                                
+                                                Label {
+                                                    anchors.centerIn: parent
+                                                    text: "1h"
+                                                    font.pixelSize: 12
+                                                    font.bold: true
+                                                    color: pauseGrid.currentSelection === "1 hour" ? "white" : "#333"
+                                                }
+                                                
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    onClicked: {
+                                                        if (backend) {
+                                                            backend.setPauseByOption("1 hour")
+                                                            pauseGrid.currentSelection = "1 hour"
+                                                            pauseTime = 3600
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            
+                                            // Update selection when backend changes
+                                            Connections {
+                                                target: backend
+                                                function onPauseBetweenPatternsChanged(pause) {
+                                                    if (backend) {
+                                                        pauseGrid.currentSelection = backend.getCurrentPauseOption()
+                                                        pauseTime = backend.pauseBetweenPatterns
+                                                    }
+                                                }
                                             }
                                         }
                                     }

@@ -12,7 +12,6 @@ Page {
     property bool isSerialConnected: false
     property int currentSpeed: 130
     property bool autoPlayOnBoot: false
-    property int screenTimeoutMinutes: 0
     
     // Backend signal connections
     Connections {
@@ -46,7 +45,7 @@ Page {
                 autoPlayOnBoot = backend.autoPlayOnBoot
                 currentSpeed = backend.currentSpeed
                 isSerialConnected = backend.serialConnected
-                screenTimeoutMinutes = Math.round(backend.screenTimeout / 60)
+                // Screen timeout is now managed by button selection, no need to convert
                 if (backend.currentPort) {
                     selectedPort = backend.currentPort
                 }
@@ -143,7 +142,7 @@ Page {
                         
                         Label {
                             text: "Serial Connection"
-                            font.pixelSize: 16
+                            font.pixelSize: 14
                             font.bold: true
                             color: "#333"
                         }
@@ -266,7 +265,7 @@ Page {
                         
                         Label {
                             text: "Table Movement"
-                            font.pixelSize: 16
+                            font.pixelSize: 14
                             font.bold: true
                             color: "#333"
                         }
@@ -325,7 +324,7 @@ Page {
                 // Speed Control Section
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 120
+                    Layout.preferredHeight: 120  // Reduced from original for single row layout
                     Layout.margins: 10
                     radius: 8
                     color: "white"
@@ -333,50 +332,172 @@ Page {
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 15
-                        spacing: 10
+                        spacing: 15
                         
                         Label {
-                            text: "Speed Control"
-                            font.pixelSize: 16
+                            text: "Speed:"
+                            font.pixelSize: 14
                             font.bold: true
                             color: "#333"
+                            Layout.alignment: Qt.AlignLeft
                         }
                         
+                        // Touch-friendly button row for speed options
                         RowLayout {
+                            id: speedGrid
                             Layout.fillWidth: true
-                            spacing: 10
+                            spacing: 8
                             
-                            Label {
-                                text: "Speed:"
-                                font.pixelSize: 12
-                                color: "#666"
-                            }
+                            property string currentSelection: backend ? backend.getCurrentSpeedOption() : "200"
                             
-                            Slider {
-                                id: speedSlider
-                                Layout.fillWidth: true
-                                from: 10
-                                to: 500
-                                value: currentSpeed
-                                stepSize: 10
+                            // 50 button
+                            Rectangle {
+                                Layout.preferredWidth: 100
+                                Layout.preferredHeight: 50
+                                color: speedGrid.currentSelection === "50" ? "#2196F3" : "#f0f0f0"
+                                border.color: speedGrid.currentSelection === "50" ? "#1976D2" : "#ccc"
+                                border.width: 2
+                                radius: 8
                                 
-                                onValueChanged: {
-                                    currentSpeed = Math.round(value)
+                                Label {
+                                    anchors.centerIn: parent
+                                    text: "50"
+                                    font.pixelSize: 14
+                                    font.bold: true
+                                    color: speedGrid.currentSelection === "50" ? "white" : "#333"
                                 }
                                 
-                                onPressedChanged: {
-                                    if (!pressed && backend) {
-                                        backend.setSpeed(currentSpeed)
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        if (backend) {
+                                            backend.setSpeedByOption("50")
+                                            speedGrid.currentSelection = "50"
+                                        }
                                     }
                                 }
                             }
                             
-                            Label {
-                                text: currentSpeed
-                                font.pixelSize: 12
-                                font.bold: true
-                                color: "#333"
-                                Layout.preferredWidth: 40
+                            // 100 button
+                            Rectangle {
+                                Layout.preferredWidth: 100
+                                Layout.preferredHeight: 50
+                                color: speedGrid.currentSelection === "100" ? "#2196F3" : "#f0f0f0"
+                                border.color: speedGrid.currentSelection === "100" ? "#1976D2" : "#ccc"
+                                border.width: 2
+                                radius: 8
+                                
+                                Label {
+                                    anchors.centerIn: parent
+                                    text: "100"
+                                    font.pixelSize: 14
+                                    font.bold: true
+                                    color: speedGrid.currentSelection === "100" ? "white" : "#333"
+                                }
+                                
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        if (backend) {
+                                            backend.setSpeedByOption("100")
+                                            speedGrid.currentSelection = "100"
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // 200 button
+                            Rectangle {
+                                Layout.preferredWidth: 100
+                                Layout.preferredHeight: 50
+                                color: speedGrid.currentSelection === "200" ? "#2196F3" : "#f0f0f0"
+                                border.color: speedGrid.currentSelection === "200" ? "#1976D2" : "#ccc"
+                                border.width: 2
+                                radius: 8
+                                
+                                Label {
+                                    anchors.centerIn: parent
+                                    text: "200"
+                                    font.pixelSize: 14
+                                    font.bold: true
+                                    color: speedGrid.currentSelection === "200" ? "white" : "#333"
+                                }
+                                
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        if (backend) {
+                                            backend.setSpeedByOption("200")
+                                            speedGrid.currentSelection = "200"
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // 300 button
+                            Rectangle {
+                                Layout.preferredWidth: 100
+                                Layout.preferredHeight: 50
+                                color: speedGrid.currentSelection === "300" ? "#2196F3" : "#f0f0f0"
+                                border.color: speedGrid.currentSelection === "300" ? "#1976D2" : "#ccc"
+                                border.width: 2
+                                radius: 8
+                                
+                                Label {
+                                    anchors.centerIn: parent
+                                    text: "300"
+                                    font.pixelSize: 14
+                                    font.bold: true
+                                    color: speedGrid.currentSelection === "300" ? "white" : "#333"
+                                }
+                                
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        if (backend) {
+                                            backend.setSpeedByOption("300")
+                                            speedGrid.currentSelection = "300"
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // 500 button
+                            Rectangle {
+                                Layout.preferredWidth: 100
+                                Layout.preferredHeight: 50
+                                color: speedGrid.currentSelection === "500" ? "#2196F3" : "#f0f0f0"
+                                border.color: speedGrid.currentSelection === "500" ? "#1976D2" : "#ccc"
+                                border.width: 2
+                                radius: 8
+                                
+                                Label {
+                                    anchors.centerIn: parent
+                                    text: "500"
+                                    font.pixelSize: 14
+                                    font.bold: true
+                                    color: speedGrid.currentSelection === "500" ? "white" : "#333"
+                                }
+                                
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        if (backend) {
+                                            backend.setSpeedByOption("500")
+                                            speedGrid.currentSelection = "500"
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Update selection when backend changes
+                            Connections {
+                                target: backend
+                                function onSpeedChanged(speed) {
+                                    if (backend) {
+                                        speedGrid.currentSelection = backend.getCurrentSpeedOption()
+                                    }
+                                }
                             }
                         }
                     }
@@ -385,7 +506,7 @@ Page {
                 // Auto Play on Boot Section
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 160
+                    Layout.preferredHeight: 200  // Reduced from 280 for single row layout
                     Layout.margins: 10
                     radius: 8
                     color: "white"
@@ -397,7 +518,7 @@ Page {
                         
                         Label {
                             text: "Auto Play Settings"
-                            font.pixelSize: 16
+                            font.pixelSize: 14
                             font.bold: true
                             color: "#333"
                         }
@@ -426,107 +547,174 @@ Page {
                             }
                         }
                         
-                        RowLayout {
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 10
+                            spacing: 15
                             
                             Label {
                                 text: "Screen timeout:"
-                                font.pixelSize: 12
-                                color: "#666"
+                                font.pixelSize: 14
+                                font.bold: true
+                                color: "#333"
+                                Layout.alignment: Qt.AlignLeft
                             }
                             
-                            SpinBox {
-                                id: timeoutSpinBox
-                                Layout.preferredWidth: 120
-                                from: 0
-                                to: 120
-                                value: screenTimeoutMinutes
-                                stepSize: 5
+                            // Touch-friendly button row for timeout options
+                            RowLayout {
+                                id: timeoutGrid
+                                Layout.fillWidth: true
+                                spacing: 8
                                 
-                                textFromValue: function(value, locale) {
-                                    return value === 0 ? "Never" : value + " min"
-                                }
+                                property string currentSelection: backend ? backend.getCurrentScreenTimeoutOption() : "5 minutes"
                                 
-                                onValueModified: {
-                                    screenTimeoutMinutes = value
-                                    if (backend) {
-                                        // Convert minutes to seconds for backend
-                                        backend.screenTimeout = value * 60
+                                // 30 seconds button
+                                Rectangle {
+                                    Layout.preferredWidth: 100
+                                    Layout.preferredHeight: 50
+                                    color: timeoutGrid.currentSelection === "30 seconds" ? "#2196F3" : "#f0f0f0"
+                                    border.color: timeoutGrid.currentSelection === "30 seconds" ? "#1976D2" : "#ccc"
+                                    border.width: 2
+                                    radius: 8
+                                    
+                                    Label {
+                                        anchors.centerIn: parent
+                                        text: "30s"
+                                        font.pixelSize: 14
+                                        font.bold: true
+                                        color: timeoutGrid.currentSelection === "30 seconds" ? "white" : "#333"
+                                    }
+                                    
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        onClicked: {
+                                            if (backend) {
+                                                backend.setScreenTimeoutByOption("30 seconds")
+                                                timeoutGrid.currentSelection = "30 seconds"
+                                            }
+                                        }
                                     }
                                 }
-                            }
-                            
-                            Item { Layout.fillWidth: true }
-                        }
-                    }
-                }
-                
-                // Debug Screen Control Section (remove this later)
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 120
-                    Layout.margins: 10
-                    radius: 8
-                    color: "white"
-                    border.color: "#ff0000"
-                    border.width: 2
-                    
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 15
-                        spacing: 10
-                        
-                        Label {
-                            text: "DEBUG: Screen Control (Remove Later)"
-                            font.pixelSize: 12
-                            font.bold: true
-                            color: "#ff0000"
-                        }
-                        
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 10
-                            
-                            ModernControlButton {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 35
-                                text: "Screen OFF"
-                                icon: "💤"
-                                buttonColor: "#dc2626"
-                                fontSize: 10
                                 
-                                onClicked: {
-                                    console.log("DEBUG: Manual screen off clicked")
-                                    backend.turnScreenOff()
+                                // 1 minute button
+                                Rectangle {
+                                    Layout.preferredWidth: 100
+                                    Layout.preferredHeight: 50
+                                    color: timeoutGrid.currentSelection === "1 minute" ? "#2196F3" : "#f0f0f0"
+                                    border.color: timeoutGrid.currentSelection === "1 minute" ? "#1976D2" : "#ccc"
+                                    border.width: 2
+                                    radius: 8
+                                    
+                                    Label {
+                                        anchors.centerIn: parent
+                                        text: "1min"
+                                        font.pixelSize: 14
+                                        font.bold: true
+                                        color: timeoutGrid.currentSelection === "1 minute" ? "white" : "#333"
+                                    }
+                                    
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        onClicked: {
+                                            if (backend) {
+                                                backend.setScreenTimeoutByOption("1 minute")
+                                                timeoutGrid.currentSelection = "1 minute"
+                                            }
+                                        }
+                                    }
                                 }
-                            }
-                            
-                            ModernControlButton {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 35
-                                text: "Screen ON"
-                                icon: "💡"
-                                buttonColor: "#059669"
-                                fontSize: 10
                                 
-                                onClicked: {
-                                    console.log("DEBUG: Manual screen on clicked")
-                                    backend.turnScreenOn()
+                                // 5 minutes button
+                                Rectangle {
+                                    Layout.preferredWidth: 100
+                                    Layout.preferredHeight: 50
+                                    color: timeoutGrid.currentSelection === "5 minutes" ? "#2196F3" : "#f0f0f0"
+                                    border.color: timeoutGrid.currentSelection === "5 minutes" ? "#1976D2" : "#ccc"
+                                    border.width: 2
+                                    radius: 8
+                                    
+                                    Label {
+                                        anchors.centerIn: parent
+                                        text: "5min"
+                                        font.pixelSize: 14
+                                        font.bold: true
+                                        color: timeoutGrid.currentSelection === "5 minutes" ? "white" : "#333"
+                                    }
+                                    
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        onClicked: {
+                                            if (backend) {
+                                                backend.setScreenTimeoutByOption("5 minutes")
+                                                timeoutGrid.currentSelection = "5 minutes"
+                                            }
+                                        }
+                                    }
                                 }
-                            }
-                            
-                            ModernControlButton {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 35
-                                text: "Reset Timer"
-                                icon: "⏰"
-                                buttonColor: "#2563eb"
-                                fontSize: 10
                                 
-                                onClicked: {
-                                    console.log("DEBUG: Reset activity timer clicked")
-                                    backend.resetActivityTimer()
+                                // 10 minutes button
+                                Rectangle {
+                                    Layout.preferredWidth: 100
+                                    Layout.preferredHeight: 50
+                                    color: timeoutGrid.currentSelection === "10 minutes" ? "#2196F3" : "#f0f0f0"
+                                    border.color: timeoutGrid.currentSelection === "10 minutes" ? "#1976D2" : "#ccc"
+                                    border.width: 2
+                                    radius: 8
+                                    
+                                    Label {
+                                        anchors.centerIn: parent
+                                        text: "10min"
+                                        font.pixelSize: 14
+                                        font.bold: true
+                                        color: timeoutGrid.currentSelection === "10 minutes" ? "white" : "#333"
+                                    }
+                                    
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        onClicked: {
+                                            if (backend) {
+                                                backend.setScreenTimeoutByOption("10 minutes")
+                                                timeoutGrid.currentSelection = "10 minutes"
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Never button
+                                Rectangle {
+                                    Layout.preferredWidth: 100
+                                    Layout.preferredHeight: 50
+                                    color: timeoutGrid.currentSelection === "Never" ? "#FF9800" : "#f0f0f0"
+                                    border.color: timeoutGrid.currentSelection === "Never" ? "#F57C00" : "#ccc"
+                                    border.width: 2
+                                    radius: 8
+                                    
+                                    Label {
+                                        anchors.centerIn: parent
+                                        text: "Never"
+                                        font.pixelSize: 14
+                                        font.bold: true
+                                        color: timeoutGrid.currentSelection === "Never" ? "white" : "#333"
+                                    }
+                                    
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        onClicked: {
+                                            if (backend) {
+                                                backend.setScreenTimeoutByOption("Never")
+                                                timeoutGrid.currentSelection = "Never"
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Update selection when backend changes
+                                Connections {
+                                    target: backend
+                                    function onScreenTimeoutChanged() {
+                                        if (backend) {
+                                            timeoutGrid.currentSelection = backend.getCurrentScreenTimeoutOption()
+                                        }
+                                    }
                                 }
                             }
                         }
