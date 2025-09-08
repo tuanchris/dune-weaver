@@ -8,6 +8,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
+import os
 
 QML_IMPORT_NAME = "DuneWeaver"
 QML_IMPORT_MAJOR_VERSION = 1
@@ -15,6 +16,10 @@ QML_IMPORT_MAJOR_VERSION = 1
 @QmlElement
 class Backend(QObject):
     """Backend controller for API and WebSocket communication"""
+    
+    # Constants
+    SETTINGS_FILE = "touch_settings.json"
+    DEFAULT_SCREEN_TIMEOUT = 300  # 5 minutes in seconds
     
     # Signals
     statusChanged = Signal()
@@ -29,6 +34,7 @@ class Backend(QObject):
     speedChanged = Signal(int)
     settingsLoaded = Signal()
     screenStateChanged = Signal(bool)  # True = on, False = off
+    screenTimeoutChanged = Signal(int)  # New signal for timeout changes
     
     def __init__(self):
         super().__init__()
@@ -53,7 +59,7 @@ class Backend(QObject):
         
         # Screen management
         self._screen_on = True
-        self._screen_timeout = 30  # 30 seconds for testing (change back to 300 for production)
+        self._screen_timeout = self.DEFAULT_SCREEN_TIMEOUT  # Will be loaded from settings
         self._last_activity = time.time()
         self._touch_monitor_thread = None
         self._screen_transition_lock = threading.Lock()  # Prevent rapid state changes
@@ -62,6 +68,8 @@ class Backend(QObject):
         self._screen_timer = QTimer()
         self._screen_timer.timeout.connect(self._check_screen_timeout)
         self._screen_timer.start(1000)  # Check every second
+        # Load local settings first
+        self._load_local_settings()
         print(f"🖥️ Screen management initialized: timeout={self._screen_timeout}s, timer started")
         
         # HTTP session - initialize lazily
@@ -532,29 +540,43 @@ class Backend(QObject):
             print(f"💥 Exception setting auto play: {e}")
             self.errorOccurred.emit(str(e))
     
-    async def _save_screen_timeout_setting(self, timeout_seconds):
-        if not self.session:
-            self.errorOccurred.emit("Backend not ready")
-            return
-        
-        try:
-            # Convert seconds to minutes for the main application API
-            timeout_minutes = timeout_seconds // 60
-            # Use the kiosk mode API endpoint to save screen timeout
-            async with self.session.post(f"{self.base_url}/api/kiosk-mode", json={
-                "enabled": self._auto_play_on_boot, 
-                "screen_timeout": timeout_minutes
-            }) as resp:
-                if resp.status == 200:
-                    print(f"✅ Screen timeout saved: {timeout_minutes} minutes")
-                else:
-                    response_text = await resp.text()
-                    print(f"❌ Failed to save screen timeout: {resp.status} - {response_text}")
-        except Exception as e:
-            print(f"💥 Exception saving screen timeout: {e}")
-            self.errorOccurred.emit(str(e))
+    # Note: Screen timeout is now managed locally in touch_settings.json
+    # The main application doesn't have a kiosk-mode endpoint, so we manage this locally
     
     # Load Settings
+    def _load_local_settings(self):
+        """Load settings from local JSON file"""
+        try:
+            if os.path.exists(self.SETTINGS_FILE):
+                with open(self.SETTINGS_FILE, 'r') as f:
+                    settings = json.load(f)
+                    
+                screen_timeout = settings.get('screen_timeout', self.DEFAULT_SCREEN_TIMEOUT)
+                if isinstance(screen_timeout, (int, float)) and screen_timeout > 0:
+                    self._screen_timeout = int(screen_timeout)
+                    print(f"🖥️ Loaded screen timeout from local settings: {self._screen_timeout}s")
+                else:
+                    print(f"⚠️ Invalid screen timeout in settings, using default: {self.DEFAULT_SCREEN_TIMEOUT}s")
+            else:
+                print(f"📄 No local settings file found, creating with defaults")
+                self._save_local_settings()
+        except Exception as e:
+            print(f"❌ Error loading local settings: {e}, using defaults")
+            self._screen_timeout = self.DEFAULT_SCREEN_TIMEOUT
+    
+    def _save_local_settings(self):
+        """Save settings to local JSON file"""
+        try:
+            settings = {
+                'screen_timeout': self._screen_timeout,
+                'version': '1.0'
+            }
+            with open(self.SETTINGS_FILE, 'w') as f:
+                json.dump(settings, f, indent=2)
+            print(f"💾 Saved local settings: screen_timeout={self._screen_timeout}s")
+        except Exception as e:
+            print(f"❌ Error saving local settings: {e}")
+
     @Slot()
     def loadControlSettings(self):
         print("📋 Loading control settings...")
@@ -566,17 +588,13 @@ class Backend(QObject):
             return
         
         try:
-            # Load kiosk mode settings
-            async with self.session.get(f"{self.base_url}/api/kiosk-mode") as resp:
+            # Load auto play setting from the working endpoint
+            async with self.session.get(f"{self.base_url}/api/auto_play-mode") as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     self._auto_play_on_boot = data.get("enabled", False)
-                    # Load screen timeout from kiosk settings (convert minutes to seconds)
-                    screen_timeout_minutes = data.get("screen_timeout", 0)
-                    if screen_timeout_minutes > 0:
-                        self._screen_timeout = screen_timeout_minutes * 60
                     print(f"🚀 Loaded auto play setting: {self._auto_play_on_boot}")
-                    print(f"🖥️ Loaded screen timeout: {screen_timeout_minutes} minutes ({self._screen_timeout} seconds)")
+                # Note: Screen timeout is managed locally, not from server
             
             # Serial status will be handled by WebSocket updates automatically
             # But we still load the initial port info if connected
@@ -609,17 +627,22 @@ class Backend(QObject):
     def screenOn(self):
         return self._screen_on
     
-    @Property(int)
+    @Property(int, notify=screenTimeoutChanged)
     def screenTimeout(self):
         return self._screen_timeout
     
     @screenTimeout.setter
     def setScreenTimeout(self, timeout):
         if self._screen_timeout != timeout:
+            old_timeout = self._screen_timeout
             self._screen_timeout = timeout
-            print(f"🖥️ Screen timeout set to {timeout} seconds")
-            # Save to main application's kiosk settings
-            asyncio.create_task(self._save_screen_timeout_setting(timeout))
+            print(f"🖥️ Screen timeout changed from {old_timeout}s to {timeout}s")
+            
+            # Save to local settings
+            self._save_local_settings()
+            
+            # Emit change signal for QML
+            self.screenTimeoutChanged.emit(timeout)
     
     # Screen Control Methods
     @Slot()
