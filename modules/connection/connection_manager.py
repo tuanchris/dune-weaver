@@ -139,8 +139,11 @@ def device_init(homing=True):
             logger.info(f"x_steps_per_mm: {state.x_steps_per_mm}, y_steps_per_mm: {state.y_steps_per_mm}, gear_ratio: {state.gear_ratio}")
         else: 
             logger.fatal("Failed to get machine steps")
+            state.conn.close()
+            return False
     except:
         logger.fatal("Not GRBL firmware")
+        state.conn.close()
         return False
 
     machine_x, machine_y = get_machine_position()
