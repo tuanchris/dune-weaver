@@ -6,8 +6,8 @@ from io import BytesIO
 from PIL import Image, ImageDraw
 from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR
 
-async def generate_preview_image(pattern_file):
-    """Generate a Webp preview for a pattern file, optimized for a 300x300 view."""
+async def generate_preview_image(pattern_file, format='WEBP'):
+    """Generate a preview for a pattern file, optimized for a 300x300 view."""
     file_path = os.path.join(THETA_RHO_DIR, pattern_file)
     # Use asyncio.to_thread to prevent blocking the event loop
     coordinates = await asyncio.to_thread(parse_theta_rho_file, file_path)
@@ -34,7 +34,7 @@ async def generate_preview_image(pattern_file):
         draw.text((text_x, text_y), text, fill="black")
         
         img_byte_arr = BytesIO()
-        img.save(img_byte_arr, format='WEBP')
+        img.save(img_byte_arr, format=format)
         img_byte_arr.seek(0)
         return img_byte_arr.getvalue()
 
@@ -67,6 +67,6 @@ async def generate_preview_image(pattern_file):
     img = img.rotate(180)
 
     img_byte_arr = BytesIO()
-    img.save(img_byte_arr, format='WEBP', lossless=False, alpha_quality=20, method=0)
+    img.save(img_byte_arr, format=format, lossless=False, alpha_quality=20, method=0)
     img_byte_arr.seek(0)
     return img_byte_arr.getvalue()
