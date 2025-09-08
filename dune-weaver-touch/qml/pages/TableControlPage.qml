@@ -214,7 +214,7 @@ Page {
                                 Layout.preferredWidth: 150
                                 Layout.preferredHeight: 40
                                 text: isSerialConnected ? "Disconnect" : "Connect"
-                                icon: isSerialConnected ? "🔌" : "🔗"
+                                icon: isSerialConnected ? "◉" : "○"
                                 buttonColor: isSerialConnected ? "#dc2626" : "#059669"
                                 fontSize: 11
                                 enabled: isSerialConnected || selectedPort !== ""
@@ -240,7 +240,7 @@ Page {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 35
                                 text: "Refresh Ports"
-                                icon: "🔄"
+                                icon: "↻"
                                 buttonColor: "#6b7280"
                                 fontSize: 10
                                 
@@ -280,7 +280,7 @@ Page {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 45
                                 text: "Home"
-                                icon: "🏠"
+                                icon: "⌂"
                                 buttonColor: "#2563eb"
                                 fontSize: 12
                                 enabled: isSerialConnected
@@ -294,7 +294,7 @@ Page {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 45
                                 text: "Center"
-                                icon: "🎯"
+                                icon: "◎"
                                 buttonColor: "#2563eb"
                                 fontSize: 12
                                 enabled: isSerialConnected
@@ -308,7 +308,7 @@ Page {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 45
                                 text: "Perimeter"
-                                icon: "⭕"
+                                icon: "○"
                                 buttonColor: "#2563eb"
                                 fontSize: 12
                                 enabled: isSerialConnected

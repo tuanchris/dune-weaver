@@ -78,7 +78,7 @@ Rectangle {
                     spacing: 8
                     
                     Text {
-                        text: "🎨"
+                        text: "◻"
                         font.pixelSize: 32
                         anchors.horizontalCenter: parent.horizontalCenter
                         color: "#ddd"

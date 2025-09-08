@@ -87,7 +87,7 @@ Page {
                         spacing: 5
                         
                         Text {
-                            text: "🔍"
+                            text: "⌕"
                             font.pixelSize: 16
                             font.family: "sans-serif"
                             color: searchExpanded ? "#2563eb" : "#6b7280"
@@ -259,7 +259,7 @@ Page {
                 spacing: 20
                 
                 Text {
-                    text: "🔍"
+                    text: "⌕"
                     font.pixelSize: 48
                     anchors.horizontalCenter: parent.horizontalCenter
                     color: "#ccc"

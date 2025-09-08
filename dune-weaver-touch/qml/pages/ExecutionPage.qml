@@ -306,7 +306,7 @@ Page {
                                 spacing: 10
                                 
                                 Text {
-                                    text: "⚙️"
+                                    text: "⚙"
                                     font.pixelSize: 48
                                     color: "#ccc"
                                     anchors.horizontalCenter: parent.horizontalCenter
@@ -455,7 +455,7 @@ Page {
                                     
                                     Text {
                                         anchors.centerIn: parent
-                                        text: (backend && backend.isRunning) ? "⏸ Pause" : "▶ Resume"
+                                        text: (backend && backend.isRunning) ? "|| Pause" : "▶ Resume"
                                         color: "white"
                                         font.pixelSize: 12
                                         font.bold: true
@@ -486,7 +486,7 @@ Page {
                                     
                                     Text {
                                         anchors.centerIn: parent
-                                        text: "⏹ Stop"
+                                        text: "■ Stop"
                                         color: "white"
                                         font.pixelSize: 12
                                         font.bold: true
@@ -513,7 +513,7 @@ Page {
                                     
                                     Text {
                                         anchors.centerIn: parent
-                                        text: "⏭ Skip"
+                                        text: "▶▶ Skip"
                                         color: "white"
                                         font.pixelSize: 12
                                         font.bold: true

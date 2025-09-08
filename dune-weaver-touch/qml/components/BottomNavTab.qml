@@ -33,15 +33,15 @@ Rectangle {
                 // Debug log the icon value
                 console.log("BottomNavTab icon value:", iconValue)
                 
-                // Map icon names to emoji equivalents directly
+                // Map icon names to Unicode symbols that work on Raspberry Pi
                 switch(iconValue) {
-                    case "search": return "🔍"
-                    case "list_alt": return "📋" 
-                    case "table_chart": return "⚙️"
-                    case "play_arrow": return "▶️"
+                    case "search": return "⌕"      // U+2315 - Works better than magnifying glass
+                    case "list_alt": return "☰"    // U+2630 - Hamburger menu, widely supported
+                    case "table_chart": return "⚙"  // U+2699 - Gear without variant selector
+                    case "play_arrow": return "▶"   // U+25B6 - Play without variant selector
                     default: {
                         console.log("Unknown icon:", iconValue, "- using default")
-                        return "📄"  // Default icon if mapping fails
+                        return "□"  // U+25A1 - Simple box, universally supported
                     }
                 }
             }
