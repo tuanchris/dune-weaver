@@ -95,16 +95,24 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to initialize MQTT: {str(e)}")
     
-    # Start cache generation in background if needed
-    try:
-        from modules.core.cache_manager import is_cache_generation_needed_async, generate_cache_background
-        if await is_cache_generation_needed_async():
-            logger.info("Cache generation needed, starting background task...")
-            asyncio.create_task(generate_cache_background())
-        else:
-            logger.info("Cache is up to date, skipping generation")
-    except Exception as e:
-        logger.warning(f"Failed to start cache generation: {str(e)}")
+    # Schedule cache generation check for later (non-blocking startup)
+    async def delayed_cache_check():
+        """Check and generate cache in background."""
+        try:
+            logger.info("Starting cache check...")
+            
+            from modules.core.cache_manager import is_cache_generation_needed_async, generate_cache_background
+            
+            if await is_cache_generation_needed_async():
+                logger.info("Cache generation needed, starting background task...")
+                await generate_cache_background()  # Use await to ensure it completes
+            else:
+                logger.info("Cache is up to date, skipping generation")
+        except Exception as e:
+            logger.warning(f"Failed during cache generation: {str(e)}")
+    
+    # Start cache check in background immediately
+    asyncio.create_task(delayed_cache_check())
 
     yield  # This separates startup from shutdown code
 
