@@ -102,6 +102,23 @@ def invalidate_cache():
         logger.error(f"Failed to invalidate metadata cache: {str(e)}")
         return False
 
+async def invalidate_cache_async():
+    """Async version: Delete only the metadata cache file, preserving image cache."""
+    try:
+        # Delete metadata cache file only
+        if await asyncio.to_thread(os.path.exists, METADATA_CACHE_FILE):
+            await asyncio.to_thread(os.remove, METADATA_CACHE_FILE)
+            logger.info("Deleted outdated metadata cache file")
+        
+        # Keep image cache directory intact - images are still valid
+        # Just ensure the cache directory structure exists
+        await ensure_cache_dir_async()
+        
+        return True
+    except Exception as e:
+        logger.error(f"Failed to invalidate metadata cache: {str(e)}")
+        return False
+
 def ensure_cache_dir():
     """Ensure the cache directory exists with proper permissions."""
     try:
@@ -134,6 +151,46 @@ def ensure_cache_dir():
                 # Log as debug instead of error since this is not critical
                 logger.debug(f"Could not set permissions for directory {root}: {str(e)}")
                 continue
+                
+    except Exception as e:
+        logger.error(f"Failed to create cache directory: {str(e)}")
+
+async def ensure_cache_dir_async():
+    """Async version: Ensure the cache directory exists with proper permissions."""
+    try:
+        await asyncio.to_thread(Path(CACHE_DIR).mkdir, parents=True, exist_ok=True)
+        
+        # Initialize metadata cache if it doesn't exist
+        if not await asyncio.to_thread(os.path.exists, METADATA_CACHE_FILE):
+            initial_cache = {
+                'version': CACHE_SCHEMA_VERSION,
+                'data': {}
+            }
+            def _write_initial_cache():
+                with open(METADATA_CACHE_FILE, 'w') as f:
+                    json.dump(initial_cache, f)
+            
+            await asyncio.to_thread(_write_initial_cache)
+            try:
+                await asyncio.to_thread(os.chmod, METADATA_CACHE_FILE, 0o644)
+            except (OSError, PermissionError) as e:
+                logger.debug(f"Could not set metadata cache file permissions: {str(e)}")
+        
+        def _set_permissions():
+            for root, dirs, files in os.walk(CACHE_DIR):
+                try:
+                    os.chmod(root, 0o755)
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        try:
+                            os.chmod(file_path, 0o644)
+                        except (OSError, PermissionError) as e:
+                            logger.debug(f"Could not set permissions for file {file_path}: {str(e)}")
+                except (OSError, PermissionError) as e:
+                    logger.debug(f"Could not set permissions for directory {root}: {str(e)}")
+                    continue
+        
+        await asyncio.to_thread(_set_permissions)
                 
     except Exception as e:
         logger.error(f"Failed to create cache directory: {str(e)}")
@@ -221,6 +278,40 @@ def load_metadata_cache():
         'data': {}
     }
 
+async def load_metadata_cache_async():
+    """Async version: Load the metadata cache from disk with schema validation."""
+    try:
+        if await asyncio.to_thread(os.path.exists, METADATA_CACHE_FILE):
+            def _load_json():
+                with open(METADATA_CACHE_FILE, 'r') as f:
+                    return json.load(f)
+            
+            cache_data = await asyncio.to_thread(_load_json)
+            
+            # Validate schema
+            if not validate_cache_schema(cache_data):
+                logger.info("Cache schema validation failed - invalidating cache")
+                await invalidate_cache_async()
+                # Return empty cache structure after invalidation
+                return {
+                    'version': CACHE_SCHEMA_VERSION,
+                    'data': {}
+                }
+            
+            return cache_data
+    except Exception as e:
+        logger.warning(f"Failed to load metadata cache: {str(e)} - invalidating cache")
+        try:
+            await invalidate_cache_async()
+        except Exception as invalidate_error:
+            logger.error(f"Failed to invalidate corrupted cache: {str(invalidate_error)}")
+    
+    # Return empty cache structure
+    return {
+        'version': CACHE_SCHEMA_VERSION,
+        'data': {}
+    }
+
 def save_metadata_cache(cache_data):
     """Save the metadata cache to disk with version info."""
     try:
@@ -264,6 +355,25 @@ def get_pattern_metadata(pattern_file):
     
     return None
 
+async def get_pattern_metadata_async(pattern_file):
+    """Async version: Get cached metadata for a pattern file."""
+    cache_data = await load_metadata_cache_async()
+    data_section = cache_data.get('data', {})
+    
+    # Check if we have cached metadata and if the file hasn't changed
+    if pattern_file in data_section:
+        cached_entry = data_section[pattern_file]
+        pattern_path = os.path.join(THETA_RHO_DIR, pattern_file)
+        
+        try:
+            file_mtime = await asyncio.to_thread(os.path.getmtime, pattern_path)
+            if cached_entry.get('mtime') == file_mtime:
+                return cached_entry.get('metadata')
+        except OSError:
+            pass
+    
+    return None
+
 def cache_pattern_metadata(pattern_file, first_coord, last_coord, total_coords):
     """Cache metadata for a pattern file."""
     try:
@@ -296,6 +406,20 @@ def needs_cache(pattern_file):
         
     # Check if metadata cache exists and is valid
     metadata = get_pattern_metadata(pattern_file)
+    if metadata is None:
+        return True
+        
+    return False
+
+async def needs_cache_async(pattern_file):
+    """Async version: Check if a pattern file needs its cache generated."""
+    # Check if image preview exists
+    cache_path = get_cache_path(pattern_file)
+    if not await asyncio.to_thread(os.path.exists, cache_path):
+        return True
+        
+    # Check if metadata cache exists and is valid
+    metadata = await get_pattern_metadata_async(pattern_file)
     if metadata is None:
         return True
         
@@ -595,3 +719,39 @@ def is_cache_generation_needed():
             files_needing_metadata.append(file_name)
     
     return len(patterns_to_cache) > 0 or len(files_needing_metadata) > 0
+
+async def is_cache_generation_needed_async():
+    """Async version: Check if cache generation is needed."""
+    pattern_files = await list_theta_rho_files_async()
+    pattern_files = [f for f in pattern_files if f.endswith('.thr')]
+    
+    if not pattern_files:
+        return False
+    
+    # Check if any files need caching (check in parallel)
+    needs_cache_tasks = [needs_cache_async(f) for f in pattern_files]
+    needs_cache_results = await asyncio.gather(*needs_cache_tasks)
+    patterns_to_cache = [f for f, needs in zip(pattern_files, needs_cache_results) if needs]
+    
+    # Check metadata cache (check in parallel)
+    metadata_tasks = [get_pattern_metadata_async(f) for f in pattern_files]
+    metadata_results = await asyncio.gather(*metadata_tasks)
+    files_needing_metadata = [f for f, metadata in zip(pattern_files, metadata_results) if metadata is None]
+    
+    return len(patterns_to_cache) > 0 or len(files_needing_metadata) > 0
+
+async def list_theta_rho_files_async():
+    """Async version: List all theta-rho files."""
+    def _walk_files():
+        files = []
+        for root, _, filenames in os.walk(THETA_RHO_DIR):
+            for file in filenames:
+                relative_path = os.path.relpath(os.path.join(root, file), THETA_RHO_DIR)
+                # Normalize path separators to always use forward slashes for consistency across platforms
+                relative_path = relative_path.replace(os.sep, '/')
+                files.append(relative_path)
+        return files
+    
+    files = await asyncio.to_thread(_walk_files)
+    logger.debug(f"Found {len(files)} theta-rho files")
+    return [file for file in files if file.endswith('.thr')]

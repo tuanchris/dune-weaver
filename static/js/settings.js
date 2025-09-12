@@ -932,3 +932,92 @@ function initializeAutocomplete(inputId, suggestionsId, clearButtonId, patterns)
     // Initialize clear button visibility
     updateClearButton();
 } 
+
+// auto_play Mode Functions
+async function initializeauto_playMode() {
+    const auto_playToggle = document.getElementById('auto_playModeToggle');
+    const auto_playSettings = document.getElementById('auto_playSettings');
+    const auto_playPlaylistSelect = document.getElementById('auto_playPlaylistSelect');
+    const auto_playRunModeSelect = document.getElementById('auto_playRunModeSelect');
+    const auto_playPauseTimeInput = document.getElementById('auto_playPauseTimeInput');
+    const auto_playClearPatternSelect = document.getElementById('auto_playClearPatternSelect');
+    const auto_playShuffleToggle = document.getElementById('auto_playShuffleToggle');
+    
+    // Load current auto_play settings
+    try {
+        const response = await fetch('/api/auto_play-mode');
+        const data = await response.json();
+        
+        auto_playToggle.checked = data.enabled;
+        if (data.enabled) {
+            auto_playSettings.style.display = 'block';
+        }
+        
+        // Set current values
+        auto_playRunModeSelect.value = data.run_mode || 'loop';
+        auto_playPauseTimeInput.value = data.pause_time || 5.0;
+        auto_playClearPatternSelect.value = data.clear_pattern || 'adaptive';
+        auto_playShuffleToggle.checked = data.shuffle || false;
+        
+        // Load playlists for selection
+        const playlistsResponse = await fetch('/list_all_playlists');
+        const playlists = await playlistsResponse.json();
+        
+        // Clear and populate playlist select
+        auto_playPlaylistSelect.innerHTML = '<option value="">Select a playlist...</option>';
+        playlists.forEach(playlist => {
+            const option = document.createElement('option');
+            option.value = playlist;
+            option.textContent = playlist;
+            if (playlist === data.playlist) {
+                option.selected = true;
+            }
+            auto_playPlaylistSelect.appendChild(option);
+        });
+    } catch (error) {
+        logMessage(`Error loading auto_play settings: ${error.message}`, LOG_TYPE.ERROR);
+    }
+    
+    // Function to save settings
+    async function saveSettings() {
+        try {
+            const response = await fetch('/api/auto_play-mode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    enabled: auto_playToggle.checked,
+                    playlist: auto_playPlaylistSelect.value || null,
+                    run_mode: auto_playRunModeSelect.value,
+                    pause_time: parseFloat(auto_playPauseTimeInput.value) || 0,
+                    clear_pattern: auto_playClearPatternSelect.value,
+                    shuffle: auto_playShuffleToggle.checked
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to save settings');
+            }
+        } catch (error) {
+            logMessage(`Error saving auto_play settings: ${error.message}`, LOG_TYPE.ERROR);
+        }
+    }
+    
+    // Toggle auto_play settings visibility and save
+    auto_playToggle.addEventListener('change', async () => {
+        auto_playSettings.style.display = auto_playToggle.checked ? 'block' : 'none';
+        await saveSettings();
+    });
+    
+    // Save when any setting changes
+    auto_playPlaylistSelect.addEventListener('change', saveSettings);
+    auto_playRunModeSelect.addEventListener('change', saveSettings);
+    auto_playPauseTimeInput.addEventListener('change', saveSettings);
+    auto_playPauseTimeInput.addEventListener('input', saveSettings); // Save as user types
+    auto_playClearPatternSelect.addEventListener('change', saveSettings);
+    auto_playShuffleToggle.addEventListener('change', saveSettings);
+}
+
+// Initialize auto_play mode when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    initializeauto_playMode();
+});

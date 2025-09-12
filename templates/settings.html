@@ -392,6 +392,106 @@ endblock %}
     <h2
       class="text-slate-800 text-xl sm:text-2xl font-semibold leading-tight tracking-[-0.01em] px-6 py-4 border-b border-slate-200"
     >
+      Auto-play on Boot
+    </h2>
+    <div class="px-6 py-5 space-y-6">
+      <div class="flex items-center justify-between">
+        <div class="flex-1">
+          <h3 class="text-slate-700 text-base font-medium leading-normal">Enable Auto-play on Boot</h3>
+          <p class="text-xs text-slate-500 mt-1">
+            Automatically start playing a selected playlist when the system boots up.
+          </p>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="auto_playModeToggle">
+          <span class="slider round"></span>
+        </label>
+      </div>
+      
+      <div id="auto_playSettings" class="space-y-4" style="display: none;">
+        <label class="flex flex-col gap-1.5">
+          <span class="text-slate-700 text-sm font-medium leading-normal">Startup Playlist</span>
+          <select
+            id="auto_playPlaylistSelect"
+            class="form-select flex-1 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-medium leading-normal transition-colors"
+          >
+            <option value="">Select a playlist...</option>
+          </select>
+          <p class="text-xs text-slate-500 mt-1">
+            Choose which playlist to automatically play when the system starts.
+          </p>
+        </label>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label class="flex flex-col gap-1.5">
+            <span class="text-slate-700 text-sm font-medium leading-normal">Run Mode</span>
+            <select
+              id="auto_playRunModeSelect"
+              class="form-select resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-medium leading-normal transition-colors"
+            >
+              <option value="single">Single (play once)</option>
+              <option value="loop">Loop (repeat forever)</option>
+            </select>
+            <p class="text-xs text-slate-500 mt-1">
+              How to run the playlist when it finishes.
+            </p>
+          </label>
+
+          <label class="flex flex-col gap-1.5">
+            <span class="text-slate-700 text-sm font-medium leading-normal">Pause Between Patterns (seconds)</span>
+            <input
+              id="auto_playPauseTimeInput"
+              type="number"
+              min="0"
+              step="0.5"
+              class="form-input resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-normal leading-normal transition-colors"
+              placeholder="5.0"
+            />
+            <p class="text-xs text-slate-500 mt-1">
+              Time to wait between each pattern (0 or more seconds).
+            </p>
+          </label>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label class="flex flex-col gap-1.5">
+            <span class="text-slate-700 text-sm font-medium leading-normal">Clear Pattern</span>
+            <select
+              id="auto_playClearPatternSelect"
+              class="form-select resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-medium leading-normal transition-colors"
+            >
+              <option value="none">None</option>
+              <option value="adaptive">Adaptive</option>
+              <option value="clear_from_in">Clear From Center</option>
+              <option value="clear_from_out">Clear From Perimeter</option>
+              <option value="clear_sideway">Clear Sideway</option>
+              <option value="random">Random</option>
+            </select>
+            <p class="text-xs text-slate-500 mt-1">
+              Pattern to run before each main pattern.
+            </p>
+          </label>
+
+          <div class="flex items-center justify-between">
+            <div class="flex-1">
+              <h4 class="text-slate-700 text-sm font-medium leading-normal">Shuffle Playlist</h4>
+              <p class="text-xs text-slate-500 mt-1">
+                Randomize the order of patterns in the playlist.
+              </p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="auto_playShuffleToggle">
+              <span class="slider round"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <h2
+      class="text-slate-800 text-xl sm:text-2xl font-semibold leading-tight tracking-[-0.01em] px-6 py-4 border-b border-slate-200"
+    >
       Software Version
     </h2>
     <div class="divide-y divide-slate-100">

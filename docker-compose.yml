@@ -1,16 +1,13 @@
 services:
-  flask-app:
+  dune-weaver:
     build: . # Uncomment this if you need to build 
     image: ghcr.io/tuanchris/dune-weaver:main # Use latest production image
     restart: always
     ports:
-      - "8080:8080" # Map port 8080 of the container to 8080 of the host
+      - "8080:8080" # Map port 8080 of the container to 8080 of the host (access via http://localhost:8080)
     volumes:
       - .:/app
     devices:
       - "/dev/ttyACM0:/dev/ttyACM0"
     privileged: true
-    environment:
-      - FLASK_ENV=development # Set environment variables for Flask
-      - LOG_LEVEL=info # Set logging level (debug, info, warning, error, critical)
-    container_name: flask-theta-rho-app
+    container_name: dune-weaver

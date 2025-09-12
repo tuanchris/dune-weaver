@@ -4,6 +4,9 @@ let allPatternsWithMetadata = []; // Enhanced pattern data with metadata
 let currentSort = { field: 'name', direction: 'asc' };
 let currentFilters = { category: 'all' };
 
+// AbortController for cancelling in-flight requests when navigating away
+let metadataAbortController = null;
+
 // Helper function to normalize file paths for cross-platform compatibility
 function normalizeFilePath(filePath) {
     if (!filePath) return '';
@@ -666,23 +669,41 @@ async function loadPatterns(forceRefresh = false) {
         // Load metadata in background for enhanced features
         setTimeout(async () => {
             try {
-            logMessage('Loading enhanced metadata...', LOG_TYPE.DEBUG);
-            const metadataResponse = await fetch('/list_theta_rho_files_with_metadata');
-            const patternsWithMetadata = await metadataResponse.json();
-            
-            // Store enhanced patterns data
-            allPatternsWithMetadata = [...patternsWithMetadata];
-            
-            // Update category filter dropdown now that we have metadata
-            updateBrowseCategoryFilter();
-            
-            // Enable sort controls and display patterns consistently
-            enableSortControls();
-            
-            logMessage(`Enhanced metadata loaded for ${patternsWithMetadata.length} patterns`, LOG_TYPE.SUCCESS);
+                // Cancel any previous metadata loading request
+                if (metadataAbortController) {
+                    metadataAbortController.abort();
+                }
+                
+                // Create new AbortController for this request
+                metadataAbortController = new AbortController();
+                
+                logMessage('Loading enhanced metadata...', LOG_TYPE.DEBUG);
+                const metadataResponse = await fetch('/list_theta_rho_files_with_metadata', {
+                    signal: metadataAbortController.signal
+                });
+                const patternsWithMetadata = await metadataResponse.json();
+                
+                // Store enhanced patterns data
+                allPatternsWithMetadata = [...patternsWithMetadata];
+                
+                // Update category filter dropdown now that we have metadata
+                updateBrowseCategoryFilter();
+                
+                // Enable sort controls and display patterns consistently
+                enableSortControls();
+                
+                logMessage(`Enhanced metadata loaded for ${patternsWithMetadata.length} patterns`, LOG_TYPE.SUCCESS);
+                
+                // Clear the controller reference since request completed
+                metadataAbortController = null;
             } catch (metadataError) {
-                logMessage(`Failed to load enhanced metadata: ${metadataError.message}`, LOG_TYPE.WARNING);
+                if (metadataError.name === 'AbortError') {
+                    logMessage('Metadata loading cancelled (navigating away)', LOG_TYPE.DEBUG);
+                } else {
+                    logMessage(`Failed to load enhanced metadata: ${metadataError.message}`, LOG_TYPE.WARNING);
+                }
                 // No fallback needed - basic patterns already displayed
+                metadataAbortController = null;
             }
         }, 100); // Small delay to let initial render complete
         if (forceRefresh) {
@@ -1502,6 +1523,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         logMessage('Patterns page initialized successfully', LOG_TYPE.SUCCESS);
     } catch (error) {
         logMessage(`Error during initialization: ${error.message}`, LOG_TYPE.ERROR);
+    }
+});
+
+// Cancel any pending requests when navigating away from the page
+window.addEventListener('beforeunload', () => {
+    if (metadataAbortController) {
+        metadataAbortController.abort();
+        metadataAbortController = null;
+        logMessage('Cancelled pending metadata request due to navigation', LOG_TYPE.DEBUG);
+    }
+});
+
+// Also handle page visibility changes (switching tabs, minimizing, etc.)
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden && metadataAbortController) {
+        // Cancel long-running requests when page is hidden
+        metadataAbortController.abort();
+        metadataAbortController = null;
+        logMessage('Cancelled pending metadata request due to page hidden', LOG_TYPE.DEBUG);
     }
 });
 
