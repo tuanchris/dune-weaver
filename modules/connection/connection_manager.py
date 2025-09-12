@@ -361,7 +361,7 @@ def get_machine_steps(timeout=10):
     
     # Process results and determine table type
     if settings_complete:
-        if y_steps_per_mm == 180:
+        if y_steps_per_mm == 180 and x_steps_per_mm == 256:
             state.table_type = 'dune_weaver_mini'
         elif y_steps_per_mm >= 320:
             state.table_type = 'dune_weaver_pro'
@@ -406,7 +406,7 @@ def home(timeout=15):
                     homing_speed = 120
                 logger.info("Sensorless homing not supported. Using crash homing")
                 logger.info(f"Homing with speed {homing_speed}")
-                if state.gear_ratio == 6.25:
+                if state.gear_ratio == 6.25 and state.x_steps_per_mm == 256:
                     result = send_grbl_coordinates(0, - 30, homing_speed, home=True)
                     if result == False:
                         logger.error("Homing failed - send_grbl_coordinates returned False")

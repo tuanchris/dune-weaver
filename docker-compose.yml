@@ -10,5 +10,6 @@ services:
     devices:
       - "/dev/ttyACM0:/dev/ttyACM0"
       - "/dev/ttyUSB0:/dev/ttyUSB0"
+      - "/dev/ttyAMA0:/dev/ttyAMA0"
     privileged: true
     container_name: dune-weaver

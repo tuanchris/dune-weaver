@@ -479,7 +479,7 @@ Page {
                                     
                                     Text {
                                         anchors.centerIn: parent
-                                        text: "🔀"
+                                        text: "⇄"
                                         color: "white"
                                         font.pixelSize: 16
                                     }
@@ -498,7 +498,8 @@ Page {
                             // Settings section
                             Rectangle {
                                 Layout.fillWidth: true
-                                Layout.fillHeight: true
+                                Layout.preferredHeight: 280
+                                Layout.minimumHeight: 250
                                 radius: 10
                                 color: "#f8f9fa"
                                 border.color: "#e5e7eb"

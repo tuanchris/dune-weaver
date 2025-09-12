@@ -10,7 +10,6 @@ Page {
     property var serialPorts: []
     property string selectedPort: ""
     property bool isSerialConnected: false
-    property int currentSpeed: 130
     property bool autoPlayOnBoot: false
     
     // Backend signal connections
@@ -34,16 +33,11 @@ Page {
             }
         }
         
-        function onSpeedChanged(speed) {
-            console.log("Speed changed:", speed)
-            currentSpeed = speed
-        }
         
         function onSettingsLoaded() {
             console.log("Settings loaded")
             if (backend) {
                 autoPlayOnBoot = backend.autoPlayOnBoot
-                currentSpeed = backend.currentSpeed
                 isSerialConnected = backend.serialConnected
                 // Screen timeout is now managed by button selection, no need to convert
                 if (backend.currentPort) {
@@ -124,14 +118,14 @@ Page {
             
             ColumnLayout {
                 width: parent.width
-                anchors.margins: 10
-                spacing: 10
+                anchors.margins: 5
+                spacing: 2
                 
                 // Serial Connection Section
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 160
-                    Layout.margins: 10
+                    Layout.margins: 5
                     radius: 8
                     color: "white"
                     
@@ -253,8 +247,8 @@ Page {
                 // Hardware Movement Section
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 180
-                    Layout.margins: 10
+                    Layout.preferredHeight: 100
+                    Layout.margins: 5
                     radius: 8
                     color: "white"
                     
@@ -321,193 +315,12 @@ Page {
                     }
                 }
                 
-                // Speed Control Section
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 120  // Reduced from original for single row layout
-                    Layout.margins: 10
-                    radius: 8
-                    color: "white"
-                    
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 15
-                        spacing: 15
-                        
-                        Label {
-                            text: "Speed:"
-                            font.pixelSize: 14
-                            font.bold: true
-                            color: "#333"
-                            Layout.alignment: Qt.AlignLeft
-                        }
-                        
-                        // Touch-friendly button row for speed options
-                        RowLayout {
-                            id: speedGrid
-                            Layout.fillWidth: true
-                            spacing: 8
-                            
-                            property string currentSelection: backend ? backend.getCurrentSpeedOption() : "200"
-                            
-                            // 50 button
-                            Rectangle {
-                                Layout.preferredWidth: 100
-                                Layout.preferredHeight: 50
-                                color: speedGrid.currentSelection === "50" ? "#2196F3" : "#f0f0f0"
-                                border.color: speedGrid.currentSelection === "50" ? "#1976D2" : "#ccc"
-                                border.width: 2
-                                radius: 8
-                                
-                                Label {
-                                    anchors.centerIn: parent
-                                    text: "50"
-                                    font.pixelSize: 14
-                                    font.bold: true
-                                    color: speedGrid.currentSelection === "50" ? "white" : "#333"
-                                }
-                                
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: {
-                                        if (backend) {
-                                            backend.setSpeedByOption("50")
-                                            speedGrid.currentSelection = "50"
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // 100 button
-                            Rectangle {
-                                Layout.preferredWidth: 100
-                                Layout.preferredHeight: 50
-                                color: speedGrid.currentSelection === "100" ? "#2196F3" : "#f0f0f0"
-                                border.color: speedGrid.currentSelection === "100" ? "#1976D2" : "#ccc"
-                                border.width: 2
-                                radius: 8
-                                
-                                Label {
-                                    anchors.centerIn: parent
-                                    text: "100"
-                                    font.pixelSize: 14
-                                    font.bold: true
-                                    color: speedGrid.currentSelection === "100" ? "white" : "#333"
-                                }
-                                
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: {
-                                        if (backend) {
-                                            backend.setSpeedByOption("100")
-                                            speedGrid.currentSelection = "100"
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // 200 button
-                            Rectangle {
-                                Layout.preferredWidth: 100
-                                Layout.preferredHeight: 50
-                                color: speedGrid.currentSelection === "200" ? "#2196F3" : "#f0f0f0"
-                                border.color: speedGrid.currentSelection === "200" ? "#1976D2" : "#ccc"
-                                border.width: 2
-                                radius: 8
-                                
-                                Label {
-                                    anchors.centerIn: parent
-                                    text: "200"
-                                    font.pixelSize: 14
-                                    font.bold: true
-                                    color: speedGrid.currentSelection === "200" ? "white" : "#333"
-                                }
-                                
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: {
-                                        if (backend) {
-                                            backend.setSpeedByOption("200")
-                                            speedGrid.currentSelection = "200"
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // 300 button
-                            Rectangle {
-                                Layout.preferredWidth: 100
-                                Layout.preferredHeight: 50
-                                color: speedGrid.currentSelection === "300" ? "#2196F3" : "#f0f0f0"
-                                border.color: speedGrid.currentSelection === "300" ? "#1976D2" : "#ccc"
-                                border.width: 2
-                                radius: 8
-                                
-                                Label {
-                                    anchors.centerIn: parent
-                                    text: "300"
-                                    font.pixelSize: 14
-                                    font.bold: true
-                                    color: speedGrid.currentSelection === "300" ? "white" : "#333"
-                                }
-                                
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: {
-                                        if (backend) {
-                                            backend.setSpeedByOption("300")
-                                            speedGrid.currentSelection = "300"
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // 500 button
-                            Rectangle {
-                                Layout.preferredWidth: 100
-                                Layout.preferredHeight: 50
-                                color: speedGrid.currentSelection === "500" ? "#2196F3" : "#f0f0f0"
-                                border.color: speedGrid.currentSelection === "500" ? "#1976D2" : "#ccc"
-                                border.width: 2
-                                radius: 8
-                                
-                                Label {
-                                    anchors.centerIn: parent
-                                    text: "500"
-                                    font.pixelSize: 14
-                                    font.bold: true
-                                    color: speedGrid.currentSelection === "500" ? "white" : "#333"
-                                }
-                                
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: {
-                                        if (backend) {
-                                            backend.setSpeedByOption("500")
-                                            speedGrid.currentSelection = "500"
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // Update selection when backend changes
-                            Connections {
-                                target: backend
-                                function onSpeedChanged(speed) {
-                                    if (backend) {
-                                        speedGrid.currentSelection = backend.getCurrentSpeedOption()
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
                 
                 // Auto Play on Boot Section
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 200  // Reduced from 280 for single row layout
-                    Layout.margins: 10
+                    Layout.margins: 5
                     radius: 8
                     color: "white"
                     

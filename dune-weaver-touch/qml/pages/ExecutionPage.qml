@@ -336,12 +336,15 @@ Page {
                     height: parent.height
                     color: "white"
                     
-                    Column {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.top: parent.top
+                    ScrollView {
+                        anchors.fill: parent
                         anchors.margins: 10
-                        spacing: 15
+                        clip: true
+                        contentWidth: availableWidth
+                        
+                        Column {
+                            width: parent.width
+                            spacing: 8
                         
                         // Pattern Name
                         Rectangle {
@@ -428,7 +431,7 @@ Page {
                         // Control Buttons
                         Rectangle {
                             width: parent.width
-                            height: 180
+                            height: 90
                             radius: 8
                             color: "#f8f9fa"
                             border.color: "#e5e7eb"
@@ -446,86 +449,167 @@ Page {
                                     color: "#333"
                                 }
                                 
-                                // Pause/Resume button
-                                Rectangle {
+                                // Control buttons row
+                                Row {
                                     width: parent.width
                                     height: 35
-                                    radius: 6
-                                    color: pauseMouseArea.pressed ? "#1e40af" : (backend && backend.currentFile !== "" ? "#2563eb" : "#9ca3af")
+                                    spacing: 8
                                     
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: (backend && backend.isRunning) ? "|| Pause" : "▶ Resume"
-                                        color: "white"
-                                        font.pixelSize: 12
-                                        font.bold: true
+                                    // Pause/Resume button
+                                    Rectangle {
+                                        width: (parent.width - 16) / 3  // Divide width evenly with spacing
+                                        height: parent.height
+                                        radius: 6
+                                        color: pauseMouseArea.pressed ? "#1e40af" : (backend && backend.currentFile !== "" ? "#2563eb" : "#9ca3af")
+                                        
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: (backend && backend.isRunning) ? "||" : "▶"
+                                            color: "white"
+                                            font.pixelSize: 14
+                                            font.bold: true
+                                        }
+                                        
+                                        MouseArea {
+                                            id: pauseMouseArea
+                                            anchors.fill: parent
+                                            enabled: backend && backend.currentFile !== ""
+                                            onClicked: {
+                                                if (backend) {
+                                                    if (backend.isRunning) {
+                                                        backend.pauseExecution()
+                                                    } else {
+                                                        backend.resumeExecution()
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                     
-                                    MouseArea {
-                                        id: pauseMouseArea
-                                        anchors.fill: parent
-                                        enabled: backend && backend.currentFile !== ""
-                                        onClicked: {
-                                            if (backend) {
-                                                if (backend.isRunning) {
-                                                    backend.pauseExecution()
-                                                } else {
-                                                    backend.resumeExecution()
+                                    // Stop button
+                                    Rectangle {
+                                        width: (parent.width - 16) / 3
+                                        height: parent.height
+                                        radius: 6
+                                        color: stopMouseArea.pressed ? "#b91c1c" : (backend && backend.currentFile !== "" ? "#dc2626" : "#9ca3af")
+                                        
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "■"
+                                            color: "white"
+                                            font.pixelSize: 14
+                                            font.bold: true
+                                        }
+                                        
+                                        MouseArea {
+                                            id: stopMouseArea
+                                            anchors.fill: parent
+                                            enabled: backend
+                                            onClicked: {
+                                                if (backend) {
+                                                    backend.stopExecution()
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Skip button
+                                    Rectangle {
+                                        width: (parent.width - 16) / 3
+                                        height: parent.height
+                                        radius: 6
+                                        color: skipMouseArea.pressed ? "#525252" : (backend && backend.currentFile !== "" ? "#6b7280" : "#9ca3af")
+                                        
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "▶▶"
+                                            color: "white"
+                                            font.pixelSize: 14
+                                            font.bold: true
+                                        }
+                                        
+                                        MouseArea {
+                                            id: skipMouseArea
+                                            anchors.fill: parent
+                                            enabled: backend && backend.currentFile !== ""
+                                            onClicked: {
+                                                if (backend) {
+                                                    backend.skipPattern()
                                                 }
                                             }
                                         }
                                     }
                                 }
+                            }
+                        }
+                        
+                        // Speed Control Section
+                        Rectangle {
+                            width: parent.width
+                            height: 120
+                            radius: 8
+                            color: "#f8f9fa"
+                            border.color: "#e5e7eb"
+                            border.width: 1
+                            
+                            Column {
+                                anchors.fill: parent
+                                anchors.margins: 10
+                                spacing: 10
                                 
-                                // Stop button
-                                Rectangle {
+                                Label {
+                                    text: "Speed"
+                                    font.pixelSize: 12
+                                    font.bold: true
+                                    color: "#333"
+                                }
+                                
+                                // Touch-friendly button row for speed options
+                                Row {
+                                    id: speedControlRow
                                     width: parent.width
-                                    height: 35
-                                    radius: 6
-                                    color: stopMouseArea.pressed ? "#b91c1c" : (backend && backend.currentFile !== "" ? "#dc2626" : "#9ca3af")
+                                    spacing: 8
                                     
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "■ Stop"
-                                        color: "white"
-                                        font.pixelSize: 12
-                                        font.bold: true
-                                    }
+                                    property string currentSelection: backend ? backend.getCurrentSpeedOption() : "200"
                                     
-                                    MouseArea {
-                                        id: stopMouseArea
-                                        anchors.fill: parent
-                                        enabled: backend && backend.currentFile !== ""
-                                        onClicked: {
-                                            if (backend) {
-                                                backend.stopExecution()
+                                    // Speed buttons
+                                    Repeater {
+                                        model: ["50", "100", "200", "300", "500"]
+                                        
+                                        Rectangle {
+                                            width: (speedControlRow.width - 32) / 5  // Distribute evenly with spacing
+                                            height: 50
+                                            color: speedControlRow.currentSelection === modelData ? "#2196F3" : "#f0f0f0"
+                                            border.color: speedControlRow.currentSelection === modelData ? "#1976D2" : "#ccc"
+                                            border.width: 2
+                                            radius: 8
+                                            
+                                            Label {
+                                                anchors.centerIn: parent
+                                                text: modelData
+                                                font.pixelSize: 12
+                                                font.bold: true
+                                                color: speedControlRow.currentSelection === modelData ? "white" : "#333"
+                                            }
+                                            
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                onClicked: {
+                                                    if (backend) {
+                                                        backend.setSpeedByOption(modelData)
+                                                        speedControlRow.currentSelection = modelData
+                                                    }
+                                                }
                                             }
                                         }
                                     }
-                                }
-                                
-                                // Skip button
-                                Rectangle {
-                                    width: parent.width
-                                    height: 35
-                                    radius: 6
-                                    color: skipMouseArea.pressed ? "#525252" : (backend && backend.currentFile !== "" ? "#6b7280" : "#9ca3af")
                                     
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "▶▶ Skip"
-                                        color: "white"
-                                        font.pixelSize: 12
-                                        font.bold: true
-                                    }
-                                    
-                                    MouseArea {
-                                        id: skipMouseArea
-                                        anchors.fill: parent
-                                        enabled: backend && backend.currentFile !== ""
-                                        onClicked: {
+                                    // Update selection when backend changes
+                                    Connections {
+                                        target: backend
+                                        function onSpeedChanged(speed) {
                                             if (backend) {
-                                                backend.skipPattern()
+                                                speedControlRow.currentSelection = backend.getCurrentSpeedOption()
                                             }
                                         }
                                     }
@@ -534,6 +618,7 @@ Page {
                         }
                     }
                 }
+            }
             }
         }
     }
