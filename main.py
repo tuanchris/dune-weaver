@@ -97,8 +97,8 @@ async def lifespan(app: FastAPI):
     
     # Start cache generation in background if needed
     try:
-        from modules.core.cache_manager import is_cache_generation_needed_async, generate_cache_background
-        if await is_cache_generation_needed_async():
+        from modules.core.cache_manager import is_cache_generation_needed, generate_cache_background
+        if is_cache_generation_needed():
             logger.info("Cache generation needed, starting background task...")
             asyncio.create_task(generate_cache_background())
         else:
