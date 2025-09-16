@@ -99,20 +99,33 @@ async def lifespan(app: FastAPI):
     async def delayed_cache_check():
         """Check and generate cache in background."""
         try:
+            logger.debug("Delayed cache check task started")
+            # Add a small delay to ensure server starts first
+            await asyncio.sleep(0.1)
             logger.info("Starting cache check...")
             
+            logger.debug("Importing cache_manager modules...")
             from modules.core.cache_manager import is_cache_generation_needed_async, generate_cache_background
+            logger.debug("Cache manager modules imported successfully")
             
-            if await is_cache_generation_needed_async():
+            logger.debug("Calling is_cache_generation_needed_async()...")
+            cache_needed = await is_cache_generation_needed_async()
+            logger.debug(f"is_cache_generation_needed_async returned: {cache_needed}")
+            
+            if cache_needed:
                 logger.info("Cache generation needed, starting background task...")
                 asyncio.create_task(generate_cache_background())  # Don't await - run in background
+                logger.debug("Cache generation background task created")
             else:
                 logger.info("Cache is up to date, skipping generation")
         except Exception as e:
+            logger.error(f"Exception in delayed_cache_check: {type(e).__name__}: {str(e)}", exc_info=True)
             logger.warning(f"Failed during cache generation: {str(e)}")
     
     # Start cache check in background immediately
+    logger.debug("Creating delayed_cache_check background task...")
     asyncio.create_task(delayed_cache_check())
+    logger.debug("delayed_cache_check background task created")
 
     yield  # This separates startup from shutdown code
 

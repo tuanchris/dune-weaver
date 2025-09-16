@@ -281,24 +281,35 @@ def load_metadata_cache():
 async def load_metadata_cache_async():
     """Async version: Load the metadata cache from disk with schema validation."""
     try:
-        if await asyncio.to_thread(os.path.exists, METADATA_CACHE_FILE):
+        logger.debug(f"load_metadata_cache_async: Checking if metadata cache file exists at {METADATA_CACHE_FILE}")
+        file_exists = await asyncio.to_thread(os.path.exists, METADATA_CACHE_FILE)
+        logger.debug(f"load_metadata_cache_async: File exists: {file_exists}")
+        
+        if file_exists:
             def _load_json():
                 with open(METADATA_CACHE_FILE, 'r') as f:
                     return json.load(f)
             
+            logger.debug("load_metadata_cache_async: Loading JSON data from cache file...")
             cache_data = await asyncio.to_thread(_load_json)
+            logger.debug(f"load_metadata_cache_async: Loaded cache with {len(cache_data.get('data', {}))} entries")
             
             # Validate schema
+            logger.debug("load_metadata_cache_async: Validating cache schema...")
             if not validate_cache_schema(cache_data):
                 logger.info("Cache schema validation failed - invalidating cache")
                 await invalidate_cache_async()
                 # Return empty cache structure after invalidation
+                logger.debug("load_metadata_cache_async: Returning empty cache after invalidation")
                 return {
                     'version': CACHE_SCHEMA_VERSION,
                     'data': {}
                 }
             
+            logger.debug("load_metadata_cache_async: Cache validated successfully")
             return cache_data
+        else:
+            logger.debug("load_metadata_cache_async: Cache file does not exist, returning empty cache")
     except Exception as e:
         logger.warning(f"Failed to load metadata cache: {str(e)} - invalidating cache")
         try:
@@ -307,6 +318,7 @@ async def load_metadata_cache_async():
             logger.error(f"Failed to invalidate corrupted cache: {str(invalidate_error)}")
     
     # Return empty cache structure
+    logger.debug("load_metadata_cache_async: Returning empty cache structure")
     return {
         'version': CACHE_SCHEMA_VERSION,
         'data': {}
@@ -759,22 +771,35 @@ async def is_cache_generation_needed_async():
     Returns True if any patterns are missing from either metadata or image cache.
     """
     try:
+        logger.debug("is_cache_generation_needed_async: Starting cache check")
+        
         # Step 1: List all patterns
+        logger.debug("is_cache_generation_needed_async: Listing pattern files...")
         pattern_files = await list_theta_rho_files_async()
+        logger.debug(f"is_cache_generation_needed_async: Found {len(pattern_files) if pattern_files else 0} pattern files")
+        
         if not pattern_files:
+            logger.debug("is_cache_generation_needed_async: No pattern files found, returning False")
             return False
         
         pattern_set = set(pattern_files)
+        logger.debug(f"is_cache_generation_needed_async: Pattern set contains {len(pattern_set)} unique patterns")
         
         # Step 2: Check metadata cache
+        logger.debug("is_cache_generation_needed_async: Loading metadata cache...")
         metadata_cache = await load_metadata_cache_async()
         metadata_keys = set(metadata_cache.get('data', {}).keys())
+        logger.debug(f"is_cache_generation_needed_async: Metadata cache has {len(metadata_keys)} entries")
         
         if pattern_set != metadata_keys:
             # Metadata is missing some patterns
+            missing = pattern_set - metadata_keys
+            extra = metadata_keys - pattern_set
+            logger.debug(f"is_cache_generation_needed_async: Metadata mismatch - missing: {len(missing)}, extra: {len(extra)}")
             return True
         
         # Step 3: Check image cache
+        logger.debug("is_cache_generation_needed_async: Checking image cache...")
         def _list_cached_images():
             """List all patterns that have cached images."""
             cached = set()
@@ -786,11 +811,15 @@ async def is_cache_generation_needed_async():
             return cached
         
         cached_images = await asyncio.to_thread(_list_cached_images)
+        logger.debug(f"is_cache_generation_needed_async: Found {len(cached_images)} cached images")
         
         if pattern_set != cached_images:
             # Some patterns missing image cache
+            missing = pattern_set - cached_images
+            logger.debug(f"is_cache_generation_needed_async: Image cache missing {len(missing)} patterns")
             return True
         
+        logger.debug("is_cache_generation_needed_async: Cache is up to date, returning False")
         return False
         
     except Exception as e:
