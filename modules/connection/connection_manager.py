@@ -9,7 +9,7 @@ from modules.core.state import state
 from modules.led.led_controller import effect_loading, effect_idle, effect_connected, LEDController
 logger = logging.getLogger(__name__)
 
-IGNORE_PORTS = ['/dev/cu.debug-console', '/dev/cu.Bluetooth-Incoming-Port', '/dev/ttyS0']
+IGNORE_PORTS = ['/dev/cu.debug-console', '/dev/cu.Bluetooth-Incoming-Port']
 
 ###############################################################################
 # Connection Abstraction
