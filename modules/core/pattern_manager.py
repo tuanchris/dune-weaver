@@ -579,7 +579,7 @@ def move_polar(theta, rho, speed=None):
         
     offset = x_increment * (x_total_steps * x_scaling_factor / (state.gear_ratio * y_total_steps * y_scaling_factor))
 
-    if state.table_type == 'dune_weaver_mini':
+    if state.table_type == 'dune_weaver_mini' or state.y_steps_per_mm == 546:
         y_increment -= offset
     else:
         y_increment += offset
