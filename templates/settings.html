@@ -112,6 +112,114 @@ endblock %}
   background-color: #92400e;
   color: #fef3c7;
 }
+
+/* Toggle switch styles */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 60px;
+  height: 34px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: .4s;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 26px;
+  width: 26px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  transition: .4s;
+}
+
+input:checked + .slider {
+  background-color: #0c7ff2;
+}
+
+input:focus + .slider {
+  box-shadow: 0 0 1px #0c7ff2;
+}
+
+input:checked + .slider:before {
+  transform: translateX(26px);
+}
+
+.slider.round {
+  border-radius: 34px;
+}
+
+.slider.round:before {
+  border-radius: 50%;
+}
+
+/* Dark mode for switches */
+.dark .slider {
+  background-color: #404040;
+}
+
+.dark input:checked + .slider {
+  background-color: #0c7ff2;
+}
+
+/* Time slot specific styles */
+.time-slot-item {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  transition: all 0.15s;
+}
+
+.dark .time-slot-item {
+  background-color: #1e293b;
+  border-color: #475569;
+}
+
+.time-slot-item:hover {
+  border-color: #cbd5e1;
+}
+
+.dark .time-slot-item:hover {
+  border-color: #64748b;
+}
+
+/* Info box dark mode */
+.dark .bg-blue-50 {
+  background-color: #1e3a8a;
+}
+
+.dark .border-blue-200 {
+  border-color: #1e40af;
+}
+
+.dark .text-blue-600 {
+  color: #60a5fa;
+}
+
+.dark .text-blue-800 {
+  color: #dbeafe;
+}
+
+.dark .text-blue-700 {
+  color: #bfdbfe;
+}
 {% endblock %}
 
 {% block content %}
@@ -484,6 +592,74 @@ endblock %}
               <span class="slider round"></span>
             </label>
           </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <h2
+      class="text-slate-800 text-xl sm:text-2xl font-semibold leading-tight tracking-[-0.01em] px-6 py-4 border-b border-slate-200"
+    >
+      Still Sands
+    </h2>
+    <div class="px-6 py-5 space-y-6">
+      <div class="flex items-center justify-between">
+        <div class="flex-1">
+          <h3 class="text-slate-700 text-base font-medium leading-normal">Enable Still Sands</h3>
+          <p class="text-xs text-slate-500 mt-1">
+            Automatically bring the sands to rest during specified time periods.
+          </p>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="scheduledPauseToggle">
+          <span class="slider round"></span>
+        </label>
+      </div>
+
+      <div id="scheduledPauseSettings" class="space-y-4" style="display: none;">
+        <div class="bg-slate-50 rounded-lg p-4 space-y-4">
+          <div class="flex items-center justify-between">
+            <h4 class="text-slate-800 text-base font-semibold">Still Periods</h4>
+            <button
+              id="addTimeSlotButton"
+              class="flex items-center justify-center gap-2 cursor-pointer rounded-lg h-9 px-3 bg-sky-600 hover:bg-sky-700 text-white text-xs font-medium leading-normal tracking-[0.015em] transition-colors"
+            >
+              <span class="material-icons text-base">add</span>
+              <span>Add Still Period</span>
+            </button>
+          </div>
+          <p class="text-sm text-slate-600">
+            Define time periods when the sands should rest in stillness. Patterns will resume automatically when still periods end.
+          </p>
+
+          <div id="timeSlotsContainer" class="space-y-3">
+            <!-- Time slots will be dynamically added here -->
+          </div>
+
+          <div class="text-xs text-slate-500 bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div class="flex items-start gap-2">
+              <span class="material-icons text-blue-600 text-base">info</span>
+              <div>
+                <p class="font-medium text-blue-800">Important Notes:</p>
+                <ul class="mt-1 space-y-1 text-blue-700">
+                  <li>• Times are based on your system's local time zone</li>
+                  <li>• Currently running patterns will pause immediately when entering a still period</li>
+                  <li>• Patterns will resume automatically when exiting a still period</li>
+                  <li>• Still periods that span midnight (e.g., 22:00 to 06:00) are supported</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end">
+          <button
+            id="savePauseSettings"
+            class="flex items-center justify-center gap-2 min-w-[140px] cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors"
+          >
+            <span class="material-icons text-lg">save</span>
+            <span class="truncate">Save Still Sands</span>
+          </button>
         </div>
       </div>
     </div>

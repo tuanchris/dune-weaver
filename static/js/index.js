@@ -647,8 +647,7 @@ async function loadPatterns(forceRefresh = false) {
         
         // First load basic patterns list for fast initial display
         logMessage('Fetching basic patterns list from server', LOG_TYPE.DEBUG);
-        const basicResponse = await fetch('/list_theta_rho_files');
-        const basicPatterns = await basicResponse.json();
+        const basicPatterns = await getCachedPatternFiles(forceRefresh);
         const thrPatterns = basicPatterns.filter(file => file.endsWith('.thr'));
         logMessage(`Received ${thrPatterns.length} basic patterns from server`, LOG_TYPE.INFO);
         
@@ -674,13 +673,25 @@ async function loadPatterns(forceRefresh = false) {
                     metadataAbortController.abort();
                 }
                 
-                // Create new AbortController for this request
+                // Create new AbortController for this request with timeout
                 metadataAbortController = new AbortController();
-                
+
+                // Set a timeout to prevent hanging on slow Pi systems
+                const timeoutId = setTimeout(() => {
+                    metadataAbortController.abort();
+                    logMessage('Metadata loading timed out after 30 seconds', LOG_TYPE.WARNING);
+                }, 30000); // 30 second timeout
+
                 logMessage('Loading enhanced metadata...', LOG_TYPE.DEBUG);
                 const metadataResponse = await fetch('/list_theta_rho_files_with_metadata', {
-                    signal: metadataAbortController.signal
+                    signal: metadataAbortController.signal,
+                    headers: {
+                        'Cache-Control': 'no-cache'
+                    }
                 });
+
+                // Clear timeout if request succeeds
+                clearTimeout(timeoutId);
                 const patternsWithMetadata = await metadataResponse.json();
                 
                 // Store enhanced patterns data
@@ -698,11 +709,31 @@ async function loadPatterns(forceRefresh = false) {
                 metadataAbortController = null;
             } catch (metadataError) {
                 if (metadataError.name === 'AbortError') {
-                    logMessage('Metadata loading cancelled (navigating away)', LOG_TYPE.DEBUG);
+                    logMessage('Metadata loading cancelled or timed out', LOG_TYPE.WARNING);
                 } else {
                     logMessage(`Failed to load enhanced metadata: ${metadataError.message}`, LOG_TYPE.WARNING);
                 }
-                // No fallback needed - basic patterns already displayed
+
+                // Create basic metadata from file list to populate categories
+                if (allPatterns && allPatterns.length > 0) {
+                    allPatternsWithMetadata = allPatterns.map(pattern => {
+                        const pathParts = pattern.split('/');
+                        const category = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : 'root';
+                        const fileName = pathParts[pathParts.length - 1].replace('.thr', '');
+                        return {
+                            path: pattern,
+                            name: fileName,
+                            category: category,
+                            date_modified: 0,
+                            coordinates_count: 0
+                        };
+                    });
+
+                    // Update category filter with basic data
+                    updateBrowseCategoryFilter();
+                    logMessage('Using basic category data (metadata unavailable)', LOG_TYPE.INFO);
+                }
+
                 metadataAbortController = null;
             }
         }, 100); // Small delay to let initial render complete
@@ -1107,7 +1138,10 @@ function setupPreviewPanelEvents(pattern) {
                 if (result.success) {
                     logMessage(`Pattern deleted successfully: ${pattern}`, LOG_TYPE.SUCCESS);
                     showStatusMessage(`Pattern "${pattern.split('/').pop()}" deleted successfully`);
-                    
+
+                    // Invalidate pattern files cache
+                    invalidatePatternFilesCache();
+
                     // Clear from in-memory caches
                     previewCache.delete(pattern);
                     imageCache.delete(pattern);
@@ -1143,8 +1177,8 @@ function setupPreviewPanelEvents(pattern) {
                     document.getElementById('patternPreviewTitle').textContent = 'Pattern Details';
                     document.getElementById('firstCoordinate').textContent = '(0, 0)';
                     document.getElementById('lastCoordinate').textContent = '(0, 0)';
-                    // Refresh the pattern list (force refresh since pattern was deleted)
-                    await loadPatterns(true);
+                    // Refresh the pattern list (cache already invalidated above)
+                    await loadPatterns();
                 } else {
                     throw new Error(result.error || 'Unknown error');
                 }
@@ -1642,11 +1676,14 @@ function setupUploadEventHandlers() {
                     const result = await response.json();
                     if (result.success) {
                         successCount++;
-                        
+
+                        // Invalidate pattern files cache to include new file
+                        invalidatePatternFilesCache();
+
                         // Clear any existing cache for this pattern to ensure fresh loading
                         const newPatternPath = `custom_patterns/${file.name}`;
                         previewCache.delete(newPatternPath);
-                        
+
                         logMessage(`Successfully uploaded: ${file.name}`, LOG_TYPE.SUCCESS);
                     } else {
                         failCount++;
@@ -1672,8 +1709,8 @@ function setupUploadEventHandlers() {
                 // Add a small delay to allow backend preview generation to complete
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 
-                // Refresh the pattern list (force refresh since new patterns were uploaded)
-                await loadPatterns(true);
+                // Refresh the pattern list (cache already invalidated above)
+                await loadPatterns();
                 
                 // Trigger preview loading for newly uploaded patterns
                 setTimeout(() => {
@@ -1715,8 +1752,8 @@ function setupUploadEventHandlers() {
                 const patternToDelete = confirmBtn.dataset.pattern;
                 if (patternToDelete) {
                     await deletePattern(patternToDelete);
-                    // Force refresh after deletion
-                    await loadPatterns(true);
+                    // Refresh after deletion (cache invalidated in deletePattern)
+                    await loadPatterns();
                 }
                 deleteModal.classList.add('hidden');
             });

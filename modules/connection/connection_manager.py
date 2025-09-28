@@ -4,6 +4,7 @@ import logging
 import serial
 import serial.tools.list_ports
 import websocket
+import asyncio
 
 from modules.core.state import state
 from modules.led.led_controller import effect_loading, effect_idle, effect_connected, LEDController
@@ -71,7 +72,14 @@ class SerialConnection(BaseConnection):
         return self.ser is not None and self.ser.is_open
 
     def close(self) -> None:
-        update_machine_position()
+        # Run async update_machine_position in sync context
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(update_machine_position())
+            loop.close()
+        except Exception as e:
+            logger.error(f"Error updating machine position on close: {e}")
         with self.lock:
             if self.ser.is_open:
                 self.ser.close()
@@ -119,7 +127,14 @@ class WebSocketConnection(BaseConnection):
         return self.ws is not None
 
     def close(self) -> None:
-        update_machine_position()
+        # Run async update_machine_position in sync context
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(update_machine_position())
+            loop.close()
+        except Exception as e:
+            logger.error(f"Error updating machine position on close: {e}")
         with self.lock:
             if self.ws:
                 self.ws.close()
@@ -220,24 +235,26 @@ def parse_machine_position(response: str):
     return None
 
 
-def send_grbl_coordinates(x, y, speed=600, timeout=2, home=False):
+async def send_grbl_coordinates(x, y, speed=600, timeout=2, home=False):
     """
     Send a G-code command to FluidNC and wait for an 'ok' response.
     If no response after set timeout, sets state to stop and disconnects.
     """
     logger.debug(f"Sending G-code: X{x} Y{y} at F{speed}")
-    
+
     # Track overall attempt time
     overall_start_time = time.time()
-    
+
     while True:
         try:
             gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 X{x} Y{y} F{speed}"
-            state.conn.send(gcode + "\n")
+            # Use asyncio.to_thread for both send and receive operations to avoid blocking
+            await asyncio.to_thread(state.conn.send, gcode + "\n")
             logger.debug(f"Sent command: {gcode}")
             start_time = time.time()
             while True:
-                response = state.conn.readline()
+                # Use asyncio.to_thread for blocking I/O operations
+                response = await asyncio.to_thread(state.conn.readline)
                 logger.debug(f"Response: {response}")
                 if response.lower() == "ok":
                     logger.debug("Command execution confirmed.")
@@ -246,7 +263,7 @@ def send_grbl_coordinates(x, y, speed=600, timeout=2, home=False):
             # Store the error string inside the exception block
             error_str = str(e)
             logger.warning(f"Error sending command: {error_str}")
-            
+
             # Immediately return for device not configured errors
             if "Device not configured" in error_str or "Errno 6" in error_str:
                 logger.error(f"Device configuration error detected: {error_str}")
@@ -256,9 +273,9 @@ def send_grbl_coordinates(x, y, speed=600, timeout=2, home=False):
                 logger.info("Connection marked as disconnected due to device error")
                 return False
 
-            
+
         logger.warning(f"No 'ok' received for X{x} Y{y}, speed {speed}. Retrying...")
-        time.sleep(0.1)
+        await asyncio.sleep(0.1)
     
     # If we reach here, the timeout has occurred
     logger.error(f"Failed to receive 'ok' response after {max_total_attempt_time} seconds. Stopping and disconnecting.")
@@ -406,20 +423,27 @@ def home(timeout=15):
                     homing_speed = 120
                 logger.info("Sensorless homing not supported. Using crash homing")
                 logger.info(f"Homing with speed {homing_speed}")
-                if state.gear_ratio == 6.25:
-                    result = send_grbl_coordinates(0, - 30, homing_speed, home=True)
-                    if result == False:
-                        logger.error("Homing failed - send_grbl_coordinates returned False")
-                        homing_complete.set()
-                        return
-                    state.machine_y -= 30
-                else:
-                    result = send_grbl_coordinates(0, -22, homing_speed, home=True)
-                    if result == False:
-                        logger.error("Homing failed - send_grbl_coordinates returned False")
-                        homing_complete.set()
-                        return
-                    state.machine_y -= 22
+
+                # Run async function in new event loop
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    if state.gear_ratio == 6.25:
+                        result = loop.run_until_complete(send_grbl_coordinates(0, - 30, homing_speed, home=True))
+                        if result == False:
+                            logger.error("Homing failed - send_grbl_coordinates returned False")
+                            homing_complete.set()
+                            return
+                        state.machine_y -= 30
+                    else:
+                        result = loop.run_until_complete(send_grbl_coordinates(0, -22, homing_speed, home=True))
+                        if result == False:
+                            logger.error("Homing failed - send_grbl_coordinates returned False")
+                            homing_complete.set()
+                            return
+                        state.machine_y -= 22
+                finally:
+                    loop.close()
 
             state.current_theta = state.current_rho = 0
             homing_success = True
@@ -455,16 +479,44 @@ def home(timeout=15):
 
 def check_idle():
     """
-    Continuously check if the device is idle.
+    Continuously check if the device is idle (synchronous version).
     """
     logger.info("Checking idle")
     while True:
         response = get_status_response()
         if response and "Idle" in response:
             logger.info("Device is idle")
-            update_machine_position()
+            # Schedule async update_machine_position in the existing event loop
+            try:
+                # Try to schedule in existing event loop if available
+                try:
+                    loop = asyncio.get_running_loop()
+                    # Create a task but don't await it (fire and forget)
+                    asyncio.create_task(update_machine_position())
+                    logger.debug("Scheduled machine position update task")
+                except RuntimeError:
+                    # No event loop running, skip machine position update
+                    logger.debug("No event loop running, skipping machine position update")
+            except Exception as e:
+                logger.error(f"Error scheduling machine position update: {e}")
             return True
         time.sleep(1)
+
+async def check_idle_async():
+    """
+    Continuously check if the device is idle (async version).
+    """
+    logger.info("Checking idle (async)")
+    while True:
+        response = await asyncio.to_thread(get_status_response)
+        if response and "Idle" in response:
+            logger.info("Device is idle")
+            try:
+                await update_machine_position()
+            except Exception as e:
+                logger.error(f"Error updating machine position: {e}")
+            return True
+        await asyncio.sleep(1)
         
 
 def get_machine_position(timeout=5):
@@ -490,12 +542,12 @@ def get_machine_position(timeout=5):
     logger.warning("Timeout reached waiting for machine position")
     return None, None
 
-def update_machine_position():
+async def update_machine_position():
     if (state.conn.is_connected() if state.conn else False):
         try:
             logger.info('Saving machine position')
-            state.machine_x, state.machine_y = get_machine_position()
-            state.save()
+            state.machine_x, state.machine_y = await asyncio.to_thread(get_machine_position)
+            await asyncio.to_thread(state.save)
             logger.info(f'Machine position saved: {state.machine_x}, {state.machine_y}')
         except Exception as e:
             logger.error(f"Error updating machine position: {e}")

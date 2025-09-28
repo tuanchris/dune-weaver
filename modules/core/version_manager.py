@@ -20,20 +20,21 @@ class VersionManager:
         self.github_api_url = f"https://api.github.com/repos/{self.repo_owner}/{self.repo_name}"
         self._current_version = None
         
-    def get_current_version(self) -> str:
-        """Read current version from VERSION file"""
+    async def get_current_version(self) -> str:
+        """Read current version from VERSION file (async)"""
         if self._current_version is None:
             try:
                 version_file = Path(__file__).parent.parent.parent / "VERSION"
                 if version_file.exists():
-                    self._current_version = version_file.read_text().strip()
+                    self._current_version = await asyncio.to_thread(version_file.read_text)
+                    self._current_version = self._current_version.strip()
                 else:
                     logger.warning("VERSION file not found, using default version")
                     self._current_version = "1.0.0"
             except Exception as e:
                 logger.error(f"Error reading VERSION file: {e}")
                 self._current_version = "1.0.0"
-        
+
         return self._current_version
     
     async def get_latest_release(self) -> Dict[str, any]:
@@ -94,7 +95,7 @@ class VersionManager:
     
     async def get_version_info(self) -> Dict[str, any]:
         """Get complete version information"""
-        current = self.get_current_version()
+        current = await self.get_current_version()
         latest_release = await self.get_latest_release()
         
         if latest_release:
