@@ -180,8 +180,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         fetch('/api/clear_pattern_speed').then(response => response.json()).catch(() => ({ clear_pattern_speed: 200 })),
         
         // Load current app name
-        fetch('/api/app-name').then(response => response.json()).catch(() => ({ app_name: 'Dune Weaver' }))
-    ]).then(([statusData, wledData, updateData, ports, patterns, clearPatterns, clearSpeedData, appNameData]) => {
+        fetch('/api/app-name').then(response => response.json()).catch(() => ({ app_name: 'Dune Weaver' })),
+
+        // Load Still Sands settings
+        fetch('/api/scheduled-pause').then(response => response.json()).catch(() => ({ enabled: false, time_slots: [] }))
+    ]).then(([statusData, wledData, updateData, ports, patterns, clearPatterns, clearSpeedData, appNameData, scheduledPauseData]) => {
         // Update connection status
         setCachedConnectionStatus(statusData);
         updateConnectionUI(statusData);
@@ -299,6 +302,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (appNameInput && appNameData.app_name) {
             appNameInput.value = appNameData.app_name;
         }
+
+        // Store Still Sands data for later initialization
+        window.initialStillSandsData = scheduledPauseData;
     }).catch(error => {
         logMessage(`Error initializing settings page: ${error.message}`, LOG_TYPE.ERROR);
     });
@@ -1020,4 +1026,310 @@ async function initializeauto_playMode() {
 // Initialize auto_play mode when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
     initializeauto_playMode();
+    initializeStillSandsMode();
 });
+
+// Still Sands Mode Functions
+async function initializeStillSandsMode() {
+    logMessage('Initializing Still Sands mode', LOG_TYPE.INFO);
+
+    const stillSandsToggle = document.getElementById('scheduledPauseToggle');
+    const stillSandsSettings = document.getElementById('scheduledPauseSettings');
+    const addTimeSlotButton = document.getElementById('addTimeSlotButton');
+    const saveStillSandsButton = document.getElementById('savePauseSettings');
+    const timeSlotsContainer = document.getElementById('timeSlotsContainer');
+
+    // Check if elements exist
+    if (!stillSandsToggle || !stillSandsSettings || !addTimeSlotButton || !saveStillSandsButton || !timeSlotsContainer) {
+        logMessage('Still Sands elements not found, skipping initialization', LOG_TYPE.WARNING);
+        logMessage(`Found elements: toggle=${!!stillSandsToggle}, settings=${!!stillSandsSettings}, addBtn=${!!addTimeSlotButton}, saveBtn=${!!saveStillSandsButton}, container=${!!timeSlotsContainer}`, LOG_TYPE.WARNING);
+        return;
+    }
+
+    logMessage('All Still Sands elements found successfully', LOG_TYPE.INFO);
+
+    // Track time slots
+    let timeSlots = [];
+    let slotIdCounter = 0;
+
+    // Load current Still Sands settings from initial data
+    try {
+        // Use the data loaded during page initialization, fallback to API if not available
+        let data;
+        if (window.initialStillSandsData) {
+            data = window.initialStillSandsData;
+            // Clear the global variable after use
+            delete window.initialStillSandsData;
+        } else {
+            // Fallback to API call if initial data not available
+            const response = await fetch('/api/scheduled-pause');
+            data = await response.json();
+        }
+
+        stillSandsToggle.checked = data.enabled || false;
+        if (data.enabled) {
+            stillSandsSettings.style.display = 'block';
+        }
+
+        // Load existing time slots
+        timeSlots = data.time_slots || [];
+        renderTimeSlots();
+    } catch (error) {
+        logMessage(`Error loading Still Sands settings: ${error.message}`, LOG_TYPE.ERROR);
+        // Initialize with empty settings if load fails
+        timeSlots = [];
+        renderTimeSlots();
+    }
+
+    // Function to validate time format (HH:MM)
+    function isValidTime(timeString) {
+        const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+        return timeRegex.test(timeString);
+    }
+
+    // Function to create a new time slot element
+    function createTimeSlotElement(slot) {
+        const slotDiv = document.createElement('div');
+        slotDiv.className = 'time-slot-item';
+        slotDiv.dataset.slotId = slot.id;
+
+        slotDiv.innerHTML = `
+            <div class="flex items-center gap-3">
+                <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div class="flex flex-col gap-1">
+                        <label class="text-slate-700 dark:text-slate-300 text-xs font-medium">Start Time</label>
+                        <input
+                            type="time"
+                            class="start-time form-input resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-9 px-3 text-sm font-normal leading-normal transition-colors"
+                            value="${slot.start_time || ''}"
+                            required
+                        />
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-slate-700 dark:text-slate-300 text-xs font-medium">End Time</label>
+                        <input
+                            type="time"
+                            class="end-time form-input resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-9 px-3 text-sm font-normal leading-normal transition-colors"
+                            value="${slot.end_time || ''}"
+                            required
+                        />
+                    </div>
+                </div>
+                <div class="flex flex-col gap-1">
+                    <label class="text-slate-700 dark:text-slate-300 text-xs font-medium">Days</label>
+                    <select class="days-select form-select resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-9 px-3 text-sm font-normal transition-colors">
+                        <option value="daily" ${slot.days === 'daily' ? 'selected' : ''}>Daily</option>
+                        <option value="weekdays" ${slot.days === 'weekdays' ? 'selected' : ''}>Weekdays</option>
+                        <option value="weekends" ${slot.days === 'weekends' ? 'selected' : ''}>Weekends</option>
+                        <option value="custom" ${slot.days === 'custom' ? 'selected' : ''}>Custom</option>
+                    </select>
+                </div>
+                <button
+                    type="button"
+                    class="remove-slot-btn flex items-center justify-center w-9 h-9 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                    title="Remove time slot"
+                >
+                    <span class="material-icons text-base">delete</span>
+                </button>
+            </div>
+            <div class="custom-days-container mt-2" style="display: ${slot.days === 'custom' ? 'block' : 'none'};">
+                <label class="text-slate-700 dark:text-slate-300 text-xs font-medium mb-1 block">Select Days</label>
+                <div class="flex flex-wrap gap-2">
+                    ${['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map(day => `
+                        <label class="flex items-center gap-1 text-xs">
+                            <input
+                                type="checkbox"
+                                name="custom-days-${slot.id}"
+                                value="${day}"
+                                ${slot.custom_days && slot.custom_days.includes(day) ? 'checked' : ''}
+                                class="rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                            />
+                            <span class="text-slate-700 dark:text-slate-300 capitalize">${day.substring(0, 3)}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+
+        // Add event listeners for this slot
+        const startTimeInput = slotDiv.querySelector('.start-time');
+        const endTimeInput = slotDiv.querySelector('.end-time');
+        const daysSelect = slotDiv.querySelector('.days-select');
+        const customDaysContainer = slotDiv.querySelector('.custom-days-container');
+        const removeButton = slotDiv.querySelector('.remove-slot-btn');
+
+        // Show/hide custom days based on selection
+        daysSelect.addEventListener('change', () => {
+            customDaysContainer.style.display = daysSelect.value === 'custom' ? 'block' : 'none';
+            updateTimeSlot(slot.id);
+        });
+
+        // Update slot data when inputs change
+        startTimeInput.addEventListener('change', () => updateTimeSlot(slot.id));
+        endTimeInput.addEventListener('change', () => updateTimeSlot(slot.id));
+
+        // Handle custom day checkboxes
+        customDaysContainer.addEventListener('change', () => updateTimeSlot(slot.id));
+
+        // Remove slot button
+        removeButton.addEventListener('click', () => {
+            removeTimeSlot(slot.id);
+        });
+
+        return slotDiv;
+    }
+
+    // Function to render all time slots
+    function renderTimeSlots() {
+        timeSlotsContainer.innerHTML = '';
+
+        if (timeSlots.length === 0) {
+            timeSlotsContainer.innerHTML = `
+                <div class="text-center py-8 text-slate-500 dark:text-slate-400">
+                    <span class="material-icons text-4xl mb-2 block">schedule</span>
+                    <p>No time slots configured</p>
+                    <p class="text-xs mt-1">Click "Add Time Slot" to create a pause schedule</p>
+                </div>
+            `;
+            return;
+        }
+
+        timeSlots.forEach(slot => {
+            const slotElement = createTimeSlotElement(slot);
+            timeSlotsContainer.appendChild(slotElement);
+        });
+    }
+
+    // Function to add a new time slot
+    function addTimeSlot() {
+        const newSlot = {
+            id: ++slotIdCounter,
+            start_time: '22:00',
+            end_time: '08:00',
+            days: 'daily',
+            custom_days: []
+        };
+
+        timeSlots.push(newSlot);
+        renderTimeSlots();
+    }
+
+    // Function to remove a time slot
+    function removeTimeSlot(slotId) {
+        timeSlots = timeSlots.filter(slot => slot.id !== slotId);
+        renderTimeSlots();
+    }
+
+    // Function to update a time slot's data
+    function updateTimeSlot(slotId) {
+        const slotElement = timeSlotsContainer.querySelector(`[data-slot-id="${slotId}"]`);
+        if (!slotElement) return;
+
+        const slot = timeSlots.find(s => s.id === slotId);
+        if (!slot) return;
+
+        // Update slot data from inputs
+        slot.start_time = slotElement.querySelector('.start-time').value;
+        slot.end_time = slotElement.querySelector('.end-time').value;
+        slot.days = slotElement.querySelector('.days-select').value;
+
+        // Update custom days if applicable
+        if (slot.days === 'custom') {
+            const checkedDays = Array.from(slotElement.querySelectorAll(`input[name="custom-days-${slotId}"]:checked`))
+                .map(cb => cb.value);
+            slot.custom_days = checkedDays;
+        } else {
+            slot.custom_days = [];
+        }
+    }
+
+    // Function to validate all time slots
+    function validateTimeSlots() {
+        const errors = [];
+
+        timeSlots.forEach((slot, index) => {
+            if (!slot.start_time || !isValidTime(slot.start_time)) {
+                errors.push(`Time slot ${index + 1}: Invalid start time`);
+            }
+            if (!slot.end_time || !isValidTime(slot.end_time)) {
+                errors.push(`Time slot ${index + 1}: Invalid end time`);
+            }
+            if (slot.days === 'custom' && (!slot.custom_days || slot.custom_days.length === 0)) {
+                errors.push(`Time slot ${index + 1}: Please select at least one day for custom schedule`);
+            }
+        });
+
+        return errors;
+    }
+
+    // Function to save settings
+    async function saveStillSandsSettings() {
+        // Update all slots from current form values
+        timeSlots.forEach(slot => updateTimeSlot(slot.id));
+
+        // Validate time slots
+        const validationErrors = validateTimeSlots();
+        if (validationErrors.length > 0) {
+            showStatusMessage(`Validation errors: ${validationErrors.join(', ')}`, 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/scheduled-pause', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    enabled: stillSandsToggle.checked,
+                    time_slots: timeSlots.map(slot => ({
+                        start_time: slot.start_time,
+                        end_time: slot.end_time,
+                        days: slot.days,
+                        custom_days: slot.custom_days
+                    }))
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Failed to save Still Sands settings');
+            }
+
+            showStatusMessage('Still Sands settings saved successfully', 'success');
+        } catch (error) {
+            logMessage(`Error saving Still Sands settings: ${error.message}`, LOG_TYPE.ERROR);
+            showStatusMessage(`Failed to save settings: ${error.message}`, 'error');
+        }
+    }
+
+    // Initialize slot ID counter
+    if (timeSlots.length > 0) {
+        slotIdCounter = Math.max(...timeSlots.map(slot => slot.id || 0));
+    }
+
+    // Assign IDs to existing slots if they don't have them
+    timeSlots.forEach(slot => {
+        if (!slot.id) {
+            slot.id = ++slotIdCounter;
+        }
+    });
+
+    // Event listeners
+    stillSandsToggle.addEventListener('change', async () => {
+        logMessage(`Still Sands toggle changed: ${stillSandsToggle.checked}`, LOG_TYPE.INFO);
+        stillSandsSettings.style.display = stillSandsToggle.checked ? 'block' : 'none';
+        logMessage(`Settings display set to: ${stillSandsSettings.style.display}`, LOG_TYPE.INFO);
+
+        // Auto-save when toggle changes
+        try {
+            await saveStillSandsSettings();
+            const statusText = stillSandsToggle.checked ? 'enabled' : 'disabled';
+            showStatusMessage(`Still Sands ${statusText} successfully`, 'success');
+        } catch (error) {
+            logMessage(`Error saving Still Sands toggle: ${error.message}`, LOG_TYPE.ERROR);
+            showStatusMessage(`Failed to save Still Sands setting: ${error.message}`, 'error');
+        }
+    });
+
+    addTimeSlotButton.addEventListener('click', addTimeSlot);
+    saveStillSandsButton.addEventListener('click', saveStillSandsSettings);
+}

@@ -3,7 +3,7 @@ import threading
 import time
 import random
 import logging
-from datetime import datetime
+from datetime import datetime, time as datetime_time
 from tqdm import tqdm
 from modules.connection import connection_manager
 from modules.core.state import state
@@ -31,6 +31,53 @@ pattern_lock = asyncio.Lock()
 
 # Progress update task
 progress_update_task = None
+
+def is_in_scheduled_pause_period():
+    """Check if current time falls within any scheduled pause period."""
+    if not state.scheduled_pause_enabled or not state.scheduled_pause_time_slots:
+        return False
+
+    now = datetime.now()
+    current_time = now.time()
+    current_weekday = now.strftime("%A").lower()  # monday, tuesday, etc.
+
+    for slot in state.scheduled_pause_time_slots:
+        # Parse start and end times
+        try:
+            start_time = datetime_time.fromisoformat(slot['start_time'])
+            end_time = datetime_time.fromisoformat(slot['end_time'])
+        except (ValueError, KeyError):
+            logger.warning(f"Invalid time format in scheduled pause slot: {slot}")
+            continue
+
+        # Check if this slot applies to today
+        slot_applies_today = False
+        days_setting = slot.get('days', 'daily')
+
+        if days_setting == 'daily':
+            slot_applies_today = True
+        elif days_setting == 'weekdays':
+            slot_applies_today = current_weekday in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+        elif days_setting == 'weekends':
+            slot_applies_today = current_weekday in ['saturday', 'sunday']
+        elif days_setting == 'custom':
+            custom_days = slot.get('custom_days', [])
+            slot_applies_today = current_weekday in custom_days
+
+        if not slot_applies_today:
+            continue
+
+        # Check if current time is within the pause period
+        if start_time <= end_time:
+            # Normal case: start and end are on the same day
+            if start_time <= current_time <= end_time:
+                return True
+        else:
+            # Time spans midnight: start is before midnight, end is after midnight
+            if current_time >= start_time or current_time <= end_time:
+                return True
+
+    return False
 
 # Motion Control Thread Infrastructure
 @dataclass
@@ -530,12 +577,28 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                         effect_idle(state.led_controller)
                     break
 
-                # Wait for resume if paused
-                if state.pause_requested:
-                    logger.info("Execution paused...")
+                # Wait for resume if paused (manual or scheduled)
+                manual_pause = state.pause_requested
+                scheduled_pause = is_in_scheduled_pause_period()
+
+                if manual_pause or scheduled_pause:
+                    if manual_pause and scheduled_pause:
+                        logger.info("Execution paused (manual + scheduled pause active)...")
+                    elif manual_pause:
+                        logger.info("Execution paused (manual)...")
+                    else:
+                        logger.info("Execution paused (scheduled pause period)...")
+
                     if state.led_controller:
                         effect_idle(state.led_controller)
-                    await pause_event.wait()
+
+                    # Wait until both manual pause is released AND we're outside scheduled pause period
+                    while state.pause_requested or is_in_scheduled_pause_period():
+                        await asyncio.sleep(1)  # Check every second
+                        # Also wait for the pause event in case of manual pause
+                        if state.pause_requested:
+                            await pause_event.wait()
+
                     logger.info("Execution resumed...")
                     if state.led_controller:
                         effect_playing(state.led_controller)
@@ -804,7 +867,9 @@ def get_status():
     """Get the current status of pattern execution."""
     status = {
         "current_file": state.current_playing_file,
-        "is_paused": state.pause_requested,
+        "is_paused": state.pause_requested or is_in_scheduled_pause_period(),
+        "manual_pause": state.pause_requested,
+        "scheduled_pause": is_in_scheduled_pause_period(),
         "is_running": bool(state.current_playing_file and not state.stop_requested),
         "progress": None,
         "playlist": None,

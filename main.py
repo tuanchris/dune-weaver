@@ -154,6 +154,16 @@ class auto_playModeRequest(BaseModel):
     clear_pattern: Optional[str] = "adaptive"
     shuffle: Optional[bool] = False
 
+class TimeSlot(BaseModel):
+    start_time: str  # HH:MM format
+    end_time: str    # HH:MM format
+    days: str        # "daily", "weekdays", "weekends", or "custom"
+    custom_days: Optional[List[str]] = []  # ["monday", "tuesday", etc.]
+
+class ScheduledPauseRequest(BaseModel):
+    enabled: bool
+    time_slots: List[TimeSlot] = []
+
 class CoordinateRequest(BaseModel):
     theta: float
     rho: float
@@ -304,6 +314,67 @@ async def set_auto_play_mode(request: auto_playModeRequest):
     
     logger.info(f"auto_play mode {'enabled' if request.enabled else 'disabled'}, playlist: {request.playlist}")
     return {"success": True, "message": "auto_play mode settings updated"}
+
+@app.get("/api/scheduled-pause")
+async def get_scheduled_pause():
+    """Get current Still Sands settings."""
+    return {
+        "enabled": state.scheduled_pause_enabled,
+        "time_slots": state.scheduled_pause_time_slots
+    }
+
+@app.post("/api/scheduled-pause")
+async def set_scheduled_pause(request: ScheduledPauseRequest):
+    """Update Still Sands settings."""
+    try:
+        # Validate time slots
+        for i, slot in enumerate(request.time_slots):
+            # Validate time format (HH:MM)
+            try:
+                start_time = datetime.strptime(slot.start_time, "%H:%M").time()
+                end_time = datetime.strptime(slot.end_time, "%H:%M").time()
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid time format in slot {i+1}. Use HH:MM format."
+                )
+
+            # Validate days setting
+            if slot.days not in ["daily", "weekdays", "weekends", "custom"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid days setting in slot {i+1}. Must be 'daily', 'weekdays', 'weekends', or 'custom'."
+                )
+
+            # Validate custom days if applicable
+            if slot.days == "custom":
+                if not slot.custom_days or len(slot.custom_days) == 0:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Custom days must be specified for slot {i+1} when days is set to 'custom'."
+                    )
+
+                valid_days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+                for day in slot.custom_days:
+                    if day not in valid_days:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Invalid day '{day}' in slot {i+1}. Valid days are: {', '.join(valid_days)}"
+                        )
+
+        # Update state
+        state.scheduled_pause_enabled = request.enabled
+        state.scheduled_pause_time_slots = [slot.model_dump() for slot in request.time_slots]
+        state.save()
+
+        logger.info(f"Still Sands {'enabled' if request.enabled else 'disabled'} with {len(request.time_slots)} time slots")
+        return {"success": True, "message": "Still Sands settings updated"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating Still Sands settings: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update Still Sands settings: {str(e)}")
 
 @app.get("/list_serial_ports")
 async def list_ports():
