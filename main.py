@@ -547,7 +547,7 @@ async def stop_execution():
     if not (state.conn.is_connected() if state.conn else False):
         logger.warning("Attempted to stop without a connection")
         raise HTTPException(status_code=400, detail="Connection not established")
-    pattern_manager.stop_actions()
+    await pattern_manager.stop_actions()
     return {"success": True}
 
 @app.post("/send_home")
@@ -625,7 +625,7 @@ async def move_to_center():
             raise HTTPException(status_code=400, detail="Connection not established")
 
         logger.info("Moving device to center position")
-        pattern_manager.reset_theta()
+        await pattern_manager.reset_theta()
         await pattern_manager.move_polar(0, 0)
         return {"success": True}
     except Exception as e:
@@ -638,7 +638,7 @@ async def move_to_perimeter():
         if not (state.conn.is_connected() if state.conn else False):
             logger.warning("Attempted to move to perimeter without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
-        pattern_manager.reset_theta()
+        await pattern_manager.reset_theta()
         await pattern_manager.move_polar(0, 1)
         return {"success": True}
     except Exception as e:
@@ -1135,10 +1135,24 @@ def signal_handler(signum, frame):
     try:
         if state.led_controller:
             state.led_controller.set_power(0)
-        # Run cleanup operations synchronously to ensure completion
-        pattern_manager.stop_actions()
+        # Run cleanup operations - need to handle async in sync context
+        try:
+            # Try to run in existing loop if available
+            import asyncio
+            loop = asyncio.get_running_loop()
+            # If we're in an event loop, schedule the coroutine
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, pattern_manager.stop_actions())
+                future.result(timeout=5.0)  # Wait up to 5 seconds
+        except RuntimeError:
+            # No running loop, create a new one
+            import asyncio
+            asyncio.run(pattern_manager.stop_actions())
+        except Exception as cleanup_err:
+            logger.error(f"Error in async cleanup: {cleanup_err}")
+
         state.save()
-        
         logger.info("Cleanup completed")
     except Exception as e:
         logger.error(f"Error during cleanup: {str(e)}")

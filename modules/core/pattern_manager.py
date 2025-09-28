@@ -293,13 +293,13 @@ async def run_theta_rho_file(file_path, is_playlist=False):
         state.execution_progress = (0, total_coordinates, None, 0)
         
         # stop actions without resetting the playlist
-        stop_actions(clear_playlist=False)
+        await stop_actions(clear_playlist=False)
 
         state.current_playing_file = file_path
         state.stop_requested = False
         logger.info(f"Starting pattern execution: {file_path}")
         logger.info(f"t: {state.current_theta}, r: {state.current_rho}")
-        reset_theta()
+        await reset_theta()
         
         start_time = time.time()
         if state.led_controller:
@@ -509,7 +509,7 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
         
         logger.info("All requested patterns completed (or stopped) and state cleared")
 
-def stop_actions(clear_playlist = True):
+async def stop_actions(clear_playlist = True):
     """Stop all current actions."""
     try:
         with state.pause_condition:
@@ -531,22 +531,13 @@ def stop_actions(clear_playlist = True):
                     progress_update_task.cancel()
 
             state.pause_condition.notify_all()
-            # Run async function in sync context
-            try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(connection_manager.update_machine_position())
-                loop.close()
-            except Exception as update_err:
-                logger.error(f"Error updating machine position: {update_err}")
+            # Call async function directly since we're in async context
+            await connection_manager.update_machine_position()
     except Exception as e:
         logger.error(f"Error during stop_actions: {e}")
         # Ensure we still update machine position even if there's an error
         try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(connection_manager.update_machine_position())
-            loop.close()
+            await connection_manager.update_machine_position()
         except Exception as update_err:
             logger.error(f"Error updating machine position on error: {update_err}")
 
@@ -625,17 +616,11 @@ def resume_execution():
     pause_event.set()  # Set the event to resume execution
     return True
     
-def reset_theta():
+async def reset_theta():
     logger.info('Resetting Theta')
     state.current_theta = state.current_theta % (2 * pi)
-    # Run async function in sync context
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(connection_manager.update_machine_position())
-        loop.close()
-    except Exception as e:
-        logger.error(f"Error updating machine position in reset_theta: {e}")
+    # Call async function directly since we're in async context
+    await connection_manager.update_machine_position()
 
 def set_speed(new_speed):
     state.speed = new_speed
