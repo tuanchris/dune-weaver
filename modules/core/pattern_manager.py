@@ -525,7 +525,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                 
                 if state.skip_requested:
                     logger.info("Skipping pattern...")
-                    connection_manager.check_idle()
+                    await connection_manager.check_idle_async()
                     if state.led_controller:
                         effect_idle(state.led_controller)
                     break
@@ -568,7 +568,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
             logger.error("Device is not connected. Stopping pattern execution.")
             return
             
-        connection_manager.check_idle()
+        await connection_manager.check_idle_async()
         
         # Set LED back to idle when pattern completes normally (not stopped early)
         if state.led_controller and not state.stop_requested:

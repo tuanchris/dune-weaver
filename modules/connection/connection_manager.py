@@ -479,23 +479,44 @@ def home(timeout=15):
 
 def check_idle():
     """
-    Continuously check if the device is idle.
+    Continuously check if the device is idle (synchronous version).
     """
     logger.info("Checking idle")
     while True:
         response = get_status_response()
         if response and "Idle" in response:
             logger.info("Device is idle")
-            # Run async update_machine_position in sync context
+            # Schedule async update_machine_position in the existing event loop
             try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(update_machine_position())
-                loop.close()
+                # Try to schedule in existing event loop if available
+                try:
+                    loop = asyncio.get_running_loop()
+                    # Create a task but don't await it (fire and forget)
+                    asyncio.create_task(update_machine_position())
+                    logger.debug("Scheduled machine position update task")
+                except RuntimeError:
+                    # No event loop running, skip machine position update
+                    logger.debug("No event loop running, skipping machine position update")
+            except Exception as e:
+                logger.error(f"Error scheduling machine position update: {e}")
+            return True
+        time.sleep(1)
+
+async def check_idle_async():
+    """
+    Continuously check if the device is idle (async version).
+    """
+    logger.info("Checking idle (async)")
+    while True:
+        response = await asyncio.to_thread(get_status_response)
+        if response and "Idle" in response:
+            logger.info("Device is idle")
+            try:
+                await update_machine_position()
             except Exception as e:
                 logger.error(f"Error updating machine position: {e}")
             return True
-        time.sleep(1)
+        await asyncio.sleep(1)
         
 
 def get_machine_position(timeout=5):
