@@ -308,7 +308,7 @@ async def set_auto_play_mode(request: auto_playModeRequest):
 @app.get("/list_serial_ports")
 async def list_ports():
     logger.debug("Listing available serial ports")
-    return connection_manager.list_serial_ports()
+    return await asyncio.to_thread(connection_manager.list_serial_ports)
 
 @app.post("/connect")
 async def connect(request: ConnectRequest):
@@ -428,14 +428,70 @@ async def list_theta_rho_files_with_metadata():
     loop = asyncio.get_event_loop()
     tasks = [loop.run_in_executor(executor, process_file, file_path) for file_path in files]
     
-    # Process results as they complete
-    for task in asyncio.as_completed(tasks):
-        try:
-            result = await task
-            files_with_metadata.append(result)
-        except Exception as e:
-            logger.error(f"Error processing file: {str(e)}")
-    
+    # Instead of processing individual files, load the entire metadata cache at once
+    # This is much faster than 1000+ individual metadata lookups
+    try:
+        import json
+        metadata_cache_path = "metadata_cache.json"
+        with open(metadata_cache_path, 'r') as f:
+            cache_data = json.load(f)
+        cache_dict = cache_data.get('data', {})
+        logger.debug(f"Loaded metadata cache with {len(cache_dict)} entries")
+
+        # Process all files using cached data only
+        for file_path in files:
+            try:
+                # Extract category from path
+                path_parts = file_path.split('/')
+                category = '/'.join(path_parts[:-1]) if len(path_parts) > 1 else 'root'
+
+                # Get file name without extension
+                file_name = os.path.splitext(os.path.basename(file_path))[0]
+
+                # Get metadata from cache
+                cached_entry = cache_dict.get(file_path, {})
+                if isinstance(cached_entry, dict) and 'metadata' in cached_entry:
+                    metadata = cached_entry['metadata']
+                    coords_count = metadata.get('total_coordinates', 0)
+                    date_modified = cached_entry.get('mtime', 0)
+                else:
+                    coords_count = 0
+                    date_modified = 0
+
+                files_with_metadata.append({
+                    'path': file_path,
+                    'name': file_name,
+                    'category': category,
+                    'date_modified': date_modified,
+                    'coordinates_count': coords_count
+                })
+
+            except Exception as e:
+                logger.warning(f"Error processing {file_path}: {e}")
+                # Include file with minimal info if processing fails
+                path_parts = file_path.split('/')
+                category = '/'.join(path_parts[:-1]) if len(path_parts) > 1 else 'root'
+                files_with_metadata.append({
+                    'path': file_path,
+                    'name': os.path.splitext(os.path.basename(file_path))[0],
+                    'category': category,
+                    'date_modified': 0,
+                    'coordinates_count': 0
+                })
+
+    except Exception as e:
+        logger.error(f"Failed to load metadata cache, falling back to slow method: {e}")
+        # Fallback to original method if cache loading fails
+        for task in asyncio.as_completed(tasks):
+            try:
+                result = await task
+                files_with_metadata.append(result)
+            except Exception as task_error:
+                logger.error(f"Error processing file: {str(task_error)}")
+
+    # Clean up executor
+    executor.shutdown(wait=False)
+
     return files_with_metadata
 
 @app.post("/upload_theta_rho")
