@@ -1,5 +1,43 @@
 // Player status bar functionality - Updated to fix logMessage errors
 
+// Pattern files cache for improved performance
+let patternFilesCache = null;
+let patternFilesCacheTimestamp = null;
+const PATTERN_CACHE_EXPIRY = 30000; // 30 seconds cache
+
+// Function to get cached pattern files or fetch fresh data
+async function getCachedPatternFiles(forceRefresh = false) {
+    const now = Date.now();
+
+    // Check if cache is valid and not forced to refresh
+    if (!forceRefresh && patternFilesCache && patternFilesCacheTimestamp &&
+        (now - patternFilesCacheTimestamp) < PATTERN_CACHE_EXPIRY) {
+        return patternFilesCache;
+    }
+
+    try {
+        const response = await fetch('/list_theta_rho_files');
+        if (!response.ok) {
+            throw new Error(`Failed to fetch pattern files: ${response.status}`);
+        }
+
+        const files = await response.json();
+        patternFilesCache = files;
+        patternFilesCacheTimestamp = now;
+        return files;
+    } catch (error) {
+        console.error('Error fetching pattern files:', error);
+        // Return cached data if available, even if expired
+        return patternFilesCache || [];
+    }
+}
+
+// Function to invalidate pattern files cache
+function invalidatePatternFilesCache() {
+    patternFilesCache = null;
+    patternFilesCacheTimestamp = null;
+}
+
 // Helper function to normalize file paths for cross-platform compatibility
 function normalizeFilePath(filePath) {
     if (!filePath) return '';
@@ -905,9 +943,8 @@ function initializeCacheAllPrompt() {
 
 async function startCacheAllProcess() {
     try {
-        // Get list of patterns
-        const response = await fetch('/list_theta_rho_files');
-        const patterns = await response.json();
+        // Get list of patterns using cached function
+        const patterns = await getCachedPatternFiles();
         
         if (!patterns || patterns.length === 0) {
             throw new Error('No patterns found');

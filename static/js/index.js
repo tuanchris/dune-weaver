@@ -647,8 +647,7 @@ async function loadPatterns(forceRefresh = false) {
         
         // First load basic patterns list for fast initial display
         logMessage('Fetching basic patterns list from server', LOG_TYPE.DEBUG);
-        const basicResponse = await fetch('/list_theta_rho_files');
-        const basicPatterns = await basicResponse.json();
+        const basicPatterns = await getCachedPatternFiles();
         const thrPatterns = basicPatterns.filter(file => file.endsWith('.thr'));
         logMessage(`Received ${thrPatterns.length} basic patterns from server`, LOG_TYPE.INFO);
         
@@ -1107,7 +1106,10 @@ function setupPreviewPanelEvents(pattern) {
                 if (result.success) {
                     logMessage(`Pattern deleted successfully: ${pattern}`, LOG_TYPE.SUCCESS);
                     showStatusMessage(`Pattern "${pattern.split('/').pop()}" deleted successfully`);
-                    
+
+                    // Invalidate pattern files cache
+                    invalidatePatternFilesCache();
+
                     // Clear from in-memory caches
                     previewCache.delete(pattern);
                     imageCache.delete(pattern);
@@ -1642,11 +1644,14 @@ function setupUploadEventHandlers() {
                     const result = await response.json();
                     if (result.success) {
                         successCount++;
-                        
+
+                        // Invalidate pattern files cache to include new file
+                        invalidatePatternFilesCache();
+
                         // Clear any existing cache for this pattern to ensure fresh loading
                         const newPatternPath = `custom_patterns/${file.name}`;
                         previewCache.delete(newPatternPath);
-                        
+
                         logMessage(`Successfully uploaded: ${file.name}`, LOG_TYPE.SUCCESS);
                     } else {
                         failCount++;

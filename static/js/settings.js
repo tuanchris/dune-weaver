@@ -171,7 +171,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         fetch('/list_serial_ports').then(response => response.json()).catch(() => []),
         
         // Load available pattern files for clear pattern selection
-        fetch('/list_theta_rho_files').then(response => response.json()).catch(() => []),
+        getCachedPatternFiles().catch(() => []),
         
         // Load current custom clear patterns
         fetch('/api/custom_clear_patterns').then(response => response.json()).catch(() => ({ custom_clear_from_in: null, custom_clear_from_out: null })),
