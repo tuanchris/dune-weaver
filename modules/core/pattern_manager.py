@@ -345,7 +345,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                 else:
                     current_speed = state.speed
                     
-                move_polar(theta, rho, current_speed)
+                await move_polar(theta, rho, current_speed)
                 
                 # Update progress for all coordinates including the first one
                 pbar.update(1)
@@ -518,36 +518,49 @@ def stop_actions(clear_playlist = True):
             state.current_playing_file = None
             state.execution_progress = None
             state.is_clearing = False
-            
+
             if clear_playlist:
                 # Clear playlist state
                 state.current_playlist = None
                 state.current_playlist_index = None
                 state.playlist_mode = None
-                
+
                 # Cancel progress update task if we're clearing the playlist
                 global progress_update_task
                 if progress_update_task and not progress_update_task.done():
                     progress_update_task.cancel()
-                
+
             state.pause_condition.notify_all()
-            connection_manager.update_machine_position()
+            # Run async function in sync context
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(connection_manager.update_machine_position())
+                loop.close()
+            except Exception as update_err:
+                logger.error(f"Error updating machine position: {update_err}")
     except Exception as e:
         logger.error(f"Error during stop_actions: {e}")
         # Ensure we still update machine position even if there's an error
-        connection_manager.update_machine_position()
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(connection_manager.update_machine_position())
+            loop.close()
+        except Exception as update_err:
+            logger.error(f"Error updating machine position on error: {update_err}")
 
-def move_polar(theta, rho, speed=None):
+async def move_polar(theta, rho, speed=None):
     """
     This functions take in a pair of theta rho coordinate, compute the distance to travel based on current theta, rho,
-    and translate the motion to gcode jog command and sent to grbl. 
-    
-    Since having similar steps_per_mm will make x and y axis moves at around the same speed, we have to scale the 
+    and translate the motion to gcode jog command and sent to grbl.
+
+    Since having similar steps_per_mm will make x and y axis moves at around the same speed, we have to scale the
     x_steps_per_mm and y_steps_per_mm so that they are roughly the same. Here's the range of motion:
-    
+
     X axis (angular): 50mm = 1 revolution
     Y axis (radial): 0 => 20mm = theta 0 (center) => 1 (perimeter)
-    
+
     Args:
         theta (_type_): _description_
         rho (_type_): _description_
@@ -557,42 +570,42 @@ def move_polar(theta, rho, speed=None):
     # soft_limit_inner = 0.01
     # if rho < soft_limit_inner:
     #     rho = soft_limit_inner
-    
+
     # soft_limit_outter = 0.015
     # if rho > (1-soft_limit_outter):
     #     rho = (1-soft_limit_outter)
-    
+
     if state.table_type == 'dune_weaver_mini':
         x_scaling_factor = 2
         y_scaling_factor = 3.7
     else:
         x_scaling_factor = 2
         y_scaling_factor = 5
-    
+
     delta_theta = theta - state.current_theta
     delta_rho = rho - state.current_rho
     x_increment = delta_theta * 100 / (2 * pi * x_scaling_factor)  # Added -1 to reverse direction
     y_increment = delta_rho * 100 / y_scaling_factor
-    
+
     x_total_steps = state.x_steps_per_mm * (100/x_scaling_factor)
     y_total_steps = state.y_steps_per_mm * (100/y_scaling_factor)
-        
+
     offset = x_increment * (x_total_steps * x_scaling_factor / (state.gear_ratio * y_total_steps * y_scaling_factor))
 
     if state.table_type == 'dune_weaver_mini' or state.y_steps_per_mm == 546:
         y_increment -= offset
     else:
         y_increment += offset
-    
+
     new_x_abs = state.machine_x + x_increment
     new_y_abs = state.machine_y + y_increment
-    
+
     # Use provided speed or fall back to state.speed
     actual_speed = speed if speed is not None else state.speed
-    
+
     # dynamic_speed = compute_dynamic_speed(rho, max_speed=actual_speed)
-    
-    connection_manager.send_grbl_coordinates(round(new_x_abs, 3), round(new_y_abs,3), actual_speed)
+
+    await connection_manager.send_grbl_coordinates(round(new_x_abs, 3), round(new_y_abs,3), actual_speed)
     state.current_theta = theta
     state.current_rho = rho
     state.machine_x = new_x_abs
@@ -615,7 +628,14 @@ def resume_execution():
 def reset_theta():
     logger.info('Resetting Theta')
     state.current_theta = state.current_theta % (2 * pi)
-    connection_manager.update_machine_position()
+    # Run async function in sync context
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(connection_manager.update_machine_position())
+        loop.close()
+    except Exception as e:
+        logger.error(f"Error updating machine position in reset_theta: {e}")
 
 def set_speed(new_speed):
     state.speed = new_speed

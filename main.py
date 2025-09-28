@@ -218,11 +218,12 @@ async def broadcast_status_update(status: dict):
 
 @app.websocket("/ws/cache-progress")
 async def websocket_cache_progress_endpoint(websocket: WebSocket):
+    from modules.core.cache_manager import get_cache_progress
+
     await websocket.accept()
     active_cache_progress_connections.add(websocket)
     try:
         while True:
-            from modules.core.cache_manager import get_cache_progress
             progress = get_cache_progress()
             try:
                 await websocket.send_json({
@@ -233,7 +234,7 @@ async def websocket_cache_progress_endpoint(websocket: WebSocket):
                 if "close message has been sent" in str(e):
                     break
                 raise
-            await asyncio.sleep(0.5)  # Update every 500ms
+            await asyncio.sleep(1.0)  # Update every 1 second (reduced frequency for better performance)
     except WebSocketDisconnect:
         pass
     finally:
@@ -625,7 +626,7 @@ async def move_to_center():
 
         logger.info("Moving device to center position")
         pattern_manager.reset_theta()
-        pattern_manager.move_polar(0, 0)
+        await pattern_manager.move_polar(0, 0)
         return {"success": True}
     except Exception as e:
         logger.error(f"Failed to move to center: {str(e)}")
@@ -638,7 +639,7 @@ async def move_to_perimeter():
             logger.warning("Attempted to move to perimeter without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
         pattern_manager.reset_theta()
-        pattern_manager.move_polar(0, 1)
+        await pattern_manager.move_polar(0, 1)
         return {"success": True}
     except Exception as e:
         logger.error(f"Failed to move to perimeter: {str(e)}")
@@ -747,7 +748,7 @@ async def send_coordinate(request: CoordinateRequest):
 
     try:
         logger.debug(f"Sending coordinate: theta={request.theta}, rho={request.rho}")
-        pattern_manager.move_polar(request.theta, request.rho)
+        await pattern_manager.move_polar(request.theta, request.rho)
         return {"success": True}
     except Exception as e:
         logger.error(f"Failed to send coordinate: {str(e)}")
