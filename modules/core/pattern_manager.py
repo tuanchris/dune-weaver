@@ -11,6 +11,9 @@ from math import pi
 import asyncio
 import json
 from modules.led.led_controller import effect_playing, effect_idle
+import queue
+from dataclasses import dataclass
+from typing import Optional, Callable
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -29,11 +32,202 @@ pattern_lock = asyncio.Lock()
 # Progress update task
 progress_update_task = None
 
+# Motion Control Thread Infrastructure
+@dataclass
+class MotionCommand:
+    """Represents a motion command for the motion control thread."""
+    command_type: str  # 'move', 'stop', 'pause', 'resume', 'shutdown'
+    theta: Optional[float] = None
+    rho: Optional[float] = None
+    speed: Optional[float] = None
+    callback: Optional[Callable] = None
+    future: Optional[asyncio.Future] = None
+
+class MotionControlThread:
+    """Dedicated thread for hardware motion control operations."""
+
+    def __init__(self):
+        self.command_queue = queue.Queue()
+        self.thread = None
+        self.running = False
+        self.paused = False
+
+    def start(self):
+        """Start the motion control thread."""
+        if self.thread and self.thread.is_alive():
+            return
+
+        self.running = True
+        self.thread = threading.Thread(target=self._motion_loop, daemon=True)
+        self.thread.start()
+        logger.info("Motion control thread started")
+
+    def stop(self):
+        """Stop the motion control thread."""
+        if not self.running:
+            return
+
+        self.running = False
+        # Send shutdown command
+        self.command_queue.put(MotionCommand('shutdown'))
+
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=5.0)
+        logger.info("Motion control thread stopped")
+
+    def _motion_loop(self):
+        """Main loop for the motion control thread."""
+        logger.info("Motion control thread loop started")
+
+        while self.running:
+            try:
+                # Get command with timeout to allow periodic checks
+                command = self.command_queue.get(timeout=1.0)
+
+                if command.command_type == 'shutdown':
+                    break
+
+                elif command.command_type == 'move':
+                    self._execute_move(command)
+
+                elif command.command_type == 'pause':
+                    self.paused = True
+
+                elif command.command_type == 'resume':
+                    self.paused = False
+
+                elif command.command_type == 'stop':
+                    # Clear any pending commands
+                    while not self.command_queue.empty():
+                        try:
+                            self.command_queue.get_nowait()
+                        except queue.Empty:
+                            break
+
+                self.command_queue.task_done()
+
+            except queue.Empty:
+                # Timeout - continue loop for shutdown check
+                continue
+            except Exception as e:
+                logger.error(f"Error in motion control thread: {e}")
+
+        logger.info("Motion control thread loop ended")
+
+    def _execute_move(self, command: MotionCommand):
+        """Execute a move command in the motion thread."""
+        try:
+            # Wait if paused
+            while self.paused and self.running:
+                time.sleep(0.1)
+
+            if not self.running:
+                return
+
+            # Execute the actual motion using sync version
+            self._move_polar_sync(command.theta, command.rho, command.speed)
+
+            # Signal completion if future provided
+            if command.future and not command.future.done():
+                command.future.get_loop().call_soon_threadsafe(
+                    command.future.set_result, None
+                )
+
+        except Exception as e:
+            logger.error(f"Error executing move command: {e}")
+            if command.future and not command.future.done():
+                command.future.get_loop().call_soon_threadsafe(
+                    command.future.set_exception, e
+                )
+
+    def _move_polar_sync(self, theta: float, rho: float, speed: Optional[float] = None):
+        """Synchronous version of move_polar for use in motion thread."""
+        # This is the original sync logic but running in dedicated thread
+        if state.table_type == 'dune_weaver_mini':
+            x_scaling_factor = 2
+            y_scaling_factor = 3.7
+        else:
+            x_scaling_factor = 2
+            y_scaling_factor = 5
+
+        delta_theta = theta - state.current_theta
+        delta_rho = rho - state.current_rho
+        x_increment = delta_theta * 100 / (2 * pi * x_scaling_factor)
+        y_increment = delta_rho * 100 / y_scaling_factor
+
+        x_total_steps = state.x_steps_per_mm * (100/x_scaling_factor)
+        y_total_steps = state.y_steps_per_mm * (100/y_scaling_factor)
+
+        offset = x_increment * (x_total_steps * x_scaling_factor / (state.gear_ratio * y_total_steps * y_scaling_factor))
+
+        if state.table_type == 'dune_weaver_mini' or state.y_steps_per_mm == 546:
+            y_increment -= offset
+        else:
+            y_increment += offset
+
+        new_x_abs = state.machine_x + x_increment
+        new_y_abs = state.machine_y + y_increment
+
+        # Use provided speed or fall back to state.speed
+        actual_speed = speed if speed is not None else state.speed
+
+        # Call sync version of send_grbl_coordinates in this thread
+        self._send_grbl_coordinates_sync(round(new_x_abs, 3), round(new_y_abs, 3), actual_speed)
+
+        # Update state
+        state.current_theta = theta
+        state.current_rho = rho
+        state.machine_x = new_x_abs
+        state.machine_y = new_y_abs
+
+    def _send_grbl_coordinates_sync(self, x: float, y: float, speed: int = 600, timeout: int = 2, home: bool = False):
+        """Synchronous version of send_grbl_coordinates for motion thread."""
+        logger.debug(f"Motion thread sending G-code: X{x} Y{y} at F{speed}")
+
+        # Track overall attempt time
+        overall_start_time = time.time()
+
+        while True:
+            try:
+                gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 X{x} Y{y} F{speed}"
+                state.conn.send(gcode + "\n")
+                logger.debug(f"Motion thread sent command: {gcode}")
+
+                start_time = time.time()
+                while True:
+                    response = state.conn.readline()
+                    logger.debug(f"Motion thread response: {response}")
+                    if response.lower() == "ok":
+                        logger.debug("Motion thread: Command execution confirmed.")
+                        return
+
+            except Exception as e:
+                error_str = str(e)
+                logger.warning(f"Motion thread error sending command: {error_str}")
+
+                # Immediately return for device not configured errors
+                if "Device not configured" in error_str or "Errno 6" in error_str:
+                    logger.error(f"Motion thread: Device configuration error detected: {error_str}")
+                    state.stop_requested = True
+                    state.conn = None
+                    state.is_connected = False
+                    logger.info("Connection marked as disconnected due to device error")
+                    return False
+
+            logger.warning(f"Motion thread: No 'ok' received for X{x} Y{y}, speed {speed}. Retrying...")
+            time.sleep(0.1)
+
+# Global motion control thread instance
+motion_controller = MotionControlThread()
+
 async def cleanup_pattern_manager():
     """Clean up pattern manager resources"""
     global progress_update_task, pattern_lock, pause_event
-    
+
     try:
+        # Stop motion control thread
+        motion_controller.stop()
+
         # Cancel progress update task if running
         if progress_update_task and not progress_update_task.done():
             try:
@@ -45,7 +239,7 @@ async def cleanup_pattern_manager():
                     pass
             except Exception as e:
                 logger.error(f"Error cancelling progress update task: {e}")
-        
+
         # Clean up pattern lock
         if pattern_lock:
             try:
@@ -54,7 +248,7 @@ async def cleanup_pattern_manager():
                 pattern_lock = None
             except Exception as e:
                 logger.error(f"Error cleaning up pattern lock: {e}")
-        
+
         # Clean up pause event
         if pause_event:
             try:
@@ -62,7 +256,7 @@ async def cleanup_pattern_manager():
                 pause_event = None
             except Exception as e:
                 logger.error(f"Error cleaning up pause event: {e}")
-        
+
         # Clean up pause condition from state
         if state.pause_condition:
             try:
@@ -79,12 +273,12 @@ async def cleanup_pattern_manager():
         state.pause_requested = False
         state.stop_requested = True
         state.is_clearing = False
-        
+
         # Reset machine position
         await connection_manager.update_machine_position()
-        
+
         logger.info("Pattern manager resources cleaned up")
-        
+
     except Exception as e:
         logger.error(f"Error during pattern manager cleanup: {e}")
     finally:
@@ -543,64 +737,36 @@ async def stop_actions(clear_playlist = True):
 
 async def move_polar(theta, rho, speed=None):
     """
-    This functions take in a pair of theta rho coordinate, compute the distance to travel based on current theta, rho,
-    and translate the motion to gcode jog command and sent to grbl.
-
-    Since having similar steps_per_mm will make x and y axis moves at around the same speed, we have to scale the
-    x_steps_per_mm and y_steps_per_mm so that they are roughly the same. Here's the range of motion:
-
-    X axis (angular): 50mm = 1 revolution
-    Y axis (radial): 0 => 20mm = theta 0 (center) => 1 (perimeter)
+    Queue a motion command to be executed in the dedicated motion control thread.
+    This makes motion control non-blocking for API endpoints.
 
     Args:
-        theta (_type_): _description_
-        rho (_type_): _description_
+        theta (float): Target theta coordinate
+        rho (float): Target rho coordinate
         speed (int, optional): Speed override. If None, uses state.speed
     """
-    # Adding soft limit to reduce hardware sound
-    # soft_limit_inner = 0.01
-    # if rho < soft_limit_inner:
-    #     rho = soft_limit_inner
+    # Ensure motion control thread is running
+    if not motion_controller.running:
+        motion_controller.start()
 
-    # soft_limit_outter = 0.015
-    # if rho > (1-soft_limit_outter):
-    #     rho = (1-soft_limit_outter)
+    # Create future for async/await pattern
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
 
-    if state.table_type == 'dune_weaver_mini':
-        x_scaling_factor = 2
-        y_scaling_factor = 3.7
-    else:
-        x_scaling_factor = 2
-        y_scaling_factor = 5
+    # Create and queue motion command
+    command = MotionCommand(
+        command_type='move',
+        theta=theta,
+        rho=rho,
+        speed=speed,
+        future=future
+    )
 
-    delta_theta = theta - state.current_theta
-    delta_rho = rho - state.current_rho
-    x_increment = delta_theta * 100 / (2 * pi * x_scaling_factor)  # Added -1 to reverse direction
-    y_increment = delta_rho * 100 / y_scaling_factor
+    motion_controller.command_queue.put(command)
+    logger.debug(f"Queued motion command: theta={theta}, rho={rho}, speed={speed}")
 
-    x_total_steps = state.x_steps_per_mm * (100/x_scaling_factor)
-    y_total_steps = state.y_steps_per_mm * (100/y_scaling_factor)
-
-    offset = x_increment * (x_total_steps * x_scaling_factor / (state.gear_ratio * y_total_steps * y_scaling_factor))
-
-    if state.table_type == 'dune_weaver_mini' or state.y_steps_per_mm == 546:
-        y_increment -= offset
-    else:
-        y_increment += offset
-
-    new_x_abs = state.machine_x + x_increment
-    new_y_abs = state.machine_y + y_increment
-
-    # Use provided speed or fall back to state.speed
-    actual_speed = speed if speed is not None else state.speed
-
-    # dynamic_speed = compute_dynamic_speed(rho, max_speed=actual_speed)
-
-    await connection_manager.send_grbl_coordinates(round(new_x_abs, 3), round(new_y_abs,3), actual_speed)
-    state.current_theta = theta
-    state.current_rho = rho
-    state.machine_x = new_x_abs
-    state.machine_y = new_y_abs
+    # Wait for command completion
+    await future
     
 def pause_execution():
     """Pause pattern execution using asyncio Event."""
