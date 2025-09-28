@@ -673,13 +673,25 @@ async function loadPatterns(forceRefresh = false) {
                     metadataAbortController.abort();
                 }
                 
-                // Create new AbortController for this request
+                // Create new AbortController for this request with timeout
                 metadataAbortController = new AbortController();
-                
+
+                // Set a timeout to prevent hanging on slow Pi systems
+                const timeoutId = setTimeout(() => {
+                    metadataAbortController.abort();
+                    logMessage('Metadata loading timed out after 30 seconds', LOG_TYPE.WARNING);
+                }, 30000); // 30 second timeout
+
                 logMessage('Loading enhanced metadata...', LOG_TYPE.DEBUG);
                 const metadataResponse = await fetch('/list_theta_rho_files_with_metadata', {
-                    signal: metadataAbortController.signal
+                    signal: metadataAbortController.signal,
+                    headers: {
+                        'Cache-Control': 'no-cache'
+                    }
                 });
+
+                // Clear timeout if request succeeds
+                clearTimeout(timeoutId);
                 const patternsWithMetadata = await metadataResponse.json();
                 
                 // Store enhanced patterns data
@@ -697,11 +709,31 @@ async function loadPatterns(forceRefresh = false) {
                 metadataAbortController = null;
             } catch (metadataError) {
                 if (metadataError.name === 'AbortError') {
-                    logMessage('Metadata loading cancelled (navigating away)', LOG_TYPE.DEBUG);
+                    logMessage('Metadata loading cancelled or timed out', LOG_TYPE.WARNING);
                 } else {
                     logMessage(`Failed to load enhanced metadata: ${metadataError.message}`, LOG_TYPE.WARNING);
                 }
-                // No fallback needed - basic patterns already displayed
+
+                // Create basic metadata from file list to populate categories
+                if (allPatterns && allPatterns.length > 0) {
+                    allPatternsWithMetadata = allPatterns.map(pattern => {
+                        const pathParts = pattern.split('/');
+                        const category = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : 'root';
+                        const fileName = pathParts[pathParts.length - 1].replace('.thr', '');
+                        return {
+                            path: pattern,
+                            name: fileName,
+                            category: category,
+                            date_modified: 0,
+                            coordinates_count: 0
+                        };
+                    });
+
+                    // Update category filter with basic data
+                    updateBrowseCategoryFilter();
+                    logMessage('Using basic category data (metadata unavailable)', LOG_TYPE.INFO);
+                }
+
                 metadataAbortController = null;
             }
         }, 100); // Small delay to let initial render complete

@@ -424,17 +424,13 @@ async def list_theta_rho_files_with_metadata():
                 'coordinates_count': 0
             }
     
-    # Process files in parallel using asyncio
-    loop = asyncio.get_event_loop()
-    tasks = [loop.run_in_executor(executor, process_file, file_path) for file_path in files]
-    
-    # Instead of processing individual files, load the entire metadata cache at once
+    # Load the entire metadata cache at once (async)
     # This is much faster than 1000+ individual metadata lookups
     try:
         import json
         metadata_cache_path = "metadata_cache.json"
-        with open(metadata_cache_path, 'r') as f:
-            cache_data = json.load(f)
+        # Use async file reading to avoid blocking the event loop
+        cache_data = await asyncio.to_thread(lambda: json.load(open(metadata_cache_path, 'r')))
         cache_dict = cache_data.get('data', {})
         logger.debug(f"Loaded metadata cache with {len(cache_dict)} entries")
 
@@ -482,6 +478,10 @@ async def list_theta_rho_files_with_metadata():
     except Exception as e:
         logger.error(f"Failed to load metadata cache, falling back to slow method: {e}")
         # Fallback to original method if cache loading fails
+        # Create tasks only when needed
+        loop = asyncio.get_event_loop()
+        tasks = [loop.run_in_executor(executor, process_file, file_path) for file_path in files]
+
         for task in asyncio.as_completed(tasks):
             try:
                 result = await task
