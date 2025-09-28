@@ -1069,18 +1069,19 @@ async def preview_thr_batch(request: dict):
             exists = await asyncio.to_thread(os.path.exists, pattern_file_path)
             if not exists:
                 logger.warning(f"Pattern file not found: {pattern_file_path}")
-                results[file_name] = {"error": "Pattern file not found"}
-                continue
+                return file_name, {"error": "Pattern file not found"}
 
             cache_path = get_cache_path(normalized_file_name)
-            
-            if not os.path.exists(cache_path):
+
+            # Check cache existence asynchronously
+            cache_exists = await asyncio.to_thread(os.path.exists, cache_path)
+            if not cache_exists:
                 logger.info(f"Cache miss for {file_name}. Generating preview...")
                 success = await generate_image_preview(normalized_file_name)
-                if not success or not os.path.exists(cache_path):
+                cache_exists_after = await asyncio.to_thread(os.path.exists, cache_path)
+                if not success or not cache_exists_after:
                     logger.error(f"Failed to generate or find preview for {file_name}")
-                    results[file_name] = {"error": "Failed to generate preview"}
-                    continue
+                    return file_name, {"error": "Failed to generate preview"}
 
             metadata = get_pattern_metadata(normalized_file_name)
             if metadata:
