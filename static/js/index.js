@@ -647,7 +647,7 @@ async function loadPatterns(forceRefresh = false) {
         
         // First load basic patterns list for fast initial display
         logMessage('Fetching basic patterns list from server', LOG_TYPE.DEBUG);
-        const basicPatterns = await getCachedPatternFiles();
+        const basicPatterns = await getCachedPatternFiles(forceRefresh);
         const thrPatterns = basicPatterns.filter(file => file.endsWith('.thr'));
         logMessage(`Received ${thrPatterns.length} basic patterns from server`, LOG_TYPE.INFO);
         
@@ -1145,8 +1145,8 @@ function setupPreviewPanelEvents(pattern) {
                     document.getElementById('patternPreviewTitle').textContent = 'Pattern Details';
                     document.getElementById('firstCoordinate').textContent = '(0, 0)';
                     document.getElementById('lastCoordinate').textContent = '(0, 0)';
-                    // Refresh the pattern list (force refresh since pattern was deleted)
-                    await loadPatterns(true);
+                    // Refresh the pattern list (cache already invalidated above)
+                    await loadPatterns();
                 } else {
                     throw new Error(result.error || 'Unknown error');
                 }
@@ -1677,8 +1677,8 @@ function setupUploadEventHandlers() {
                 // Add a small delay to allow backend preview generation to complete
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 
-                // Refresh the pattern list (force refresh since new patterns were uploaded)
-                await loadPatterns(true);
+                // Refresh the pattern list (cache already invalidated above)
+                await loadPatterns();
                 
                 // Trigger preview loading for newly uploaded patterns
                 setTimeout(() => {
@@ -1720,8 +1720,8 @@ function setupUploadEventHandlers() {
                 const patternToDelete = confirmBtn.dataset.pattern;
                 if (patternToDelete) {
                     await deletePattern(patternToDelete);
-                    // Force refresh after deletion
-                    await loadPatterns(true);
+                    // Refresh after deletion (cache invalidated in deletePattern)
+                    await loadPatterns();
                 }
                 deleteModal.classList.add('hidden');
             });

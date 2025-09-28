@@ -1041,7 +1041,7 @@ async function loadAvailablePatterns(forceRefresh = false) {
     try {
         // First load basic patterns list for fast initial display
         logMessage('Fetching basic patterns list from server', LOG_TYPE.DEBUG);
-        const patterns = await getCachedPatternFiles();
+        const patterns = await getCachedPatternFiles(forceRefresh);
         const thrPatterns = patterns.filter(file => file.endsWith('.thr'));
         availablePatterns = [...thrPatterns];
         filteredPatterns = [...availablePatterns];
