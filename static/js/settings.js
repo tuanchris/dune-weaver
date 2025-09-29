@@ -1038,6 +1038,7 @@ async function initializeStillSandsMode() {
     const addTimeSlotButton = document.getElementById('addTimeSlotButton');
     const saveStillSandsButton = document.getElementById('savePauseSettings');
     const timeSlotsContainer = document.getElementById('timeSlotsContainer');
+    const wledControlToggle = document.getElementById('stillSandsWledControl');
 
     // Check if elements exist
     if (!stillSandsToggle || !stillSandsSettings || !addTimeSlotButton || !saveStillSandsButton || !timeSlotsContainer) {
@@ -1069,6 +1070,11 @@ async function initializeStillSandsMode() {
         stillSandsToggle.checked = data.enabled || false;
         if (data.enabled) {
             stillSandsSettings.style.display = 'block';
+        }
+
+        // Load WLED control setting
+        if (wledControlToggle) {
+            wledControlToggle.checked = data.control_wled || false;
         }
 
         // Load existing time slots
@@ -1280,6 +1286,7 @@ async function initializeStillSandsMode() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     enabled: stillSandsToggle.checked,
+                    control_wled: wledControlToggle ? wledControlToggle.checked : false,
                     time_slots: timeSlots.map(slot => ({
                         start_time: slot.start_time,
                         end_time: slot.end_time,
@@ -1332,4 +1339,13 @@ async function initializeStillSandsMode() {
 
     addTimeSlotButton.addEventListener('click', addTimeSlot);
     saveStillSandsButton.addEventListener('click', saveStillSandsSettings);
+
+    // Add listener for WLED control toggle
+    if (wledControlToggle) {
+        wledControlToggle.addEventListener('change', async () => {
+            logMessage(`WLED control toggle changed: ${wledControlToggle.checked}`, LOG_TYPE.INFO);
+            // Auto-save when WLED control changes
+            await saveStillSandsSettings();
+        });
+    }
 }

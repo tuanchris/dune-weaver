@@ -588,9 +588,18 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                         logger.info("Execution paused (manual)...")
                     else:
                         logger.info("Execution paused (scheduled pause period)...")
+                        # Turn off WLED if scheduled pause and control_wled is enabled
+                        if state.scheduled_pause_control_wled and state.led_controller:
+                            logger.info("Turning off WLED lights during Still Sands period")
+                            state.led_controller.set_power(0)
 
-                    if state.led_controller:
+                    # Only show idle effect if NOT in scheduled pause with WLED control
+                    # (manual pause always shows idle effect)
+                    if state.led_controller and not (scheduled_pause and state.scheduled_pause_control_wled):
                         effect_idle(state.led_controller)
+
+                    # Remember if we turned off WLED for scheduled pause
+                    wled_was_off_for_scheduled = scheduled_pause and state.scheduled_pause_control_wled and not manual_pause
 
                     # Wait until both manual pause is released AND we're outside scheduled pause period
                     while state.pause_requested or is_in_scheduled_pause_period():
@@ -601,6 +610,10 @@ async def run_theta_rho_file(file_path, is_playlist=False):
 
                     logger.info("Execution resumed...")
                     if state.led_controller:
+                        # Turn WLED back on if it was turned off for scheduled pause
+                        if wled_was_off_for_scheduled:
+                            logger.info("Turning WLED lights back on as Still Sands period ended")
+                            state.led_controller.set_power(1)
                         effect_playing(state.led_controller)
 
                 # Dynamically determine the speed for each movement

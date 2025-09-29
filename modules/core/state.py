@@ -64,6 +64,7 @@ class AppState:
         # Still Sands settings
         self.scheduled_pause_enabled = False
         self.scheduled_pause_time_slots = []  # List of time slot dictionaries
+        self.scheduled_pause_control_wled = False  # Turn off WLED during pause periods
         
         self.load()
 
@@ -198,6 +199,7 @@ class AppState:
             "auto_play_shuffle": self.auto_play_shuffle,
             "scheduled_pause_enabled": self.scheduled_pause_enabled,
             "scheduled_pause_time_slots": self.scheduled_pause_time_slots,
+            "scheduled_pause_control_wled": self.scheduled_pause_control_wled,
         }
 
     def from_dict(self, data):
@@ -236,6 +238,7 @@ class AppState:
         self.auto_play_shuffle = data.get("auto_play_shuffle", False)
         self.scheduled_pause_enabled = data.get("scheduled_pause_enabled", False)
         self.scheduled_pause_time_slots = data.get("scheduled_pause_time_slots", [])
+        self.scheduled_pause_control_wled = data.get("scheduled_pause_control_wled", False)
 
     def save(self):
         """Save the current state to a JSON file."""
