@@ -8,7 +8,7 @@ services:
     volumes:
       - .:/app
       # Mount timezone file from host for Still Sands scheduling
-      - /etc/timezone:/etc/timezone:ro
+      - /etc/timezone:/etc/host-timezone:ro
     devices:
       - "/dev/ttyACM0:/dev/ttyACM0"
     privileged: true

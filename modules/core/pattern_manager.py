@@ -46,20 +46,25 @@ def _get_system_timezone():
 
     user_tz = 'UTC'  # Default fallback
 
-    # Try to read timezone from /etc/timezone (mounted from host)
+    # Try to read timezone from /etc/host-timezone (mounted from host)
     try:
-        if os.path.exists('/etc/timezone'):
+        if os.path.exists('/etc/host-timezone'):
+            with open('/etc/host-timezone', 'r') as f:
+                user_tz = f.read().strip()
+                logger.info(f"Still Sands using timezone: {user_tz} (from host system)")
+        # Fallback to /etc/timezone if host-timezone doesn't exist
+        elif os.path.exists('/etc/timezone'):
             with open('/etc/timezone', 'r') as f:
                 user_tz = f.read().strip()
-                logger.info(f"Still Sands using timezone: {user_tz} (from system)")
-        # Fallback to TZ environment variable if /etc/timezone doesn't exist
+                logger.info(f"Still Sands using timezone: {user_tz} (from container)")
+        # Fallback to TZ environment variable
         elif os.environ.get('TZ'):
             user_tz = os.environ.get('TZ')
             logger.info(f"Still Sands using timezone: {user_tz} (from environment)")
         else:
             logger.info("Still Sands using timezone: UTC (default)")
     except Exception as e:
-        logger.debug(f"Could not read /etc/timezone: {e}")
+        logger.debug(f"Could not read timezone: {e}")
 
     # Cache the timezone
     _cached_timezone = user_tz
