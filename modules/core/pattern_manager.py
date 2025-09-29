@@ -1,4 +1,5 @@
 import os
+from zoneinfo import ZoneInfo
 import threading
 import time
 import random
@@ -32,12 +33,62 @@ pattern_lock = asyncio.Lock()
 # Progress update task
 progress_update_task = None
 
+# Cache timezone at module level - read once per session
+_cached_timezone = None
+_cached_zoneinfo = None
+
+def _get_system_timezone():
+    """Get and cache the system timezone. Called once per session."""
+    global _cached_timezone, _cached_zoneinfo
+
+    if _cached_timezone is not None:
+        return _cached_zoneinfo
+
+    user_tz = 'UTC'  # Default fallback
+
+    # Try to read timezone from /etc/timezone (mounted from host)
+    try:
+        if os.path.exists('/etc/timezone'):
+            with open('/etc/timezone', 'r') as f:
+                user_tz = f.read().strip()
+                logger.info(f"Still Sands using timezone: {user_tz} (from system)")
+        # Fallback to TZ environment variable if /etc/timezone doesn't exist
+        elif os.environ.get('TZ'):
+            user_tz = os.environ.get('TZ')
+            logger.info(f"Still Sands using timezone: {user_tz} (from environment)")
+        else:
+            logger.info("Still Sands using timezone: UTC (default)")
+    except Exception as e:
+        logger.debug(f"Could not read /etc/timezone: {e}")
+
+    # Cache the timezone
+    _cached_timezone = user_tz
+    try:
+        _cached_zoneinfo = ZoneInfo(user_tz)
+    except Exception as e:
+        logger.warning(f"Invalid timezone '{user_tz}', falling back to system time: {e}")
+        _cached_zoneinfo = None
+
+    return _cached_zoneinfo
+
 def is_in_scheduled_pause_period():
     """Check if current time falls within any scheduled pause period."""
     if not state.scheduled_pause_enabled or not state.scheduled_pause_time_slots:
         return False
 
-    now = datetime.now()
+    # Get cached timezone
+    tz_info = _get_system_timezone()
+
+    try:
+        # Get current time in user's timezone
+        if tz_info:
+            now = datetime.now(tz_info)
+        else:
+            now = datetime.now()
+    except Exception as e:
+        logger.warning(f"Error getting current time: {e}")
+        now = datetime.now()
+
     current_time = now.time()
     current_weekday = now.strftime("%A").lower()  # monday, tuesday, etc.
 

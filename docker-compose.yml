@@ -7,8 +7,7 @@ services:
       - "8080:8080" # Map port 8080 of the container to 8080 of the host (access via http://localhost:8080)
     volumes:
       - .:/app
-      # Automatically inherit timezone from host system (works on Linux/Pi)
-      - /etc/localtime:/etc/localtime:ro
+      # Mount timezone file from host for Still Sands scheduling
       - /etc/timezone:/etc/timezone:ro
     devices:
       - "/dev/ttyACM0:/dev/ttyACM0"
