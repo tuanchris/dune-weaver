@@ -1,4 +1,5 @@
 import os
+from zoneinfo import ZoneInfo
 import threading
 import time
 import random
@@ -32,12 +33,67 @@ pattern_lock = asyncio.Lock()
 # Progress update task
 progress_update_task = None
 
+# Cache timezone at module level - read once per session
+_cached_timezone = None
+_cached_zoneinfo = None
+
+def _get_system_timezone():
+    """Get and cache the system timezone. Called once per session."""
+    global _cached_timezone, _cached_zoneinfo
+
+    if _cached_timezone is not None:
+        return _cached_zoneinfo
+
+    user_tz = 'UTC'  # Default fallback
+
+    # Try to read timezone from /etc/host-timezone (mounted from host)
+    try:
+        if os.path.exists('/etc/host-timezone'):
+            with open('/etc/host-timezone', 'r') as f:
+                user_tz = f.read().strip()
+                logger.info(f"Still Sands using timezone: {user_tz} (from host system)")
+        # Fallback to /etc/timezone if host-timezone doesn't exist
+        elif os.path.exists('/etc/timezone'):
+            with open('/etc/timezone', 'r') as f:
+                user_tz = f.read().strip()
+                logger.info(f"Still Sands using timezone: {user_tz} (from container)")
+        # Fallback to TZ environment variable
+        elif os.environ.get('TZ'):
+            user_tz = os.environ.get('TZ')
+            logger.info(f"Still Sands using timezone: {user_tz} (from environment)")
+        else:
+            logger.info("Still Sands using timezone: UTC (default)")
+    except Exception as e:
+        logger.debug(f"Could not read timezone: {e}")
+
+    # Cache the timezone
+    _cached_timezone = user_tz
+    try:
+        _cached_zoneinfo = ZoneInfo(user_tz)
+    except Exception as e:
+        logger.warning(f"Invalid timezone '{user_tz}', falling back to system time: {e}")
+        _cached_zoneinfo = None
+
+    return _cached_zoneinfo
+
 def is_in_scheduled_pause_period():
     """Check if current time falls within any scheduled pause period."""
     if not state.scheduled_pause_enabled or not state.scheduled_pause_time_slots:
         return False
 
-    now = datetime.now()
+    # Get cached timezone
+    tz_info = _get_system_timezone()
+
+    try:
+        # Get current time in user's timezone
+        if tz_info:
+            now = datetime.now(tz_info)
+        else:
+            now = datetime.now()
+    except Exception as e:
+        logger.warning(f"Error getting current time: {e}")
+        now = datetime.now()
+
     current_time = now.time()
     current_weekday = now.strftime("%A").lower()  # monday, tuesday, etc.
 
@@ -588,9 +644,18 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                         logger.info("Execution paused (manual)...")
                     else:
                         logger.info("Execution paused (scheduled pause period)...")
+                        # Turn off WLED if scheduled pause and control_wled is enabled
+                        if state.scheduled_pause_control_wled and state.led_controller:
+                            logger.info("Turning off WLED lights during Still Sands period")
+                            state.led_controller.set_power(0)
 
-                    if state.led_controller:
+                    # Only show idle effect if NOT in scheduled pause with WLED control
+                    # (manual pause always shows idle effect)
+                    if state.led_controller and not (scheduled_pause and state.scheduled_pause_control_wled):
                         effect_idle(state.led_controller)
+
+                    # Remember if we turned off WLED for scheduled pause
+                    wled_was_off_for_scheduled = scheduled_pause and state.scheduled_pause_control_wled and not manual_pause
 
                     # Wait until both manual pause is released AND we're outside scheduled pause period
                     while state.pause_requested or is_in_scheduled_pause_period():
@@ -601,6 +666,10 @@ async def run_theta_rho_file(file_path, is_playlist=False):
 
                     logger.info("Execution resumed...")
                     if state.led_controller:
+                        # Turn WLED back on if it was turned off for scheduled pause
+                        if wled_was_off_for_scheduled:
+                            logger.info("Turning WLED lights back on as Still Sands period ended")
+                            state.led_controller.set_power(1)
                         effect_playing(state.led_controller)
 
                 # Dynamically determine the speed for each movement

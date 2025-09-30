@@ -1038,6 +1038,7 @@ async function initializeStillSandsMode() {
     const addTimeSlotButton = document.getElementById('addTimeSlotButton');
     const saveStillSandsButton = document.getElementById('savePauseSettings');
     const timeSlotsContainer = document.getElementById('timeSlotsContainer');
+    const wledControlToggle = document.getElementById('stillSandsWledControl');
 
     // Check if elements exist
     if (!stillSandsToggle || !stillSandsSettings || !addTimeSlotButton || !saveStillSandsButton || !timeSlotsContainer) {
@@ -1071,8 +1072,22 @@ async function initializeStillSandsMode() {
             stillSandsSettings.style.display = 'block';
         }
 
+        // Load WLED control setting
+        if (wledControlToggle) {
+            wledControlToggle.checked = data.control_wled || false;
+        }
+
         // Load existing time slots
         timeSlots = data.time_slots || [];
+
+        // Assign IDs to loaded slots BEFORE rendering
+        if (timeSlots.length > 0) {
+            slotIdCounter = 0;
+            timeSlots.forEach(slot => {
+                slot.id = ++slotIdCounter;
+            });
+        }
+
         renderTimeSlots();
     } catch (error) {
         logMessage(`Error loading Still Sands settings: ${error.message}`, LOG_TYPE.ERROR);
@@ -1274,12 +1289,18 @@ async function initializeStillSandsMode() {
             return;
         }
 
+        // Update button UI to show loading state
+        const originalButtonHTML = saveStillSandsButton.innerHTML;
+        saveStillSandsButton.disabled = true;
+        saveStillSandsButton.innerHTML = '<span class="material-icons text-lg animate-spin">refresh</span><span class="truncate">Saving...</span>';
+
         try {
             const response = await fetch('/api/scheduled-pause', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     enabled: stillSandsToggle.checked,
+                    control_wled: wledControlToggle ? wledControlToggle.checked : false,
                     time_slots: timeSlots.map(slot => ({
                         start_time: slot.start_time,
                         end_time: slot.end_time,
@@ -1294,24 +1315,26 @@ async function initializeStillSandsMode() {
                 throw new Error(errorData.detail || 'Failed to save Still Sands settings');
             }
 
+            // Show success state temporarily
+            saveStillSandsButton.innerHTML = '<span class="material-icons text-lg">check</span><span class="truncate">Saved!</span>';
             showStatusMessage('Still Sands settings saved successfully', 'success');
+
+            // Restore button after 2 seconds
+            setTimeout(() => {
+                saveStillSandsButton.innerHTML = originalButtonHTML;
+                saveStillSandsButton.disabled = false;
+            }, 2000);
         } catch (error) {
             logMessage(`Error saving Still Sands settings: ${error.message}`, LOG_TYPE.ERROR);
             showStatusMessage(`Failed to save settings: ${error.message}`, 'error');
+
+            // Restore button immediately on error
+            saveStillSandsButton.innerHTML = originalButtonHTML;
+            saveStillSandsButton.disabled = false;
         }
     }
 
-    // Initialize slot ID counter
-    if (timeSlots.length > 0) {
-        slotIdCounter = Math.max(...timeSlots.map(slot => slot.id || 0));
-    }
-
-    // Assign IDs to existing slots if they don't have them
-    timeSlots.forEach(slot => {
-        if (!slot.id) {
-            slot.id = ++slotIdCounter;
-        }
-    });
+    // Note: Slot IDs are now assigned during initialization above, before first render
 
     // Event listeners
     stillSandsToggle.addEventListener('change', async () => {
@@ -1332,4 +1355,13 @@ async function initializeStillSandsMode() {
 
     addTimeSlotButton.addEventListener('click', addTimeSlot);
     saveStillSandsButton.addEventListener('click', saveStillSandsSettings);
+
+    // Add listener for WLED control toggle
+    if (wledControlToggle) {
+        wledControlToggle.addEventListener('change', async () => {
+            logMessage(`WLED control toggle changed: ${wledControlToggle.checked}`, LOG_TYPE.INFO);
+            // Auto-save when WLED control changes
+            await saveStillSandsSettings();
+        });
+    }
 }

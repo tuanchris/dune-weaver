@@ -178,6 +178,20 @@ input:checked + .slider:before {
   background-color: #0c7ff2;
 }
 
+/* Spin animation for loading states */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
 /* Time slot specific styles */
 .time-slot-item {
   background-color: #f8fafc;
@@ -617,6 +631,25 @@ input:checked + .slider:before {
       </div>
 
       <div id="scheduledPauseSettings" class="space-y-4" style="display: none;">
+        <!-- WLED Control Option -->
+        <div class="bg-amber-50 rounded-lg p-4 border border-amber-200">
+          <div class="flex items-center justify-between">
+            <div class="flex-1">
+              <h4 class="text-slate-800 text-sm font-medium flex items-center gap-2">
+                <span class="material-icons text-amber-600 text-base">lightbulb</span>
+                Control WLED Lights
+              </h4>
+              <p class="text-xs text-slate-600 mt-1">
+                Turn off WLED lights during still periods for complete rest
+              </p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="stillSandsWledControl">
+              <span class="slider round"></span>
+            </label>
+          </div>
+        </div>
+
         <div class="bg-slate-50 rounded-lg p-4 space-y-4">
           <div class="flex items-center justify-between">
             <h4 class="text-slate-800 text-base font-semibold">Still Periods</h4>

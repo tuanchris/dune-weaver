@@ -1,12 +1,14 @@
 services:
   dune-weaver:
-    build: . # Uncomment this if you need to build 
+    build: . # Uncomment this if you need to build
     image: ghcr.io/tuanchris/dune-weaver:main # Use latest production image
     restart: always
     ports:
       - "8080:8080" # Map port 8080 of the container to 8080 of the host (access via http://localhost:8080)
     volumes:
       - .:/app
+      # Mount timezone file from host for Still Sands scheduling
+      - /etc/timezone:/etc/host-timezone:ro
     devices:
       - "/dev/ttyACM0:/dev/ttyACM0"
     privileged: true
