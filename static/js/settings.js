@@ -1079,6 +1079,15 @@ async function initializeStillSandsMode() {
 
         // Load existing time slots
         timeSlots = data.time_slots || [];
+
+        // Assign IDs to loaded slots BEFORE rendering
+        if (timeSlots.length > 0) {
+            slotIdCounter = 0;
+            timeSlots.forEach(slot => {
+                slot.id = ++slotIdCounter;
+            });
+        }
+
         renderTimeSlots();
     } catch (error) {
         logMessage(`Error loading Still Sands settings: ${error.message}`, LOG_TYPE.ERROR);
@@ -1308,17 +1317,7 @@ async function initializeStillSandsMode() {
         }
     }
 
-    // Initialize slot ID counter
-    if (timeSlots.length > 0) {
-        slotIdCounter = Math.max(...timeSlots.map(slot => slot.id || 0));
-    }
-
-    // Assign IDs to existing slots if they don't have them
-    timeSlots.forEach(slot => {
-        if (!slot.id) {
-            slot.id = ++slotIdCounter;
-        }
-    });
+    // Note: Slot IDs are now assigned during initialization above, before first render
 
     // Event listeners
     stillSandsToggle.addEventListener('change', async () => {
