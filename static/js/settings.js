@@ -1289,6 +1289,11 @@ async function initializeStillSandsMode() {
             return;
         }
 
+        // Update button UI to show loading state
+        const originalButtonHTML = saveStillSandsButton.innerHTML;
+        saveStillSandsButton.disabled = true;
+        saveStillSandsButton.innerHTML = '<span class="material-icons text-lg animate-spin">refresh</span><span class="truncate">Saving...</span>';
+
         try {
             const response = await fetch('/api/scheduled-pause', {
                 method: 'POST',
@@ -1310,10 +1315,22 @@ async function initializeStillSandsMode() {
                 throw new Error(errorData.detail || 'Failed to save Still Sands settings');
             }
 
+            // Show success state temporarily
+            saveStillSandsButton.innerHTML = '<span class="material-icons text-lg">check</span><span class="truncate">Saved!</span>';
             showStatusMessage('Still Sands settings saved successfully', 'success');
+
+            // Restore button after 2 seconds
+            setTimeout(() => {
+                saveStillSandsButton.innerHTML = originalButtonHTML;
+                saveStillSandsButton.disabled = false;
+            }, 2000);
         } catch (error) {
             logMessage(`Error saving Still Sands settings: ${error.message}`, LOG_TYPE.ERROR);
             showStatusMessage(`Failed to save settings: ${error.message}`, 'error');
+
+            // Restore button immediately on error
+            saveStillSandsButton.innerHTML = originalButtonHTML;
+            saveStillSandsButton.disabled = false;
         }
     }
 

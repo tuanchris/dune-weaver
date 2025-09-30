@@ -178,6 +178,20 @@ input:checked + .slider:before {
   background-color: #0c7ff2;
 }
 
+/* Spin animation for loading states */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
 /* Time slot specific styles */
 .time-slot-item {
   background-color: #f8fafc;
