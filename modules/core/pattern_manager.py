@@ -621,9 +621,9 @@ async def run_theta_rho_file(file_path, is_playlist=False):
             logger.info(f"Running normal pattern at initial speed {state.speed}")
 
         state.execution_progress = (0, total_coordinates, None, 0)
-        
-        # stop actions without resetting the playlist
-        await stop_actions(clear_playlist=False)
+
+        # stop actions without resetting the playlist, and don't wait for lock (we already have it)
+        await stop_actions(clear_playlist=False, wait_for_lock=False)
 
         state.current_playing_file = file_path
         state.stop_requested = False
@@ -871,8 +871,14 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
         
         logger.info("All requested patterns completed (or stopped) and state cleared")
 
-async def stop_actions(clear_playlist = True):
-    """Stop all current actions and wait for pattern to fully release."""
+async def stop_actions(clear_playlist = True, wait_for_lock = True):
+    """Stop all current actions and wait for pattern to fully release.
+
+    Args:
+        clear_playlist: Whether to clear playlist state
+        wait_for_lock: Whether to wait for pattern_lock to be released. Set to False when
+                      called from within pattern execution to avoid deadlock.
+    """
     try:
         with state.pause_condition:
             state.pause_requested = False
@@ -896,7 +902,8 @@ async def stop_actions(clear_playlist = True):
 
         # Wait for the pattern lock to be released before continuing
         # This ensures that when stop_actions completes, the pattern has fully stopped
-        if pattern_lock.locked():
+        # Skip this if called from within pattern execution to avoid deadlock
+        if wait_for_lock and pattern_lock.locked():
             logger.info("Waiting for pattern to fully stop...")
             # Acquire and immediately release the lock to ensure the pattern has exited
             async with pattern_lock:
