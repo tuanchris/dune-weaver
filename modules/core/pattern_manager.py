@@ -432,36 +432,62 @@ def parse_theta_rho_file(file_path):
         logger.debug(f"Parsed {len(coordinates)} coordinates from {file_path}")
     return coordinates
 
-def get_first_rho_from_cache(file_path):
-    """Get the first rho value from cached metadata, falling back to file parsing if needed."""
+def get_first_rho_from_cache(file_path, cache_data=None):
+    """Get the first rho value from cached metadata, falling back to file parsing if needed.
+
+    Args:
+        file_path: Path to the pattern file
+        cache_data: Optional pre-loaded cache data dict to avoid repeated disk I/O
+    """
     try:
         # Import cache_manager locally to avoid circular import
         from modules.core import cache_manager
-        
+
         # Try to get from metadata cache first
-        file_name = os.path.basename(file_path)
-        metadata = cache_manager.get_pattern_metadata(file_name)
-        
-        if metadata and 'first_coordinate' in metadata:
-            # In the cache, 'x' is theta and 'y' is rho
-            return metadata['first_coordinate']['y']
-        
+        # Use relative path from THETA_RHO_DIR to match cache keys (which include subdirectories)
+        file_name = os.path.relpath(file_path, THETA_RHO_DIR)
+
+        # Use provided cache_data if available, otherwise load from disk
+        if cache_data is not None:
+            # Extract metadata directly from provided cache
+            data_section = cache_data.get('data', {})
+            if file_name in data_section:
+                cached_entry = data_section[file_name]
+                metadata = cached_entry.get('metadata')
+                # When cache_data is provided, trust it without checking mtime
+                # This significantly speeds up bulk operations (playlists with 1000+ patterns)
+                # by avoiding 1000+ os.path.getmtime() calls on slow storage (e.g., Pi SD cards)
+                if metadata and 'first_coordinate' in metadata:
+                    return metadata['first_coordinate']['y']
+        else:
+            # Fall back to loading cache from disk (original behavior)
+            metadata = cache_manager.get_pattern_metadata(file_name)
+            if metadata and 'first_coordinate' in metadata:
+                # In the cache, 'x' is theta and 'y' is rho
+                return metadata['first_coordinate']['y']
+
         # Fallback to parsing the file if not in cache
         logger.debug(f"Metadata not cached for {file_name}, parsing file")
         coordinates = parse_theta_rho_file(file_path)
         if coordinates:
             return coordinates[0][1]  # Return rho value
-        
+
         return None
     except Exception as e:
         logger.warning(f"Error getting first rho from cache for {file_path}: {str(e)}")
         return None
 
-def get_clear_pattern_file(clear_pattern_mode, path=None):
-    """Return a .thr file path based on pattern_name and table type."""
+def get_clear_pattern_file(clear_pattern_mode, path=None, cache_data=None):
+    """Return a .thr file path based on pattern_name and table type.
+
+    Args:
+        clear_pattern_mode: The clear pattern mode to use
+        path: Optional path to the pattern file for adaptive mode
+        cache_data: Optional pre-loaded cache data dict to avoid repeated disk I/O
+    """
     if not clear_pattern_mode or clear_pattern_mode == 'none':
         return
-    
+
     # Define patterns for each table type
     clear_patterns = {
         'dune_weaver': {
@@ -482,16 +508,16 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
             'clear_sideway': './patterns/clear_sideway_pro.thr'
         }
     }
-    
+
     # Get patterns for current table type, fallback to standard patterns if type not found
     table_patterns = clear_patterns.get(state.table_type, clear_patterns['dune_weaver'])
-    
+
     # Check for custom patterns first
     if state.custom_clear_from_out and clear_pattern_mode in ['clear_from_out', 'adaptive']:
         if clear_pattern_mode == 'adaptive':
             # For adaptive mode, use cached metadata to check first rho
             if path:
-                first_rho = get_first_rho_from_cache(path)
+                first_rho = get_first_rho_from_cache(path, cache_data)
                 if first_rho is not None and first_rho < 0.5:
                     # Use custom clear_from_out if set
                     custom_path = os.path.join('./patterns', state.custom_clear_from_out)
@@ -503,12 +529,12 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
             if os.path.exists(custom_path):
                 logger.debug(f"Using custom clear_from_out: {custom_path}")
                 return custom_path
-    
+
     if state.custom_clear_from_in and clear_pattern_mode in ['clear_from_in', 'adaptive']:
         if clear_pattern_mode == 'adaptive':
             # For adaptive mode, use cached metadata to check first rho
             if path:
-                first_rho = get_first_rho_from_cache(path)
+                first_rho = get_first_rho_from_cache(path, cache_data)
                 if first_rho is not None and first_rho >= 0.5:
                     # Use custom clear_from_in if set
                     custom_path = os.path.join('./patterns', state.custom_clear_from_in)
@@ -520,9 +546,9 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
             if os.path.exists(custom_path):
                 logger.debug(f"Using custom clear_from_in: {custom_path}")
                 return custom_path
-    
+
     logger.debug(f"Clear pattern mode: {clear_pattern_mode} for table type: {state.table_type}")
-    
+
     if clear_pattern_mode == "random":
         return random.choice(list(table_patterns.values()))
 
@@ -530,13 +556,13 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
         if not path:
             logger.warning("No path provided for adaptive clear pattern")
             return random.choice(list(table_patterns.values()))
-            
+
         # Use cached metadata to get first rho value
-        first_rho = get_first_rho_from_cache(path)
+        first_rho = get_first_rho_from_cache(path, cache_data)
         if first_rho is None:
             logger.warning("Could not determine first rho value for adaptive clear pattern")
             return random.choice(list(table_patterns.values()))
-            
+
         if first_rho < 0.5:
             return table_patterns['clear_from_out']
         else:
@@ -596,9 +622,9 @@ async def run_theta_rho_file(file_path, is_playlist=False):
             logger.info(f"Running normal pattern at initial speed {state.speed}")
 
         state.execution_progress = (0, total_coordinates, None, 0)
-        
-        # stop actions without resetting the playlist
-        await stop_actions(clear_playlist=False)
+
+        # stop actions without resetting the playlist, and don't wait for lock (we already have it)
+        await stop_actions(clear_playlist=False, wait_for_lock=False)
 
         state.current_playing_file = file_path
         state.stop_requested = False
@@ -742,22 +768,25 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
         random.shuffle(file_paths)
         logger.info("Playlist shuffled")
 
-
-    if shuffle:
-        random.shuffle(file_paths)
-        logger.info("Playlist shuffled")
-
     try:
         while True:
+            # Load metadata cache once for all patterns (significant performance improvement)
+            # This avoids reading the cache file from disk for every pattern
+            cache_data = None
+            if clear_pattern and clear_pattern in ['adaptive', 'clear_from_in', 'clear_from_out']:
+                from modules.core import cache_manager
+                cache_data = cache_manager.load_metadata_cache()
+                logger.info(f"Loaded metadata cache for {len(cache_data.get('data', {}))} patterns")
+
             # Construct the complete pattern sequence
             pattern_sequence = []
             for path in file_paths:
                 # Add clear pattern if specified
                 if clear_pattern and clear_pattern != 'none':
-                    clear_file_path = get_clear_pattern_file(clear_pattern, path)
+                    clear_file_path = get_clear_pattern_file(clear_pattern, path, cache_data)
                     if clear_file_path:
                         pattern_sequence.append(clear_file_path)
-                
+
                 # Add main pattern
                 pattern_sequence.append(path)
 
@@ -843,8 +872,14 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
         
         logger.info("All requested patterns completed (or stopped) and state cleared")
 
-async def stop_actions(clear_playlist = True):
-    """Stop all current actions."""
+async def stop_actions(clear_playlist = True, wait_for_lock = True):
+    """Stop all current actions and wait for pattern to fully release.
+
+    Args:
+        clear_playlist: Whether to clear playlist state
+        wait_for_lock: Whether to wait for pattern_lock to be released. Set to False when
+                      called from within pattern execution to avoid deadlock.
+    """
     try:
         with state.pause_condition:
             state.pause_requested = False
@@ -865,8 +900,18 @@ async def stop_actions(clear_playlist = True):
                     progress_update_task.cancel()
 
             state.pause_condition.notify_all()
-            # Call async function directly since we're in async context
-            await connection_manager.update_machine_position()
+
+        # Wait for the pattern lock to be released before continuing
+        # This ensures that when stop_actions completes, the pattern has fully stopped
+        # Skip this if called from within pattern execution to avoid deadlock
+        if wait_for_lock and pattern_lock.locked():
+            logger.info("Waiting for pattern to fully stop...")
+            # Acquire and immediately release the lock to ensure the pattern has exited
+            async with pattern_lock:
+                logger.info("Pattern lock acquired - pattern has fully stopped")
+
+        # Call async function directly since we're in async context
+        await connection_manager.update_machine_position()
     except Exception as e:
         logger.error(f"Error during stop_actions: {e}")
         # Ensure we still update machine position even if there's an error
