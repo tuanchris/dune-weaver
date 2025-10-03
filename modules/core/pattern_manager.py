@@ -444,7 +444,8 @@ def get_first_rho_from_cache(file_path, cache_data=None):
         from modules.core import cache_manager
 
         # Try to get from metadata cache first
-        file_name = os.path.basename(file_path)
+        # Use relative path from THETA_RHO_DIR to match cache keys (which include subdirectories)
+        file_name = os.path.relpath(file_path, THETA_RHO_DIR)
 
         # Use provided cache_data if available, otherwise load from disk
         if cache_data is not None:
