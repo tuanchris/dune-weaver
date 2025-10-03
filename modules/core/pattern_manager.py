@@ -452,15 +452,12 @@ def get_first_rho_from_cache(file_path, cache_data=None):
             data_section = cache_data.get('data', {})
             if file_name in data_section:
                 cached_entry = data_section[file_name]
-                pattern_path = os.path.normpath(file_path)
-                try:
-                    file_mtime = os.path.getmtime(pattern_path)
-                    if cached_entry.get('mtime') == file_mtime:
-                        metadata = cached_entry.get('metadata')
-                        if metadata and 'first_coordinate' in metadata:
-                            return metadata['first_coordinate']['y']
-                except OSError:
-                    pass
+                metadata = cached_entry.get('metadata')
+                # When cache_data is provided, trust it without checking mtime
+                # This significantly speeds up bulk operations (playlists with 1000+ patterns)
+                # by avoiding 1000+ os.path.getmtime() calls on slow storage (e.g., Pi SD cards)
+                if metadata and 'first_coordinate' in metadata:
+                    return metadata['first_coordinate']['y']
         else:
             # Fall back to loading cache from disk (original behavior)
             metadata = cache_manager.get_pattern_metadata(file_name)
