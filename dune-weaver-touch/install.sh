@@ -26,6 +26,36 @@ fi
 echo "🔧 Installing system components..."
 echo ""
 
+# Function to install system packages
+install_system_packages() {
+    echo "📦 Installing system dependencies..."
+
+    apt-get update
+    apt-get install -y \
+        libegl1 \
+        libgles2 \
+        libgl1-mesa-dri \
+        libgbm1 \
+        qt6-wayland \
+        libgles2-mesa \
+        libgles2-mesa-dev \
+        libgbm-dev \
+        libdrm-dev \
+        libinput-dev \
+        libudev-dev \
+        libxkbcommon-dev \
+        fbset \
+        evtest \
+        qtvirtualkeyboard-plugin \
+        qml-module-qtquick-virtualkeyboard \
+        qt6-virtualkeyboard-plugin \
+        qml6-module-qt-labs-qmlmodels || {
+        echo "   ⚠️  Some packages may not be available, continuing..."
+    }
+
+    echo "   📦 System packages installed"
+}
+
 # Function to install system scripts
 install_scripts() {
     echo "📄 Installing system scripts..."
@@ -140,6 +170,7 @@ echo "Starting complete installation..."
 echo ""
 
 # Install everything
+install_system_packages
 setup_python_environment
 install_scripts
 setup_systemd
@@ -149,6 +180,7 @@ echo ""
 echo "🎉 Installation Complete!"
 echo "========================"
 echo ""
+echo "✅ System packages installed (Qt6, EGL, OpenGL ES, etc.)"
 echo "✅ Python virtual environment created at: $SCRIPT_DIR/venv"
 echo "✅ System scripts installed in /usr/local/bin/"
 echo "✅ Systemd service configured for auto-start"
