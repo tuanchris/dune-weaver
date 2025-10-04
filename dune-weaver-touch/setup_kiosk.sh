@@ -122,9 +122,14 @@ EOF
 # Function to install dependencies
 install_dependencies() {
     echo -e "${GREEN}Installing required dependencies...${NC}"
-    
+
     sudo apt-get update
     sudo apt-get install -y \
+        libegl1 \
+        libgles2 \
+        libgl1-mesa-dri \
+        libgbm1 \
+        qt6-wayland \
         libgles2-mesa \
         libgles2-mesa-dev \
         libgbm-dev \
@@ -140,7 +145,7 @@ install_dependencies() {
         qml6-module-qt-labs-qmlmodels || {
         echo -e "${YELLOW}Some packages may not be available, continuing...${NC}"
     }
-    
+
     echo -e "${GREEN}Dependencies installed${NC}"
 }
 
