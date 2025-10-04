@@ -1,0 +1,37 @@
+# /usr/local/bin/screen-off
+#!/usr/bin/env bash
+set -e
+BL="/sys/class/backlight/$(ls /sys/class/backlight | head -n1)"
+if [ -e "$BL/bl_power" ]; then echo 4 | sudo tee "$BL/bl_power"; else echo 0 | sudo tee "$BL/brightness"; fi
+echo 1 | sudo tee /sys/class/graphics/fb0/blank >/dev/null
+tuannguyen@dune-weaver-test:~ $ cat /usr/local/bin/touch-monitor
+#!/usr/bin/env bash
+# Monitor touch events and wake screen when detected
+
+# Find touch input device
+TOUCH_DEV=""
+for dev in /dev/input/event*; do
+    if udevadm info --query=all --name=$dev 2>/dev/null | grep -q -i "touch\|ft5406"; then
+        TOUCH_DEV=$dev
+        break
+    fi
+done
+
+if [ -z "$TOUCH_DEV" ]; then
+    # Fallback to first event device
+    TOUCH_DEV="/dev/input/event0"
+fi
+
+echo "Monitoring touch device: $TOUCH_DEV"
+
+# Monitor for any input
+while true; do
+    # Use timeout to read one event (16 bytes)
+    if timeout 0.1 cat "$TOUCH_DEV" 2>/dev/null | head -c 16 > /dev/null; then
+        echo "Touch detected - waking screen"
+        /usr/local/bin/screen-on
+        # Exit so the main app can take over
+        exit 0
+    fi
+    sleep 0.1
+done

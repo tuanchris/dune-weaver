@@ -1,0 +1,6 @@
+# /usr/local/bin/screen-off
+#!/usr/bin/env bash
+set -e
+BL="/sys/class/backlight/$(ls /sys/class/backlight | head -n1)"
+if [ -e "$BL/bl_power" ]; then echo 4 | sudo tee "$BL/bl_power"; else echo 0 | sudo tee "$BL/brightness"; fi
+echo 1 | sudo tee /sys/class/graphics/fb0/blank >/dev/null
