@@ -3,7 +3,7 @@ import os
 import asyncio
 import logging
 from pathlib import Path
-from PySide6.QtCore import QUrl, QTimer
+from PySide6.QtCore import QUrl, QTimer, QObject, QEvent
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterType
 from qasync import QEventLoop
@@ -20,10 +20,39 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+class ActivityEventFilter(QObject):
+    """Event filter to track user activity for screen timeout (linuxfb compatible)"""
+
+    def __init__(self, backend):
+        super().__init__()
+        self.backend = backend
+        self.activity_events = {
+            QEvent.MouseButtonPress,
+            QEvent.MouseButtonRelease,
+            QEvent.MouseMove,
+            QEvent.TouchBegin,
+            QEvent.TouchUpdate,
+            QEvent.TouchEnd,
+            QEvent.KeyPress,
+            QEvent.KeyRelease
+        }
+
+    def eventFilter(self, obj, event):
+        """Filter events and reset activity timer on user interaction"""
+        if event.type() in self.activity_events:
+            # Call backend to reset activity timer
+            try:
+                self.backend.resetActivityTimer()
+            except Exception as e:
+                logger.error(f"Failed to reset activity timer: {e}")
+
+        # Always return False to let event propagate normally
+        return False
+
 async def startup_tasks():
     """Run async startup tasks"""
     logger.info("🚀 Starting dune-weaver-touch async initialization...")
-    
+
     # Ensure PNG cache is available for all WebP previews
     try:
         logger.info("🎨 Checking PNG preview cache...")
@@ -34,7 +63,7 @@ async def startup_tasks():
             logger.warning("⚠️ PNG cache check completed with warnings")
     except Exception as e:
         logger.error(f"❌ PNG cache check failed: {e}")
-    
+
     logger.info("✨ dune-weaver-touch startup tasks completed")
 
 def main():
@@ -63,9 +92,19 @@ def main():
     engine = QQmlApplicationEngine()
     qml_file = Path(__file__).parent / "qml" / "main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_file)))
-    
+
     if not engine.rootObjects():
         return -1
+
+    # Install global event filter for activity tracking (linuxfb compatible)
+    root = engine.rootObjects()[0]
+    backend = root.property("backend")
+    if backend:
+        logger.info("📡 Installing activity event filter for screen timeout support")
+        event_filter = ActivityEventFilter(backend)
+        app.installEventFilter(event_filter)
+    else:
+        logger.warning("⚠️ Could not access backend, screen timeout may not work")
     
     # Schedule startup tasks after a brief delay to ensure event loop is running
     def schedule_startup():
