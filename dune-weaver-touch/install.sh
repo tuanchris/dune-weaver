@@ -37,20 +37,23 @@ install_system_packages() {
         libgl1-mesa-dri \
         libgbm1 \
         qt6-wayland \
-        libgles2-mesa \
-        libgles2-mesa-dev \
         libgbm-dev \
         libdrm-dev \
         libinput-dev \
         libudev-dev \
         libxkbcommon-dev \
         fbset \
-        evtest \
+        evtest || {
+        echo "   ⚠️  Some packages may not be available, continuing..."
+    }
+
+    # Install Qt6 virtual keyboard packages if available (optional)
+    apt-get install -y \
         qtvirtualkeyboard-plugin \
         qml-module-qtquick-virtualkeyboard \
         qt6-virtualkeyboard-plugin \
-        qml6-module-qt-labs-qmlmodels || {
-        echo "   ⚠️  Some packages may not be available, continuing..."
+        qml6-module-qt-labs-qmlmodels 2>/dev/null || {
+        echo "   ℹ️  Qt6 virtual keyboard not available on this system"
     }
 
     echo "   📦 System packages installed"
@@ -139,13 +142,18 @@ setup_python_environment() {
     # Create virtual environment if it doesn't exist
     if [ ! -d "$SCRIPT_DIR/venv" ]; then
         echo "   📦 Creating virtual environment..."
-        python3 -m venv "$SCRIPT_DIR/venv" || {
-            echo "   ⚠️  Could not create virtual environment. Installing python3-venv..."
-            apt update && apt install -y python3-venv python3-full
-            python3 -m venv "$SCRIPT_DIR/venv"
-        }
+        # Ensure python3-venv is installed first
+        apt-get install -y python3-venv python3-pip python3-full 2>/dev/null || true
+        python3 -m venv "$SCRIPT_DIR/venv" --system-site-packages
     else
         echo "   ℹ️  Virtual environment already exists"
+        # Check if venv has pip, if not recreate it
+        if [ ! -f "$SCRIPT_DIR/venv/bin/pip" ]; then
+            echo "   ⚠️  Virtual environment is broken, recreating..."
+            rm -rf "$SCRIPT_DIR/venv"
+            apt-get install -y python3-venv python3-pip python3-full 2>/dev/null || true
+            python3 -m venv "$SCRIPT_DIR/venv" --system-site-packages
+        fi
     fi
     
     # Activate virtual environment and install dependencies
