@@ -16,10 +16,10 @@ def main():
 
     if kiosk_mode:
         # Set Qt platform for fullscreen framebuffer mode
-        os.environ['QT_QPA_PLATFORM'] = 'eglfs'
-        os.environ['QT_QPA_EGLFS_WIDTH'] = '800'
-        os.environ['QT_QPA_EGLFS_HEIGHT'] = '480'
-        print("🖥️  Running in KIOSK MODE (fullscreen 800x480)")
+        # Try linuxfb instead of eglfs (software rendering, no GPU)
+        os.environ['QT_QPA_PLATFORM'] = 'linuxfb'
+        os.environ['QT_QPA_FB_DRM'] = '0'  # Disable DRM
+        print("🖥️  Running in KIOSK MODE (linuxfb - software rendering)")
     else:
         print("🪟 Running in WINDOWED MODE (development)")
         print("   Use --kiosk flag or set KIOSK_MODE=1 for fullscreen")
