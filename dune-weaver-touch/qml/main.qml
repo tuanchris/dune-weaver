@@ -42,7 +42,15 @@ ApplicationWindow {
     
     Backend {
         id: backend
-        
+
+        Component.onCompleted: {
+            // Connect backend to activity filter for screen timeout
+            if (typeof activityFilter !== 'undefined') {
+                activityFilter.set_backend(backend)
+                console.log("📡 Backend connected to activity filter")
+            }
+        }
+
         onExecutionStarted: function(patternName, patternPreview) {
             console.log("🎯 QML: ExecutionStarted signal received! patternName='" + patternName + "', preview='" + patternPreview + "'")
             console.log("🎯 Setting shouldNavigateToExecution = true")

@@ -3,7 +3,7 @@ import os
 import asyncio
 import logging
 from pathlib import Path
-from PySide6.QtCore import QUrl, QTimer, QObject, QEvent
+from PySide6.QtCore import QUrl, QTimer, QObject, QEvent, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterType
 from qasync import QEventLoop
@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 class ActivityEventFilter(QObject):
     """Event filter to track user activity for screen timeout (linuxfb compatible)"""
 
-    def __init__(self, backend):
+    def __init__(self):
         super().__init__()
-        self.backend = backend
+        self.backend = None  # Will be set after QML loads
         self.activity_events = {
             QEvent.MouseButtonPress,
             QEvent.MouseButtonRelease,
@@ -37,9 +37,15 @@ class ActivityEventFilter(QObject):
             QEvent.KeyRelease
         }
 
+    @Slot(QObject)
+    def set_backend(self, backend):
+        """Set the backend instance after QML loads"""
+        self.backend = backend
+        logger.info("📡 Backend connected to activity event filter")
+
     def eventFilter(self, obj, event):
         """Filter events and reset activity timer on user interaction"""
-        if event.type() in self.activity_events:
+        if self.backend and event.type() in self.activity_events:
             # Call backend to reset activity timer
             try:
                 self.backend.resetActivityTimer()
@@ -78,33 +84,33 @@ def main():
     os.environ['QT_IM_MODULE'] = 'qtvirtualkeyboard'
 
     app = QGuiApplication(sys.argv)
-    
+
     # Setup async event loop
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
-    
+
+    # Install global event filter for activity tracking (linuxfb compatible)
+    # Create it early so it's ready when backend is created
+    event_filter = ActivityEventFilter()
+    app.installEventFilter(event_filter)
+    logger.info("📡 Activity event filter installed")
+
     # Register types
     qmlRegisterType(Backend, "DuneWeaver", 1, 0, "Backend")
     qmlRegisterType(PatternModel, "DuneWeaver", 1, 0, "PatternModel")
     qmlRegisterType(PlaylistModel, "DuneWeaver", 1, 0, "PlaylistModel")
-    
+
     # Load QML
     engine = QQmlApplicationEngine()
+
+    # Store event filter reference so QML can access it
+    engine.rootContext().setContextProperty("activityFilter", event_filter)
+
     qml_file = Path(__file__).parent / "qml" / "main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_file)))
 
     if not engine.rootObjects():
         return -1
-
-    # Install global event filter for activity tracking (linuxfb compatible)
-    root = engine.rootObjects()[0]
-    backend = root.property("backend")
-    if backend:
-        logger.info("📡 Installing activity event filter for screen timeout support")
-        event_filter = ActivityEventFilter(backend)
-        app.installEventFilter(event_filter)
-    else:
-        logger.warning("⚠️ Could not access backend, screen timeout may not work")
     
     # Schedule startup tasks after a brief delay to ensure event loop is running
     def schedule_startup():
