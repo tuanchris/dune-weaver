@@ -21,17 +21,25 @@ Rectangle {
             width: parent.width
             height: parent.height - nameLabel.height - 10
             fillMode: Image.PreserveAspectFit
-            source: preview ? "file:///" + preview : ""
-            
+            source: preview ? "file://" + preview : ""
+            cache: false  // Disable caching for linuxfb compatibility
+            asynchronous: true  // Load images asynchronously
+
             Rectangle {
                 anchors.fill: parent
                 color: "#f0f0f0"
                 visible: previewImage.status === Image.Error || previewImage.source == ""
-                
+
                 Text {
                     anchors.centerIn: parent
                     text: "No Preview"
                     color: "#999"
+                }
+            }
+
+            onStatusChanged: {
+                if (status === Image.Error) {
+                    console.log("Image load error for:", preview)
                 }
             }
         }

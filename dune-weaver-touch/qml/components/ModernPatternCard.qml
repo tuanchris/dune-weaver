@@ -4,8 +4,8 @@ import QtQuick.Effects
 
 Rectangle {
     property string name: ""
-    property alias preview: previewImage.source
-    
+    property string preview: ""  // Changed from alias to regular property
+
     // Clean up the pattern name for display
     property string cleanName: {
         var cleanedName = name
@@ -16,21 +16,33 @@ Rectangle {
         cleanedName = cleanedName.replace('.thr', '')
         return cleanedName
     }
-    
+
     signal clicked()
+
+    // Watch for preview changes and update image source
+    onPreviewChanged: {
+        if (preview) {
+            previewImage.source = "file://" + preview
+        } else {
+            previewImage.source = ""
+        }
+    }
     
     color: "white"
     radius: 12
-    
-    // Drop shadow effect
-    layer.enabled: true
-    layer.effect: MultiEffect {
-        shadowEnabled: true
-        shadowColor: "#20000000"
-        shadowBlur: 0.8
-        shadowVerticalOffset: 2
-        shadowHorizontalOffset: 0
-    }
+    border.width: 1
+    border.color: "#e5e7eb"
+
+    // Drop shadow effect - DISABLED for linuxfb compatibility
+    // linuxfb doesn't support layer effects properly
+    // layer.enabled: true
+    // layer.effect: MultiEffect {
+    //     shadowEnabled: true
+    //     shadowColor: "#20000000"
+    //     shadowBlur: 0.8
+    //     shadowVerticalOffset: 2
+    //     shadowHorizontalOffset: 0
+    // }
     
     // Hover/press animation
     scale: mouseArea.pressed ? 0.95 : (mouseArea.containsMouse ? 1.02 : 1.0)
@@ -56,9 +68,11 @@ Rectangle {
                 id: previewImage
                 anchors.fill: parent
                 fillMode: Image.PreserveAspectFit
-                source: preview ? "file:///" + preview : ""
+                source: ""  // Set via onPreviewChanged handler
                 smooth: true
-                
+                cache: false  // Disable caching to ensure images load properly with linuxfb
+                asynchronous: true  // Load images asynchronously
+
                 // Loading animation
                 opacity: status === Image.Ready ? 1 : 0
                 Behavior on opacity {
