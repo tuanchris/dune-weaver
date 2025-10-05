@@ -198,12 +198,18 @@ ApplicationWindow {
         }
     }
     
+    // Cache progress overlay - shows when backend is generating previews
+    CacheProgressOverlay {
+        id: cacheOverlay
+        backend: backend
+    }
+
     MessageDialog {
         id: errorDialog
         title: "Error"
         buttons: MessageDialog.Ok
     }
-    
+
     // Virtual Keyboard Support
     InputPanel {
         id: inputPanel

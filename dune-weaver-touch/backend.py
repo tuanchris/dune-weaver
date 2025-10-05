@@ -69,10 +69,23 @@ class Backend(QObject):
     # Backend connection status signals
     backendConnectionChanged = Signal(bool)  # True = backend reachable, False = unreachable
     reconnectStatusChanged = Signal(str)  # Current reconnection status message
-    
+
+    # Cache generation signals
+    cacheProgressChanged = Signal(dict)  # Emits cache progress data
+
     def __init__(self):
         super().__init__()
         self.base_url = "http://localhost:8080"
+
+        # Cache progress tracking
+        self._cache_in_progress = False
+        self._cache_progress = {
+            'in_progress': False,
+            'current': 0,
+            'total': 0,
+            'current_file': '',
+            'percentage': 0
+        }
         
         # Initialize all status properties first
         self._current_file = ""
@@ -129,6 +142,11 @@ class Backend(QObject):
         # Start initial WebSocket connection (after all attributes are initialized)
         # Use QTimer to ensure it happens after constructor completes
         QTimer.singleShot(200, self._attempt_ws_reconnect)
+
+        # Start cache progress monitoring
+        self._cache_progress_timer = QTimer()
+        self._cache_progress_timer.timeout.connect(self._check_cache_progress)
+        QTimer.singleShot(1000, lambda: self._cache_progress_timer.start(2000))  # Check every 2 seconds
     
     @Slot()
     def _delayed_init(self):
@@ -197,7 +215,52 @@ class Backend(QObject):
     @Property(str, notify=reconnectStatusChanged)
     def reconnectStatus(self):
         return self._reconnect_status
-    
+
+    @Property(bool, notify=cacheProgressChanged)
+    def cacheInProgress(self):
+        return self._cache_in_progress
+
+    @Property(dict, notify=cacheProgressChanged)
+    def cacheProgress(self):
+        return self._cache_progress
+
+    # Cache progress checking
+    @Slot()
+    def _check_cache_progress(self):
+        """Poll the backend for cache generation progress"""
+        if self.session and self._backend_connected:
+            asyncio.create_task(self._fetch_cache_progress())
+
+    async def _fetch_cache_progress(self):
+        """Fetch cache progress from backend API"""
+        try:
+            async with self.session.get(f"{self.base_url}/cache-progress") as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    was_in_progress = self._cache_in_progress
+                    self._cache_in_progress = data.get('in_progress', False)
+                    self._cache_progress = {
+                        'in_progress': data.get('in_progress', False),
+                        'current': data.get('current', 0),
+                        'total': data.get('total', 0),
+                        'current_file': data.get('current_file', ''),
+                        'percentage': data.get('percentage', 0)
+                    }
+
+                    # Only emit if status changed or progress updated
+                    if was_in_progress != self._cache_in_progress or self._cache_in_progress:
+                        self.cacheProgressChanged.emit(self._cache_progress)
+
+                        # Log when cache generation starts/stops
+                        if self._cache_in_progress and not was_in_progress:
+                            print(f"🎨 Cache generation started: {self._cache_progress['total']} patterns")
+                        elif not self._cache_in_progress and was_in_progress:
+                            print(f"✅ Cache generation completed!")
+
+        except Exception as e:
+            # Silently fail - cache progress is non-critical
+            pass
+
     # WebSocket handlers
     @Slot()
     def _on_ws_connected(self):
