@@ -46,13 +46,23 @@ class ActivityEventFilter(QObject):
     def eventFilter(self, obj, event):
         """Filter events and reset activity timer on user interaction"""
         if self.backend and event.type() in self.activity_events:
-            # Call backend to reset activity timer
+            # Check if screen is currently off
             try:
+                screen_was_off = not self.backend.property("screenOn")
+
+                # Reset activity timer (will turn screen on if needed)
                 self.backend.resetActivityTimer()
+
+                # If screen was off, consume this event (don't let it through)
+                # This prevents the wake-up touch from clicking buttons
+                if screen_was_off:
+                    logger.info("🖥️ Screen wake event consumed (not passed to UI)")
+                    return True  # Consume the event
+
             except Exception as e:
                 logger.error(f"Failed to reset activity timer: {e}")
 
-        # Always return False to let event propagate normally
+        # Return False to let event propagate normally when screen is on
         return False
 
 async def startup_tasks():
