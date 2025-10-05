@@ -18,8 +18,9 @@ def main():
     if kiosk_mode:
         # Set Qt platform for fullscreen framebuffer mode
         os.environ['QT_QPA_PLATFORM'] = 'eglfs'
-        os.environ['QT_QPA_EGLFS_ALWAYS_SET_MODE'] = '1'
-        print("🖥️  Running in KIOSK MODE (fullscreen)")
+        os.environ['QT_QPA_EGLFS_WIDTH'] = '800'
+        os.environ['QT_QPA_EGLFS_HEIGHT'] = '480'
+        print("🖥️  Running in KIOSK MODE (fullscreen 800x480)")
     else:
         print("🪟 Running in WINDOWED MODE (development)")
         print("   Use --kiosk flag or set KIOSK_MODE=1 for fullscreen")

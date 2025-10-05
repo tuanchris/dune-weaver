@@ -85,22 +85,29 @@ install_scripts() {
 # Function to setup systemd service
 setup_systemd() {
     echo "🚀 Setting up systemd service..."
-    
+
     # Update paths in the service file
     sed "s|/home/pi/dune-weaver-touch|$SCRIPT_DIR|g" "$SCRIPT_DIR/dune-weaver-touch.service" > /tmp/dune-weaver-touch.service
     sed -i "s|User=pi|User=$ACTUAL_USER|g" /tmp/dune-weaver-touch.service
     sed -i "s|Group=pi|Group=$ACTUAL_USER|g" /tmp/dune-weaver-touch.service
-    
-    # Ensure the ExecStart uses the venv python
-    sed -i "s|ExecStart=.*python.*|ExecStart=$SCRIPT_DIR/venv/bin/python $SCRIPT_DIR/main.py|g" /tmp/dune-weaver-touch.service
-    
+
+    # Update all paths in the service file
+    sed -i "s|WorkingDirectory=.*|WorkingDirectory=$SCRIPT_DIR|g" /tmp/dune-weaver-touch.service
+    sed -i "s|ExecStart=.*python.*main.py|ExecStart=$SCRIPT_DIR/venv/bin/python $SCRIPT_DIR/main.py|g" /tmp/dune-weaver-touch.service
+    sed -i "s|ExecStartPre=.*|ExecStartPre=/bin/bash -c 'until curl -s http://localhost:8080/serial_status > /dev/null 2>\&1; do sleep 2; done'|g" /tmp/dune-weaver-touch.service
+
     # Copy service file
-    cp /tmp/dune-weaver-touch.service /etc/systemd/system/
-    
-    # Enable service
+    cp /tmp/dune-weaver-touch.service /etc/systemd/system/dune-weaver-touch.service
+
+    echo "   📋 Service configuration:"
+    echo "      User: $ACTUAL_USER"
+    echo "      Directory: $SCRIPT_DIR"
+    echo "      Python: $SCRIPT_DIR/venv/bin/python"
+
+    # Reload and enable service
     systemctl daemon-reload
     systemctl enable dune-weaver-touch.service
-    
+
     echo "   🚀 Systemd service installed and enabled"
 }
 
