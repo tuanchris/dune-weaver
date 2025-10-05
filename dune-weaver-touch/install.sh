@@ -31,32 +31,56 @@ install_system_packages() {
     echo "📦 Installing system dependencies..."
 
     apt-get update
+
+    # Core system packages - essential for EGLFS
+    echo "   📦 Installing core graphics libraries..."
     apt-get install -y \
         libegl1 \
         libgles2 \
+        libegl1-mesa \
         libgl1-mesa-dri \
         libgbm1 \
-        qt6-wayland \
         libgbm-dev \
+        libdrm2 \
         libdrm-dev \
+        libinput10 \
         libinput-dev \
+        libudev1 \
         libudev-dev \
+        libxkbcommon0 \
         libxkbcommon-dev \
         fbset \
-        evtest || {
-        echo "   ⚠️  Some packages may not be available, continuing..."
+        evtest \
+        curl || {
+        echo "   ⚠️  Some core packages failed to install"
     }
 
-    # Install Qt6 virtual keyboard packages if available (optional)
+    # Qt6 packages - may not all be available depending on OS version
+    echo "   📦 Installing Qt6 packages..."
     apt-get install -y \
-        qtvirtualkeyboard-plugin \
-        qml-module-qtquick-virtualkeyboard \
+        qt6-base-dev \
+        qt6-declarative-dev \
+        libqt6core6 \
+        libqt6gui6 \
+        libqt6qml6 \
+        libqt6quick6 \
+        qml6-module-qtquick \
+        qml6-module-qtquick-controls \
+        qml6-module-qtquick-layouts \
+        qml6-module-qtquick-window \
+        qt6-wayland 2>/dev/null || {
+        echo "   ⚠️  Some Qt6 packages not available (may need manual installation)"
+    }
+
+    # Qt6 virtual keyboard packages (optional)
+    echo "   📦 Installing Qt6 virtual keyboard (optional)..."
+    apt-get install -y \
         qt6-virtualkeyboard-plugin \
-        qml6-module-qt-labs-qmlmodels 2>/dev/null || {
+        qml6-module-qtquick-virtualkeyboard 2>/dev/null || {
         echo "   ℹ️  Qt6 virtual keyboard not available on this system"
     }
 
-    echo "   📦 System packages installed"
+    echo "   ✅ System packages installation complete"
 }
 
 # Function to install system scripts

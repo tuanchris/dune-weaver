@@ -3,6 +3,22 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Check if running as root/sudo - this causes EGL issues!
+if [ "$EUID" -eq 0 ]; then
+    echo "❌ ERROR: Do NOT run this script with sudo!"
+    echo ""
+    echo "   Running as root causes EGL/GPU permission issues."
+    echo "   Run as a regular user instead:"
+    echo ""
+    echo "   ./run.sh --kiosk"
+    echo ""
+    echo "   If you get permission errors, add your user to the video group:"
+    echo "   sudo usermod -a -G video \$USER"
+    echo "   newgrp video"
+    echo ""
+    exit 1
+fi
+
 # Check if virtual environment exists
 if [ ! -d "$SCRIPT_DIR/venv" ]; then
     echo "❌ Virtual environment not found!"
