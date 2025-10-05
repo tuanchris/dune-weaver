@@ -349,23 +349,7 @@ Page {
                     Image {
                         anchors.fill: parent
                         anchors.margins: 10
-                        source: {
-                            var finalSource = ""
-                            
-                            // Try different sources in priority order
-                            if (patternPreview) {
-                                finalSource = "file:///" + patternPreview
-                                console.log("🖼️ Using patternPreview:", finalSource)
-                            } else if (activeImageSource) {
-                                // Use the activeImageSource to avoid binding loops
-                                finalSource = activeImageSource
-                                console.log("🖼️ Using activeImageSource:", finalSource)
-                            } else {
-                                console.log("🖼️ No preview source available")
-                            }
-                            
-                            return finalSource
-                        }
+                        source: "" // Disabled to prevent WebP decoding errors on touch display
                         fillMode: Image.PreserveAspectFit
                         
                         onStatusChanged: {

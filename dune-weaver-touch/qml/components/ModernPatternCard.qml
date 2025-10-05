@@ -56,9 +56,9 @@ Rectangle {
                 id: previewImage
                 anchors.fill: parent
                 fillMode: Image.PreserveAspectFit
-                source: preview ? "file:///" + preview : ""
+                source: "" // Disabled to prevent WebP decoding errors on touch display
                 smooth: true
-                
+
                 // Loading animation
                 opacity: status === Image.Ready ? 1 : 0
                 Behavior on opacity {
