@@ -12,9 +12,21 @@ from models.pattern_model import PatternModel
 from models.playlist_model import PlaylistModel
 
 def main():
+    # Check for kiosk mode flag
+    kiosk_mode = '--kiosk' in sys.argv or os.environ.get('KIOSK_MODE', '0') == '1'
+
+    if kiosk_mode:
+        # Set Qt platform for fullscreen framebuffer mode
+        os.environ['QT_QPA_PLATFORM'] = 'eglfs'
+        os.environ['QT_QPA_EGLFS_ALWAYS_SET_MODE'] = '1'
+        print("🖥️  Running in KIOSK MODE (fullscreen)")
+    else:
+        print("🪟 Running in WINDOWED MODE (development)")
+        print("   Use --kiosk flag or set KIOSK_MODE=1 for fullscreen")
+
     # Enable virtual keyboard
     os.environ['QT_IM_MODULE'] = 'qtvirtualkeyboard'
-    
+
     app = QGuiApplication(sys.argv)
     
     # Setup async event loop

@@ -41,13 +41,24 @@ if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
     exit 1
 fi
 
+# Parse command line arguments
+KIOSK_FLAG=""
+if [ "$1" == "--kiosk" ] || [ "$1" == "-k" ]; then
+    KIOSK_FLAG="--kiosk"
+fi
+
 # Run the application using the virtual environment
 echo ""
-echo "🚀 Starting Dune Weaver Touch (development mode)"
+if [ -n "$KIOSK_FLAG" ]; then
+    echo "🚀 Starting Dune Weaver Touch (KIOSK MODE - fullscreen)"
+else
+    echo "🚀 Starting Dune Weaver Touch (development mode - windowed)"
+    echo "   💡 Use './run.sh --kiosk' for fullscreen mode"
+fi
 echo "   Using virtual environment: $SCRIPT_DIR/venv"
 echo "   Connected to backend: $BACKEND_URL"
 echo "   Press Ctrl+C to stop"
 echo ""
 
 cd "$SCRIPT_DIR"
-exec ./venv/bin/python main.py
+exec ./venv/bin/python main.py $KIOSK_FLAG

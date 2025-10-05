@@ -12,6 +12,19 @@ ApplicationWindow {
     width: 800
     height: 480
     title: "Dune Weaver Touch"
+
+    // Auto-detect kiosk mode from environment or platform
+    // EGLFS platform automatically goes fullscreen, but we can also set visibility
+    Component.onCompleted: {
+        // Check if we're running in kiosk mode (eglfs platform)
+        var isKiosk = Qt.platform.pluginName === "eglfs" || Qt.platform.pluginName === "linuxfb"
+        if (isKiosk) {
+            console.log("🖥️  Kiosk mode detected - platform:", Qt.platform.pluginName)
+            visibility = Window.FullScreen
+        } else {
+            console.log("🪟 Desktop mode - platform:", Qt.platform.pluginName)
+        }
+    }
     
     property int currentPageIndex: 0
     property alias stackView: stackView
