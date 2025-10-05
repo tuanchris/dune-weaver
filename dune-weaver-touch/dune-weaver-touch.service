@@ -16,11 +16,14 @@ Environment=QT_QPA_FB_DRM=1
 Environment=QT_QPA_FONTDIR=/usr/share/fonts
 # Use wrapper script that checks for framebuffer availability
 ExecStart=/home/pi/dune-weaver-touch/start-with-fb-check.sh
-Restart=always
-RestartSec=5
+Restart=on-failure
+RestartSec=10
 # Limit restart attempts on boot
-StartLimitBurst=5
-StartLimitIntervalSec=60
+StartLimitBurst=3
+StartLimitIntervalSec=120
+# Add detailed logging
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=graphical.target
