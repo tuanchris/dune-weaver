@@ -110,6 +110,9 @@ install_scripts() {
 setup_systemd() {
     echo "🚀 Setting up systemd service..."
 
+    # Get the user's UID for XDG_RUNTIME_DIR
+    USER_UID=$(id -u $ACTUAL_USER)
+
     # Update paths in the service file
     sed "s|/home/pi/dune-weaver-touch|$SCRIPT_DIR|g" "$SCRIPT_DIR/dune-weaver-touch.service" > /tmp/dune-weaver-touch.service
     sed -i "s|User=pi|User=$ACTUAL_USER|g" /tmp/dune-weaver-touch.service
@@ -120,13 +123,17 @@ setup_systemd() {
     sed -i "s|ExecStart=.*python.*main.py|ExecStart=$SCRIPT_DIR/venv/bin/python $SCRIPT_DIR/main.py|g" /tmp/dune-weaver-touch.service
     sed -i "s|ExecStartPre=.*|ExecStartPre=/bin/bash -c 'until curl -s http://localhost:8080/serial_status > /dev/null 2>\&1; do sleep 2; done'|g" /tmp/dune-weaver-touch.service
 
+    # Update XDG_RUNTIME_DIR with the correct UID
+    sed -i "s|XDG_RUNTIME_DIR=/run/user/[0-9]*|XDG_RUNTIME_DIR=/run/user/$USER_UID|g" /tmp/dune-weaver-touch.service
+
     # Copy service file
     cp /tmp/dune-weaver-touch.service /etc/systemd/system/dune-weaver-touch.service
 
     echo "   📋 Service configuration:"
-    echo "      User: $ACTUAL_USER"
+    echo "      User: $ACTUAL_USER (UID: $USER_UID)"
     echo "      Directory: $SCRIPT_DIR"
     echo "      Python: $SCRIPT_DIR/venv/bin/python"
+    echo "      Runtime: /run/user/$USER_UID"
 
     # Reload and enable service
     systemctl daemon-reload

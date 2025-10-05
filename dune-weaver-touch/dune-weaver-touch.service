@@ -2,6 +2,7 @@
 Description=Dune Weaver Touch Interface
 After=multi-user.target
 After=network-online.target
+After=systemd-user-sessions.service
 Wants=network-online.target
 
 [Service]
@@ -10,11 +11,21 @@ User=pi
 Group=pi
 WorkingDirectory=/home/pi/dune-weaver-touch
 
+# TTY allocation for proper console/GPU access
+TTYPath=/dev/tty1
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+
 # EGLFS platform - direct framebuffer, no X11/Wayland needed
 Environment=QT_QPA_PLATFORM=eglfs
 Environment=QT_QPA_EGLFS_WIDTH=800
 Environment=QT_QPA_EGLFS_HEIGHT=480
+Environment=QT_QPA_EGLFS_INTEGRATION=eglfs_kms
 Environment=QT_IM_MODULE=qtvirtualkeyboard
+
+# DRM/GPU access
+Environment=XDG_RUNTIME_DIR=/run/user/1000
 
 # Kiosk mode flag
 Environment=KIOSK_MODE=1
@@ -28,10 +39,6 @@ Restart=always
 RestartSec=10
 StartLimitInterval=200
 StartLimitBurst=5
-
-# Logging
-StandardOutput=journal
-StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
