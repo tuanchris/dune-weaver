@@ -11,18 +11,15 @@ Make sure your Raspberry Pi is running a recent version of Raspberry Pi OS (Bull
 # Update system packages
 sudo apt update && sudo apt upgrade -y
 
-# Install Qt6 system packages (includes eglfs platform plugin)
+# Install Qt6 system packages (includes linuxfb platform plugin)
 sudo apt install -y qt6-base-dev qt6-qml-dev qt6-quick-dev
 
-# Install graphics and display dependencies
+# Install basic display dependencies for linuxfb backend
 sudo apt install -y \
-    libgl1-mesa-dev \
-    libgles2-mesa-dev \
-    libegl1-mesa-dev \
-    libdrm2 \
     libxkbcommon0 \
     libinput10 \
-    libudev1
+    libudev1 \
+    fonts-dejavu-core
 
 # Install Python and pip
 sudo apt install -y python3-dev python3-pip
@@ -108,18 +105,17 @@ sudo fbi -T 1 /usr/share/pixmaps/debian-logo.png
 
 ## Configure Display for Application
 
-### Option 1: Direct Framebuffer (Kiosk Mode - Recommended)
-For a dedicated touchscreen kiosk:
+### Option 1: Linux Framebuffer (Kiosk Mode - Recommended)
+For a dedicated touchscreen kiosk with best Raspberry Pi compatibility:
 
 ```bash
 # Add to ~/.bashrc or create a startup script
-export QT_QPA_PLATFORM=eglfs
-export QT_QPA_EGLFS_WIDTH=800
-export QT_QPA_EGLFS_HEIGHT=480
-export QT_QPA_EGLFS_PHYSICAL_WIDTH=154
-export QT_QPA_EGLFS_PHYSICAL_HEIGHT=86
-export QT_QPA_GENERIC_PLUGINS=evdevtouch
+export QT_QPA_PLATFORM=linuxfb
+export QT_QPA_FB_DRM=1
+export QT_QPA_FONTDIR=/usr/share/fonts
 ```
+
+**Why linuxfb?** This backend uses CPU-based software rendering via the Linux framebuffer (/dev/fb0), providing excellent compatibility without complex GPU/KMS configuration. While EGLFS offers GPU acceleration, it requires specific driver configurations that may not work on all Raspberry Pi setups.
 
 ### Option 2: X11 with Touchscreen Support
 If you need window management:
@@ -144,10 +140,10 @@ export WAYLAND_DISPLAY=wayland-1
 
 ## Running the Application
 
-### Method 1: Direct Framebuffer (Fullscreen Kiosk)
+### Method 1: Linux Framebuffer (Fullscreen Kiosk - Recommended)
 ```bash
 cd /path/to/dune-weaver-touch
-QT_QPA_PLATFORM=eglfs QT_QPA_EGLFS_WIDTH=800 QT_QPA_EGLFS_HEIGHT=480 python3 main.py
+QT_QPA_PLATFORM=linuxfb QT_QPA_FB_DRM=1 python3 main.py
 ```
 
 ### Method 2: X11 Window
@@ -265,11 +261,9 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=pi
-Environment=QT_QPA_PLATFORM=eglfs
-Environment=QT_QPA_EGLFS_WIDTH=800
-Environment=QT_QPA_EGLFS_HEIGHT=480
-Environment=QT_QPA_EGLFS_INTEGRATION=eglfs_kms
-Environment=QT_QPA_EGLFS_HIDECURSOR=1
+Environment=QT_QPA_PLATFORM=linuxfb
+Environment=QT_QPA_FB_DRM=1
+Environment=QT_QPA_FONTDIR=/usr/share/fonts
 WorkingDirectory=/home/pi/dune-weaver/dune-weaver-touch
 ExecStart=/home/pi/dune-weaver/dune-weaver-touch/bin/python main.py
 Restart=always
@@ -291,15 +285,21 @@ sudo systemctl start dune-weaver-touch.service
 # Check available plugins
 python3 -c "from PySide6.QtGui import QGuiApplication; import sys; app=QGuiApplication(sys.argv); print(app.platformName())"
 
-# If eglfs missing, install system Qt packages
+# If linuxfb missing, install system Qt packages
 sudo apt install -y qt6-qpa-plugins
+
+# Verify linuxfb is available
+ls /usr/lib/*/qt6/plugins/platforms/ | grep linuxfb
 ```
 
 ### "Cannot open display"
 ```bash
-# Make sure X11 is running or use eglfs
+# Make sure X11 is running or use linuxfb for kiosk mode
 export DISPLAY=:0
 xhost +local:
+
+# For kiosk mode without X11, use linuxfb
+export QT_QPA_PLATFORM=linuxfb
 ```
 
 ### Touch not working

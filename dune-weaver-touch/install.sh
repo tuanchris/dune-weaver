@@ -1,6 +1,9 @@
 #!/bin/bash
 # Dune Weaver Touch - One-Command Installer
 # This script sets up everything needed to run Dune Weaver Touch on boot
+#
+# Uses linuxfb backend for Qt rendering (software-rendered via Linux framebuffer)
+# This provides better compatibility with Raspberry Pi without complex GPU/KMS setup
 
 set -e
 

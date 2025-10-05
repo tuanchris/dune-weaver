@@ -50,4 +50,10 @@ echo "   Press Ctrl+C to stop"
 echo ""
 
 cd "$SCRIPT_DIR"
+
+# Set Qt platform to linuxfb for Raspberry Pi compatibility
+export QT_QPA_PLATFORM=linuxfb
+export QT_QPA_FB_DRM=1
+export QT_QPA_FONTDIR=/usr/share/fonts
+
 exec ./venv/bin/python main.py
