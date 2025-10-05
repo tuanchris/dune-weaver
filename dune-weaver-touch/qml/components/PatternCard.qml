@@ -21,7 +21,7 @@ Rectangle {
             width: parent.width
             height: parent.height - nameLabel.height - 10
             fillMode: Image.PreserveAspectFit
-            source: preview ? "file:///" + preview : ""
+            source: "" // Disabled to prevent WebP decoding errors on touch display
             
             Rectangle {
                 anchors.fill: parent
