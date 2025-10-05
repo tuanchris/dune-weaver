@@ -4,7 +4,7 @@ import QtQuick.Effects
 
 Rectangle {
     property string name: ""
-    property alias preview: previewImage.source
+    property string preview: "" // Disabled property alias to prevent WebP loading
     
     // Clean up the pattern name for display
     property string cleanName: {

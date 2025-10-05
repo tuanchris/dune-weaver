@@ -3,7 +3,7 @@ import QtQuick.Controls 2.15
 
 Rectangle {
     property alias name: nameLabel.text
-    property alias preview: previewImage.source
+    property string preview: "" // Disabled property alias to prevent WebP loading
     
     signal clicked()
     
