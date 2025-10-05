@@ -33,14 +33,14 @@ Rectangle {
         ColorAnimation { duration: 200 }
     }
     
-    // Shadow effect
-    layer.enabled: true
-    layer.effect: MultiEffect {
-        shadowEnabled: true
-        shadowColor: "#25000000"
-        shadowBlur: 0.8
-        shadowVerticalOffset: 2
-    }
+    // Shadow effect - DISABLED for kiosk mode (causes EGL errors on framebuffer)
+    // layer.enabled: true
+    // layer.effect: MultiEffect {
+    //     shadowEnabled: true
+    //     shadowColor: "#25000000"
+    //     shadowBlur: 0.8
+    //     shadowVerticalOffset: 2
+    // }
     
     RowLayout {
         anchors.centerIn: parent

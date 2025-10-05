@@ -22,15 +22,15 @@ Rectangle {
     color: "white"
     radius: 12
     
-    // Drop shadow effect
-    layer.enabled: true
-    layer.effect: MultiEffect {
-        shadowEnabled: true
-        shadowColor: "#20000000"
-        shadowBlur: 0.8
-        shadowVerticalOffset: 2
-        shadowHorizontalOffset: 0
-    }
+    // Drop shadow effect - DISABLED for kiosk mode (causes EGL errors on framebuffer)
+    // layer.enabled: true
+    // layer.effect: MultiEffect {
+    //     shadowEnabled: true
+    //     shadowColor: "#20000000"
+    //     shadowBlur: 0.8
+    //     shadowVerticalOffset: 2
+    //     shadowHorizontalOffset: 0
+    // }
     
     // Hover/press animation
     scale: mouseArea.pressed ? 0.95 : (mouseArea.containsMouse ? 1.02 : 1.0)

@@ -78,7 +78,7 @@ Page {
                 Image {
                     anchors.fill: parent
                     anchors.margins: 10
-                    source: patternPreview ? "file:///" + patternPreview : ""
+                    source: "" // Disabled to prevent WebP decoding errors on touch display
                     fillMode: Image.PreserveAspectFit
                     
                     Rectangle {
