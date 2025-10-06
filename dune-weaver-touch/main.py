@@ -83,15 +83,20 @@ async def startup_tasks():
     logger.info("✨ dune-weaver-touch startup tasks completed")
 
 def main():
-    # Set Qt platform to linuxfb for Raspberry Pi compatibility
+    # Set Qt platform to linuxfb for Raspberry Pi compatibility (Linux only)
     # This must be set before QGuiApplication is created
     if 'QT_QPA_PLATFORM' not in os.environ:
-        os.environ['QT_QPA_PLATFORM'] = 'linuxfb'
-        os.environ['QT_QPA_FB_DRM'] = '1'
-        os.environ['QT_QPA_FONTDIR'] = '/usr/share/fonts'
+        # Only use linuxfb on Linux systems (Raspberry Pi)
+        # On macOS, let Qt use the native cocoa platform
+        if sys.platform.startswith('linux'):
+            os.environ['QT_QPA_PLATFORM'] = 'linuxfb'
+            os.environ['QT_QPA_FB_DRM'] = '1'
+            os.environ['QT_QPA_FONTDIR'] = '/usr/share/fonts'
 
-    # Enable virtual keyboard
-    os.environ['QT_IM_MODULE'] = 'qtvirtualkeyboard'
+            # Enable virtual keyboard on Linux kiosk
+            os.environ['QT_IM_MODULE'] = 'qtvirtualkeyboard'
+        else:
+            logger.info(f"🖥️ Running on {sys.platform} - using native Qt platform")
 
     app = QGuiApplication(sys.argv)
 

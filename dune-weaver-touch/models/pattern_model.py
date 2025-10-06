@@ -46,27 +46,18 @@ class PatternModel(QAbstractListModel):
             # For patterns in subdirectories, check both flattened and hierarchical cache structures
             pattern_name = pattern["name"]
             
-            # Try PNG format for kiosk compatibility
+            # Use PNG format only for kiosk compatibility
             # First try hierarchical structure (preserving subdirectories)
             preview_path_hierarchical = self.cache_dir / f"{pattern_name}.png"
             if preview_path_hierarchical.exists():
                 return str(preview_path_hierarchical.absolute())
-            
+
             # Then try flattened structure (replace / with _)
             preview_name_flat = pattern_name.replace("/", "_").replace("\\", "_")
             preview_path_flat = self.cache_dir / f"{preview_name_flat}.png"
             if preview_path_flat.exists():
                 return str(preview_path_flat.absolute())
-            
-            # Fallback to WebP if PNG not found (for existing caches)
-            preview_path_hierarchical_webp = self.cache_dir / f"{pattern_name}.webp"
-            if preview_path_hierarchical_webp.exists():
-                return str(preview_path_hierarchical_webp.absolute())
-            
-            preview_path_flat_webp = self.cache_dir / f"{preview_name_flat}.webp"
-            if preview_path_flat_webp.exists():
-                return str(preview_path_flat_webp.absolute())
-            
+
             return ""
         
         return None

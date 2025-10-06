@@ -457,23 +457,21 @@ class Backend(QObject):
                 cache_dir = patterns_dir / "cached_images"
                 if cache_dir.exists():
                     print(f"🔍 Checking preview cache directory: {cache_dir}")
-                    # Try different preview image extensions - PNG first for kiosk
+                    # Use PNG format only for kiosk compatibility
                     # First try with .thr suffix (e.g., pattern.thr.png)
-                    for ext in [".png", ".webp", ".jpg", ".jpeg"]:
-                        preview_file = cache_dir / (clean_filename + ext)
-                        print(f"🔍 Looking for preview: {preview_file}")
-                        if preview_file.exists():
-                            print(f"✅ Found preview: {preview_file}")
-                            return str(preview_file.absolute())
-                    
+                    preview_file = cache_dir / (clean_filename + ".png")
+                    print(f"🔍 Looking for preview: {preview_file}")
+                    if preview_file.exists():
+                        print(f"✅ Found preview: {preview_file}")
+                        return str(preview_file.absolute())
+
                     # Then try without .thr suffix (e.g., pattern.png)
                     base_name = clean_filename.replace(".thr", "")
-                    for ext in [".png", ".webp", ".jpg", ".jpeg"]:
-                        preview_file = cache_dir / (base_name + ext)
-                        print(f"🔍 Looking for preview (no .thr): {preview_file}")
-                        if preview_file.exists():
-                            print(f"✅ Found preview: {preview_file}")
-                            return str(preview_file.absolute())
+                    preview_file = cache_dir / (base_name + ".png")
+                    print(f"🔍 Looking for preview (no .thr): {preview_file}")
+                    if preview_file.exists():
+                        print(f"✅ Found preview: {preview_file}")
+                        return str(preview_file.absolute())
             
             print("❌ No preview image found")
             return ""

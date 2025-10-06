@@ -108,7 +108,7 @@ setup_kiosk_optimizations() {
 # Function to setup Python virtual environment and install dependencies
 setup_python_environment() {
     echo "🐍 Setting up Python virtual environment..."
-    
+
     # Create virtual environment if it doesn't exist
     if [ ! -d "$SCRIPT_DIR/venv" ]; then
         echo "   📦 Creating virtual environment..."
@@ -120,22 +120,56 @@ setup_python_environment() {
     else
         echo "   ℹ️  Virtual environment already exists"
     fi
-    
+
     # Activate virtual environment and install dependencies
     echo "   📦 Installing Python dependencies in virtual environment..."
     "$SCRIPT_DIR/venv/bin/python" -m pip install --upgrade pip
-    
+
     # Install from requirements.txt if it exists, otherwise install manually
     if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
         "$SCRIPT_DIR/venv/bin/pip" install -r "$SCRIPT_DIR/requirements.txt"
     else
         "$SCRIPT_DIR/venv/bin/pip" install PySide6 requests
     fi
-    
+
     # Change ownership to the actual user (not root)
     chown -R "$ACTUAL_USER:$ACTUAL_USER" "$SCRIPT_DIR/venv"
-    
+
     echo "   🐍 Python virtual environment ready"
+}
+
+# Function to setup patterns directory permissions
+setup_patterns_permissions() {
+    echo "📁 Setting up patterns directory permissions..."
+
+    # Determine patterns directory location (parent of touch app)
+    PATTERNS_DIR="$(dirname "$SCRIPT_DIR")/patterns"
+
+    if [ -d "$PATTERNS_DIR" ]; then
+        echo "   📂 Found patterns directory: $PATTERNS_DIR"
+
+        # Ensure cached_images directory exists
+        CACHE_DIR="$PATTERNS_DIR/cached_images"
+        if [ ! -d "$CACHE_DIR" ]; then
+            echo "   📁 Creating cached_images directory..."
+            mkdir -p "$CACHE_DIR"
+        fi
+
+        # Set ownership to the user who will run the service
+        echo "   🔑 Setting ownership to $ACTUAL_USER..."
+        chown -R "$ACTUAL_USER:$ACTUAL_USER" "$CACHE_DIR"
+
+        # Set permissions: user can read/write, group can read, others can read
+        echo "   🔒 Setting permissions (755 for dirs, 644 for files)..."
+        find "$CACHE_DIR" -type d -exec chmod 755 {} \;
+        find "$CACHE_DIR" -type f -exec chmod 644 {} \;
+
+        echo "   ✅ Patterns cache directory permissions configured"
+    else
+        echo "   ⚠️  Patterns directory not found at $PATTERNS_DIR"
+        echo "   ℹ️  If patterns exist elsewhere, manually run:"
+        echo "      sudo chown -R $ACTUAL_USER:$ACTUAL_USER /path/to/patterns/cached_images"
+    fi
 }
 
 # Main installation process
@@ -144,6 +178,7 @@ echo ""
 
 # Install everything
 setup_python_environment
+setup_patterns_permissions
 install_scripts
 setup_systemd
 setup_kiosk_optimizations
@@ -153,6 +188,7 @@ echo "🎉 Installation Complete!"
 echo "========================"
 echo ""
 echo "✅ Python virtual environment created at: $SCRIPT_DIR/venv"
+echo "✅ Patterns cache directory permissions configured"
 echo "✅ System scripts installed in /usr/local/bin/"
 echo "✅ Systemd service configured for auto-start"
 echo "✅ Kiosk optimizations applied"
