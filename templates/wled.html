@@ -5,7 +5,13 @@
 .dark .bg-white {
   background-color: #262626;
 }
+.dark .bg-gray-100 {
+  background-color: #1f1f1f;
+}
 .dark .border-slate-200 {
+  border-color: #404040;
+}
+.dark .border-slate-300 {
   border-color: #404040;
 }
 .dark .text-gray-500 {
@@ -14,17 +20,77 @@
 .dark .text-gray-700 {
   color: #d1d5db;
 }
+.dark .text-slate-500 {
+  color: #a1a1aa;
+}
+.dark .text-slate-600 {
+  color: #d4d4d8;
+}
+.dark .text-slate-700 {
+  color: #e4e4e7;
+}
 .dark .text-slate-800 {
   color: #e5e5e5;
 }
-.dark .border-slate-300 {
-  border-color: #404040;
+.dark .text-slate-900 {
+  color: #f4f4f5;
 }
+
+/* Form elements */
 .dark input[type="range"] {
   background-color: #404040;
 }
 .dark input[type="color"] {
   background-color: #262626;
+  border-color: #404040;
+}
+.dark select,
+.dark .form-select {
+  background-color: #1f1f1f;
+  border-color: #404040;
+  color: #e5e5e5;
+}
+.dark select option {
+  background-color: #262626;
+  color: #e5e5e5;
+}
+
+/* Quick color buttons - ensure they remain visible */
+.dark .quick-color {
+  border-color: #525252;
+}
+
+/* Status messages - keep backgrounds but adjust borders */
+.dark .bg-green-50 {
+  background-color: #14532d;
+}
+.dark .border-green-200 {
+  border-color: #166534;
+}
+.dark .text-green-700 {
+  color: #86efac;
+}
+.dark .bg-red-50 {
+  background-color: #450a0a;
+}
+.dark .border-red-200 {
+  border-color: #991b1b;
+}
+.dark .text-red-700 {
+  color: #fca5a5;
+}
+.dark .bg-amber-50 {
+  background-color: #451a03;
+}
+.dark .border-amber-200 {
+  border-color: #92400e;
+}
+.dark .text-amber-700 {
+  color: #fcd34d;
+}
+
+/* Iframe border */
+.dark iframe {
   border-color: #404040;
 }
 {% endblock %}
@@ -176,15 +242,6 @@
           <span class="material-icons text-base">save</span>
           <span>Save Effect Settings</span>
         </button>
-      </div>
-
-      <!-- Reset Control -->
-      <div class="flex items-center gap-4 pt-4 border-t border-slate-200">
-        <button id="hyperion-clear-priority" class="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-blue-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2">
-          <span class="material-icons text-base">clear_all</span>
-          <span>Default (Off)</span>
-        </button>
-        <p class="text-xs text-slate-500 flex-1">Clears Dune Weaver's control and returns to default state</p>
       </div>
     </div>
   </section>

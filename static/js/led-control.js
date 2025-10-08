@@ -185,16 +185,6 @@ async function initializeHyperionControls() {
         }
     });
 
-    // Default (Off) button - clears priority
-    document.getElementById('hyperion-clear-priority')?.addEventListener('click', async () => {
-        try {
-            await hyperionController.sendCommand('clear', {});
-            showStatus('Returned to default state (off)', 'success');
-        } catch (error) {
-            showStatus(`Failed to return to default: ${error.message}`, 'error');
-        }
-    });
-
     // Save effect settings button
     document.getElementById('save-hyperion-effects')?.addEventListener('click', async () => {
         try {

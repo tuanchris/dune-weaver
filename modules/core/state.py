@@ -40,7 +40,7 @@ class AppState:
         self.conn = None
         self.port = None
         self.wled_ip = None
-        self.hyperion_ip = None
+        self.hyperion_ip = "127.0.0.1"
         self.hyperion_port = 8090
         self.led_provider = "none"  # "wled", "hyperion", or "none"
         self.led_controller = None
@@ -239,7 +239,7 @@ class AppState:
         self.custom_clear_from_out = data.get("custom_clear_from_out", None)
         self.port = data.get("port", None)
         self.wled_ip = data.get('wled_ip', None)
-        self.hyperion_ip = data.get('hyperion_ip', None)
+        self.hyperion_ip = data.get('hyperion_ip', "127.0.0.1")
         self.hyperion_port = data.get('hyperion_port', 8090)
         self.led_provider = data.get('led_provider', "none")
         self.hyperion_idle_effect = data.get('hyperion_idle_effect', "off")
