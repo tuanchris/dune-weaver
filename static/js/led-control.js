@@ -185,13 +185,13 @@ async function initializeHyperionControls() {
         }
     });
 
-    // Clear priority button
+    // Default (Off) button - clears priority
     document.getElementById('hyperion-clear-priority')?.addEventListener('click', async () => {
         try {
             await hyperionController.sendCommand('clear', {});
-            showStatus('Priority cleared - returned to default state', 'success');
+            showStatus('Returned to default state (off)', 'success');
         } catch (error) {
-            showStatus(`Failed to clear priority: ${error.message}`, 'error');
+            showStatus(`Failed to return to default: ${error.message}`, 'error');
         }
     });
 
@@ -212,7 +212,7 @@ async function initializeHyperionControls() {
 
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-            const result = await response.json();
+            await response.json();
             showStatus('Effect settings saved successfully', 'success');
         } catch (error) {
             showStatus(`Failed to save effect settings: ${error.message}`, 'error');
@@ -235,6 +235,14 @@ async function loadEffectsList() {
 
         // Clear loading option
         effectSelect.innerHTML = '<option value="">-- Select an effect --</option>';
+
+        // Add "Default (Off)" option to idle and playing effect selectors
+        if (idleEffectSelect) {
+            idleEffectSelect.innerHTML = '<option value="off">Default (Off)</option>';
+        }
+        if (playingEffectSelect) {
+            playingEffectSelect.innerHTML = '<option value="off">Default (Off)</option>';
+        }
 
         // Add effects to all dropdowns
         if (data.effects && data.effects.length > 0) {

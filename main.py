@@ -1551,9 +1551,9 @@ async def hyperion_set_effects(request: dict):
     idle_effect = request.get("idle_effect")
     playing_effect = request.get("playing_effect")
 
-    # Allow None/empty string to clear the setting
-    state.hyperion_idle_effect = idle_effect if idle_effect else None
-    state.hyperion_playing_effect = playing_effect if playing_effect else None
+    # Save effect settings - "off"/None/empty string all mean clear priority
+    state.hyperion_idle_effect = idle_effect if idle_effect else "off"
+    state.hyperion_playing_effect = playing_effect if playing_effect else "off"
 
     state.save()
     logger.info(f"Hyperion effects configured - Idle: {state.hyperion_idle_effect}, Playing: {state.hyperion_playing_effect}")
