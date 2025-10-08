@@ -227,7 +227,12 @@ def effect_idle(hyperion_controller: HyperionController, effect_name: str = "off
 
 
 def effect_connected(hyperion_controller: HyperionController) -> bool:
-    """Show connected effect - green flash"""
+    """Show connected effect - green flash
+
+    Note: This function only shows the connection flash. The calling code
+    should explicitly set the idle effect afterwards to ensure the user's
+    configured idle effect is used.
+    """
     # Turn on Hyperion first
     hyperion_controller.set_power(1)
     time.sleep(0.2)  # Give Hyperion time to power on
@@ -239,7 +244,7 @@ def effect_connected(hyperion_controller: HyperionController) -> bool:
     time.sleep(1.2)  # Wait for flash to complete
     res = hyperion_controller.set_color(r=8, g=255, b=0, duration=1000)
     time.sleep(1.2)  # Wait for flash to complete
-    effect_idle(hyperion_controller)
+    # Don't call effect_idle here - let the caller set the configured idle effect
     return res.get('connected', False)
 
 

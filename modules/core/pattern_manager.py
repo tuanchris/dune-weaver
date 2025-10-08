@@ -635,6 +635,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
         
         start_time = time.time()
         if state.led_controller:
+            logger.info(f"Setting LED to playing effect: {state.hyperion_playing_effect}")
             state.led_controller.effect_playing(state.hyperion_playing_effect)
             
         with tqdm(
@@ -731,6 +732,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
         
         # Set LED back to idle when pattern completes normally (not stopped early)
         if state.led_controller and not state.stop_requested:
+            logger.info(f"Setting LED to idle effect: {state.hyperion_idle_effect}")
             state.led_controller.effect_idle(state.hyperion_idle_effect)
             logger.debug("LED effect set to idle after pattern completion")
         
