@@ -10,10 +10,11 @@ services:
       - .:/app
       # Mount timezone file from host for Still Sands scheduling
       - /etc/timezone:/etc/host-timezone:ro
-      # Mount Docker socket to allow host shutdown
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      # Mount shutdown script
-      - ./shutdown_host.sh:/usr/local/bin/shutdown_host.sh:ro
+      # Mount systemd to allow host shutdown
+      - /bin/systemctl:/bin/systemctl:ro
+      - /run/systemd/system:/run/systemd/system:ro
+      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
     devices:
       - "/dev/ttyACM0:/dev/ttyACM0"
     privileged: true

@@ -1671,15 +1671,11 @@ async def shutdown_system():
         def delayed_shutdown():
             time.sleep(2)  # Give time for response to be sent
             try:
-                # Use nsenter to escape container and run shutdown on host
-                # This works because we're running with privileged: true
-                subprocess.run([
-                    "nsenter", "--target", "1", "--mount", "--uts", "--ipc", "--net", "--pid",
-                    "--", "shutdown", "-h", "now"
-                ], check=True)
-                logger.info("Host shutdown command executed successfully")
+                # Use systemctl to shutdown the host (via mounted systemd socket)
+                subprocess.run(["systemctl", "poweroff"], check=True)
+                logger.info("Host shutdown command executed successfully via systemctl")
             except FileNotFoundError:
-                logger.error("nsenter command not found - privileged container required for host shutdown")
+                logger.error("systemctl command not found - ensure systemd volumes are mounted")
             except Exception as e:
                 logger.error(f"Error executing host shutdown command: {e}")
 
