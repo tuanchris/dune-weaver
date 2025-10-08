@@ -119,6 +119,11 @@ class HyperionController:
         if not all(0 <= val <= 255 for val in [r, g, b]):
             return {"connected": False, "message": "RGB values must be between 0 and 255"}
 
+        # Turn on Hyperion first
+        self.set_power(1)
+        # Clear priority before setting new color
+        self.clear_priority()
+
         result = self._send_command(
             "color",
             priority=self.priority,
@@ -136,6 +141,11 @@ class HyperionController:
             args: Optional effect arguments
             duration: Duration in milliseconds (default = 86400000ms = 24 hours)
         """
+        # Turn on Hyperion first
+        self.set_power(1)
+        # Clear priority before setting new effect
+        self.clear_priority()
+
         params = {
             "priority": self.priority,
             "effect": {"name": effect_name},
@@ -188,6 +198,8 @@ def effect_loading(hyperion_controller: HyperionController) -> bool:
     """Show loading effect - orange color (24 hour duration)"""
     # Turn on Hyperion first
     hyperion_controller.set_power(1)
+    # Clear priority before setting new effect
+    hyperion_controller.clear_priority()
     res = hyperion_controller.set_color(r=255, g=160, b=0, duration=86400000)
     return res.get('connected', False)
 
@@ -196,10 +208,13 @@ def effect_idle(hyperion_controller: HyperionController, effect_name: str = None
     """Show idle effect - use configured effect or clear priority to return to default"""
     # Turn on Hyperion first
     hyperion_controller.set_power(1)
+    # Clear priority before setting new effect
+    hyperion_controller.clear_priority()
     if effect_name:
         res = hyperion_controller.set_effect(effect_name)
     else:
-        res = hyperion_controller.clear_priority()
+        # Already cleared above
+        res = {"connected": True}
     return res.get('connected', False)
 
 
@@ -207,6 +222,8 @@ def effect_connected(hyperion_controller: HyperionController) -> bool:
     """Show connected effect - green flash"""
     # Turn on Hyperion first
     hyperion_controller.set_power(1)
+    # Clear priority before setting new effect
+    hyperion_controller.clear_priority()
     # Flash green twice with explicit 1 second durations
     res = hyperion_controller.set_color(r=8, g=255, b=0, duration=1000)
     time.sleep(1.2)  # Wait for flash to complete
@@ -220,9 +237,11 @@ def effect_playing(hyperion_controller: HyperionController, effect_name: str = N
     """Show playing effect - use configured effect or clear to show default"""
     # Turn on Hyperion first
     hyperion_controller.set_power(1)
+    # Clear priority before setting new effect
+    hyperion_controller.clear_priority()
     if effect_name:
         res = hyperion_controller.set_effect(effect_name)
     else:
-        # Clear priority to show the user's configured effect/color
-        res = hyperion_controller.clear_priority()
+        # Already cleared above - show user's configured effect/color
+        res = {"connected": True}
     return res.get('connected', False)
