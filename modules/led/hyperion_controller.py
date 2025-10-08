@@ -186,12 +186,16 @@ class HyperionController:
 
 def effect_loading(hyperion_controller: HyperionController) -> bool:
     """Show loading effect - orange color (24 hour duration)"""
+    # Turn on Hyperion first
+    hyperion_controller.set_power(1)
     res = hyperion_controller.set_color(r=255, g=160, b=0, duration=86400000)
     return res.get('connected', False)
 
 
 def effect_idle(hyperion_controller: HyperionController, effect_name: str = None) -> bool:
     """Show idle effect - use configured effect or clear priority to return to default"""
+    # Turn on Hyperion first
+    hyperion_controller.set_power(1)
     if effect_name:
         res = hyperion_controller.set_effect(effect_name)
     else:
@@ -201,6 +205,8 @@ def effect_idle(hyperion_controller: HyperionController, effect_name: str = None
 
 def effect_connected(hyperion_controller: HyperionController) -> bool:
     """Show connected effect - green flash"""
+    # Turn on Hyperion first
+    hyperion_controller.set_power(1)
     # Flash green twice with explicit 1 second durations
     res = hyperion_controller.set_color(r=8, g=255, b=0, duration=1000)
     time.sleep(1.2)  # Wait for flash to complete
@@ -212,6 +218,8 @@ def effect_connected(hyperion_controller: HyperionController) -> bool:
 
 def effect_playing(hyperion_controller: HyperionController, effect_name: str = None) -> bool:
     """Show playing effect - use configured effect or clear to show default"""
+    # Turn on Hyperion first
+    hyperion_controller.set_power(1)
     if effect_name:
         res = hyperion_controller.set_effect(effect_name)
     else:
