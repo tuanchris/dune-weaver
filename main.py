@@ -1661,57 +1661,27 @@ async def trigger_update():
             status_code=500
         )
 
-@app.get("/api/system/check_pi")
-async def check_pi():
-    """Check if the system is a Raspberry Pi"""
-    try:
-        # Check if running on ARM architecture (Raspberry Pi indicator)
-        is_arm = platform.machine().startswith('arm') or platform.machine().startswith('aarch')
-
-        # Additional check: look for Raspberry Pi specific files
-        is_pi_file = os.path.exists('/proc/device-tree/model')
-        if is_pi_file:
-            with open('/proc/device-tree/model', 'r') as f:
-                model = f.read()
-                is_raspberry_pi = 'Raspberry Pi' in model
-        else:
-            is_raspberry_pi = False
-
-        # System is considered Pi if either check passes
-        is_pi = is_arm or is_raspberry_pi
-
-        return {"is_pi": is_pi}
-    except Exception as e:
-        logger.error(f"Error checking if system is Pi: {e}")
-        return {"is_pi": False}
-
 @app.post("/api/system/shutdown")
 async def shutdown_system():
     """Shutdown the system"""
     try:
         logger.warning("Shutdown initiated via API")
 
-        # Run docker compose down in background
-        try:
-            # Get the directory where main.py is located
-            app_dir = os.path.dirname(os.path.abspath(__file__))
-            subprocess.Popen(
-                ["docker", "compose", "down"],
-                cwd=app_dir,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
-            logger.info("Docker compose down command issued")
-        except Exception as e:
-            logger.error(f"Error running docker compose down: {e}")
-
         # Schedule shutdown command after a short delay to allow response to be sent
         def delayed_shutdown():
             time.sleep(2)  # Give time for response to be sent
             try:
-                subprocess.run(["sudo", "shutdown", "-h", "now"], check=True)
+                # Use nsenter to escape container and run shutdown on host
+                # This works because we're running with privileged: true
+                subprocess.run([
+                    "nsenter", "--target", "1", "--mount", "--uts", "--ipc", "--net", "--pid",
+                    "--", "shutdown", "-h", "now"
+                ], check=True)
+                logger.info("Host shutdown command executed successfully")
+            except FileNotFoundError:
+                logger.error("nsenter command not found - privileged container required for host shutdown")
             except Exception as e:
-                logger.error(f"Error executing shutdown command: {e}")
+                logger.error(f"Error executing host shutdown command: {e}")
 
         import threading
         shutdown_thread = threading.Thread(target=delayed_shutdown)
