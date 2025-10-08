@@ -195,12 +195,14 @@ class HyperionController:
 
 
 def effect_loading(hyperion_controller: HyperionController) -> bool:
-    """Show loading effect - orange color (24 hour duration)"""
+    """Show loading effect - Atomic swirl effect"""
     # Turn on Hyperion first
     hyperion_controller.set_power(1)
+    time.sleep(0.2)  # Give Hyperion time to power on
     # Clear priority before setting new effect
     hyperion_controller.clear_priority()
-    res = hyperion_controller.set_color(r=255, g=160, b=0, duration=86400000)
+    time.sleep(0.1)  # Give Hyperion time to clear
+    res = hyperion_controller.set_effect("Atomic swirl")
     return res.get('connected', False)
 
 
@@ -208,9 +210,11 @@ def effect_idle(hyperion_controller: HyperionController, effect_name: str = None
     """Show idle effect - use configured effect or clear priority to return to default"""
     # Turn on Hyperion first
     hyperion_controller.set_power(1)
+    time.sleep(0.2)  # Give Hyperion time to power on
     # Clear priority before setting new effect
     hyperion_controller.clear_priority()
     if effect_name:
+        time.sleep(0.1)  # Give Hyperion time to clear
         res = hyperion_controller.set_effect(effect_name)
     else:
         # Already cleared above
@@ -222,8 +226,10 @@ def effect_connected(hyperion_controller: HyperionController) -> bool:
     """Show connected effect - green flash"""
     # Turn on Hyperion first
     hyperion_controller.set_power(1)
+    time.sleep(0.2)  # Give Hyperion time to power on
     # Clear priority before setting new effect
     hyperion_controller.clear_priority()
+    time.sleep(0.1)  # Give Hyperion time to clear
     # Flash green twice with explicit 1 second durations
     res = hyperion_controller.set_color(r=8, g=255, b=0, duration=1000)
     time.sleep(1.2)  # Wait for flash to complete
@@ -237,9 +243,11 @@ def effect_playing(hyperion_controller: HyperionController, effect_name: str = N
     """Show playing effect - use configured effect or clear to show default"""
     # Turn on Hyperion first
     hyperion_controller.set_power(1)
+    time.sleep(0.2)  # Give Hyperion time to power on
     # Clear priority before setting new effect
     hyperion_controller.clear_priority()
     if effect_name:
+        time.sleep(0.1)  # Give Hyperion time to clear
         res = hyperion_controller.set_effect(effect_name)
     else:
         # Already cleared above - show user's configured effect/color
