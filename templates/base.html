@@ -18,6 +18,9 @@
       onload="this.rel='stylesheet'"
       rel="stylesheet"
     />
+    <!-- Preload Material Icons fonts for faster loading -->
+    <link rel="preload" href="/static/fonts/material-icons/MaterialIcons-Regular.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/material-icons/MaterialIconsOutlined-Regular.woff2" as="font" type="font/woff2" crossorigin>
     <title>{% block title %}{{ app_name or 'Dune Weaver' }}{% endblock %}</title>
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">

@@ -6,7 +6,7 @@
   font-weight: 400;
   src: url('/static/fonts/material-icons/MaterialIcons-Regular.woff2') format('woff2'),
        url('/static/fonts/material-icons/MaterialIcons-Regular.woff') format('woff');
-  font-display: swap;
+  font-display: block;
 }
 
 @font-face {
@@ -15,7 +15,7 @@
   font-weight: 400;
   src: url('/static/fonts/material-icons/MaterialIconsOutlined-Regular.woff2') format('woff2'),
        url('/static/fonts/material-icons/MaterialIconsOutlined-Regular.woff') format('woff');
-  font-display: swap;
+  font-display: block;
 }
 
 .material-icons {
