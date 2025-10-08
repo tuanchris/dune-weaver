@@ -1687,16 +1687,8 @@ async def check_pi():
 
 @app.post("/api/system/shutdown")
 async def shutdown_system():
-    """Shutdown the Raspberry Pi system"""
+    """Shutdown the system"""
     try:
-        # Double-check it's a Pi before allowing shutdown
-        check_result = await check_pi()
-        if not check_result["is_pi"]:
-            return JSONResponse(
-                content={"success": False, "message": "Shutdown only available on Raspberry Pi"},
-                status_code=403
-            )
-
         logger.warning("Shutdown initiated via API")
 
         # Run docker compose down in background
