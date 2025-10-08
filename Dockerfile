@@ -10,7 +10,7 @@ WORKDIR /app
 
 COPY requirements.txt ./
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        gcc libjpeg-dev zlib1g-dev git \
+        gcc libjpeg-dev zlib1g-dev git util-linux \
     && pip install --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt \
     && apt-get purge -y gcc \
