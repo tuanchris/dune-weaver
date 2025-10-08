@@ -151,6 +151,71 @@ function setWledButtonState(isSet) {
     }
 }
 
+// Handle LED provider selection and show/hide appropriate config sections
+function updateLedProviderUI() {
+    const provider = document.querySelector('input[name="ledProvider"]:checked')?.value || 'none';
+    const wledConfig = document.getElementById('wledConfig');
+    const hyperionConfig = document.getElementById('hyperionConfig');
+
+    if (wledConfig && hyperionConfig) {
+        if (provider === 'wled') {
+            wledConfig.classList.remove('hidden');
+            hyperionConfig.classList.add('hidden');
+        } else if (provider === 'hyperion') {
+            wledConfig.classList.add('hidden');
+            hyperionConfig.classList.remove('hidden');
+        } else {
+            wledConfig.classList.add('hidden');
+            hyperionConfig.classList.add('hidden');
+        }
+    }
+}
+
+// Load LED configuration from server
+async function loadLedConfig() {
+    try {
+        const response = await fetch('/get_led_config');
+        if (response.ok) {
+            const data = await response.json();
+
+            // Set provider radio button
+            const providerRadio = document.getElementById(`ledProvider${data.provider.charAt(0).toUpperCase() + data.provider.slice(1)}`);
+            if (providerRadio) {
+                providerRadio.checked = true;
+            } else {
+                document.getElementById('ledProviderNone').checked = true;
+            }
+
+            // Set WLED IP if configured
+            if (data.wled_ip) {
+                const wledIpInput = document.getElementById('wledIpInput');
+                if (wledIpInput) {
+                    wledIpInput.value = data.wled_ip;
+                }
+            }
+
+            // Set Hyperion IP and port if configured
+            if (data.hyperion_ip) {
+                const hyperionIpInput = document.getElementById('hyperionIpInput');
+                if (hyperionIpInput) {
+                    hyperionIpInput.value = data.hyperion_ip;
+                }
+            }
+            if (data.hyperion_port) {
+                const hyperionPortInput = document.getElementById('hyperionPortInput');
+                if (hyperionPortInput) {
+                    hyperionPortInput.value = data.hyperion_port;
+                }
+            }
+
+            // Update UI to show correct config section
+            updateLedProviderUI();
+        }
+    } catch (error) {
+        logMessage(`Error loading LED config: ${error.message}`, LOG_TYPE.ERROR);
+    }
+}
+
 // Initialize settings page
 document.addEventListener('DOMContentLoaded', async () => {
     // Initialize UI with default disconnected state
@@ -160,9 +225,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     Promise.all([
         // Check connection status
         fetch('/serial_status').then(response => response.json()).catch(() => ({ connected: false })),
-        
-        // Load current WLED IP
-        fetch('/get_wled_ip').then(response => response.json()).catch(() => ({ wled_ip: null })),
+
+        // Load LED configuration (replaces old WLED-only loading)
+        fetch('/get_led_config').then(response => response.json()).catch(() => ({ provider: 'none', wled_ip: null, hyperion_ip: null, hyperion_port: 8090 })),
         
         // Load current version and check for updates
         fetch('/api/version').then(response => response.json()).catch(() => ({ current: '1.0.0', latest: '1.0.0', update_available: false })),
@@ -184,18 +249,35 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Load Still Sands settings
         fetch('/api/scheduled-pause').then(response => response.json()).catch(() => ({ enabled: false, time_slots: [] }))
-    ]).then(([statusData, wledData, updateData, ports, patterns, clearPatterns, clearSpeedData, appNameData, scheduledPauseData]) => {
+    ]).then(([statusData, ledConfigData, updateData, ports, patterns, clearPatterns, clearSpeedData, appNameData, scheduledPauseData]) => {
         // Update connection status
         setCachedConnectionStatus(statusData);
         updateConnectionUI(statusData);
-        
-        // Update WLED IP
-        if (wledData.wled_ip) {
-            document.getElementById('wledIpInput').value = wledData.wled_ip;
-            setWledButtonState(true);
+
+        // Update LED configuration
+        const providerRadio = document.getElementById(`ledProvider${ledConfigData.provider.charAt(0).toUpperCase() + ledConfigData.provider.slice(1)}`);
+        if (providerRadio) {
+            providerRadio.checked = true;
         } else {
-            setWledButtonState(false);
+            document.getElementById('ledProviderNone').checked = true;
         }
+
+        if (ledConfigData.wled_ip) {
+            const wledIpInput = document.getElementById('wledIpInput');
+            if (wledIpInput) wledIpInput.value = ledConfigData.wled_ip;
+        }
+
+        if (ledConfigData.hyperion_ip) {
+            const hyperionIpInput = document.getElementById('hyperionIpInput');
+            if (hyperionIpInput) hyperionIpInput.value = ledConfigData.hyperion_ip;
+        }
+
+        if (ledConfigData.hyperion_port) {
+            const hyperionPortInput = document.getElementById('hyperionPortInput');
+            if (hyperionPortInput) hyperionPortInput.value = ledConfigData.hyperion_port;
+        }
+
+        updateLedProviderUI()
         
         // Update version display
         const currentVersionText = document.getElementById('currentVersionText');
@@ -359,50 +441,62 @@ function setupEventListeners() {
         });
     }
     
-    // Save/Clear WLED configuration
-    const saveWledConfig = document.getElementById('saveWledConfig');
-    const wledIpInput = document.getElementById('wledIpInput');
-    if (saveWledConfig && wledIpInput) {
-        saveWledConfig.addEventListener('click', async () => {
-            if (saveWledConfig.textContent.includes('Clear')) {
-                // Clear WLED IP
-                wledIpInput.value = '';
-                try {
-                    const response = await fetch('/set_wled_ip', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ wled_ip: '' })
-                    });
-                    if (response.ok) {
-                        setWledButtonState(false);
+    // LED provider selection change handlers
+    const ledProviderRadios = document.querySelectorAll('input[name="ledProvider"]');
+    ledProviderRadios.forEach(radio => {
+        radio.addEventListener('change', updateLedProviderUI);
+    });
+
+    // Save LED configuration
+    const saveLedConfig = document.getElementById('saveLedConfig');
+    if (saveLedConfig) {
+        saveLedConfig.addEventListener('click', async () => {
+            const provider = document.querySelector('input[name="ledProvider"]:checked')?.value || 'none';
+
+            let requestBody = { provider };
+
+            if (provider === 'wled') {
+                const wledIp = document.getElementById('wledIpInput')?.value;
+                if (!wledIp) {
+                    showStatusMessage('Please enter a WLED IP address', 'error');
+                    return;
+                }
+                requestBody.ip_address = wledIp;
+            } else if (provider === 'hyperion') {
+                const hyperionIp = document.getElementById('hyperionIpInput')?.value;
+                const hyperionPort = parseInt(document.getElementById('hyperionPortInput')?.value) || 8090;
+                if (!hyperionIp) {
+                    showStatusMessage('Please enter a Hyperion IP address', 'error');
+                    return;
+                }
+                requestBody.ip_address = hyperionIp;
+                requestBody.port = hyperionPort;
+            }
+
+            try {
+                const response = await fetch('/set_led_config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+
+                    if (provider === 'wled' && data.wled_ip) {
+                        localStorage.setItem('wled_ip', data.wled_ip);
+                        showStatusMessage('WLED configured successfully', 'success');
+                    } else if (provider === 'hyperion' && data.hyperion_ip) {
+                        showStatusMessage('Hyperion configured successfully', 'success');
+                    } else if (provider === 'none') {
                         localStorage.removeItem('wled_ip');
-                        showStatusMessage('WLED IP cleared successfully', 'success');
-                    } else {
-                        throw new Error('Failed to clear WLED IP');
+                        showStatusMessage('LED controller disabled', 'success');
                     }
-                } catch (error) {
-                    showStatusMessage(`Failed to clear WLED IP: ${error.message}`, 'error');
+                } else {
+                    throw new Error('Failed to save LED configuration');
                 }
-            } else {
-                // Save WLED IP
-                const wledIp = wledIpInput.value;
-                try {
-                    const response = await fetch('/set_wled_ip', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ wled_ip: wledIp })
-                    });
-                    if (response.ok && wledIp) {
-                        setWledButtonState(true);
-                        localStorage.setItem('wled_ip', wledIp);
-                        showStatusMessage('WLED IP configured successfully', 'success');
-                    } else {
-                        setWledButtonState(false);
-                        throw new Error('Failed to save WLED configuration');
-                    }
-                } catch (error) {
-                    showStatusMessage(`Failed to save WLED IP: ${error.message}`, 'error');
-                }
+            } catch (error) {
+                showStatusMessage(`Failed to save LED configuration: ${error.message}`, 'error');
             }
         });
     }

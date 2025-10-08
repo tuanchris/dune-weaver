@@ -311,7 +311,7 @@
             class="{% if request.url.path == '/wled' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"
             href="/wled"
           >
-            <span class="material-icons">lightbulb</span> WLED
+            <span class="material-icons">lightbulb</span> <span id="led-nav-label">LED</span>
           </a>
             <a
               class="{% if request.url.path == '/settings' %}active-tab{% else %}inactive-tab{% endif %} flex flex-1 flex-col items-center justify-center gap-1 border-b-[3px] py-3 text-xs font-medium sm:text-sm"

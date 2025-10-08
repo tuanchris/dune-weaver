@@ -472,14 +472,35 @@ input:checked + .slider:before {
     <h2
       class="text-slate-800 text-xl sm:text-2xl font-semibold leading-tight tracking-[-0.01em] px-6 py-4 border-b border-slate-200"
     >
-      WLED Configuration
+      LED Controller Configuration
     </h2>
     <div class="px-6 py-5 space-y-6">
-      <label class="flex flex-col gap-1.5">
-        <span class="text-slate-700 text-sm font-medium leading-normal"
-          >IP Address</span
-        >
-        <div class="flex gap-3 items-center">
+      <!-- LED Provider Selection -->
+      <div class="flex flex-col gap-2">
+        <span class="text-slate-700 text-sm font-medium leading-normal">LED Provider</span>
+        <div class="flex gap-3">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="ledProvider" value="none" id="ledProviderNone" class="w-4 h-4 text-sky-600 border-slate-300 focus:ring-sky-500">
+            <span class="text-sm text-slate-700">None</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="ledProvider" value="wled" id="ledProviderWled" class="w-4 h-4 text-sky-600 border-slate-300 focus:ring-sky-500">
+            <span class="text-sm text-slate-700">WLED</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="ledProvider" value="hyperion" id="ledProviderHyperion" class="w-4 h-4 text-sky-600 border-slate-300 focus:ring-sky-500">
+            <span class="text-sm text-slate-700">Hyperion</span>
+          </label>
+        </div>
+        <p class="text-xs text-slate-500">
+          Select your LED control system (settings are mutually exclusive)
+        </p>
+      </div>
+
+      <!-- WLED Configuration (shown when WLED is selected) -->
+      <div id="wledConfig" class="flex flex-col gap-4 hidden">
+        <label class="flex flex-col gap-1.5">
+          <span class="text-slate-700 text-sm font-medium leading-normal">WLED IP Address</span>
           <div class="relative flex-1">
             <input
               id="wledIpInput"
@@ -496,18 +517,58 @@ input:checked + .slider:before {
               <span class="material-icons">close</span>
             </button>
           </div>
-          <button
-            id="saveWledConfig"
-            class="flex items-center justify-center gap-2 min-w-[140px] cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors flex-shrink-0"
-          >
-            <span class="material-icons text-lg">save</span>
-            <span class="truncate">Save Configuration</span>
-          </button>
-        </div>
-        <p class="text-xs text-slate-500 mt-2">
-          Enter the IP address of your WLED controller.
-        </p>
-      </label>
+          <p class="text-xs text-slate-500">
+            Enter the IP address of your WLED controller
+          </p>
+        </label>
+      </div>
+
+      <!-- Hyperion Configuration (shown when Hyperion is selected) -->
+      <div id="hyperionConfig" class="flex flex-col gap-4 hidden">
+        <label class="flex flex-col gap-1.5">
+          <span class="text-slate-700 text-sm font-medium leading-normal">Hyperion IP Address</span>
+          <div class="relative flex-1">
+            <input
+              id="hyperionIpInput"
+              class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 pr-10 text-base font-normal leading-normal transition-colors"
+              placeholder="e.g., 192.168.1.200"
+              value=""
+            />
+            <button
+              type="button"
+              onclick="document.getElementById('hyperionIpInput').value='';"
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+              aria-label="Clear Hyperion IP"
+            >
+              <span class="material-icons">close</span>
+            </button>
+          </div>
+        </label>
+        <label class="flex flex-col gap-1.5">
+          <span class="text-slate-700 text-sm font-medium leading-normal">Hyperion Port</span>
+          <input
+            id="hyperionPortInput"
+            type="number"
+            class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-normal leading-normal transition-colors"
+            placeholder="8090"
+            value="8090"
+            min="1"
+            max="65535"
+          />
+          <p class="text-xs text-slate-500">
+            Enter the JSON-RPC port (default: 8090)
+          </p>
+        </label>
+      </div>
+
+      <!-- Save Button -->
+      <button
+        id="saveLedConfig"
+        class="flex items-center justify-center gap-2 w-full sm:w-auto cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors"
+      >
+        <span class="material-icons text-lg">save</span>
+        <span class="truncate">Save LED Configuration</span>
+      </button>
     </div>
   </section>
   <section class="bg-white rounded-xl shadow-sm overflow-hidden">

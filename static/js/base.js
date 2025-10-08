@@ -1,5 +1,30 @@
 // Player status bar functionality - Updated to fix logMessage errors
 
+// Update LED nav label based on provider
+async function updateLedNavLabel() {
+    try {
+        const response = await fetch('/get_led_config');
+        if (response.ok) {
+            const data = await response.json();
+            const navLabel = document.getElementById('led-nav-label');
+            if (navLabel) {
+                if (data.provider === 'wled') {
+                    navLabel.textContent = 'WLED';
+                } else if (data.provider === 'hyperion') {
+                    navLabel.textContent = 'Hyperion';
+                } else {
+                    navLabel.textContent = 'LED';
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error updating LED nav label:', error);
+    }
+}
+
+// Call on page load
+document.addEventListener('DOMContentLoaded', updateLedNavLabel);
+
 // Pattern files cache for improved performance with localStorage persistence
 const PATTERN_CACHE_KEY = 'dune_weaver_pattern_files_cache';
 const PATTERN_CACHE_EXPIRY = 30 * 60 * 1000; // 30 minutes cache (longer since it persists)

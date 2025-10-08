@@ -1,7 +1,7 @@
-{% extends "base.html" %} {% block title %}WLED - {{ app_name or 'Dune Weaver' }}{% endblock %}
+{% extends "base.html" %} {% block title %}LED Control - {{ app_name or 'Dune Weaver' }}{% endblock %}
 
 {% block additional_styles %}
-/* Dark mode styles for WLED page */
+/* Dark mode styles for LED page */
 .dark .bg-white {
   background-color: #262626;
 }
@@ -14,63 +14,181 @@
 .dark .text-gray-700 {
   color: #d1d5db;
 }
+.dark .text-slate-800 {
+  color: #e5e5e5;
+}
+.dark .border-slate-300 {
+  border-color: #404040;
+}
+.dark input[type="range"] {
+  background-color: #404040;
+}
+.dark input[type="color"] {
+  background-color: #262626;
+  border-color: #404040;
+}
 {% endblock %}
 
 {% block content %}
 <div class="layout-content-container flex flex-col w-full max-w-4xl gap-0 pt-2 pb-[75px]">
-  <section class="bg-white rounded-xl shadow-sm overflow-hidden pt-4 sm:pt-0 h-full">
+  <!-- Not Configured State -->
+  <section id="led-not-configured" class="bg-white rounded-xl shadow-sm overflow-hidden pt-4 sm:pt-0 h-full hidden">
     <div class="flex flex-col items-center px-0 py-0 h-full">
       <div class="w-full h-full max-w-5xl flex flex-col overflow-hidden">
-        <div id="wled-status" class="w-full p-8 text-center">
+        <div class="w-full p-8 text-center">
           <div class="flex flex-col items-center gap-4">
             <span class="material-icons text-6xl text-gray-500">lightbulb</span>
-            <h2 class="text-2xl font-semibold text-gray-700">WLED Not Configured</h2>
-            <p class="text-gray-500 max-w-md">Please set up your WLED IP address in the Settings page to control your LED lights.</p>
-            <a href="/settings" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+            <h2 class="text-2xl font-semibold text-gray-700">LED Controller Not Configured</h2>
+            <p class="text-gray-500 max-w-md">Please configure your LED controller (WLED or Hyperion) in the Settings page.</p>
+            <a href="/settings" class="mt-4 flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-md hover:bg-blue-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2">
+              <span class="material-icons">settings</span>
               Go to Settings
             </a>
           </div>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WLED iframe -->
+  <section id="wled-container" class="bg-white rounded-xl shadow-sm overflow-hidden pt-4 sm:pt-0 h-full hidden">
+    <div class="flex flex-col items-center px-0 py-0 h-full">
+      <div class="w-full h-full max-w-5xl flex flex-col overflow-hidden">
         <iframe id="wled-frame"
           src=""
-          class="h-full w-full rounded-lg border border-slate-200 hidden"
+          class="h-full w-full rounded-lg border border-slate-200"
           frameborder="0"
           allowfullscreen
         ></iframe>
       </div>
     </div>
   </section>
+
+  <!-- Hyperion Controls -->
+  <section id="hyperion-container" class="bg-white rounded-xl shadow-sm overflow-hidden hidden">
+    <div class="px-6 py-5 space-y-6">
+      <h2 class="text-slate-800 text-xl sm:text-2xl font-semibold leading-tight tracking-[-0.01em]">
+        Hyperion Control
+      </h2>
+
+      <!-- Connection Status -->
+      <div id="hyperion-status" class="p-4 rounded-lg bg-gray-100 border border-slate-200">
+        <div class="flex items-center gap-2">
+          <span class="material-icons text-gray-500">info</span>
+          <span class="text-sm text-gray-700">Checking connection...</span>
+        </div>
+      </div>
+
+      <!-- Power and Brightness Grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        <!-- Power Control -->
+        <div class="flex flex-col gap-3">
+          <h3 class="text-slate-800 text-base font-semibold">Power</h3>
+          <button id="hyperion-power-toggle" class="flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-3 text-sm font-semibold text-white shadow-md hover:bg-green-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2">
+            <span class="material-icons">power_settings_new</span>
+            <span id="power-button-text">Turn ON</span>
+          </button>
+        </div>
+
+        <!-- Brightness Control -->
+        <div class="flex flex-col gap-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-slate-800 text-base font-semibold">Brightness</h3>
+            <span id="brightness-value" class="text-sm font-medium text-slate-600">100%</span>
+          </div>
+          <input type="range" id="hyperion-brightness" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+        </div>
+      </div>
+
+      <!-- Color Control -->
+      <div class="flex flex-col gap-3">
+        <h3 class="text-slate-800 text-base font-semibold">Color Picker</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="flex items-center gap-3">
+            <input type="color" id="hyperion-color" value="#ff0000" class="w-20 h-20 rounded-lg border-2 border-slate-300 cursor-pointer">
+            <div class="flex flex-col gap-1">
+              <span id="color-hex-display" class="text-sm font-mono font-semibold text-slate-700">#FF0000</span>
+              <button id="hyperion-set-color" class="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-md hover:bg-blue-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2">
+                <span class="material-icons text-base">palette</span>
+                <span>Apply</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Quick Colors -->
+          <div class="flex flex-col gap-2">
+            <span class="text-sm font-medium text-slate-600">Quick Colors</span>
+            <div class="grid grid-cols-4 gap-2">
+              <button class="quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ff0000" style="background-color: #ff0000;" title="Red"></button>
+              <button class="quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#00ff00" style="background-color: #00ff00;" title="Green"></button>
+              <button class="quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#0000ff" style="background-color: #0000ff;" title="Blue"></button>
+              <button class="quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ffff00" style="background-color: #ffff00;" title="Yellow"></button>
+              <button class="quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ff00ff" style="background-color: #ff00ff;" title="Magenta"></button>
+              <button class="quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#00ffff" style="background-color: #00ffff;" title="Cyan"></button>
+              <button class="quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ff8000" style="background-color: #ff8000;" title="Orange"></button>
+              <button class="quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ffffff" style="background-color: #ffffff;" title="White"></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Effects -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="flex flex-col gap-3">
+          <h3 class="text-slate-800 text-base font-semibold">Effects</h3>
+          <select id="hyperion-effect-select" class="form-select w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:outline-0 focus:ring-2 focus:ring-blue-500">
+            <option value="">Loading effects...</option>
+          </select>
+        </div>
+        <div class="flex flex-col gap-3">
+          <h3 class="text-slate-800 text-base font-semibold opacity-0 pointer-events-none">Spacer</h3>
+          <button id="hyperion-set-effect" class="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-md hover:bg-blue-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2">
+            <span class="material-icons">auto_awesome</span>
+            <span>Apply Effect</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Effect Settings -->
+      <div class="flex flex-col gap-4 pt-4 border-t border-slate-200">
+        <h3 class="text-slate-800 text-base font-semibold">Automation Settings</h3>
+        <p class="text-xs text-slate-500">Configure which effects to show when idle or playing patterns</p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <!-- Idle Effect -->
+          <div class="flex flex-col gap-2">
+            <label class="text-sm font-medium text-slate-700">Idle Effect</label>
+            <select id="hyperion-idle-effect" class="form-select w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-0 focus:ring-2 focus:ring-blue-500">
+              <option value="">Default (Clear Priority)</option>
+            </select>
+          </div>
+
+          <!-- Playing Effect -->
+          <div class="flex flex-col gap-2">
+            <label class="text-sm font-medium text-slate-700">Playing Effect</label>
+            <select id="hyperion-playing-effect" class="form-select w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-0 focus:ring-2 focus:ring-blue-500">
+              <option value="">Default (Clear Priority)</option>
+            </select>
+          </div>
+        </div>
+
+        <button id="save-hyperion-effects" class="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-blue-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2">
+          <span class="material-icons text-base">save</span>
+          <span>Save Effect Settings</span>
+        </button>
+      </div>
+
+      <!-- Reset Control -->
+      <div class="flex items-center gap-4 pt-4 border-t border-slate-200">
+        <button id="hyperion-clear-priority" class="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-blue-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2">
+          <span class="material-icons text-base">clear_all</span>
+          <span>Clear & Return to Default</span>
+        </button>
+        <p class="text-xs text-slate-500 flex-1">Clears Dune Weaver's control</p>
+      </div>
+    </div>
+  </section>
 </div>
-<script>
-  async function loadWledIframe() {
-    let wledIp = localStorage.getItem('wled_ip');
-    const status = document.getElementById('wled-status');
-    const frame = document.getElementById('wled-frame');
-    if (!wledIp) {
-      // Try to fetch from server if not in localStorage
-      try {
-        const resp = await fetch('/get_wled_ip');
-        if (resp.ok) {
-          const data = await resp.json();
-          wledIp = data.wled_ip;
-          localStorage.setItem('wled_ip', wledIp);
-        }
-      } catch (e) {}
-    }
-    if (wledIp && frame) {
-      frame.src = `http://${wledIp}`;
-      frame.classList.remove('hidden');
-      status.classList.add('hidden');
-    } else {
-      if (frame) {
-        frame.src = '';
-        frame.classList.add('hidden');
-      }
-      if (status) {
-        status.classList.remove('hidden');
-      }
-    }
-  }
-  document.addEventListener('DOMContentLoaded', loadWledIframe);
-</script>
+
+<script src="/static/js/led-control.js"></script>
 {% endblock %}

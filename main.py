@@ -20,6 +20,7 @@ import sys
 import asyncio
 from contextlib import asynccontextmanager
 from modules.led.led_controller import LEDController, effect_idle
+from modules.led.led_interface import LEDInterface
 import math
 from modules.core.cache_manager import generate_all_image_previews, get_cache_path, generate_image_preview, get_pattern_metadata
 from modules.core.version_manager import version_manager
@@ -84,7 +85,36 @@ async def lifespan(app: FastAPI):
         connection_manager.connect_device()
     except Exception as e:
         logger.warning(f"Failed to auto-connect to serial port: {str(e)}")
-    
+
+    # Initialize LED controller based on saved configuration
+    try:
+        # Auto-detect provider for backward compatibility with existing installations
+        if not state.led_provider or state.led_provider == "none":
+            if state.wled_ip:
+                state.led_provider = "wled"
+                logger.info("Auto-detected WLED provider from existing configuration")
+            elif state.hyperion_ip:
+                state.led_provider = "hyperion"
+                logger.info("Auto-detected Hyperion provider from existing configuration")
+
+        # Initialize the appropriate controller
+        if state.led_provider == "wled" and state.wled_ip:
+            state.led_controller = LEDInterface("wled", state.wled_ip)
+            logger.info(f"LED controller initialized: WLED at {state.wled_ip}")
+        elif state.led_provider == "hyperion" and state.hyperion_ip:
+            state.led_controller = LEDInterface("hyperion", state.hyperion_ip, state.hyperion_port)
+            logger.info(f"LED controller initialized: Hyperion at {state.hyperion_ip}:{state.hyperion_port}")
+        else:
+            state.led_controller = None
+            logger.info("LED controller not configured")
+
+        # Save if provider was auto-detected
+        if state.led_provider and (state.wled_ip or state.hyperion_ip):
+            state.save()
+    except Exception as e:
+        logger.warning(f"Failed to initialize LED controller: {str(e)}")
+        state.led_controller = None
+
     # Check if auto_play mode is enabled and auto-play playlist (right after connection attempt)
     if state.auto_play_enabled and state.auto_play_playlist:
         logger.info(f"auto_play mode enabled, checking for connection before auto-playing playlist: {state.auto_play_playlist}")
@@ -191,6 +221,11 @@ class SpeedRequest(BaseModel):
 
 class WLEDRequest(BaseModel):
     wled_ip: Optional[str] = None
+
+class LEDConfigRequest(BaseModel):
+    provider: str  # "wled", "hyperion", or "none"
+    ip_address: Optional[str] = None
+    port: Optional[int] = None
 
 class DeletePlaylistRequest(BaseModel):
     playlist_name: str
@@ -1077,18 +1112,97 @@ async def update_software():
 
 @app.post("/set_wled_ip")
 async def set_wled_ip(request: WLEDRequest):
+    """Legacy endpoint for backward compatibility - sets WLED as LED provider"""
     state.wled_ip = request.wled_ip
-    state.led_controller = LEDController(request.wled_ip)
-    effect_idle(state.led_controller)
+    state.led_provider = "wled" if request.wled_ip else "none"
+    state.led_controller = LEDInterface("wled", request.wled_ip) if request.wled_ip else None
+    if state.led_controller:
+        state.led_controller.effect_idle()
     state.save()
     logger.info(f"WLED IP updated: {request.wled_ip}")
     return {"success": True, "wled_ip": state.wled_ip}
 
 @app.get("/get_wled_ip")
 async def get_wled_ip():
+    """Legacy endpoint for backward compatibility"""
     if not state.wled_ip:
         raise HTTPException(status_code=404, detail="No WLED IP set")
     return {"success": True, "wled_ip": state.wled_ip}
+
+@app.post("/set_led_config")
+async def set_led_config(request: LEDConfigRequest):
+    """Configure LED provider (WLED, Hyperion, or none)"""
+    if request.provider not in ["wled", "hyperion", "none"]:
+        raise HTTPException(status_code=400, detail="Invalid provider. Must be 'wled', 'hyperion', or 'none'")
+
+    state.led_provider = request.provider
+
+    if request.provider == "wled":
+        if not request.ip_address:
+            raise HTTPException(status_code=400, detail="IP address required for WLED")
+        state.wled_ip = request.ip_address
+        state.hyperion_ip = None  # Clear other provider
+        state.led_controller = LEDInterface("wled", request.ip_address)
+        logger.info(f"LED provider set to WLED at {request.ip_address}")
+
+    elif request.provider == "hyperion":
+        if not request.ip_address:
+            raise HTTPException(status_code=400, detail="IP address required for Hyperion")
+        state.hyperion_ip = request.ip_address
+        state.hyperion_port = request.port or 8090
+        state.wled_ip = None  # Clear other provider
+        state.led_controller = LEDInterface("hyperion", request.ip_address, request.port or 8090)
+        logger.info(f"LED provider set to Hyperion at {request.ip_address}:{request.port or 8090}")
+
+    else:  # none
+        state.wled_ip = None
+        state.hyperion_ip = None
+        state.led_controller = None
+        logger.info("LED provider disabled")
+
+    # Show idle effect if controller is configured
+    if state.led_controller:
+        state.led_controller.effect_idle()
+
+    state.save()
+
+    return {
+        "success": True,
+        "provider": state.led_provider,
+        "wled_ip": state.wled_ip,
+        "hyperion_ip": state.hyperion_ip,
+        "hyperion_port": state.hyperion_port
+    }
+
+@app.get("/get_led_config")
+async def get_led_config():
+    """Get current LED provider configuration"""
+    # Auto-detect provider for backward compatibility with existing installations
+    provider = state.led_provider
+    if not provider or provider == "none":
+        # If no provider set but we have IPs configured, auto-detect
+        if state.wled_ip:
+            provider = "wled"
+            state.led_provider = "wled"
+            state.save()
+            logger.info("Auto-detected WLED provider from existing configuration")
+        elif state.hyperion_ip:
+            provider = "hyperion"
+            state.led_provider = "hyperion"
+            state.save()
+            logger.info("Auto-detected Hyperion provider from existing configuration")
+        else:
+            provider = "none"
+
+    return {
+        "success": True,
+        "provider": provider,
+        "wled_ip": state.wled_ip,
+        "hyperion_ip": state.hyperion_ip,
+        "hyperion_port": state.hyperion_port,
+        "hyperion_idle_effect": state.hyperion_idle_effect,
+        "hyperion_playing_effect": state.hyperion_playing_effect
+    }
 
 @app.post("/skip_pattern")
 async def skip_pattern():
@@ -1287,6 +1401,168 @@ async def image2sand(request: Request):
 @app.get("/wled")
 async def wled(request: Request):
     return templates.TemplateResponse("wled.html", {"request": request, "app_name": state.app_name})
+
+# Hyperion control endpoints
+@app.get("/api/hyperion/status")
+async def hyperion_status():
+    """Get Hyperion connection status"""
+    if not state.led_controller or state.led_provider != "hyperion":
+        raise HTTPException(status_code=400, detail="Hyperion not configured")
+
+    try:
+        status = state.led_controller.check_status()
+        return status
+    except Exception as e:
+        logger.error(f"Failed to check Hyperion status: {str(e)}")
+        return {"connected": False, "message": str(e)}
+
+@app.post("/api/hyperion/power")
+async def hyperion_power(request: dict):
+    """Control Hyperion power state"""
+    if not state.led_controller or state.led_provider != "hyperion":
+        raise HTTPException(status_code=400, detail="Hyperion not configured")
+
+    state_value = request.get("state", 1)
+    if state_value not in [0, 1, 2]:
+        raise HTTPException(status_code=400, detail="State must be 0 (off), 1 (on), or 2 (toggle)")
+
+    try:
+        result = state.led_controller.set_power(state_value)
+        return result
+    except Exception as e:
+        logger.error(f"Failed to set Hyperion power: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/hyperion/brightness")
+async def hyperion_brightness(request: dict):
+    """Set Hyperion brightness"""
+    if not state.led_controller or state.led_provider != "hyperion":
+        raise HTTPException(status_code=400, detail="Hyperion not configured")
+
+    value = request.get("value", 100)
+    if not 0 <= value <= 100:
+        raise HTTPException(status_code=400, detail="Brightness must be between 0 and 100")
+
+    try:
+        controller = state.led_controller.get_controller()
+        result = controller.set_brightness(value)
+        return result
+    except Exception as e:
+        logger.error(f"Failed to set Hyperion brightness: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/hyperion/color")
+async def hyperion_color(request: dict):
+    """Set Hyperion color"""
+    if not state.led_controller or state.led_provider != "hyperion":
+        raise HTTPException(status_code=400, detail="Hyperion not configured")
+
+    hex_color = request.get("hex")
+    r = request.get("r")
+    g = request.get("g")
+    b = request.get("b")
+
+    if not hex_color and (r is None or g is None or b is None):
+        raise HTTPException(status_code=400, detail="Either hex or RGB values required")
+
+    try:
+        controller = state.led_controller.get_controller()
+
+        # Convert hex to RGB if hex was provided
+        if hex_color:
+            hex_color = hex_color.lstrip('#')
+            if len(hex_color) != 6:
+                raise HTTPException(status_code=400, detail="Hex color must be 6 characters")
+            r = int(hex_color[0:2], 16)
+            g = int(hex_color[2:4], 16)
+            b = int(hex_color[4:6], 16)
+
+        result = controller.set_color(r=r, g=g, b=b)
+        return result
+    except ValueError as e:
+        logger.error(f"Failed to parse hex color: {str(e)}")
+        raise HTTPException(status_code=400, detail="Invalid hex color format")
+    except Exception as e:
+        logger.error(f"Failed to set Hyperion color: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/hyperion/clear")
+async def hyperion_clear(request: dict):
+    """Clear Hyperion priority"""
+    if not state.led_controller or state.led_provider != "hyperion":
+        raise HTTPException(status_code=400, detail="Hyperion not configured")
+
+    try:
+        controller = state.led_controller.get_controller()
+        result = controller.clear_priority()
+        return result
+    except Exception as e:
+        logger.error(f"Failed to clear Hyperion priority: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/hyperion/effects")
+async def hyperion_effects():
+    """Get list of available Hyperion effects"""
+    if not state.led_controller or state.led_provider != "hyperion":
+        raise HTTPException(status_code=400, detail="Hyperion not configured")
+
+    try:
+        import requests as req
+        response = req.post(
+            f"http://{state.hyperion_ip}:{state.hyperion_port}/json-rpc",
+            json={"command": "serverinfo"},
+            timeout=2
+        )
+        data = response.json()
+        effects = data.get('info', {}).get('effects', [])
+
+        # Return sorted list of effects
+        effects_list = [{"name": e.get("name"), "args": e.get("args", {})} for e in effects]
+        effects_list.sort(key=lambda x: x["name"])
+
+        return {"success": True, "effects": effects_list}
+    except Exception as e:
+        logger.error(f"Failed to get Hyperion effects: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/hyperion/effect")
+async def hyperion_effect(request: dict):
+    """Set Hyperion effect"""
+    if not state.led_controller or state.led_provider != "hyperion":
+        raise HTTPException(status_code=400, detail="Hyperion not configured")
+
+    effect_name = request.get("effect_name")
+    effect_args = request.get("args", {})
+
+    if not effect_name:
+        raise HTTPException(status_code=400, detail="effect_name required")
+
+    try:
+        controller = state.led_controller.get_controller()
+        result = controller.set_effect(effect_name, effect_args)
+        return result
+    except Exception as e:
+        logger.error(f"Failed to set Hyperion effect: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/hyperion/set_effects")
+async def hyperion_set_effects(request: dict):
+    """Configure idle and playing effects for Hyperion"""
+    idle_effect = request.get("idle_effect")
+    playing_effect = request.get("playing_effect")
+
+    # Allow None/empty string to clear the setting
+    state.hyperion_idle_effect = idle_effect if idle_effect else None
+    state.hyperion_playing_effect = playing_effect if playing_effect else None
+
+    state.save()
+    logger.info(f"Hyperion effects configured - Idle: {state.hyperion_idle_effect}, Playing: {state.hyperion_playing_effect}")
+
+    return {
+        "success": True,
+        "idle_effect": state.hyperion_idle_effect,
+        "playing_effect": state.hyperion_playing_effect
+    }
 
 @app.get("/table_control")
 async def table_control(request: Request):

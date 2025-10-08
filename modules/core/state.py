@@ -40,7 +40,12 @@ class AppState:
         self.conn = None
         self.port = None
         self.wled_ip = None
+        self.hyperion_ip = None
+        self.hyperion_port = 8090
+        self.led_provider = "none"  # "wled", "hyperion", or "none"
         self.led_controller = None
+        self.hyperion_idle_effect = None  # Effect to show when idle (None = clear priority)
+        self.hyperion_playing_effect = None  # Effect to show when playing (None = clear priority)
         self.skip_requested = False
         self.table_type = None
         self._playlist_mode = "loop"
@@ -190,6 +195,11 @@ class AppState:
             "custom_clear_from_out": self.custom_clear_from_out,
             "port": self.port,
             "wled_ip": self.wled_ip,
+            "hyperion_ip": self.hyperion_ip,
+            "hyperion_port": self.hyperion_port,
+            "led_provider": self.led_provider,
+            "hyperion_idle_effect": self.hyperion_idle_effect,
+            "hyperion_playing_effect": self.hyperion_playing_effect,
             "app_name": self.app_name,
             "auto_play_enabled": self.auto_play_enabled,
             "auto_play_playlist": self.auto_play_playlist,
@@ -229,6 +239,11 @@ class AppState:
         self.custom_clear_from_out = data.get("custom_clear_from_out", None)
         self.port = data.get("port", None)
         self.wled_ip = data.get('wled_ip', None)
+        self.hyperion_ip = data.get('hyperion_ip', None)
+        self.hyperion_port = data.get('hyperion_port', 8090)
+        self.led_provider = data.get('led_provider', "none")
+        self.hyperion_idle_effect = data.get('hyperion_idle_effect', None)
+        self.hyperion_playing_effect = data.get('hyperion_playing_effect', None)
         self.app_name = data.get("app_name", "Dune Weaver")
         self.auto_play_enabled = data.get("auto_play_enabled", False)
         self.auto_play_playlist = data.get("auto_play_playlist", None)
