@@ -206,18 +206,22 @@ def effect_loading(hyperion_controller: HyperionController) -> bool:
     return res.get('connected', False)
 
 
-def effect_idle(hyperion_controller: HyperionController, effect_name: str = None) -> bool:
-    """Show idle effect - use configured effect or clear priority to return to default"""
+def effect_idle(hyperion_controller: HyperionController, effect_name: str = "off") -> bool:
+    """Show idle effect - use configured effect or clear priority to return to default
+
+    Args:
+        effect_name: Effect name to show, "off" to clear priority (default), or None for off
+    """
     # Turn on Hyperion first
     hyperion_controller.set_power(1)
     time.sleep(0.2)  # Give Hyperion time to power on
     # Clear priority before setting new effect
     hyperion_controller.clear_priority()
-    if effect_name:
+    if effect_name and effect_name != "off":
         time.sleep(0.1)  # Give Hyperion time to clear
         res = hyperion_controller.set_effect(effect_name)
     else:
-        # Already cleared above
+        # "off" or None - already cleared above, return to default state
         res = {"connected": True}
     return res.get('connected', False)
 
@@ -239,17 +243,21 @@ def effect_connected(hyperion_controller: HyperionController) -> bool:
     return res.get('connected', False)
 
 
-def effect_playing(hyperion_controller: HyperionController, effect_name: str = None) -> bool:
-    """Show playing effect - use configured effect or clear to show default"""
+def effect_playing(hyperion_controller: HyperionController, effect_name: str = "off") -> bool:
+    """Show playing effect - use configured effect or clear to show default
+
+    Args:
+        effect_name: Effect name to show, "off" to clear priority (default), or None for off
+    """
     # Turn on Hyperion first
     hyperion_controller.set_power(1)
     time.sleep(0.2)  # Give Hyperion time to power on
     # Clear priority before setting new effect
     hyperion_controller.clear_priority()
-    if effect_name:
+    if effect_name and effect_name != "off":
         time.sleep(0.1)  # Give Hyperion time to clear
         res = hyperion_controller.set_effect(effect_name)
     else:
-        # Already cleared above - show user's configured effect/color
+        # "off" or None - already cleared above, show user's configured effect/color
         res = {"connected": True}
     return res.get('connected', False)

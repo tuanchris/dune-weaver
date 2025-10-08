@@ -44,8 +44,8 @@ class AppState:
         self.hyperion_port = 8090
         self.led_provider = "none"  # "wled", "hyperion", or "none"
         self.led_controller = None
-        self.hyperion_idle_effect = None  # Effect to show when idle (None = clear priority)
-        self.hyperion_playing_effect = None  # Effect to show when playing (None = clear priority)
+        self.hyperion_idle_effect = "Candle"  # Effect to show when idle ("off" = clear priority)
+        self.hyperion_playing_effect = "Rainbow swirl fast"  # Effect to show when playing ("off" = clear priority)
         self.skip_requested = False
         self.table_type = None
         self._playlist_mode = "loop"
@@ -242,8 +242,8 @@ class AppState:
         self.hyperion_ip = data.get('hyperion_ip', None)
         self.hyperion_port = data.get('hyperion_port', 8090)
         self.led_provider = data.get('led_provider', "none")
-        self.hyperion_idle_effect = data.get('hyperion_idle_effect', None)
-        self.hyperion_playing_effect = data.get('hyperion_playing_effect', None)
+        self.hyperion_idle_effect = data.get('hyperion_idle_effect', "Candle")
+        self.hyperion_playing_effect = data.get('hyperion_playing_effect', "Rainbow swirl fast")
         self.app_name = data.get("app_name", "Dune Weaver")
         self.auto_play_enabled = data.get("auto_play_enabled", False)
         self.auto_play_playlist = data.get("auto_play_playlist", None)
