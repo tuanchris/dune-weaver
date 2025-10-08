@@ -110,6 +110,12 @@
       .dark .bg-white {
         background-color: #262626;
       }
+      .dark #shutdown-button:hover {
+        background-color: #404040;
+      }
+      .dark #theme-toggle:hover {
+        background-color: #404040;
+      }
       .dark .bg-gray-50 {
         background-color: #1a1a1a;
       }
@@ -262,7 +268,15 @@
             </h1>
             </a>
           </div>
-          <div class="flex items-center gap-4">
+          <div class="flex items-center gap-2">
+            <button
+              id="shutdown-button"
+              class="p-1.5 flex rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500 hidden"
+              aria-label="Shutdown system"
+              title="Shutdown Raspberry Pi"
+            >
+              <span class="material-icons text-red-600">power_settings_new</span>
+            </button>
             <button
               id="theme-toggle"
               class="p-1.5 flex rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -676,6 +690,45 @@
           const isDark = document.documentElement.classList.toggle('dark');
           localStorage.setItem('theme', isDark ? 'dark' : 'light');
           updateThemeIcon();
+        });
+      });
+
+      // Shutdown button functionality
+      document.addEventListener('DOMContentLoaded', async function() {
+        const shutdownButton = document.getElementById('shutdown-button');
+
+        // Check if system is a Raspberry Pi
+        try {
+          const response = await fetch('/api/system/check_pi');
+          const data = await response.json();
+
+          if (data.is_pi) {
+            shutdownButton.classList.remove('hidden');
+          }
+        } catch (error) {
+          console.error('Error checking Pi status:', error);
+        }
+
+        // Shutdown button click handler
+        shutdownButton.addEventListener('click', async () => {
+          const confirmed = confirm('Are you sure you want to shutdown the Raspberry Pi?\n\nThis will:\n1. Stop Docker containers\n2. Shut down the system\n\nYou will need physical access to restart it.');
+
+          if (!confirmed) return;
+
+          try {
+            showStatusMessage('Initiating shutdown...', 'warning');
+
+            const response = await fetch('/api/system/shutdown', { method: 'POST' });
+            const data = await response.json();
+
+            if (data.success) {
+              showStatusMessage('System is shutting down...', 'success');
+            } else {
+              showStatusMessage('Shutdown failed: ' + data.message, 'error');
+            }
+          } catch (error) {
+            showStatusMessage('Failed to shutdown: ' + error.message, 'error');
+          }
         });
       });
     </script>

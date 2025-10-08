@@ -30,6 +30,8 @@ import time
 import argparse
 from concurrent.futures import ProcessPoolExecutor
 import multiprocessing
+import subprocess
+import platform
 
 # Get log level from environment variable, default to INFO
 log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -1656,6 +1658,78 @@ async def trigger_update():
         logger.error(f"Error triggering update: {e}")
         return JSONResponse(
             content={"success": False, "message": "Failed to check for updates"},
+            status_code=500
+        )
+
+@app.get("/api/system/check_pi")
+async def check_pi():
+    """Check if the system is a Raspberry Pi"""
+    try:
+        # Check if running on ARM architecture (Raspberry Pi indicator)
+        is_arm = platform.machine().startswith('arm') or platform.machine().startswith('aarch')
+
+        # Additional check: look for Raspberry Pi specific files
+        is_pi_file = os.path.exists('/proc/device-tree/model')
+        if is_pi_file:
+            with open('/proc/device-tree/model', 'r') as f:
+                model = f.read()
+                is_raspberry_pi = 'Raspberry Pi' in model
+        else:
+            is_raspberry_pi = False
+
+        # System is considered Pi if either check passes
+        is_pi = is_arm or is_raspberry_pi
+
+        return {"is_pi": is_pi}
+    except Exception as e:
+        logger.error(f"Error checking if system is Pi: {e}")
+        return {"is_pi": False}
+
+@app.post("/api/system/shutdown")
+async def shutdown_system():
+    """Shutdown the Raspberry Pi system"""
+    try:
+        # Double-check it's a Pi before allowing shutdown
+        check_result = await check_pi()
+        if not check_result["is_pi"]:
+            return JSONResponse(
+                content={"success": False, "message": "Shutdown only available on Raspberry Pi"},
+                status_code=403
+            )
+
+        logger.warning("Shutdown initiated via API")
+
+        # Run docker compose down in background
+        try:
+            # Get the directory where main.py is located
+            app_dir = os.path.dirname(os.path.abspath(__file__))
+            subprocess.Popen(
+                ["docker", "compose", "down"],
+                cwd=app_dir,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            logger.info("Docker compose down command issued")
+        except Exception as e:
+            logger.error(f"Error running docker compose down: {e}")
+
+        # Schedule shutdown command after a short delay to allow response to be sent
+        def delayed_shutdown():
+            time.sleep(2)  # Give time for response to be sent
+            try:
+                subprocess.run(["sudo", "shutdown", "-h", "now"], check=True)
+            except Exception as e:
+                logger.error(f"Error executing shutdown command: {e}")
+
+        import threading
+        shutdown_thread = threading.Thread(target=delayed_shutdown)
+        shutdown_thread.start()
+
+        return {"success": True, "message": "System shutdown initiated"}
+    except Exception as e:
+        logger.error(f"Error initiating shutdown: {e}")
+        return JSONResponse(
+            content={"success": False, "message": str(e)},
             status_code=500
         )
 
