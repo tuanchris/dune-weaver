@@ -74,10 +74,29 @@ setup_systemd() {
     echo "   🚀 Systemd service installed and enabled"
 }
 
+# Function to setup screen rotation
+setup_screen_rotation() {
+    echo "🔄 Setting up 180° screen rotation..."
+
+    # Add display rotation to boot config if not already present
+    if ! grep -q "display_lcd_rotate=2" /boot/config.txt 2>/dev/null; then
+        if [ -f /boot/config.txt ]; then
+            echo "display_lcd_rotate=2" >> /boot/config.txt
+            echo "   ✅ Display rotation (180°) added to /boot/config.txt"
+        else
+            echo "   ⚠️  /boot/config.txt not found - rotation not configured"
+        fi
+    else
+        echo "   ℹ️  Display rotation already configured"
+    fi
+
+    echo "   🔄 Screen rotation configured"
+}
+
 # Function to setup kiosk optimizations
 setup_kiosk_optimizations() {
     echo "🖥️  Setting up kiosk optimizations..."
-    
+
     # Disable boot messages for cleaner boot
     if ! grep -q "quiet splash" /boot/cmdline.txt 2>/dev/null; then
         if [ -f /boot/cmdline.txt ]; then
@@ -88,7 +107,7 @@ setup_kiosk_optimizations() {
     else
         echo "   ℹ️  Boot splash already enabled"
     fi
-    
+
     # Disable rainbow splash
     if ! grep -q "disable_splash=1" /boot/config.txt 2>/dev/null; then
         if [ -f /boot/config.txt ]; then
@@ -98,10 +117,10 @@ setup_kiosk_optimizations() {
     else
         echo "   ℹ️  Rainbow splash already disabled"
     fi
-    
+
     # Note about auto-login - let user configure manually
     echo "   ℹ️  Auto-login configuration skipped (manual setup recommended)"
-    
+
     echo "   🖥️  Kiosk optimizations applied"
 }
 
@@ -181,6 +200,7 @@ setup_python_environment
 setup_patterns_permissions
 install_scripts
 setup_systemd
+setup_screen_rotation
 setup_kiosk_optimizations
 
 echo ""
@@ -191,6 +211,7 @@ echo "✅ Python virtual environment created at: $SCRIPT_DIR/venv"
 echo "✅ Patterns cache directory permissions configured"
 echo "✅ System scripts installed in /usr/local/bin/"
 echo "✅ Systemd service configured for auto-start"
+echo "✅ Screen rotation (180°) configured"
 echo "✅ Kiosk optimizations applied"
 echo ""
 echo "🔧 Service Management:"

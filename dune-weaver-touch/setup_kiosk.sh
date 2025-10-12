@@ -21,7 +21,7 @@ USER_NAME=$(whoami)
 HOME_DIR="/home/$USER_NAME"
 APP_DIR="$SCRIPT_DIR"
 SERVICE_NAME="dune-weaver-kiosk"
-VENV_PATH="$APP_DIR/bin/activate"
+VENV_PATH="$APP_DIR/venv/bin/activate"
 
 # Display banner
 echo -e "${GREEN}"

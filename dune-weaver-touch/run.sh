@@ -56,4 +56,7 @@ export QT_QPA_PLATFORM=linuxfb
 export QT_QPA_FB_DRM=1
 export QT_QPA_FONTDIR=/usr/share/fonts
 
+# Configure touch screen rotation (180 degrees)
+export QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS=/dev/input/event0:rotate=180
+
 exec ./venv/bin/python main.py
