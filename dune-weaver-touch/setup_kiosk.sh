@@ -88,6 +88,7 @@ gpu_mem=128
 max_framebuffers=2
 display_auto_detect=1
 disable_overscan=1
+display_lcd_rotate=2
 EOF
     else
         # Pi 4/5 configuration
@@ -100,6 +101,7 @@ gpu_mem=128
 max_framebuffers=2
 display_auto_detect=1
 disable_overscan=1
+display_lcd_rotate=2
 EOF
     fi
     
@@ -189,7 +191,7 @@ run_linuxfb() {
     export QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0
     export QT_QPA_FONTDIR=/usr/share/fonts/truetype
     export QT_QPA_FB_HIDECURSOR=1
-    export QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS=/dev/input/event0:rotate=0
+    export QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS=/dev/input/event0:rotate=180
     
     # Enable Virtual Keyboard
     export QT_IM_MODULE=qtvirtualkeyboard
@@ -208,7 +210,7 @@ run_eglfs() {
     export QT_QPA_EGLFS_INTEGRATION=eglfs_kms
     export QT_QPA_EGLFS_KMS_ATOMIC=1
     export QT_QPA_EGLFS_HIDECURSOR=1
-    export QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS=/dev/input/event0:rotate=0
+    export QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS=/dev/input/event0:rotate=180
     
     # Enable Virtual Keyboard
     export QT_IM_MODULE=qtvirtualkeyboard
