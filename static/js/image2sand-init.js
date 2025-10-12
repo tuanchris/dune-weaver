@@ -166,7 +166,10 @@ async function saveConvertedPattern() {
             const fileInput = document.getElementById('upload_file');
             const finalFileName = 'custom_patterns/' + thrFileName;
             logMessage(`Image converted and saved as ${finalFileName}`, LOG_TYPE.SUCCESS);
-            
+
+            // Invalidate pattern files cache to include new file
+            invalidatePatternFilesCache();
+
             // Close the converter dialog
             closeImageConverter();
 
@@ -386,9 +389,7 @@ async function loadThetaRhoFiles() {
 
     try {
         // Fetch the file list from your backend
-        const response = await fetch('/list_theta_rho_files');
-        if (!response.ok) throw new Error('Failed to fetch file list');
-        const files = await response.json();
+        const files = await getCachedPatternFiles();
 
         // Populate the list
         files.forEach(filename => {

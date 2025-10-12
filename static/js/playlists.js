@@ -1041,12 +1041,7 @@ async function loadAvailablePatterns(forceRefresh = false) {
     try {
         // First load basic patterns list for fast initial display
         logMessage('Fetching basic patterns list from server', LOG_TYPE.DEBUG);
-        const basicResponse = await fetch('/list_theta_rho_files');
-        if (!basicResponse.ok) {
-            throw new Error('Failed to load available patterns');
-        }
-        
-        const patterns = await basicResponse.json();
+        const patterns = await getCachedPatternFiles(forceRefresh);
         const thrPatterns = patterns.filter(file => file.endsWith('.thr'));
         availablePatterns = [...thrPatterns];
         filteredPatterns = [...availablePatterns];

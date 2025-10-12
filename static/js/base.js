@@ -1,5 +1,78 @@
 // Player status bar functionality - Updated to fix logMessage errors
 
+// Pattern files cache for improved performance with localStorage persistence
+const PATTERN_CACHE_KEY = 'dune_weaver_pattern_files_cache';
+const PATTERN_CACHE_EXPIRY = 30 * 60 * 1000; // 30 minutes cache (longer since it persists)
+
+// Function to get cached pattern files or fetch fresh data
+async function getCachedPatternFiles(forceRefresh = false) {
+    const now = Date.now();
+
+    // Try to load from localStorage first
+    if (!forceRefresh) {
+        try {
+            const cachedData = localStorage.getItem(PATTERN_CACHE_KEY);
+            if (cachedData) {
+                const { files, timestamp } = JSON.parse(cachedData);
+                if (files && timestamp && (now - timestamp) < PATTERN_CACHE_EXPIRY) {
+                    console.log('Using cached pattern files from localStorage');
+                    return files;
+                }
+            }
+        } catch (error) {
+            console.warn('Error reading pattern files cache from localStorage:', error);
+        }
+    }
+
+    try {
+        console.log('Fetching fresh pattern files from server');
+        const response = await fetch('/list_theta_rho_files');
+        if (!response.ok) {
+            throw new Error(`Failed to fetch pattern files: ${response.status}`);
+        }
+
+        const files = await response.json();
+
+        // Store in localStorage
+        try {
+            const cacheData = { files, timestamp: now };
+            localStorage.setItem(PATTERN_CACHE_KEY, JSON.stringify(cacheData));
+        } catch (error) {
+            console.warn('Error storing pattern files cache in localStorage:', error);
+        }
+
+        return files;
+    } catch (error) {
+        console.error('Error fetching pattern files:', error);
+
+        // Try to return any cached data as fallback, even if expired
+        try {
+            const cachedData = localStorage.getItem(PATTERN_CACHE_KEY);
+            if (cachedData) {
+                const { files } = JSON.parse(cachedData);
+                if (files) {
+                    console.log('Using expired cached pattern files as fallback');
+                    return files;
+                }
+            }
+        } catch (fallbackError) {
+            console.warn('Error reading fallback cache:', fallbackError);
+        }
+
+        return [];
+    }
+}
+
+// Function to invalidate pattern files cache
+function invalidatePatternFilesCache() {
+    try {
+        localStorage.removeItem(PATTERN_CACHE_KEY);
+        console.log('Pattern files cache invalidated');
+    } catch (error) {
+        console.warn('Error invalidating pattern files cache:', error);
+    }
+}
+
 // Helper function to normalize file paths for cross-platform compatibility
 function normalizeFilePath(filePath) {
     if (!filePath) return '';
@@ -905,9 +978,8 @@ function initializeCacheAllPrompt() {
 
 async function startCacheAllProcess() {
     try {
-        // Get list of patterns
-        const response = await fetch('/list_theta_rho_files');
-        const patterns = await response.json();
+        // Get list of patterns using cached function
+        const patterns = await getCachedPatternFiles();
         
         if (!patterns || patterns.length === 0) {
             throw new Error('No patterns found');
