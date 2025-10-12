@@ -78,19 +78,36 @@ setup_systemd() {
 setup_screen_rotation() {
     echo "🔄 Setting up 180° screen rotation..."
 
-    # Add display rotation to boot config if not already present
-    if ! grep -q "display_lcd_rotate=2" /boot/config.txt 2>/dev/null; then
-        if [ -f /boot/config.txt ]; then
-            echo "display_lcd_rotate=2" >> /boot/config.txt
-            echo "   ✅ Display rotation (180°) added to /boot/config.txt"
-        else
-            echo "   ⚠️  /boot/config.txt not found - rotation not configured"
-        fi
-    else
-        echo "   ℹ️  Display rotation already configured"
+    # Determine boot config path (supports both /boot/config.txt and /boot/firmware/config.txt)
+    BOOT_CONFIG=""
+    if [ -f /boot/firmware/config.txt ]; then
+        BOOT_CONFIG="/boot/firmware/config.txt"
+    elif [ -f /boot/config.txt ]; then
+        BOOT_CONFIG="/boot/config.txt"
     fi
 
-    echo "   🔄 Screen rotation configured"
+    if [ -n "$BOOT_CONFIG" ]; then
+        # Comment out KMS for Freenove display compatibility
+        if grep -q "^dtoverlay=vc4-kms-v3d" "$BOOT_CONFIG"; then
+            sed -i 's/^dtoverlay=vc4-kms-v3d/#dtoverlay=vc4-kms-v3d/' "$BOOT_CONFIG"
+            echo "   ✅ Disabled vc4-kms-v3d (not compatible with Freenove rotation)"
+        fi
+
+        # Add display rotation if not present
+        if ! grep -q "display_rotate=2" "$BOOT_CONFIG"; then
+            echo "display_rotate=2" >> "$BOOT_CONFIG"
+            echo "   ✅ Added display_rotate=2"
+        fi
+
+        if ! grep -q "lcd_rotate=2" "$BOOT_CONFIG"; then
+            echo "lcd_rotate=2" >> "$BOOT_CONFIG"
+            echo "   ✅ Added lcd_rotate=2"
+        fi
+
+        echo "   🔄 Screen rotation (180°) configured in $BOOT_CONFIG"
+    else
+        echo "   ⚠️  Boot config not found - rotation not configured"
+    fi
 }
 
 # Function to setup kiosk optimizations

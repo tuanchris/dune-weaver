@@ -51,8 +51,8 @@ echo ""
 
 cd "$SCRIPT_DIR"
 
-# Set Qt platform to linuxfb for Raspberry Pi compatibility
-export QT_QPA_PLATFORM=linuxfb
+# Set Qt platform to linuxfb for Raspberry Pi compatibility with 180° rotation
+export QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0:rotation=180
 export QT_QPA_FB_DRM=1
 export QT_QPA_FONTDIR=/usr/share/fonts
 
