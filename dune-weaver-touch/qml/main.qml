@@ -14,17 +14,10 @@ ApplicationWindow {
     title: "Dune Weaver Touch"
 
     property int currentPageIndex: 0
-    property alias stackView: stackView
-    property alias backend: backend
+    property alias stackView: rotatedContent.stackView
+    property alias backend: rotatedContent.backend
     property bool shouldNavigateToExecution: false
 
-    // Rotate entire window 180 degrees for linuxfb
-    transform: Rotation {
-        origin.x: window.width / 2
-        origin.y: window.height / 2
-        angle: 180
-    }
-    
     onCurrentPageIndexChanged: {
         console.log("📱 currentPageIndex changed to:", currentPageIndex)
     }
@@ -33,20 +26,35 @@ ApplicationWindow {
         if (shouldNavigateToExecution) {
             console.log("🎯 Navigating to execution page")
             console.log("🎯 Current stack depth:", stackView.depth)
-            
+
             // If we're in a sub-page (like PatternDetailPage), pop back to main view first
             if (stackView.depth > 1) {
                 console.log("🎯 Popping back to main view first")
                 stackView.pop()
             }
-            
+
             // Then navigate to ExecutionPage tab
             console.log("🎯 Setting currentPageIndex to 3")
             currentPageIndex = 3
             shouldNavigateToExecution = false
         }
     }
-    
+
+    // Rotated content wrapper (180 degrees for linuxfb)
+    Item {
+        id: rotatedContent
+        anchors.fill: parent
+
+        property alias stackView: stackView
+        property alias backend: backend
+
+        // Apply 180° rotation
+        transform: Rotation {
+            origin.x: rotatedContent.width / 2
+            origin.y: rotatedContent.height / 2
+            angle: 180
+        }
+
     Backend {
         id: backend
 
@@ -224,7 +232,7 @@ ApplicationWindow {
         y: window.height
         anchors.left: parent.left
         anchors.right: parent.right
-        
+
         states: State {
             name: "visible"
             when: inputPanel.active
@@ -233,7 +241,7 @@ ApplicationWindow {
                 y: window.height - inputPanel.height
             }
         }
-        
+
         transitions: Transition {
             from: ""
             to: "visible"
@@ -248,4 +256,6 @@ ApplicationWindow {
             }
         }
     }
+
+    } // Close rotatedContent Item
 }
