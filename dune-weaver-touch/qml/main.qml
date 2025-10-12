@@ -12,11 +12,18 @@ ApplicationWindow {
     width: 800
     height: 480
     title: "Dune Weaver Touch"
-    
+
     property int currentPageIndex: 0
     property alias stackView: stackView
     property alias backend: backend
     property bool shouldNavigateToExecution: false
+
+    // Rotate entire window 180 degrees for linuxfb
+    transform: Rotation {
+        origin.x: window.width / 2
+        origin.y: window.height / 2
+        angle: 180
+    }
     
     onCurrentPageIndexChanged: {
         console.log("📱 currentPageIndex changed to:", currentPageIndex)
