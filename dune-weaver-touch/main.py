@@ -85,18 +85,21 @@ async def startup_tasks():
 def main():
     # Set Qt platform to linuxfb for Raspberry Pi compatibility (Linux only)
     # This must be set before QGuiApplication is created
+    # Note: Startup scripts may have already set QT_QPA_PLATFORM with rotation parameters
     if 'QT_QPA_PLATFORM' not in os.environ:
         # Only use linuxfb on Linux systems (Raspberry Pi)
         # On macOS, let Qt use the native cocoa platform
         if sys.platform.startswith('linux'):
-            os.environ['QT_QPA_PLATFORM'] = 'linuxfb'
-            os.environ['QT_QPA_FB_DRM'] = '1'
+            # Default linuxfb with 180° rotation for Freenove display
+            os.environ['QT_QPA_PLATFORM'] = 'linuxfb:fb=/dev/fb0:rotation=180'
             os.environ['QT_QPA_FONTDIR'] = '/usr/share/fonts'
 
             # Enable virtual keyboard on Linux kiosk
             os.environ['QT_IM_MODULE'] = 'qtvirtualkeyboard'
         else:
             logger.info(f"🖥️ Running on {sys.platform} - using native Qt platform")
+    else:
+        logger.info(f"🖥️ Using QT_QPA_PLATFORM from environment: {os.environ['QT_QPA_PLATFORM']}")
 
     app = QGuiApplication(sys.argv)
 
