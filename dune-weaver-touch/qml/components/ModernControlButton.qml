@@ -1,7 +1,6 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
-import QtQuick.Effects
 
 Rectangle {
     id: root
@@ -17,14 +16,18 @@ Rectangle {
     color: enabled ? buttonColor : "#E0E0E0"
     opacity: enabled ? 1.0 : 0.6
 
-    // Gradient effect
+    // Border for better visibility on linuxfb
+    border.width: 2
+    border.color: enabled ? Qt.darker(root.buttonColor, 1.2) : "#BDBDBD"
+
+    // Gradient effect (compatible with software rendering)
     gradient: Gradient {
         GradientStop { position: 0; color: Qt.lighter(root.buttonColor, 1.1) }
         GradientStop { position: 1; color: root.buttonColor }
     }
 
     // Press animation
-    scale: mouseArea.pressed ? 0.95 : (mouseArea.containsMouse ? 1.02 : 1.0)
+    scale: mouseArea.pressed ? 0.95 : 1.0
 
     Behavior on scale {
         NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
@@ -34,13 +37,14 @@ Rectangle {
         ColorAnimation { duration: 200 }
     }
 
-    // Shadow effect
-    layer.enabled: true
-    layer.effect: MultiEffect {
-        shadowEnabled: true
-        shadowColor: "#25000000"
-        shadowBlur: 0.8
-        shadowVerticalOffset: 2
+    // Simple shadow using Rectangle (linuxfb compatible)
+    Rectangle {
+        anchors.fill: parent
+        anchors.topMargin: 2
+        anchors.leftMargin: 2
+        radius: parent.radius
+        color: "#20000000"
+        z: -1
     }
 
     RowLayout {
