@@ -46,11 +46,10 @@ echo "🚀 Starting Dune Weaver Touch..."
 cd "$SCRIPT_DIR"
 
 # Configure Qt platform environment variables
-# LinuxFB with FKMS: use Qt's rotation parameter since FKMS doesn't rotate the raw framebuffer
-export QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0:rotation=180
+export QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0
 export QT_QPA_FONTDIR=/usr/share/fonts
 
-# Configure touch screen rotation (180 degrees)
-export QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS=/dev/input/event0:rotate=180
+# Touch rotation is now handled by QML transform - don't rotate evdev input
+# (Rotation happens in main.qml via transform: Rotation)
 
 exec ./venv/bin/python main.py

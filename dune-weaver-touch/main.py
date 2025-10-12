@@ -90,8 +90,8 @@ def main():
         # Only use linuxfb on Linux systems (Raspberry Pi)
         # On macOS, let Qt use the native cocoa platform
         if sys.platform.startswith('linux'):
-            # Default linuxfb with 180° rotation for Freenove display
-            os.environ['QT_QPA_PLATFORM'] = 'linuxfb:fb=/dev/fb0:rotation=180'
+            # Default linuxfb (rotation handled by QML transform in main.qml)
+            os.environ['QT_QPA_PLATFORM'] = 'linuxfb:fb=/dev/fb0'
             os.environ['QT_QPA_FONTDIR'] = '/usr/share/fonts'
 
             # Enable virtual keyboard on Linux kiosk

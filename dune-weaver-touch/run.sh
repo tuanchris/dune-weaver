@@ -51,12 +51,11 @@ echo ""
 
 cd "$SCRIPT_DIR"
 
-# Set Qt platform to linuxfb for Raspberry Pi compatibility with 180° rotation
-# LinuxFB with FKMS: use Qt's rotation parameter
-export QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0:rotation=180
+# Set Qt platform to linuxfb for Raspberry Pi compatibility
+export QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0
 export QT_QPA_FONTDIR=/usr/share/fonts
 
-# Configure touch screen rotation (180 degrees)
-export QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS=/dev/input/event0:rotate=180
+# Touch rotation is now handled by QML transform - don't rotate evdev input
+# (Rotation happens in main.qml via transform: Rotation)
 
 exec ./venv/bin/python main.py
