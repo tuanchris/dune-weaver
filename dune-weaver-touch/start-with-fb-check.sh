@@ -45,10 +45,9 @@ sleep 2
 echo "🚀 Starting Dune Weaver Touch..."
 cd "$SCRIPT_DIR"
 
-# Configure Qt platform environment variables with 180° rotation
-# rotation=180 tells Qt to rotate its rendering to match the framebuffer
+# Configure Qt platform environment variables
+# LinuxFB with FKMS: use Qt's rotation parameter since FKMS doesn't rotate the raw framebuffer
 export QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0:rotation=180
-export QT_QPA_FB_DRM=1
 export QT_QPA_FONTDIR=/usr/share/fonts
 
 # Configure touch screen rotation (180 degrees)

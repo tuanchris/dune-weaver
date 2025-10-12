@@ -87,24 +87,24 @@ setup_screen_rotation() {
     fi
 
     if [ -n "$BOOT_CONFIG" ]; then
-        # Comment out KMS for Freenove display compatibility
-        if grep -q "^dtoverlay=vc4-kms-v3d" "$BOOT_CONFIG"; then
-            sed -i 's/^dtoverlay=vc4-kms-v3d/#dtoverlay=vc4-kms-v3d/' "$BOOT_CONFIG"
-            echo "   ✅ Disabled vc4-kms-v3d (not compatible with Freenove rotation)"
+        # Ensure FKMS is enabled (required for Freenove display)
+        if ! grep -q "^dtoverlay=vc4-fkms-v3d" "$BOOT_CONFIG"; then
+            # Check if KMS (full) is present and replace it
+            if grep -q "^dtoverlay=vc4-kms-v3d" "$BOOT_CONFIG"; then
+                sed -i 's/^dtoverlay=vc4-kms-v3d/dtoverlay=vc4-fkms-v3d/' "$BOOT_CONFIG"
+                echo "   ✅ Changed vc4-kms-v3d to vc4-fkms-v3d (required for display)"
+            else
+                echo "dtoverlay=vc4-fkms-v3d" >> "$BOOT_CONFIG"
+                echo "   ✅ Added vc4-fkms-v3d overlay"
+            fi
+        else
+            echo "   ℹ️  FKMS already enabled"
         fi
 
-        # Add display rotation if not present
-        if ! grep -q "display_rotate=2" "$BOOT_CONFIG"; then
-            echo "display_rotate=2" >> "$BOOT_CONFIG"
-            echo "   ✅ Added display_rotate=2"
-        fi
-
-        if ! grep -q "lcd_rotate=2" "$BOOT_CONFIG"; then
-            echo "lcd_rotate=2" >> "$BOOT_CONFIG"
-            echo "   ✅ Added lcd_rotate=2"
-        fi
-
-        echo "   🔄 Screen rotation (180°) configured in $BOOT_CONFIG"
+        # Note: display_rotate and lcd_rotate don't work with linuxfb
+        # Rotation is handled by Qt's rotation parameter in startup scripts
+        echo "   ℹ️  Display rotation handled by Qt (linuxfb:rotation=180)"
+        echo "   🔄 Screen rotation (180°) will be applied by application startup"
     else
         echo "   ⚠️  Boot config not found - rotation not configured"
     fi
