@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 
 IGNORE_PORTS = ['/dev/cu.debug-console', '/dev/cu.Bluetooth-Incoming-Port']
 
+# Global lock to prevent concurrent homing operations
+_homing_lock = threading.Lock()
+_is_homing = False
+
 ###############################################################################
 # Connection Abstraction
 ###############################################################################
@@ -400,15 +404,24 @@ def get_machine_steps(timeout=10):
 def home(timeout=15):
     """
     Perform homing by checking device configuration and sending the appropriate commands.
-    
+
     Args:
         timeout: Maximum time in seconds to wait for homing to complete (default: 15)
     """
-    import threading
-    
-    # Flag to track if homing completed
-    homing_complete = threading.Event()
-    homing_success = False
+    global _is_homing
+
+    # Check if homing is already in progress
+    if not _homing_lock.acquire(blocking=False):
+        logger.warning("Homing already in progress, skipping duplicate request")
+        return False
+
+    try:
+        _is_homing = True
+        logger.info("Starting homing procedure")
+
+        # Flag to track if homing completed
+        homing_complete = threading.Event()
+        homing_success = False
     
     def home_internal():
         nonlocal homing_success
@@ -452,30 +465,36 @@ def home(timeout=15):
             logger.error(f"Error during homing: {e}")
             homing_complete.set()
     
-    # Start homing in a separate thread
-    homing_thread = threading.Thread(target=home_internal)
-    homing_thread.daemon = True
-    homing_thread.start()
-    
-    # Wait for homing to complete or timeout
-    if not homing_complete.wait(timeout):
-        logger.error(f"Homing timeout after {timeout} seconds")
-        # Try to stop any ongoing movement
-        try:
-            if state.conn and state.conn.is_connected():
-                state.conn.send("!\n")  # Send feed hold
-                time.sleep(0.1)
-                state.conn.send("\x18\n")  # Send reset
-        except Exception as e:
-            logger.error(f"Error stopping movement after timeout: {e}")
-        return False
-    
-    if not homing_success:
-        logger.error("Homing failed")
-        return False
-    
-    logger.info("Homing completed successfully")
-    return True
+        # Start homing in a separate thread
+        homing_thread = threading.Thread(target=home_internal)
+        homing_thread.daemon = True
+        homing_thread.start()
+
+        # Wait for homing to complete or timeout
+        if not homing_complete.wait(timeout):
+            logger.error(f"Homing timeout after {timeout} seconds")
+            # Try to stop any ongoing movement
+            try:
+                if state.conn and state.conn.is_connected():
+                    state.conn.send("!\n")  # Send feed hold
+                    time.sleep(0.1)
+                    state.conn.send("\x18\n")  # Send reset
+            except Exception as e:
+                logger.error(f"Error stopping movement after timeout: {e}")
+            return False
+
+        if not homing_success:
+            logger.error("Homing failed")
+            return False
+
+        logger.info("Homing completed successfully")
+        return True
+
+    finally:
+        # Always release the lock when done
+        _is_homing = False
+        _homing_lock.release()
+        logger.debug("Homing lock released")
 
 def check_idle():
     """
