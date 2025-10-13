@@ -88,9 +88,11 @@ def add_to_playlist(playlist_name, pattern):
 
 async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
     """Run a playlist with the given options."""
+    # If another pattern is running, stop it first
     if pattern_manager.pattern_lock.locked():
-        logger.warning("Cannot start playlist: Another pattern is already running")
-        return False, "Cannot start playlist: Another pattern is already running"
+        logger.info("Another pattern is running - stopping it before starting new playlist")
+        await pattern_manager.stop_actions(clear_playlist=True, wait_for_lock=True)
+        logger.info("Previous pattern stopped successfully")
 
     playlists = load_playlists()
     if playlist_name not in playlists:

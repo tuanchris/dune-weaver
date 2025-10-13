@@ -592,9 +592,9 @@ def is_clear_pattern(file_path):
 
 async def run_theta_rho_file(file_path, is_playlist=False):
     """Run a theta-rho file by sending data in optimized batches with tqdm ETA tracking."""
-    if pattern_lock.locked():
-        logger.warning("Another pattern is already running. Cannot start a new one.")
-        return
+    # if pattern_lock.locked():
+    #     logger.warning("Another pattern is already running. Cannot start a new one.")
+    #     return
 
     async with pattern_lock:  # This ensures only one pattern can run at a time
         # Start progress update task only if not part of a playlist
