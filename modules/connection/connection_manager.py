@@ -422,48 +422,48 @@ def home(timeout=15):
         # Flag to track if homing completed
         homing_complete = threading.Event()
         homing_success = False
-    
-    def home_internal():
-        nonlocal homing_success
-        try:
-            if state.homing:
-                logger.info("Using sensorless homing")
-                state.conn.send("$H\n")
-                state.conn.send("G1 Y0 F100\n")
-            else:
-                homing_speed = 400
-                if state.table_type == 'dune_weaver_mini':
-                    homing_speed = 120
-                logger.info("Sensorless homing not supported. Using crash homing")
-                logger.info(f"Homing with speed {homing_speed}")
 
-                # Run async function in new event loop
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    if state.gear_ratio == 6.25:
-                        result = loop.run_until_complete(send_grbl_coordinates(0, - 30, homing_speed, home=True))
-                        if result == False:
-                            logger.error("Homing failed - send_grbl_coordinates returned False")
-                            homing_complete.set()
-                            return
-                        state.machine_y -= 30
-                    else:
-                        result = loop.run_until_complete(send_grbl_coordinates(0, -22, homing_speed, home=True))
-                        if result == False:
-                            logger.error("Homing failed - send_grbl_coordinates returned False")
-                            homing_complete.set()
-                            return
-                        state.machine_y -= 22
-                finally:
-                    loop.close()
+        def home_internal():
+            nonlocal homing_success
+            try:
+                if state.homing:
+                    logger.info("Using sensorless homing")
+                    state.conn.send("$H\n")
+                    state.conn.send("G1 Y0 F100\n")
+                else:
+                    homing_speed = 400
+                    if state.table_type == 'dune_weaver_mini':
+                        homing_speed = 120
+                    logger.info("Sensorless homing not supported. Using crash homing")
+                    logger.info(f"Homing with speed {homing_speed}")
 
-            state.current_theta = state.current_rho = 0
-            homing_success = True
-            homing_complete.set()
-        except Exception as e:
-            logger.error(f"Error during homing: {e}")
-            homing_complete.set()
+                    # Run async function in new event loop
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        if state.gear_ratio == 6.25:
+                            result = loop.run_until_complete(send_grbl_coordinates(0, - 30, homing_speed, home=True))
+                            if result == False:
+                                logger.error("Homing failed - send_grbl_coordinates returned False")
+                                homing_complete.set()
+                                return
+                            state.machine_y -= 30
+                        else:
+                            result = loop.run_until_complete(send_grbl_coordinates(0, -22, homing_speed, home=True))
+                            if result == False:
+                                logger.error("Homing failed - send_grbl_coordinates returned False")
+                                homing_complete.set()
+                                return
+                            state.machine_y -= 22
+                    finally:
+                        loop.close()
+
+                state.current_theta = state.current_rho = 0
+                homing_success = True
+                homing_complete.set()
+            except Exception as e:
+                logger.error(f"Error during homing: {e}")
+                homing_complete.set()
     
         # Start homing in a separate thread
         homing_thread = threading.Thread(target=home_internal)
