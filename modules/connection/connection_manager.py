@@ -163,11 +163,11 @@ def list_serial_ports():
     logger.debug(f"Available serial ports: {available_ports}")
     return available_ports
 
-def device_init(homing=True):
+async def device_init(homing=True):
     try:
-        if get_machine_steps():
+        if await asyncio.to_thread(get_machine_steps):
             logger.info(f"x_steps_per_mm: {state.x_steps_per_mm}, y_steps_per_mm: {state.y_steps_per_mm}, gear_ratio: {state.gear_ratio}")
-        else: 
+        else:
             logger.fatal("Failed to get machine steps")
             state.conn.close()
             return False
@@ -176,12 +176,12 @@ def device_init(homing=True):
         state.conn.close()
         return False
 
-    machine_x, machine_y = get_machine_position()
+    machine_x, machine_y = await asyncio.to_thread(get_machine_position)
     if machine_x != state.machine_x or machine_y != state.machine_y:
         logger.info(f'x, y; {machine_x}, {machine_y}')
         logger.info(f'State x, y; {state.machine_x}, {state.machine_y}')
         if homing:
-            success = home()
+            success = await asyncio.to_thread(home)
             if not success:
                 logger.error("Homing failed during device initialization")
     else:
@@ -190,15 +190,15 @@ def device_init(homing=True):
         logger.info(f'x, y; {machine_x}, {machine_y}')
         logger.info(f'State x, y; {state.machine_x}, {state.machine_y}')
 
-    time.sleep(2)  # Allow time for the connection to establish
+    await asyncio.sleep(2)  # Allow time for the connection to establish
 
 
-def connect_device(homing=True):
+async def connect_device(homing=True):
     if state.wled_ip:
         state.led_controller = LEDController(state.wled_ip)
         effect_loading(state.led_controller)
-        
-    ports = list_serial_ports()
+
+    ports = await asyncio.to_thread(list_serial_ports)
 
     if state.port and state.port in ports:
         state.conn = SerialConnection(state.port)
@@ -208,8 +208,8 @@ def connect_device(homing=True):
         logger.error("Auto connect failed.")
         # state.conn = WebSocketConnection('ws://fluidnc.local:81')
     if (state.conn.is_connected() if state.conn else False):
-        device_init(homing)
-        
+        await device_init(homing)
+
     if state.led_controller:
         effect_connected(state.led_controller)
 
@@ -588,12 +588,12 @@ async def update_machine_position():
             except Exception as e:
                 logger.error(f"Error updating machine position: {e}")
 
-def restart_connection(homing=False):
+async def restart_connection(homing=False):
     """
     Restart the connection. If a connection exists, close it and attempt to establish a new one.
     It will try to connect via serial first (if available), otherwise it will fall back to websocket.
     The new connection is saved to state.conn.
-    
+
     Returns:
         True if the connection was restarted successfully, False otherwise.
     """
@@ -609,7 +609,7 @@ def restart_connection(homing=False):
 
     logger.info("Attempting to restart connection...")
     try:
-        connect_device(homing)  # This will set state.conn appropriately.
+        await connect_device(homing)  # This will set state.conn appropriately.
         if (state.conn.is_connected() if state.conn else False):
             logger.info("Connection restarted successfully.")
             return True

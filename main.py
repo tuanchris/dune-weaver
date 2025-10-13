@@ -81,10 +81,10 @@ async def lifespan(app: FastAPI):
     logger.info(f"Initialized process pool with {process_pool_size} workers (detected {cpu_count} cores total)")
     
     try:
-        connection_manager.connect_device()
+        await connection_manager.connect_device()
     except Exception as e:
         logger.warning(f"Failed to auto-connect to serial port: {str(e)}")
-    
+
     # Check if auto_play mode is enabled and auto-play playlist (right after connection attempt)
     if state.auto_play_enabled and state.auto_play_playlist:
         logger.info(f"auto_play mode enabled, checking for connection before auto-playing playlist: {state.auto_play_playlist}")
@@ -389,13 +389,13 @@ async def list_ports():
 async def connect(request: ConnectRequest):
     if not request.port:
         state.conn = connection_manager.WebSocketConnection('ws://fluidnc.local:81')
-        connection_manager.device_init()
+        await connection_manager.device_init()
         logger.info('Successfully connected to websocket ws://fluidnc.local:81')
         return {"success": True}
 
     try:
         state.conn = connection_manager.SerialConnection(request.port)
-        connection_manager.device_init()
+        await connection_manager.device_init()
         logger.info(f'Successfully connected to serial port {request.port}')
         return {"success": True}
     except Exception as e:
@@ -420,7 +420,7 @@ async def restart(request: ConnectRequest):
 
     try:
         logger.info(f"Restarting connection on port {request.port}")
-        connection_manager.restart_connection()
+        await connection_manager.restart_connection()
         return {"success": True}
     except Exception as e:
         logger.error(f"Failed to restart serial on port {request.port}: {str(e)}")
