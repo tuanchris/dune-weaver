@@ -716,13 +716,19 @@ async def send_home():
         if not (state.conn.is_connected() if state.conn else False):
             logger.warning("Attempted to move to home without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
-        
+
+        # If another pattern is running, stop it first
+        if pattern_manager.pattern_lock.locked():
+            logger.info("Another pattern is running - stopping it before homing")
+            await pattern_manager.stop_actions(clear_playlist=True, wait_for_lock=True)
+            logger.info("Previous pattern stopped successfully")
+
         # Run homing with 15 second timeout
         success = await asyncio.to_thread(connection_manager.home)
         if not success:
             logger.error("Homing failed or timed out")
             raise HTTPException(status_code=500, detail="Homing failed or timed out after 15 seconds")
-        
+
         return {"success": True}
     except HTTPException:
         raise

@@ -16,6 +16,17 @@ IGNORE_PORTS = ['/dev/cu.debug-console', '/dev/cu.Bluetooth-Incoming-Port']
 _homing_lock = threading.Lock()
 _is_homing = False
 
+# Global lock to prevent concurrent machine position updates
+# We'll create this lazily when needed to avoid event loop issues at import time
+_position_update_lock = None
+
+def _get_position_update_lock():
+    """Get or create the position update lock."""
+    global _position_update_lock
+    if _position_update_lock is None:
+        _position_update_lock = asyncio.Lock()
+    return _position_update_lock
+
 ###############################################################################
 # Connection Abstraction
 ###############################################################################
@@ -562,14 +573,20 @@ def get_machine_position(timeout=5):
     return None, None
 
 async def update_machine_position():
-    if (state.conn.is_connected() if state.conn else False):
-        try:
-            logger.info('Saving machine position')
-            state.machine_x, state.machine_y = await asyncio.to_thread(get_machine_position)
-            await asyncio.to_thread(state.save)
-            logger.info(f'Machine position saved: {state.machine_x}, {state.machine_y}')
-        except Exception as e:
-            logger.error(f"Error updating machine position: {e}")
+    """
+    Update and save machine position to disk.
+    Protected by a lock to prevent concurrent updates and file writes.
+    """
+    lock = _get_position_update_lock()
+    async with lock:
+        if (state.conn.is_connected() if state.conn else False):
+            try:
+                logger.info('Saving machine position')
+                state.machine_x, state.machine_y = await asyncio.to_thread(get_machine_position)
+                await asyncio.to_thread(state.save)
+                logger.info(f'Machine position saved: {state.machine_x}, {state.machine_y}')
+            except Exception as e:
+                logger.error(f"Error updating machine position: {e}")
 
 def restart_connection(homing=False):
     """
