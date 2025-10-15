@@ -698,6 +698,9 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                         if wled_was_off_for_scheduled:
                             logger.info("Turning LED lights back on as Still Sands period ended")
                             state.led_controller.set_power(1)
+                            # CRITICAL: Give Hyperion time to fully power on before sending more commands
+                            # Without this delay, rapid-fire requests can crash Hyperion on resource-constrained Pis
+                            await asyncio.sleep(0.5)
                         state.led_controller.effect_playing(state.hyperion_playing_effect)
 
                 # Dynamically determine the speed for each movement

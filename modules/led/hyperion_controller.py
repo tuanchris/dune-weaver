@@ -38,7 +38,9 @@ class HyperionController:
                 **params
             }
 
-            response = requests.post(url, json=payload, timeout=2)
+            # Reduced timeout from 2s to 1s - Hyperion should respond quickly
+            # This prevents hanging when Hyperion is under load
+            response = requests.post(url, json=payload, timeout=1)
             response.raise_for_status()
             result = response.json()
 
@@ -196,14 +198,18 @@ class HyperionController:
 
 def effect_loading(hyperion_controller: HyperionController) -> bool:
     """Show loading effect - Atomic swirl effect"""
-    # Turn on Hyperion first
-    hyperion_controller.set_power(1)
-    time.sleep(0.2)  # Give Hyperion time to power on
-    # Clear priority before setting new effect
-    hyperion_controller.clear_priority()
-    time.sleep(0.1)  # Give Hyperion time to clear
-    res = hyperion_controller.set_effect("Atomic swirl")
-    return res.get('connected', False)
+    try:
+        # Turn on Hyperion first
+        hyperion_controller.set_power(1)
+        time.sleep(0.1)  # Reduced from 0.2s to minimize blocking
+        # Clear priority before setting new effect
+        hyperion_controller.clear_priority()
+        # Removed unnecessary second sleep - Hyperion processes commands quickly
+        res = hyperion_controller.set_effect("Atomic swirl")
+        return res.get('connected', False)
+    except Exception as e:
+        logger.error(f"Error in effect_loading: {e}")
+        return False
 
 
 def effect_idle(hyperion_controller: HyperionController, effect_name: str = "off") -> bool:
@@ -212,18 +218,22 @@ def effect_idle(hyperion_controller: HyperionController, effect_name: str = "off
     Args:
         effect_name: Effect name to show, "off" to clear priority (default), or None for off
     """
-    # Turn on Hyperion first
-    hyperion_controller.set_power(1)
-    time.sleep(0.2)  # Give Hyperion time to power on
-    # Clear priority before setting new effect
-    hyperion_controller.clear_priority()
-    if effect_name and effect_name != "off":
-        time.sleep(0.1)  # Give Hyperion time to clear
-        res = hyperion_controller.set_effect(effect_name)
-    else:
-        # "off" or None - already cleared above, return to default state
-        res = {"connected": True}
-    return res.get('connected', False)
+    try:
+        # Clear priority first - more efficient than power cycling
+        hyperion_controller.clear_priority()
+
+        if effect_name and effect_name != "off":
+            # Turn on Hyperion and set effect
+            hyperion_controller.set_power(1)
+            time.sleep(0.05)  # Minimal delay - Hyperion is fast
+            res = hyperion_controller.set_effect(effect_name)
+        else:
+            # "off" or None - already cleared above, return to default state
+            res = {"connected": True}
+        return res.get('connected', False)
+    except Exception as e:
+        logger.error(f"Error in effect_idle: {e}")
+        return False
 
 
 def effect_connected(hyperion_controller: HyperionController) -> bool:
@@ -233,19 +243,20 @@ def effect_connected(hyperion_controller: HyperionController) -> bool:
     should explicitly set the idle effect afterwards to ensure the user's
     configured idle effect is used.
     """
-    # Turn on Hyperion first
-    hyperion_controller.set_power(1)
-    time.sleep(0.2)  # Give Hyperion time to power on
-    # Clear priority before setting new effect
-    hyperion_controller.clear_priority()
-    time.sleep(0.1)  # Give Hyperion time to clear
-    # Flash green twice with explicit 1 second durations
-    res = hyperion_controller.set_color(r=8, g=255, b=0, duration=1000)
-    time.sleep(1.2)  # Wait for flash to complete
-    res = hyperion_controller.set_color(r=8, g=255, b=0, duration=1000)
-    time.sleep(1.2)  # Wait for flash to complete
-    # Don't call effect_idle here - let the caller set the configured idle effect
-    return res.get('connected', False)
+    try:
+        # Turn on Hyperion and clear in one go
+        hyperion_controller.set_power(1)
+        time.sleep(0.1)  # Reduced blocking time
+        hyperion_controller.clear_priority()
+
+        # Single green flash instead of double - reduces load
+        res = hyperion_controller.set_color(r=8, g=255, b=0, duration=1000)
+        time.sleep(1.0)  # Wait for flash to complete
+        # Don't call effect_idle here - let the caller set the configured idle effect
+        return res.get('connected', False)
+    except Exception as e:
+        logger.error(f"Error in effect_connected: {e}")
+        return False
 
 
 def effect_playing(hyperion_controller: HyperionController, effect_name: str = "off") -> bool:
@@ -254,15 +265,19 @@ def effect_playing(hyperion_controller: HyperionController, effect_name: str = "
     Args:
         effect_name: Effect name to show, "off" to clear priority (default), or None for off
     """
-    # Turn on Hyperion first
-    hyperion_controller.set_power(1)
-    time.sleep(0.2)  # Give Hyperion time to power on
-    # Clear priority before setting new effect
-    hyperion_controller.clear_priority()
-    if effect_name and effect_name != "off":
-        time.sleep(0.1)  # Give Hyperion time to clear
-        res = hyperion_controller.set_effect(effect_name)
-    else:
-        # "off" or None - already cleared above, show user's configured effect/color
-        res = {"connected": True}
-    return res.get('connected', False)
+    try:
+        # Clear priority first - more efficient
+        hyperion_controller.clear_priority()
+
+        if effect_name and effect_name != "off":
+            # Turn on Hyperion and set effect
+            hyperion_controller.set_power(1)
+            time.sleep(0.05)  # Minimal delay
+            res = hyperion_controller.set_effect(effect_name)
+        else:
+            # "off" or None - already cleared above, show user's configured effect/color
+            res = {"connected": True}
+        return res.get('connected', False)
+    except Exception as e:
+        logger.error(f"Error in effect_playing: {e}")
+        return False
