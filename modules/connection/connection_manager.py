@@ -462,8 +462,17 @@ def home(timeout=15):
                 finally:
                     loop.close()
 
-            state.current_theta = state.current_rho = 0
-            homing_success = True
+            # Wait for device to reach idle state after homing
+            logger.info("Waiting for device to reach idle state after homing...")
+            idle_reached = check_idle()
+
+            if idle_reached:
+                state.current_theta = state.current_rho = 0
+                homing_success = True
+                logger.info("Homing completed and device is idle")
+            else:
+                logger.error("Device did not reach idle state after homing")
+
             homing_complete.set()
         except Exception as e:
             logger.error(f"Error during homing: {e}")
