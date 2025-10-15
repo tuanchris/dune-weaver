@@ -65,7 +65,7 @@ class HyperionController:
             return {"connected": False, "message": f"Error parsing Hyperion response: {str(e)}"}
 
     def check_hyperion_status(self) -> Dict:
-        """Check Hyperion connection status and component state"""
+        """Check Hyperion connection status, component state, and active priorities"""
         result = self._send_command("serverinfo")
 
         if result.get("connected"):
@@ -73,32 +73,75 @@ class HyperionController:
             info = response.get("info", {})
             components = {c["name"]: c["enabled"] for c in info.get("components", [])}
 
+            # Get active priorities information
+            priorities = info.get("priorities", [])
+            active_priority = None
+            active_effect = None
+            active_color = None
+
+            # Find the highest priority (lowest number) active source
+            if priorities:
+                # Filter for visible priorities only
+                visible = [p for p in priorities if p.get("visible", True)]
+                if visible:
+                    # Sort by priority (lowest first)
+                    visible.sort(key=lambda x: x.get("priority", 999))
+                    active_priority = visible[0].get("priority")
+
+                    # Check if it's our priority
+                    if active_priority == self.priority:
+                        component_id = visible[0].get("componentId", "")
+                        if component_id == "EFFECT":
+                            active_effect = visible[0].get("owner", "")
+                        elif component_id == "COLOR":
+                            active_color = visible[0].get("value", {}).get("RGB")
+
             return {
                 "connected": True,
                 "is_on": components.get("ALL", False),
                 "ledstream_on": components.get("LEDDEVICE", False),
                 "hostname": info.get("hostname", "unknown"),
                 "version": info.get("version", "unknown"),
-                "message": "Hyperion is ON" if components.get("ALL", False) else "Hyperion is OFF"
+                "message": "Hyperion is ON" if components.get("ALL", False) else "Hyperion is OFF",
+                "active_priority": active_priority,
+                "active_effect": active_effect,
+                "active_color": active_color,
+                "our_priority_active": active_priority == self.priority if active_priority else False
             }
 
         return result
 
-    def set_power(self, state: int) -> Dict:
+    def set_power(self, state: int, check_current: bool = True) -> Dict:
         """
         Set Hyperion power state (component control)
         Args:
             state: 0=Off, 1=On, 2=Toggle
+            check_current: If True, check current state and skip if already in desired state
         """
         if state not in [0, 1, 2]:
             return {"connected": False, "message": "Power state must be 0 (Off), 1 (On), or 2 (Toggle)"}
 
-        if state == 2:
-            # Get current state and toggle
+        # Always check current state for toggle or when check_current is enabled
+        if state == 2 or check_current:
             status = self.check_hyperion_status()
             if not status.get("connected"):
                 return status
-            state = 0 if status.get("is_on", False) else 1
+
+            current_state = status.get("is_on", False)
+
+            if state == 2:
+                # Toggle: flip the current state
+                state = 0 if current_state else 1
+            elif check_current:
+                # Check if already in desired state
+                desired_state = bool(state)
+                if current_state == desired_state:
+                    logger.debug(f"Hyperion already {'ON' if desired_state else 'OFF'}, skipping power command")
+                    return {
+                        "connected": True,
+                        "message": f"Already in desired state ({'ON' if desired_state else 'OFF'})",
+                        "skipped": True
+                    }
 
         result = self._send_command(
             "componentstate",
@@ -135,16 +178,36 @@ class HyperionController:
 
         return result
 
-    def set_effect(self, effect_name: str, args: Optional[Dict] = None, duration: int = 86400000) -> Dict:
+    def set_effect(self, effect_name: str, args: Optional[Dict] = None, duration: int = 86400000, check_current: bool = True) -> Dict:
         """
         Set Hyperion effect
         Args:
             effect_name: Name of the effect (e.g., 'Rainbow swirl', 'Warm mood blobs')
             args: Optional effect arguments
             duration: Duration in milliseconds (default = 86400000ms = 24 hours)
+            check_current: If True, check if effect is already active and skip if so
         """
-        # Turn on Hyperion first
-        self.set_power(1)
+        # Check current state if requested
+        if check_current:
+            status = self.check_hyperion_status()
+            if not status.get("connected"):
+                return status
+
+            # Check if the same effect is already active at our priority
+            if status.get("our_priority_active") and status.get("active_effect") == effect_name:
+                logger.debug(f"Effect '{effect_name}' already active at our priority, skipping")
+                return {
+                    "connected": True,
+                    "message": f"Effect '{effect_name}' already active",
+                    "skipped": True
+                }
+
+            # Ensure Hyperion is on (with state check)
+            self.set_power(1, check_current=True)
+        else:
+            # Turn on without checking
+            self.set_power(1, check_current=False)
+
         # Clear priority before setting new effect
         self.clear_priority()
 
@@ -160,14 +223,30 @@ class HyperionController:
         result = self._send_command("effect", **params)
         return result
 
-    def clear_priority(self, priority: Optional[int] = None) -> Dict:
+    def clear_priority(self, priority: Optional[int] = None, check_current: bool = True) -> Dict:
         """
         Clear a specific priority or Dune Weaver's priority
         Args:
             priority: Priority to clear (defaults to self.priority)
+            check_current: If True, check if priority is active before clearing
         """
         if priority is None:
             priority = self.priority
+
+        # Check if the priority is actually active
+        if check_current:
+            status = self.check_hyperion_status()
+            if not status.get("connected"):
+                return status
+
+            # If our priority isn't active, no need to clear
+            if priority == self.priority and not status.get("our_priority_active"):
+                logger.debug(f"Priority {priority} not active, skipping clear")
+                return {
+                    "connected": True,
+                    "message": f"Priority {priority} not active",
+                    "skipped": True
+                }
 
         result = self._send_command("clear", priority=priority)
         return result
@@ -199,13 +278,8 @@ class HyperionController:
 def effect_loading(hyperion_controller: HyperionController) -> bool:
     """Show loading effect - Atomic swirl effect"""
     try:
-        # Turn on Hyperion first
-        hyperion_controller.set_power(1)
-        time.sleep(0.1)  # Reduced from 0.2s to minimize blocking
-        # Clear priority before setting new effect
-        hyperion_controller.clear_priority()
-        # Removed unnecessary second sleep - Hyperion processes commands quickly
-        res = hyperion_controller.set_effect("Atomic swirl")
+        # Set effect with smart checking (will check power state and current effect)
+        res = hyperion_controller.set_effect("Atomic swirl", check_current=True)
         return res.get('connected', False)
     except Exception as e:
         logger.error(f"Error in effect_loading: {e}")
@@ -219,17 +293,13 @@ def effect_idle(hyperion_controller: HyperionController, effect_name: str = "off
         effect_name: Effect name to show, "off" to clear priority (default), or None for off
     """
     try:
-        # Clear priority first - more efficient than power cycling
-        hyperion_controller.clear_priority()
-
         if effect_name and effect_name != "off":
-            # Turn on Hyperion and set effect
-            hyperion_controller.set_power(1)
-            time.sleep(0.05)  # Minimal delay - Hyperion is fast
-            res = hyperion_controller.set_effect(effect_name)
+            # Set effect with smart checking (will check power state and current effect)
+            res = hyperion_controller.set_effect(effect_name, check_current=True)
         else:
-            # "off" or None - already cleared above, return to default state
-            res = {"connected": True}
+            # Clear priority with smart checking (only if our priority is active)
+            res = hyperion_controller.clear_priority(check_current=True)
+
         return res.get('connected', False)
     except Exception as e:
         logger.error(f"Error in effect_idle: {e}")
@@ -266,17 +336,13 @@ def effect_playing(hyperion_controller: HyperionController, effect_name: str = "
         effect_name: Effect name to show, "off" to clear priority (default), or None for off
     """
     try:
-        # Clear priority first - more efficient
-        hyperion_controller.clear_priority()
-
         if effect_name and effect_name != "off":
-            # Turn on Hyperion and set effect
-            hyperion_controller.set_power(1)
-            time.sleep(0.05)  # Minimal delay
-            res = hyperion_controller.set_effect(effect_name)
+            # Set effect with smart checking (will check power state and current effect)
+            res = hyperion_controller.set_effect(effect_name, check_current=True)
         else:
-            # "off" or None - already cleared above, show user's configured effect/color
-            res = {"connected": True}
+            # Clear priority with smart checking (only if our priority is active)
+            res = hyperion_controller.clear_priority(check_current=True)
+
         return res.get('connected', False)
     except Exception as e:
         logger.error(f"Error in effect_playing: {e}")
