@@ -213,13 +213,16 @@ ApplicationWindow {
         }
     }
 
+    } // Close rotatedContent Item
+
+    // Dialogs and overlays (outside rotated content to keep them right-side up)
     MessageDialog {
         id: errorDialog
         title: "Error"
         buttons: MessageDialog.Ok
     }
 
-    // Virtual Keyboard Support
+    // Virtual Keyboard Support (outside rotated content to keep it right-side up)
     InputPanel {
         id: inputPanel
         z: 99999
@@ -250,6 +253,4 @@ ApplicationWindow {
             }
         }
     }
-
-    } // Close rotatedContent Item
 }
