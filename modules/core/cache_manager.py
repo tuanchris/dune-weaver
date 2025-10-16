@@ -731,9 +731,13 @@ async def generate_cache_background():
         raise
 
 def get_cache_progress():
-    """Get the current cache generation progress."""
+    """Get the current cache generation progress.
+
+    Returns a reference to the cache_progress dict for read-only access.
+    The WebSocket handler should not modify this dict.
+    """
     global cache_progress
-    return cache_progress.copy()
+    return cache_progress  # Return reference instead of copy for better performance
 
 def is_cache_generation_needed():
     """Check if cache generation is needed."""

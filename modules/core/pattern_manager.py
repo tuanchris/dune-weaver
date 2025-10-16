@@ -1,9 +1,10 @@
 import os
+from zoneinfo import ZoneInfo
 import threading
 import time
 import random
 import logging
-from datetime import datetime
+from datetime import datetime, time as datetime_time
 from tqdm import tqdm
 from modules.connection import connection_manager
 from modules.core.state import state
@@ -11,6 +12,9 @@ from math import pi
 import asyncio
 import json
 from modules.led.led_controller import effect_playing, effect_idle
+import queue
+from dataclasses import dataclass
+from typing import Optional, Callable
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -29,11 +33,304 @@ pattern_lock = asyncio.Lock()
 # Progress update task
 progress_update_task = None
 
+# Cache timezone at module level - read once per session
+_cached_timezone = None
+_cached_zoneinfo = None
+
+def _get_system_timezone():
+    """Get and cache the system timezone. Called once per session."""
+    global _cached_timezone, _cached_zoneinfo
+
+    if _cached_timezone is not None:
+        return _cached_zoneinfo
+
+    user_tz = 'UTC'  # Default fallback
+
+    # Try to read timezone from /etc/host-timezone (mounted from host)
+    try:
+        if os.path.exists('/etc/host-timezone'):
+            with open('/etc/host-timezone', 'r') as f:
+                user_tz = f.read().strip()
+                logger.info(f"Still Sands using timezone: {user_tz} (from host system)")
+        # Fallback to /etc/timezone if host-timezone doesn't exist
+        elif os.path.exists('/etc/timezone'):
+            with open('/etc/timezone', 'r') as f:
+                user_tz = f.read().strip()
+                logger.info(f"Still Sands using timezone: {user_tz} (from container)")
+        # Fallback to TZ environment variable
+        elif os.environ.get('TZ'):
+            user_tz = os.environ.get('TZ')
+            logger.info(f"Still Sands using timezone: {user_tz} (from environment)")
+        else:
+            logger.info("Still Sands using timezone: UTC (default)")
+    except Exception as e:
+        logger.debug(f"Could not read timezone: {e}")
+
+    # Cache the timezone
+    _cached_timezone = user_tz
+    try:
+        _cached_zoneinfo = ZoneInfo(user_tz)
+    except Exception as e:
+        logger.warning(f"Invalid timezone '{user_tz}', falling back to system time: {e}")
+        _cached_zoneinfo = None
+
+    return _cached_zoneinfo
+
+def is_in_scheduled_pause_period():
+    """Check if current time falls within any scheduled pause period."""
+    if not state.scheduled_pause_enabled or not state.scheduled_pause_time_slots:
+        return False
+
+    # Get cached timezone
+    tz_info = _get_system_timezone()
+
+    try:
+        # Get current time in user's timezone
+        if tz_info:
+            now = datetime.now(tz_info)
+        else:
+            now = datetime.now()
+    except Exception as e:
+        logger.warning(f"Error getting current time: {e}")
+        now = datetime.now()
+
+    current_time = now.time()
+    current_weekday = now.strftime("%A").lower()  # monday, tuesday, etc.
+
+    for slot in state.scheduled_pause_time_slots:
+        # Parse start and end times
+        try:
+            start_time = datetime_time.fromisoformat(slot['start_time'])
+            end_time = datetime_time.fromisoformat(slot['end_time'])
+        except (ValueError, KeyError):
+            logger.warning(f"Invalid time format in scheduled pause slot: {slot}")
+            continue
+
+        # Check if this slot applies to today
+        slot_applies_today = False
+        days_setting = slot.get('days', 'daily')
+
+        if days_setting == 'daily':
+            slot_applies_today = True
+        elif days_setting == 'weekdays':
+            slot_applies_today = current_weekday in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+        elif days_setting == 'weekends':
+            slot_applies_today = current_weekday in ['saturday', 'sunday']
+        elif days_setting == 'custom':
+            custom_days = slot.get('custom_days', [])
+            slot_applies_today = current_weekday in custom_days
+
+        if not slot_applies_today:
+            continue
+
+        # Check if current time is within the pause period
+        if start_time <= end_time:
+            # Normal case: start and end are on the same day
+            if start_time <= current_time <= end_time:
+                return True
+        else:
+            # Time spans midnight: start is before midnight, end is after midnight
+            if current_time >= start_time or current_time <= end_time:
+                return True
+
+    return False
+
+# Motion Control Thread Infrastructure
+@dataclass
+class MotionCommand:
+    """Represents a motion command for the motion control thread."""
+    command_type: str  # 'move', 'stop', 'pause', 'resume', 'shutdown'
+    theta: Optional[float] = None
+    rho: Optional[float] = None
+    speed: Optional[float] = None
+    callback: Optional[Callable] = None
+    future: Optional[asyncio.Future] = None
+
+class MotionControlThread:
+    """Dedicated thread for hardware motion control operations."""
+
+    def __init__(self):
+        self.command_queue = queue.Queue()
+        self.thread = None
+        self.running = False
+        self.paused = False
+
+    def start(self):
+        """Start the motion control thread."""
+        if self.thread and self.thread.is_alive():
+            return
+
+        self.running = True
+        self.thread = threading.Thread(target=self._motion_loop, daemon=True)
+        self.thread.start()
+        logger.info("Motion control thread started")
+
+    def stop(self):
+        """Stop the motion control thread."""
+        if not self.running:
+            return
+
+        self.running = False
+        # Send shutdown command
+        self.command_queue.put(MotionCommand('shutdown'))
+
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=5.0)
+        logger.info("Motion control thread stopped")
+
+    def _motion_loop(self):
+        """Main loop for the motion control thread."""
+        logger.info("Motion control thread loop started")
+
+        while self.running:
+            try:
+                # Get command with timeout to allow periodic checks
+                command = self.command_queue.get(timeout=1.0)
+
+                if command.command_type == 'shutdown':
+                    break
+
+                elif command.command_type == 'move':
+                    self._execute_move(command)
+
+                elif command.command_type == 'pause':
+                    self.paused = True
+
+                elif command.command_type == 'resume':
+                    self.paused = False
+
+                elif command.command_type == 'stop':
+                    # Clear any pending commands
+                    while not self.command_queue.empty():
+                        try:
+                            self.command_queue.get_nowait()
+                        except queue.Empty:
+                            break
+
+                self.command_queue.task_done()
+
+            except queue.Empty:
+                # Timeout - continue loop for shutdown check
+                continue
+            except Exception as e:
+                logger.error(f"Error in motion control thread: {e}")
+
+        logger.info("Motion control thread loop ended")
+
+    def _execute_move(self, command: MotionCommand):
+        """Execute a move command in the motion thread."""
+        try:
+            # Wait if paused
+            while self.paused and self.running:
+                time.sleep(0.1)
+
+            if not self.running:
+                return
+
+            # Execute the actual motion using sync version
+            self._move_polar_sync(command.theta, command.rho, command.speed)
+
+            # Signal completion if future provided
+            if command.future and not command.future.done():
+                command.future.get_loop().call_soon_threadsafe(
+                    command.future.set_result, None
+                )
+
+        except Exception as e:
+            logger.error(f"Error executing move command: {e}")
+            if command.future and not command.future.done():
+                command.future.get_loop().call_soon_threadsafe(
+                    command.future.set_exception, e
+                )
+
+    def _move_polar_sync(self, theta: float, rho: float, speed: Optional[float] = None):
+        """Synchronous version of move_polar for use in motion thread."""
+        # This is the original sync logic but running in dedicated thread
+        if state.table_type == 'dune_weaver_mini':
+            x_scaling_factor = 2
+            y_scaling_factor = 3.7
+        else:
+            x_scaling_factor = 2
+            y_scaling_factor = 5
+
+        delta_theta = theta - state.current_theta
+        delta_rho = rho - state.current_rho
+        x_increment = delta_theta * 100 / (2 * pi * x_scaling_factor)
+        y_increment = delta_rho * 100 / y_scaling_factor
+
+        x_total_steps = state.x_steps_per_mm * (100/x_scaling_factor)
+        y_total_steps = state.y_steps_per_mm * (100/y_scaling_factor)
+
+        offset = x_increment * (x_total_steps * x_scaling_factor / (state.gear_ratio * y_total_steps * y_scaling_factor))
+
+        if state.table_type == 'dune_weaver_mini' or state.y_steps_per_mm == 546:
+            y_increment -= offset
+        else:
+            y_increment += offset
+
+        new_x_abs = state.machine_x + x_increment
+        new_y_abs = state.machine_y + y_increment
+
+        # Use provided speed or fall back to state.speed
+        actual_speed = speed if speed is not None else state.speed
+
+        # Call sync version of send_grbl_coordinates in this thread
+        self._send_grbl_coordinates_sync(round(new_x_abs, 3), round(new_y_abs, 3), actual_speed)
+
+        # Update state
+        state.current_theta = theta
+        state.current_rho = rho
+        state.machine_x = new_x_abs
+        state.machine_y = new_y_abs
+
+    def _send_grbl_coordinates_sync(self, x: float, y: float, speed: int = 600, timeout: int = 2, home: bool = False):
+        """Synchronous version of send_grbl_coordinates for motion thread."""
+        logger.debug(f"Motion thread sending G-code: X{x} Y{y} at F{speed}")
+
+        # Track overall attempt time
+        overall_start_time = time.time()
+
+        while True:
+            try:
+                gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 X{x} Y{y} F{speed}"
+                state.conn.send(gcode + "\n")
+                logger.debug(f"Motion thread sent command: {gcode}")
+
+                start_time = time.time()
+                while True:
+                    response = state.conn.readline()
+                    logger.debug(f"Motion thread response: {response}")
+                    if response.lower() == "ok":
+                        logger.debug("Motion thread: Command execution confirmed.")
+                        return
+
+            except Exception as e:
+                error_str = str(e)
+                logger.warning(f"Motion thread error sending command: {error_str}")
+
+                # Immediately return for device not configured errors
+                if "Device not configured" in error_str or "Errno 6" in error_str:
+                    logger.error(f"Motion thread: Device configuration error detected: {error_str}")
+                    state.stop_requested = True
+                    state.conn = None
+                    state.is_connected = False
+                    logger.info("Connection marked as disconnected due to device error")
+                    return False
+
+            logger.warning(f"Motion thread: No 'ok' received for X{x} Y{y}, speed {speed}. Retrying...")
+            time.sleep(0.1)
+
+# Global motion control thread instance
+motion_controller = MotionControlThread()
+
 async def cleanup_pattern_manager():
     """Clean up pattern manager resources"""
     global progress_update_task, pattern_lock, pause_event
-    
+
     try:
+        # Stop motion control thread
+        motion_controller.stop()
+
         # Cancel progress update task if running
         if progress_update_task and not progress_update_task.done():
             try:
@@ -45,7 +342,7 @@ async def cleanup_pattern_manager():
                     pass
             except Exception as e:
                 logger.error(f"Error cancelling progress update task: {e}")
-        
+
         # Clean up pattern lock
         if pattern_lock:
             try:
@@ -54,7 +351,7 @@ async def cleanup_pattern_manager():
                 pattern_lock = None
             except Exception as e:
                 logger.error(f"Error cleaning up pattern lock: {e}")
-        
+
         # Clean up pause event
         if pause_event:
             try:
@@ -62,7 +359,7 @@ async def cleanup_pattern_manager():
                 pause_event = None
             except Exception as e:
                 logger.error(f"Error cleaning up pause event: {e}")
-        
+
         # Clean up pause condition from state
         if state.pause_condition:
             try:
@@ -79,12 +376,12 @@ async def cleanup_pattern_manager():
         state.pause_requested = False
         state.stop_requested = True
         state.is_clearing = False
-        
+
         # Reset machine position
         await connection_manager.update_machine_position()
-        
+
         logger.info("Pattern manager resources cleaned up")
-        
+
     except Exception as e:
         logger.error(f"Error during pattern manager cleanup: {e}")
     finally:
@@ -95,14 +392,22 @@ async def cleanup_pattern_manager():
 
 def list_theta_rho_files():
     files = []
-    for root, _, filenames in os.walk(THETA_RHO_DIR):
-        for file in filenames:
+    for root, dirs, filenames in os.walk(THETA_RHO_DIR):
+        # Skip cached_images directories to avoid scanning thousands of WebP files
+        if 'cached_images' in dirs:
+            dirs.remove('cached_images')
+
+        # Filter .thr files during traversal for better performance
+        thr_files = [f for f in filenames if f.endswith('.thr')]
+
+        for file in thr_files:
             relative_path = os.path.relpath(os.path.join(root, file), THETA_RHO_DIR)
             # Normalize path separators to always use forward slashes for consistency across platforms
             relative_path = relative_path.replace(os.sep, '/')
             files.append(relative_path)
+
     logger.debug(f"Found {len(files)} theta-rho files")
-    return [file for file in files if file.endswith('.thr')]
+    return files
 
 def parse_theta_rho_file(file_path):
     """Parse a theta-rho file and return a list of (theta, rho) pairs."""
@@ -127,36 +432,62 @@ def parse_theta_rho_file(file_path):
         logger.debug(f"Parsed {len(coordinates)} coordinates from {file_path}")
     return coordinates
 
-def get_first_rho_from_cache(file_path):
-    """Get the first rho value from cached metadata, falling back to file parsing if needed."""
+def get_first_rho_from_cache(file_path, cache_data=None):
+    """Get the first rho value from cached metadata, falling back to file parsing if needed.
+
+    Args:
+        file_path: Path to the pattern file
+        cache_data: Optional pre-loaded cache data dict to avoid repeated disk I/O
+    """
     try:
         # Import cache_manager locally to avoid circular import
         from modules.core import cache_manager
-        
+
         # Try to get from metadata cache first
-        file_name = os.path.basename(file_path)
-        metadata = cache_manager.get_pattern_metadata(file_name)
-        
-        if metadata and 'first_coordinate' in metadata:
-            # In the cache, 'x' is theta and 'y' is rho
-            return metadata['first_coordinate']['y']
-        
+        # Use relative path from THETA_RHO_DIR to match cache keys (which include subdirectories)
+        file_name = os.path.relpath(file_path, THETA_RHO_DIR)
+
+        # Use provided cache_data if available, otherwise load from disk
+        if cache_data is not None:
+            # Extract metadata directly from provided cache
+            data_section = cache_data.get('data', {})
+            if file_name in data_section:
+                cached_entry = data_section[file_name]
+                metadata = cached_entry.get('metadata')
+                # When cache_data is provided, trust it without checking mtime
+                # This significantly speeds up bulk operations (playlists with 1000+ patterns)
+                # by avoiding 1000+ os.path.getmtime() calls on slow storage (e.g., Pi SD cards)
+                if metadata and 'first_coordinate' in metadata:
+                    return metadata['first_coordinate']['y']
+        else:
+            # Fall back to loading cache from disk (original behavior)
+            metadata = cache_manager.get_pattern_metadata(file_name)
+            if metadata and 'first_coordinate' in metadata:
+                # In the cache, 'x' is theta and 'y' is rho
+                return metadata['first_coordinate']['y']
+
         # Fallback to parsing the file if not in cache
         logger.debug(f"Metadata not cached for {file_name}, parsing file")
         coordinates = parse_theta_rho_file(file_path)
         if coordinates:
             return coordinates[0][1]  # Return rho value
-        
+
         return None
     except Exception as e:
         logger.warning(f"Error getting first rho from cache for {file_path}: {str(e)}")
         return None
 
-def get_clear_pattern_file(clear_pattern_mode, path=None):
-    """Return a .thr file path based on pattern_name and table type."""
+def get_clear_pattern_file(clear_pattern_mode, path=None, cache_data=None):
+    """Return a .thr file path based on pattern_name and table type.
+
+    Args:
+        clear_pattern_mode: The clear pattern mode to use
+        path: Optional path to the pattern file for adaptive mode
+        cache_data: Optional pre-loaded cache data dict to avoid repeated disk I/O
+    """
     if not clear_pattern_mode or clear_pattern_mode == 'none':
         return
-    
+
     # Define patterns for each table type
     clear_patterns = {
         'dune_weaver': {
@@ -177,16 +508,16 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
             'clear_sideway': './patterns/clear_sideway_pro.thr'
         }
     }
-    
+
     # Get patterns for current table type, fallback to standard patterns if type not found
     table_patterns = clear_patterns.get(state.table_type, clear_patterns['dune_weaver'])
-    
+
     # Check for custom patterns first
     if state.custom_clear_from_out and clear_pattern_mode in ['clear_from_out', 'adaptive']:
         if clear_pattern_mode == 'adaptive':
             # For adaptive mode, use cached metadata to check first rho
             if path:
-                first_rho = get_first_rho_from_cache(path)
+                first_rho = get_first_rho_from_cache(path, cache_data)
                 if first_rho is not None and first_rho < 0.5:
                     # Use custom clear_from_out if set
                     custom_path = os.path.join('./patterns', state.custom_clear_from_out)
@@ -198,12 +529,12 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
             if os.path.exists(custom_path):
                 logger.debug(f"Using custom clear_from_out: {custom_path}")
                 return custom_path
-    
+
     if state.custom_clear_from_in and clear_pattern_mode in ['clear_from_in', 'adaptive']:
         if clear_pattern_mode == 'adaptive':
             # For adaptive mode, use cached metadata to check first rho
             if path:
-                first_rho = get_first_rho_from_cache(path)
+                first_rho = get_first_rho_from_cache(path, cache_data)
                 if first_rho is not None and first_rho >= 0.5:
                     # Use custom clear_from_in if set
                     custom_path = os.path.join('./patterns', state.custom_clear_from_in)
@@ -215,9 +546,9 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
             if os.path.exists(custom_path):
                 logger.debug(f"Using custom clear_from_in: {custom_path}")
                 return custom_path
-    
+
     logger.debug(f"Clear pattern mode: {clear_pattern_mode} for table type: {state.table_type}")
-    
+
     if clear_pattern_mode == "random":
         return random.choice(list(table_patterns.values()))
 
@@ -225,13 +556,13 @@ def get_clear_pattern_file(clear_pattern_mode, path=None):
         if not path:
             logger.warning("No path provided for adaptive clear pattern")
             return random.choice(list(table_patterns.values()))
-            
+
         # Use cached metadata to get first rho value
-        first_rho = get_first_rho_from_cache(path)
+        first_rho = get_first_rho_from_cache(path, cache_data)
         if first_rho is None:
             logger.warning("Could not determine first rho value for adaptive clear pattern")
             return random.choice(list(table_patterns.values()))
-            
+
         if first_rho < 0.5:
             return table_patterns['clear_from_out']
         else:
@@ -291,15 +622,15 @@ async def run_theta_rho_file(file_path, is_playlist=False):
             logger.info(f"Running normal pattern at initial speed {state.speed}")
 
         state.execution_progress = (0, total_coordinates, None, 0)
-        
-        # stop actions without resetting the playlist
-        stop_actions(clear_playlist=False)
+
+        # stop actions without resetting the playlist, and don't wait for lock (we already have it)
+        await stop_actions(clear_playlist=False, wait_for_lock=False)
 
         state.current_playing_file = file_path
         state.stop_requested = False
         logger.info(f"Starting pattern execution: {file_path}")
         logger.info(f"t: {state.current_theta}, r: {state.current_rho}")
-        reset_theta()
+        await reset_theta()
         
         start_time = time.time()
         if state.led_controller:
@@ -323,19 +654,48 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                 
                 if state.skip_requested:
                     logger.info("Skipping pattern...")
-                    connection_manager.check_idle()
+                    await connection_manager.check_idle_async()
                     if state.led_controller:
                         effect_idle(state.led_controller)
                     break
 
-                # Wait for resume if paused
-                if state.pause_requested:
-                    logger.info("Execution paused...")
-                    if state.led_controller:
+                # Wait for resume if paused (manual or scheduled)
+                manual_pause = state.pause_requested
+                scheduled_pause = is_in_scheduled_pause_period()
+
+                if manual_pause or scheduled_pause:
+                    if manual_pause and scheduled_pause:
+                        logger.info("Execution paused (manual + scheduled pause active)...")
+                    elif manual_pause:
+                        logger.info("Execution paused (manual)...")
+                    else:
+                        logger.info("Execution paused (scheduled pause period)...")
+                        # Turn off WLED if scheduled pause and control_wled is enabled
+                        if state.scheduled_pause_control_wled and state.led_controller:
+                            logger.info("Turning off WLED lights during Still Sands period")
+                            state.led_controller.set_power(0)
+
+                    # Only show idle effect if NOT in scheduled pause with WLED control
+                    # (manual pause always shows idle effect)
+                    if state.led_controller and not (scheduled_pause and state.scheduled_pause_control_wled):
                         effect_idle(state.led_controller)
-                    await pause_event.wait()
+
+                    # Remember if we turned off WLED for scheduled pause
+                    wled_was_off_for_scheduled = scheduled_pause and state.scheduled_pause_control_wled and not manual_pause
+
+                    # Wait until both manual pause is released AND we're outside scheduled pause period
+                    while state.pause_requested or is_in_scheduled_pause_period():
+                        await asyncio.sleep(1)  # Check every second
+                        # Also wait for the pause event in case of manual pause
+                        if state.pause_requested:
+                            await pause_event.wait()
+
                     logger.info("Execution resumed...")
                     if state.led_controller:
+                        # Turn WLED back on if it was turned off for scheduled pause
+                        if wled_was_off_for_scheduled:
+                            logger.info("Turning WLED lights back on as Still Sands period ended")
+                            state.led_controller.set_power(1)
                         effect_playing(state.led_controller)
 
                 # Dynamically determine the speed for each movement
@@ -345,7 +705,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                 else:
                     current_speed = state.speed
                     
-                move_polar(theta, rho, current_speed)
+                await move_polar(theta, rho, current_speed)
                 
                 # Update progress for all coordinates including the first one
                 pbar.update(1)
@@ -366,7 +726,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
             logger.error("Device is not connected. Stopping pattern execution.")
             return
             
-        connection_manager.check_idle()
+        await connection_manager.check_idle_async()
         
         # Set LED back to idle when pattern completes normally (not stopped early)
         if state.led_controller and not state.stop_requested:
@@ -408,22 +768,25 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
         random.shuffle(file_paths)
         logger.info("Playlist shuffled")
 
-
-    if shuffle:
-        random.shuffle(file_paths)
-        logger.info("Playlist shuffled")
-
     try:
         while True:
+            # Load metadata cache once for all patterns (significant performance improvement)
+            # This avoids reading the cache file from disk for every pattern
+            cache_data = None
+            if clear_pattern and clear_pattern in ['adaptive', 'clear_from_in', 'clear_from_out']:
+                from modules.core import cache_manager
+                cache_data = cache_manager.load_metadata_cache()
+                logger.info(f"Loaded metadata cache for {len(cache_data.get('data', {}))} patterns")
+
             # Construct the complete pattern sequence
             pattern_sequence = []
             for path in file_paths:
                 # Add clear pattern if specified
                 if clear_pattern and clear_pattern != 'none':
-                    clear_file_path = get_clear_pattern_file(clear_pattern, path)
+                    clear_file_path = get_clear_pattern_file(clear_pattern, path, cache_data)
                     if clear_file_path:
                         pattern_sequence.append(clear_file_path)
-                
+
                 # Add main pattern
                 pattern_sequence.append(path)
 
@@ -509,8 +872,14 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
         
         logger.info("All requested patterns completed (or stopped) and state cleared")
 
-def stop_actions(clear_playlist = True):
-    """Stop all current actions."""
+async def stop_actions(clear_playlist = True, wait_for_lock = True):
+    """Stop all current actions and wait for pattern to fully release.
+
+    Args:
+        clear_playlist: Whether to clear playlist state
+        wait_for_lock: Whether to wait for pattern_lock to be released. Set to False when
+                      called from within pattern execution to avoid deadlock.
+    """
     try:
         with state.pause_condition:
             state.pause_requested = False
@@ -518,85 +887,71 @@ def stop_actions(clear_playlist = True):
             state.current_playing_file = None
             state.execution_progress = None
             state.is_clearing = False
-            
+
             if clear_playlist:
                 # Clear playlist state
                 state.current_playlist = None
                 state.current_playlist_index = None
                 state.playlist_mode = None
-                
+
                 # Cancel progress update task if we're clearing the playlist
                 global progress_update_task
                 if progress_update_task and not progress_update_task.done():
                     progress_update_task.cancel()
-                
+
             state.pause_condition.notify_all()
-            connection_manager.update_machine_position()
+
+        # Wait for the pattern lock to be released before continuing
+        # This ensures that when stop_actions completes, the pattern has fully stopped
+        # Skip this if called from within pattern execution to avoid deadlock
+        if wait_for_lock and pattern_lock.locked():
+            logger.info("Waiting for pattern to fully stop...")
+            # Acquire and immediately release the lock to ensure the pattern has exited
+            async with pattern_lock:
+                logger.info("Pattern lock acquired - pattern has fully stopped")
+
+        # Call async function directly since we're in async context
+        await connection_manager.update_machine_position()
     except Exception as e:
         logger.error(f"Error during stop_actions: {e}")
         # Ensure we still update machine position even if there's an error
-        connection_manager.update_machine_position()
+        try:
+            await connection_manager.update_machine_position()
+        except Exception as update_err:
+            logger.error(f"Error updating machine position on error: {update_err}")
 
-def move_polar(theta, rho, speed=None):
+async def move_polar(theta, rho, speed=None):
     """
-    This functions take in a pair of theta rho coordinate, compute the distance to travel based on current theta, rho,
-    and translate the motion to gcode jog command and sent to grbl. 
-    
-    Since having similar steps_per_mm will make x and y axis moves at around the same speed, we have to scale the 
-    x_steps_per_mm and y_steps_per_mm so that they are roughly the same. Here's the range of motion:
-    
-    X axis (angular): 50mm = 1 revolution
-    Y axis (radial): 0 => 20mm = theta 0 (center) => 1 (perimeter)
-    
+    Queue a motion command to be executed in the dedicated motion control thread.
+    This makes motion control non-blocking for API endpoints.
+
     Args:
-        theta (_type_): _description_
-        rho (_type_): _description_
+        theta (float): Target theta coordinate
+        rho (float): Target rho coordinate
         speed (int, optional): Speed override. If None, uses state.speed
     """
-    # Adding soft limit to reduce hardware sound
-    # soft_limit_inner = 0.01
-    # if rho < soft_limit_inner:
-    #     rho = soft_limit_inner
-    
-    # soft_limit_outter = 0.015
-    # if rho > (1-soft_limit_outter):
-    #     rho = (1-soft_limit_outter)
-    
-    if state.table_type == 'dune_weaver_mini':
-        x_scaling_factor = 2
-        y_scaling_factor = 3.7
-    else:
-        x_scaling_factor = 2
-        y_scaling_factor = 5
-    
-    delta_theta = theta - state.current_theta
-    delta_rho = rho - state.current_rho
-    x_increment = delta_theta * 100 / (2 * pi * x_scaling_factor)  # Added -1 to reverse direction
-    y_increment = delta_rho * 100 / y_scaling_factor
-    
-    x_total_steps = state.x_steps_per_mm * (100/x_scaling_factor)
-    y_total_steps = state.y_steps_per_mm * (100/y_scaling_factor)
-        
-    offset = x_increment * (x_total_steps * x_scaling_factor / (state.gear_ratio * y_total_steps * y_scaling_factor))
+    # Ensure motion control thread is running
+    if not motion_controller.running:
+        motion_controller.start()
 
-    if state.table_type == 'dune_weaver_mini':
-        y_increment -= offset
-    else:
-        y_increment += offset
-    
-    new_x_abs = state.machine_x + x_increment
-    new_y_abs = state.machine_y + y_increment
-    
-    # Use provided speed or fall back to state.speed
-    actual_speed = speed if speed is not None else state.speed
-    
-    # dynamic_speed = compute_dynamic_speed(rho, max_speed=actual_speed)
-    
-    connection_manager.send_grbl_coordinates(round(new_x_abs, 3), round(new_y_abs,3), actual_speed)
-    state.current_theta = theta
-    state.current_rho = rho
-    state.machine_x = new_x_abs
-    state.machine_y = new_y_abs
+    # Create future for async/await pattern
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
+
+    # Create and queue motion command
+    command = MotionCommand(
+        command_type='move',
+        theta=theta,
+        rho=rho,
+        speed=speed,
+        future=future
+    )
+
+    motion_controller.command_queue.put(command)
+    logger.debug(f"Queued motion command: theta={theta}, rho={rho}, speed={speed}")
+
+    # Wait for command completion
+    await future
     
 def pause_execution():
     """Pause pattern execution using asyncio Event."""
@@ -612,10 +967,11 @@ def resume_execution():
     pause_event.set()  # Set the event to resume execution
     return True
     
-def reset_theta():
+async def reset_theta():
     logger.info('Resetting Theta')
     state.current_theta = state.current_theta % (2 * pi)
-    connection_manager.update_machine_position()
+    # Call async function directly since we're in async context
+    await connection_manager.update_machine_position()
 
 def set_speed(new_speed):
     state.speed = new_speed
@@ -625,7 +981,9 @@ def get_status():
     """Get the current status of pattern execution."""
     status = {
         "current_file": state.current_playing_file,
-        "is_paused": state.pause_requested,
+        "is_paused": state.pause_requested or is_in_scheduled_pause_period(),
+        "manual_pause": state.pause_requested,
+        "scheduled_pause": is_in_scheduled_pause_period(),
         "is_running": bool(state.current_playing_file and not state.stop_requested),
         "progress": None,
         "playlist": None,
