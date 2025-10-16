@@ -225,17 +225,18 @@ ApplicationWindow {
     // Virtual Keyboard Support (outside rotated content to keep it right-side up)
     InputPanel {
         id: inputPanel
+        parent: window.contentItem  // Explicitly set parent to window's content
         z: 99999
-        y: window.height
         anchors.left: parent.left
         anchors.right: parent.right
+        anchors.bottom: parent.bottom
 
         states: State {
             name: "visible"
             when: inputPanel.active
             PropertyChanges {
                 target: inputPanel
-                y: window.height - inputPanel.height
+                anchors.bottomMargin: 0
             }
         }
 
@@ -243,13 +244,13 @@ ApplicationWindow {
             from: ""
             to: "visible"
             reversible: true
-            ParallelAnimation {
-                NumberAnimation {
-                    target: inputPanel
-                    property: "y"
-                    duration: 250
-                    easing.type: Easing.InOutQuad
-                }
+            NumberAnimation {
+                target: inputPanel
+                property: "anchors.bottomMargin"
+                from: -inputPanel.height
+                to: 0
+                duration: 250
+                easing.type: Easing.InOutQuad
             }
         }
     }

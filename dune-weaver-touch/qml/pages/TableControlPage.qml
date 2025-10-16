@@ -185,6 +185,29 @@ Page {
                                     id: portMenu
                                     y: parent.height
 
+                                    // Counter-rotate menu content to fix upside-down issue
+                                    delegate: MenuItem {
+                                        transform: Rotation {
+                                            origin.x: width / 2
+                                            origin.y: height / 2
+                                            angle: 180
+                                        }
+                                    }
+
+                                    // Rotate the background/container
+                                    background: Rectangle {
+                                        color: "white"
+                                        border.color: "#ddd"
+                                        border.width: 1
+                                        radius: 4
+
+                                        transform: Rotation {
+                                            origin.x: width / 2
+                                            origin.y: height / 2
+                                            angle: 180
+                                        }
+                                    }
+
                                     Repeater {
                                         model: serialPorts
                                         MenuItem {
@@ -194,9 +217,9 @@ Page {
                                             }
                                         }
                                     }
-                                    
+
                                     MenuSeparator {}
-                                    
+
                                     MenuItem {
                                         text: "Refresh Ports"
                                         onTriggered: refreshSerialPorts()
