@@ -569,12 +569,12 @@ Page {
                                     id: speedControlRow
                                     width: parent.width
                                     spacing: 8
-                                    
-                                    property string currentSelection: backend ? backend.getCurrentSpeedOption() : "200"
-                                    
-                                    // Speed buttons
+
+                                    property string currentSelection: backend ? backend.getCurrentSpeedOption() : "150"
+
+                                    // Speed buttons - dynamically loaded from backend
                                     Repeater {
-                                        model: ["50", "100", "200", "300", "500"]
+                                        model: backend ? backend.getSpeedOptions() : ["50", "100", "150", "200", "500"]
                                         
                                         Rectangle {
                                             width: (speedControlRow.width - 32) / 5  // Distribute evenly with spacing

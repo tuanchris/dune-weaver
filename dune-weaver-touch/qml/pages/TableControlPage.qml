@@ -185,13 +185,6 @@ Page {
                                     id: portMenu
                                     y: parent.height
 
-                                    // Counter-rotate menu to compensate for parent's 180° rotation
-                                    transform: Rotation {
-                                        origin.x: portMenu.width / 2
-                                        origin.y: 0
-                                        angle: 180
-                                    }
-
                                     Repeater {
                                         model: serialPorts
                                         MenuItem {
