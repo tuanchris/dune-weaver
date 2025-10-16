@@ -559,12 +559,25 @@
           if (cacheProgressCheckInterval) {
             clearInterval(cacheProgressCheckInterval);
           }
-          
+
           cacheProgressCheckInterval = setInterval(() => {
             fetch('/cache-progress')
               .then(response => response.json())
-              .then(data => updateCacheProgress(data))
-              .catch(error => console.error('Error fetching cache progress:', error));
+              .then(data => {
+                updateCacheProgress(data);
+                // Stop polling if cache generation is not running
+                if (!data.is_running) {
+                  console.log('Cache generation stopped, clearing polling interval');
+                  clearInterval(cacheProgressCheckInterval);
+                  cacheProgressCheckInterval = null;
+                }
+              })
+              .catch(error => {
+                console.error('Error fetching cache progress:', error);
+                // Stop polling on repeated errors to avoid log spam
+                clearInterval(cacheProgressCheckInterval);
+                cacheProgressCheckInterval = null;
+              });
           }, 1000);
         }
         
