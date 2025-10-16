@@ -50,4 +50,40 @@ echo "   Press Ctrl+C to stop"
 echo ""
 
 cd "$SCRIPT_DIR"
+
+# Detect platform and set appropriate Qt backend
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS - use native cocoa backend (default, no need to set)
+    echo "   Platform: macOS (using native cocoa backend)"
+    export QT_QPA_PLATFORM=""  # Let Qt use default
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    # Linux - check for DRM devices to determine if eglfs is available
+    if [ -e /dev/dri/card0 ] || [ -e /dev/dri/card1 ]; then
+        echo "   Platform: Linux with DRM (using eglfs backend)"
+        export QT_QPA_PLATFORM=eglfs
+        export QT_QPA_EGLFS_INTEGRATION=eglfs_kms
+        export QT_QPA_EGLFS_KMS_ATOMIC=1
+        export QT_QPA_EGLFS_HIDECURSOR=1
+        export QT_QPA_EGLFS_ALWAYS_SET_MODE=1
+
+        # Touchscreen configuration (adjust event number if needed)
+        if [ -e /dev/input/event0 ]; then
+            export QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS=/dev/input/event0:rotate=0
+        fi
+
+        # Use eglfs_config.json with corrected connector name (DSI-1)
+        if [ -f "$SCRIPT_DIR/eglfs_config.json" ]; then
+            echo "   Using eglfs config: $SCRIPT_DIR/eglfs_config.json"
+            export QT_QPA_EGLFS_KMS_CONFIG="$SCRIPT_DIR/eglfs_config.json"
+        else
+            echo "   EGLFS mode: Auto-detection (no config file)"
+        fi
+    else
+        echo "   Platform: Linux without DRM (using xcb/X11 backend)"
+        export QT_QPA_PLATFORM=xcb
+    fi
+else
+    echo "   Platform: Unknown (using default Qt backend)"
+fi
+
 exec ./venv/bin/python main.py

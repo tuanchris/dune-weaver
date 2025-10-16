@@ -71,67 +71,139 @@ setup_systemd() {
     echo "   🚀 Systemd service installed and enabled"
 }
 
-# Function to setup kiosk optimizations
-setup_kiosk_optimizations() {
-    echo "🖥️  Setting up kiosk optimizations..."
-    
-    # Disable boot messages for cleaner boot
-    if ! grep -q "quiet splash" /boot/cmdline.txt 2>/dev/null; then
-        if [ -f /boot/cmdline.txt ]; then
-            cp /boot/cmdline.txt /boot/cmdline.txt.backup
-            sed -i 's/$/ quiet splash/' /boot/cmdline.txt
-            echo "   ✅ Boot splash enabled"
-        fi
-    else
-        echo "   ℹ️  Boot splash already enabled"
+# Function to configure boot settings for DSI display
+configure_boot_settings() {
+    echo "🖥️  Configuring boot settings for DSI display..."
+
+    local CONFIG_FILE="/boot/firmware/config.txt"
+    # Fallback to old path if new path doesn't exist
+    [ ! -f "$CONFIG_FILE" ] && CONFIG_FILE="/boot/config.txt"
+
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "   ⚠️  config.txt not found, skipping boot configuration"
+        return
     fi
-    
-    # Disable rainbow splash
-    if ! grep -q "disable_splash=1" /boot/config.txt 2>/dev/null; then
-        if [ -f /boot/config.txt ]; then
-            echo "disable_splash=1" >> /boot/config.txt
-            echo "   ✅ Rainbow splash disabled"
+
+    # Backup config.txt
+    cp "$CONFIG_FILE" "${CONFIG_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+    echo "   ✅ Backed up config.txt"
+
+    # Remove old/conflicting KMS settings
+    sed -i '/dtoverlay=vc4-fkms-v3d/d' "$CONFIG_FILE"
+    sed -i '/dtoverlay=vc4-xfkms-v3d/d' "$CONFIG_FILE"
+
+    # Add full KMS if not present
+    if ! grep -q "dtoverlay=vc4-kms-v3d" "$CONFIG_FILE"; then
+        # Find [all] section or add at end
+        if grep -q "^\[all\]" "$CONFIG_FILE"; then
+            sed -i '/^\[all\]/a dtoverlay=vc4-kms-v3d' "$CONFIG_FILE"
+        else
+            echo -e "\n[all]\ndtoverlay=vc4-kms-v3d" >> "$CONFIG_FILE"
         fi
+        echo "   ✅ Enabled full KMS (vc4-kms-v3d) for eglfs support"
+    else
+        echo "   ℹ️  Full KMS already enabled"
+    fi
+
+    # Add GPU memory if not present
+    if ! grep -q "gpu_mem=" "$CONFIG_FILE"; then
+        echo "gpu_mem=128" >> "$CONFIG_FILE"
+        echo "   ✅ Set GPU memory to 128MB"
+    else
+        echo "   ℹ️  GPU memory already configured"
+    fi
+
+    # Disable splash screens for cleaner boot
+    if ! grep -q "disable_splash=1" "$CONFIG_FILE"; then
+        echo "disable_splash=1" >> "$CONFIG_FILE"
+        echo "   ✅ Disabled rainbow splash"
     else
         echo "   ℹ️  Rainbow splash already disabled"
     fi
-    
+
+    echo "   🖥️  Boot configuration updated for eglfs"
+}
+
+# Function to setup kiosk optimizations
+setup_kiosk_optimizations() {
+    echo "🖥️  Setting up kiosk optimizations..."
+
+    local CMDLINE_FILE="/boot/firmware/cmdline.txt"
+    [ ! -f "$CMDLINE_FILE" ] && CMDLINE_FILE="/boot/cmdline.txt"
+
+    # Disable boot messages for cleaner boot
+    if [ -f "$CMDLINE_FILE" ]; then
+        if ! grep -q "quiet splash" "$CMDLINE_FILE"; then
+            cp "$CMDLINE_FILE" "${CMDLINE_FILE}.backup"
+            sed -i 's/$/ quiet splash/' "$CMDLINE_FILE"
+            echo "   ✅ Boot splash enabled"
+        else
+            echo "   ℹ️  Boot splash already enabled"
+        fi
+    fi
+
     # Note about auto-login - let user configure manually
     echo "   ℹ️  Auto-login configuration skipped (manual setup recommended)"
-    
+
     echo "   🖥️  Kiosk optimizations applied"
 }
 
 # Function to setup Python virtual environment and install dependencies
 setup_python_environment() {
     echo "🐍 Setting up Python virtual environment..."
-    
-    # Create virtual environment if it doesn't exist
+
+    # Install system Qt6 and PySide6 packages for full eglfs support
+    echo "   📦 Installing system Qt6 and PySide6 packages..."
+    apt update
+    apt install -y \
+        python3-pyside6.qtcore \
+        python3-pyside6.qtgui \
+        python3-pyside6.qtqml \
+        python3-pyside6.qtquick \
+        python3-pyside6.qtquickcontrols2 \
+        python3-pyside6.qtquickwidgets \
+        python3-pyside6.qtwebsockets \
+        python3-pyside6.qtnetwork \
+        qml6-module-qtquick \
+        qml6-module-qtquick-controls \
+        qml6-module-qtquick-layouts \
+        qml6-module-qtquick-window \
+        qml6-module-qtquick-dialogs \
+        qml6-module-qt-labs-qmlmodels \
+        qt6-virtualkeyboard-plugin \
+        qml6-module-qtquick-virtualkeyboard \
+        qt6-base-dev \
+        qt6-declarative-dev \
+        libqt6opengl6 \
+        libqt6core5compat6 \
+        libqt6network6 \
+        libqt6websockets6 > /dev/null 2>&1
+
+    echo "   ✅ System Qt6/PySide6 packages installed"
+
+    # Create virtual environment with system site packages
     if [ ! -d "$SCRIPT_DIR/venv" ]; then
-        echo "   📦 Creating virtual environment..."
-        python3 -m venv "$SCRIPT_DIR/venv" || {
+        echo "   📦 Creating virtual environment with system site packages..."
+        python3 -m venv --system-site-packages "$SCRIPT_DIR/venv" || {
             echo "   ⚠️  Could not create virtual environment. Installing python3-venv..."
-            apt update && apt install -y python3-venv python3-full
-            python3 -m venv "$SCRIPT_DIR/venv"
+            apt install -y python3-venv python3-full
+            python3 -m venv --system-site-packages "$SCRIPT_DIR/venv"
         }
     else
         echo "   ℹ️  Virtual environment already exists"
     fi
-    
-    # Activate virtual environment and install dependencies
-    echo "   📦 Installing Python dependencies in virtual environment..."
-    "$SCRIPT_DIR/venv/bin/python" -m pip install --upgrade pip
-    
-    # Install from requirements.txt if it exists, otherwise install manually
-    if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
-        "$SCRIPT_DIR/venv/bin/pip" install -r "$SCRIPT_DIR/requirements.txt"
-    else
-        "$SCRIPT_DIR/venv/bin/pip" install PySide6 requests
-    fi
-    
+
+    # Install non-Qt dependencies
+    echo "   📦 Installing Python dependencies (qasync, aiohttp, Pillow)..."
+    "$SCRIPT_DIR/venv/bin/python" -m pip install --upgrade pip > /dev/null 2>&1
+    "$SCRIPT_DIR/venv/bin/pip" install \
+        qasync>=0.27.0 \
+        aiohttp>=3.9.0 \
+        Pillow>=10.0.0 > /dev/null 2>&1
+
     # Change ownership to the actual user (not root)
     chown -R "$ACTUAL_USER:$ACTUAL_USER" "$SCRIPT_DIR/venv"
-    
+
     echo "   🐍 Python virtual environment ready"
 }
 
@@ -143,6 +215,7 @@ echo ""
 setup_python_environment
 install_scripts
 setup_systemd
+configure_boot_settings
 setup_kiosk_optimizations
 
 echo ""
@@ -161,12 +234,12 @@ echo "   Status:     sudo systemctl status dune-weaver-touch"
 echo "   Logs:       sudo journalctl -u dune-weaver-touch -f"
 echo ""
 echo "🚀 Next Steps:"
-echo "   1. Configure auto-login (recommended for kiosk mode):"
+echo "   1. ${YELLOW}⚠️  REBOOT REQUIRED${NC} for config.txt changes (vc4-kms-v3d) to take effect"
+echo "   2. Configure auto-login (recommended for kiosk mode):"
 echo "      sudo ./setup-autologin.sh    (automated setup)"
 echo "      OR manually: sudo raspi-config → System Options → Boot/Auto Login → Desktop Autologin"
-echo "   2. Reboot your system to see the full kiosk experience"
-echo "   3. The app will start automatically on boot via systemd service"
-echo "   4. Check the logs if you encounter any issues"
+echo "   3. After reboot, the app will start automatically on boot via systemd service"
+echo "   4. Check the logs if you encounter any issues: sudo journalctl -u dune-weaver-touch -f"
 echo ""
 echo "💡 To start the service now without rebooting:"
 echo "   sudo systemctl start dune-weaver-touch"
