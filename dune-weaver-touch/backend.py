@@ -256,9 +256,17 @@ class Backend(QObject):
                             print(f"🎨 Cache generation started: {self._cache_progress['total']} patterns")
                         elif not self._cache_in_progress and was_in_progress:
                             print(f"✅ Cache generation completed!")
+                            # Stop polling when cache generation completes
+                            if self._cache_progress_timer.isActive():
+                                self._cache_progress_timer.stop()
+                                print(f"🛑 Cache progress polling stopped")
 
         except Exception as e:
             # Silently fail - cache progress is non-critical
+            # Stop polling on repeated errors to avoid log spam
+            if self._cache_progress_timer.isActive():
+                self._cache_progress_timer.stop()
+                print(f"🛑 Cache progress polling stopped due to error")
             pass
 
     # WebSocket handlers
