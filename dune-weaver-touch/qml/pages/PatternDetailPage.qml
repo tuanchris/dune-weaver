@@ -48,6 +48,14 @@ Page {
                     font.pixelSize: 14
                     flat: true
                     onClicked: stackView.pop()
+
+                    contentItem: Text {
+                        text: parent.text
+                        font: parent.font
+                        color: Components.ThemeManager.textPrimary
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
                 }
                 
                 Label {
@@ -188,24 +196,56 @@ Page {
                                 text: "Adaptive"
                                 checked: true
                                 font.pixelSize: 10
+
+                                contentItem: Text {
+                                    text: parent.text
+                                    font: parent.font
+                                    color: Components.ThemeManager.textPrimary
+                                    verticalAlignment: Text.AlignVCenter
+                                    leftPadding: parent.indicator.width + parent.spacing
+                                }
                             }
-                            
+
                             RadioButton {
                                 id: centerRadio
                                 text: "Clear Center"
                                 font.pixelSize: 10
+
+                                contentItem: Text {
+                                    text: parent.text
+                                    font: parent.font
+                                    color: Components.ThemeManager.textPrimary
+                                    verticalAlignment: Text.AlignVCenter
+                                    leftPadding: parent.indicator.width + parent.spacing
+                                }
                             }
-                            
+
                             RadioButton {
                                 id: perimeterRadio
                                 text: "Clear Edge"
                                 font.pixelSize: 10
+
+                                contentItem: Text {
+                                    text: parent.text
+                                    font: parent.font
+                                    color: Components.ThemeManager.textPrimary
+                                    verticalAlignment: Text.AlignVCenter
+                                    leftPadding: parent.indicator.width + parent.spacing
+                                }
                             }
-                            
+
                             RadioButton {
                                 id: noneRadio
                                 text: "None"
                                 font.pixelSize: 10
+
+                                contentItem: Text {
+                                    text: parent.text
+                                    font: parent.font
+                                    color: Components.ThemeManager.textPrimary
+                                    verticalAlignment: Text.AlignVCenter
+                                    leftPadding: parent.indicator.width + parent.spacing
+                                }
                             }
                         }
                     }

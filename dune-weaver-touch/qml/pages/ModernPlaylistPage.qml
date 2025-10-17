@@ -282,6 +282,14 @@ Page {
                         font.pixelSize: 14
                         flat: true
                         onClicked: showPlaylistList()
+
+                        contentItem: Text {
+                            text: parent.text
+                            font: parent.font
+                            color: Components.ThemeManager.textPrimary
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
                     }
                     
                     Label {
@@ -554,8 +562,16 @@ Page {
                                                 onCheckedChanged: {
                                                     if (checked) runMode = "single"
                                                 }
+
+                                                contentItem: Text {
+                                                    text: parent.text
+                                                    font: parent.font
+                                                    color: Components.ThemeManager.textPrimary
+                                                    verticalAlignment: Text.AlignVCenter
+                                                    leftPadding: parent.indicator.width + parent.spacing
+                                                }
                                             }
-                                            
+
                                             RadioButton {
                                                 id: loopModeRadio
                                                 text: "Loop"
@@ -563,6 +579,14 @@ Page {
                                                 checked: runMode === "loop"
                                                 onCheckedChanged: {
                                                     if (checked) runMode = "loop"
+                                                }
+
+                                                contentItem: Text {
+                                                    text: parent.text
+                                                    font: parent.font
+                                                    color: Components.ThemeManager.textPrimary
+                                                    verticalAlignment: Text.AlignVCenter
+                                                    leftPadding: parent.indicator.width + parent.spacing
                                                 }
                                             }
                                         }
@@ -800,8 +824,16 @@ Page {
                                                 onCheckedChanged: {
                                                     if (checked) clearPattern = "adaptive"
                                                 }
+
+                                                contentItem: Text {
+                                                    text: parent.text
+                                                    font: parent.font
+                                                    color: Components.ThemeManager.textPrimary
+                                                    verticalAlignment: Text.AlignVCenter
+                                                    leftPadding: parent.indicator.width + parent.spacing
+                                                }
                                             }
-                                            
+
                                             RadioButton {
                                                 text: "Clear Center"
                                                 font.pixelSize: 11
@@ -809,8 +841,16 @@ Page {
                                                 onCheckedChanged: {
                                                     if (checked) clearPattern = "clear_center"
                                                 }
+
+                                                contentItem: Text {
+                                                    text: parent.text
+                                                    font: parent.font
+                                                    color: Components.ThemeManager.textPrimary
+                                                    verticalAlignment: Text.AlignVCenter
+                                                    leftPadding: parent.indicator.width + parent.spacing
+                                                }
                                             }
-                                            
+
                                             RadioButton {
                                                 text: "Clear Edge"
                                                 font.pixelSize: 11
@@ -818,14 +858,30 @@ Page {
                                                 onCheckedChanged: {
                                                     if (checked) clearPattern = "clear_perimeter"
                                                 }
+
+                                                contentItem: Text {
+                                                    text: parent.text
+                                                    font: parent.font
+                                                    color: Components.ThemeManager.textPrimary
+                                                    verticalAlignment: Text.AlignVCenter
+                                                    leftPadding: parent.indicator.width + parent.spacing
+                                                }
                                             }
-                                            
+
                                             RadioButton {
                                                 text: "None"
                                                 font.pixelSize: 11
                                                 checked: clearPattern === "none"
                                                 onCheckedChanged: {
                                                     if (checked) clearPattern = "none"
+                                                }
+
+                                                contentItem: Text {
+                                                    text: parent.text
+                                                    font: parent.font
+                                                    color: Components.ThemeManager.textPrimary
+                                                    verticalAlignment: Text.AlignVCenter
+                                                    leftPadding: parent.indicator.width + parent.spacing
                                                 }
                                             }
                                         }

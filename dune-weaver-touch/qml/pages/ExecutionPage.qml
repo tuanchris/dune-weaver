@@ -341,6 +341,7 @@ Page {
                                     
                                     // Stop button
                                     Rectangle {
+                                        width: (parent.width - 16) / 3
                                         height: parent.height
                                         radius: 6
                                         color: stopMouseArea.pressed ? "#b91c1c" : (backend && backend.currentFile !== "" ? "#dc2626" : "#9ca3af")
