@@ -2,62 +2,63 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import "../components"
+import "../components" as Components
 
 Page {
     id: page
-    
+
     property var patternModel
     property var backend
     property var stackView
     property bool searchExpanded: false
-    
+
     Rectangle {
         anchors.fill: parent
-        color: "#f5f5f5"
+        color: Components.ThemeManager.backgroundColor
     }
-    
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
-        
+
         // Header with integrated search
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 50
-            color: "white"
-            
+            color: Components.ThemeManager.surfaceColor
+
             // Bottom border
             Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
                 height: 1
-                color: "#e5e7eb"
+                color: Components.ThemeManager.borderColor
             }
-            
+
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 15
                 anchors.rightMargin: 10
-                
+
                 ConnectionStatus {
                     backend: page.backend
                     Layout.rightMargin: 8
                     visible: !searchExpanded
                 }
-                
+
                 Label {
                     text: "Browse Patterns"
                     font.pixelSize: 18
                     font.bold: true
-                    color: "#333"
+                    color: Components.ThemeManager.textPrimary
                     visible: !searchExpanded
                 }
-                
+
                 // Pattern count
                 Label {
                     text: patternModel.rowCount() + " patterns"
                     font.pixelSize: 12
-                    color: "#999"
+                    color: Components.ThemeManager.textTertiary
                     visible: !searchExpanded
                 }
                 
@@ -72,25 +73,25 @@ Page {
                     Layout.preferredWidth: searchExpanded ? parent.width - 60 : 120
                     Layout.preferredHeight: 32
                     radius: 16
-                    color: searchExpanded ? "white" : "#f5f5f5"
-                    border.color: searchExpanded ? "#2563eb" : "#e0e0e0"
+                    color: searchExpanded ? Components.ThemeManager.surfaceColor : Components.ThemeManager.cardColor
+                    border.color: searchExpanded ? "#2563eb" : Components.ThemeManager.borderColor
                     border.width: 1
-                    
+
                     Behavior on Layout.preferredWidth {
                         NumberAnimation { duration: 200 }
                     }
-                    
+
                     RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: 10
                         anchors.rightMargin: 10
                         spacing: 5
-                        
+
                         Text {
                             text: "⌕"
                             font.pixelSize: 16
                             font.family: "sans-serif"
-                            color: searchExpanded ? "#2563eb" : "#6b7280"
+                            color: searchExpanded ? "#2563eb" : Components.ThemeManager.textSecondary
                         }
                         
                         TextField {
@@ -171,7 +172,7 @@ Page {
                         Text {
                             text: searchExpanded || searchField.text.length > 0 ? "Search" : ""
                             font.pixelSize: 12
-                            color: "#999"
+                            color: Components.ThemeManager.textTertiary
                             visible: !searchExpanded && searchField.text.length === 0
                         }
                     }
@@ -253,29 +254,29 @@ Page {
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: patternModel.rowCount() === 0 && searchField.text !== ""
-            
+
             Column {
                 anchors.centerIn: parent
                 spacing: 20
-                
+
                 Text {
                     text: "⌕"
                     font.pixelSize: 48
                     anchors.horizontalCenter: parent.horizontalCenter
-                    color: "#ccc"
+                    color: Components.ThemeManager.placeholderText
                 }
-                
+
                 Label {
                     text: "No patterns found"
                     anchors.horizontalCenter: parent.horizontalCenter
-                    color: "#999"
+                    color: Components.ThemeManager.textSecondary
                     font.pixelSize: 18
                 }
-                
+
                 Label {
                     text: "Try a different search term"
                     anchors.horizontalCenter: parent.horizontalCenter
-                    color: "#ccc"
+                    color: Components.ThemeManager.textTertiary
                     font.pixelSize: 14
                 }
             }

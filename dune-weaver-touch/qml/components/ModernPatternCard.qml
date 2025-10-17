@@ -1,11 +1,12 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Effects
+import "." as Components
 
 Rectangle {
     property string name: ""
     property alias preview: previewImage.source
-    
+
     // Clean up the pattern name for display
     property string cleanName: {
         var cleanedName = name
@@ -16,10 +17,10 @@ Rectangle {
         cleanedName = cleanedName.replace('.thr', '')
         return cleanedName
     }
-    
+
     signal clicked()
-    
-    color: "white"
+
+    color: Components.ThemeManager.surfaceColor
     radius: 12
     
     // Drop shadow effect
@@ -49,7 +50,7 @@ Rectangle {
             width: parent.width
             height: parent.height - nameLabel.height - 12
             radius: 8
-            color: "#f8f8f8"
+            color: Components.ThemeManager.previewBackground
             clip: true
             
             Image {
@@ -69,31 +70,31 @@ Rectangle {
             // Placeholder when no preview
             Rectangle {
                 anchors.fill: parent
-                color: "#f0f0f0"
+                color: Components.ThemeManager.placeholderBackground
                 visible: previewImage.status === Image.Error || previewImage.source == ""
                 radius: 8
-                
+
                 Column {
                     anchors.centerIn: parent
                     spacing: 8
-                    
+
                     Text {
                         text: "◻"
                         font.pixelSize: 32
                         anchors.horizontalCenter: parent.horizontalCenter
-                        color: "#ddd"
+                        color: Components.ThemeManager.placeholderText
                     }
-                    
+
                     Text {
                         text: "No Preview"
                         anchors.horizontalCenter: parent.horizontalCenter
-                        color: "#999"
+                        color: Components.ThemeManager.textTertiary
                         font.pixelSize: 12
                     }
                 }
             }
         }
-        
+
         // Pattern name
         Label {
             id: nameLabel
@@ -103,7 +104,7 @@ Rectangle {
             horizontalAlignment: Label.AlignHCenter
             font.pixelSize: 13
             font.weight: Font.Medium
-            color: "#333"
+            color: Components.ThemeManager.textPrimary
             wrapMode: Text.Wrap
             maximumLineCount: 2
         }

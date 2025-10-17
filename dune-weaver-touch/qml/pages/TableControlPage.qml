@@ -3,6 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import QtQuick.Effects
 import "../components"
+import "../components" as Components
 
 Page {
     id: page
@@ -67,7 +68,7 @@ Page {
     
     Rectangle {
         anchors.fill: parent
-        color: "#f5f5f5"
+        color: Components.ThemeManager.backgroundColor
     }
     
     ColumnLayout {
@@ -78,34 +79,34 @@ Page {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 50
-            color: "white"
-            
+            color: Components.ThemeManager.surfaceColor
+
             Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
                 height: 1
-                color: "#e5e7eb"
+                color: Components.ThemeManager.borderColor
             }
-            
+
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 15
                 anchors.rightMargin: 10
-                
+
                 ConnectionStatus {
                     backend: page.backend
                     Layout.rightMargin: 8
                 }
-                
+
                 Label {
                     text: "Table Control"
                     font.pixelSize: 18
                     font.bold: true
-                    color: "#333"
+                    color: Components.ThemeManager.textPrimary
                 }
-                
-                Item { 
-                    Layout.fillWidth: true 
+
+                Item {
+                    Layout.fillWidth: true
                 }
             }
         }
@@ -127,18 +128,18 @@ Page {
                     Layout.preferredHeight: 160
                     Layout.margins: 5
                     radius: 8
-                    color: "white"
-                    
+                    color: Components.ThemeManager.surfaceColor
+
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 15
                         spacing: 10
-                        
+
                         Label {
                             text: "Serial Connection"
                             font.pixelSize: 14
                             font.bold: true
-                            color: "#333"
+                            color: Components.ThemeManager.textPrimary
                         }
                         
                         RowLayout {
@@ -149,27 +150,27 @@ Page {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 40
                                 radius: 6
-                                color: isSerialConnected ? "#e8f5e8" : "#f8f9fa"
-                                border.color: isSerialConnected ? "#4CAF50" : "#e5e7eb"
+                                color: isSerialConnected ? (Components.ThemeManager.darkMode ? "#1b4332" : "#e8f5e8") : Components.ThemeManager.cardColor
+                                border.color: isSerialConnected ? "#4CAF50" : Components.ThemeManager.borderColor
                                 border.width: 1
-                                
+
                                 RowLayout {
                                     anchors.fill: parent
                                     anchors.margins: 8
-                                    
+
                                     Label {
-                                        text: isSerialConnected ? 
+                                        text: isSerialConnected ?
                                               (selectedPort ? `Connected: ${selectedPort}` : "Connected") :
                                               (selectedPort || "No port selected")
-                                        color: isSerialConnected ? "#2e7d32" : (selectedPort ? "#333" : "#999")
+                                        color: isSerialConnected ? "#4CAF50" : (selectedPort ? Components.ThemeManager.textPrimary : Components.ThemeManager.textTertiary)
                                         font.pixelSize: 12
                                         font.bold: isSerialConnected
                                         Layout.fillWidth: true
                                     }
-                                    
+
                                     Text {
                                         text: "▼"
-                                        color: "#666"
+                                        color: Components.ThemeManager.textSecondary
                                         font.pixelSize: 10
                                         visible: !isSerialConnected
                                     }
@@ -250,18 +251,18 @@ Page {
                     Layout.preferredHeight: 100
                     Layout.margins: 5
                     radius: 8
-                    color: "white"
-                    
+                    color: Components.ThemeManager.surfaceColor
+
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 15
                         spacing: 10
-                        
+
                         Label {
                             text: "Table Movement"
                             font.pixelSize: 14
                             font.bold: true
-                            color: "#333"
+                            color: Components.ThemeManager.textPrimary
                         }
                         
                         GridLayout {
@@ -322,28 +323,28 @@ Page {
                     Layout.preferredHeight: 200  // Reduced from 280 for single row layout
                     Layout.margins: 5
                     radius: 8
-                    color: "white"
-                    
+                    color: Components.ThemeManager.surfaceColor
+
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 15
                         spacing: 10
-                        
+
                         Label {
                             text: "Auto Play Settings"
                             font.pixelSize: 14
                             font.bold: true
-                            color: "#333"
+                            color: Components.ThemeManager.textPrimary
                         }
-                        
+
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 10
-                            
+
                             Label {
                                 text: "Auto play on boot:"
                                 font.pixelSize: 12
-                                color: "#666"
+                                color: Components.ThemeManager.textSecondary
                                 Layout.fillWidth: true
                             }
                             
@@ -363,12 +364,12 @@ Page {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 15
-                            
+
                             Label {
                                 text: "Screen timeout:"
                                 font.pixelSize: 14
                                 font.bold: true
-                                color: "#333"
+                                color: Components.ThemeManager.textPrimary
                                 Layout.alignment: Qt.AlignLeft
                             }
                             
@@ -384,17 +385,17 @@ Page {
                                 Rectangle {
                                     Layout.preferredWidth: 100
                                     Layout.preferredHeight: 50
-                                    color: timeoutGrid.currentSelection === "30 seconds" ? "#2196F3" : "#f0f0f0"
-                                    border.color: timeoutGrid.currentSelection === "30 seconds" ? "#1976D2" : "#ccc"
+                                    color: timeoutGrid.currentSelection === "30 seconds" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
+                                    border.color: timeoutGrid.currentSelection === "30 seconds" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
                                     border.width: 2
                                     radius: 8
-                                    
+
                                     Label {
                                         anchors.centerIn: parent
                                         text: "30s"
                                         font.pixelSize: 14
                                         font.bold: true
-                                        color: timeoutGrid.currentSelection === "30 seconds" ? "white" : "#333"
+                                        color: timeoutGrid.currentSelection === "30 seconds" ? "white" : Components.ThemeManager.textPrimary
                                     }
                                     
                                     MouseArea {
@@ -412,19 +413,19 @@ Page {
                                 Rectangle {
                                     Layout.preferredWidth: 100
                                     Layout.preferredHeight: 50
-                                    color: timeoutGrid.currentSelection === "1 minute" ? "#2196F3" : "#f0f0f0"
-                                    border.color: timeoutGrid.currentSelection === "1 minute" ? "#1976D2" : "#ccc"
+                                    color: timeoutGrid.currentSelection === "1 minute" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
+                                    border.color: timeoutGrid.currentSelection === "1 minute" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
                                     border.width: 2
                                     radius: 8
-                                    
+
                                     Label {
                                         anchors.centerIn: parent
                                         text: "1min"
                                         font.pixelSize: 14
                                         font.bold: true
-                                        color: timeoutGrid.currentSelection === "1 minute" ? "white" : "#333"
+                                        color: timeoutGrid.currentSelection === "1 minute" ? "white" : Components.ThemeManager.textPrimary
                                     }
-                                    
+
                                     MouseArea {
                                         anchors.fill: parent
                                         onClicked: {
@@ -435,24 +436,24 @@ Page {
                                         }
                                     }
                                 }
-                                
+
                                 // 5 minutes button
                                 Rectangle {
                                     Layout.preferredWidth: 100
                                     Layout.preferredHeight: 50
-                                    color: timeoutGrid.currentSelection === "5 minutes" ? "#2196F3" : "#f0f0f0"
-                                    border.color: timeoutGrid.currentSelection === "5 minutes" ? "#1976D2" : "#ccc"
+                                    color: timeoutGrid.currentSelection === "5 minutes" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
+                                    border.color: timeoutGrid.currentSelection === "5 minutes" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
                                     border.width: 2
                                     radius: 8
-                                    
+
                                     Label {
                                         anchors.centerIn: parent
                                         text: "5min"
                                         font.pixelSize: 14
                                         font.bold: true
-                                        color: timeoutGrid.currentSelection === "5 minutes" ? "white" : "#333"
+                                        color: timeoutGrid.currentSelection === "5 minutes" ? "white" : Components.ThemeManager.textPrimary
                                     }
-                                    
+
                                     MouseArea {
                                         anchors.fill: parent
                                         onClicked: {
@@ -463,22 +464,22 @@ Page {
                                         }
                                     }
                                 }
-                                
+
                                 // 10 minutes button
                                 Rectangle {
                                     Layout.preferredWidth: 100
                                     Layout.preferredHeight: 50
-                                    color: timeoutGrid.currentSelection === "10 minutes" ? "#2196F3" : "#f0f0f0"
-                                    border.color: timeoutGrid.currentSelection === "10 minutes" ? "#1976D2" : "#ccc"
+                                    color: timeoutGrid.currentSelection === "10 minutes" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
+                                    border.color: timeoutGrid.currentSelection === "10 minutes" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
                                     border.width: 2
                                     radius: 8
-                                    
+
                                     Label {
                                         anchors.centerIn: parent
                                         text: "10min"
                                         font.pixelSize: 14
                                         font.bold: true
-                                        color: timeoutGrid.currentSelection === "10 minutes" ? "white" : "#333"
+                                        color: timeoutGrid.currentSelection === "10 minutes" ? "white" : Components.ThemeManager.textPrimary
                                     }
                                     
                                     MouseArea {
@@ -533,7 +534,50 @@ Page {
                         }
                     }
                 }
-                
+
+                // Theme Settings Section
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 100
+                    Layout.margins: 5
+                    radius: 8
+                    color: Components.ThemeManager.surfaceColor
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 15
+                        spacing: 10
+
+                        Label {
+                            text: "Appearance"
+                            font.pixelSize: 14
+                            font.bold: true
+                            color: Components.ThemeManager.textPrimary
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+
+                            Label {
+                                text: "Dark mode:"
+                                font.pixelSize: 12
+                                color: Components.ThemeManager.textSecondary
+                                Layout.fillWidth: true
+                            }
+
+                            Switch {
+                                id: darkModeSwitch
+                                checked: Components.ThemeManager.darkMode
+
+                                onToggled: {
+                                    Components.ThemeManager.darkMode = checked
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Add some bottom spacing for better scrolling
                 Item {
                     Layout.preferredHeight: 20

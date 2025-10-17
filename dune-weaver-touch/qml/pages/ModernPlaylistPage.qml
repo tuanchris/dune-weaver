@@ -3,6 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import DuneWeaver 1.0
 import "../components"
+import "../components" as Components
 
 Page {
     id: page
@@ -59,14 +60,14 @@ Page {
     
     Rectangle {
         anchors.fill: parent
-        color: "#f5f5f5"
+        color: Components.ThemeManager.backgroundColor
     }
-    
+
     // Playlist List View (shown by default)
     Rectangle {
         id: playlistListView
         anchors.fill: parent
-        color: "#f5f5f5"
+        color: Components.ThemeManager.backgroundColor
         visible: !showingPlaylistDetail
         
         ColumnLayout {
@@ -77,14 +78,14 @@ Page {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 50
-                color: "white"
-                
+                color: Components.ThemeManager.surfaceColor
+
                 // Bottom border
                 Rectangle {
                     anchors.bottom: parent.bottom
                     width: parent.width
                     height: 1
-                    color: "#e5e7eb"
+                    color: Components.ThemeManager.borderColor
                 }
                 
                 RowLayout {
@@ -101,13 +102,13 @@ Page {
                         text: "Playlists"
                         font.pixelSize: 18
                         font.bold: true
-                        color: "#333"
+                        color: Components.ThemeManager.textPrimary
                     }
-                    
+
                     Label {
                         text: playlistModel.rowCount() + " playlists"
                         font.pixelSize: 12
-                        color: "#999"
+                        color: Components.ThemeManager.textTertiary
                     }
                     
                     Item { 
@@ -133,9 +134,9 @@ Page {
                 delegate: Rectangle {
                     width: ListView.view.width
                     height: 80
-                    color: "white"
+                    color: Components.ThemeManager.surfaceColor
                     radius: 12
-                    border.color: "#e5e7eb"
+                    border.color: Components.ThemeManager.borderColor
                     border.width: 1
                     
                     // Press animation
@@ -155,8 +156,8 @@ Page {
                             Layout.preferredWidth: 40
                             Layout.preferredHeight: 40
                             radius: 20
-                            color: "#e3f2fd"
-                            
+                            color: Components.ThemeManager.darkMode ? "#1e3a5f" : "#e3f2fd"
+
                             Text {
                                 anchors.centerIn: parent
                                 text: "♪"
@@ -174,14 +175,14 @@ Page {
                                 text: model.name
                                 font.pixelSize: 16
                                 font.bold: true
-                                color: "#333"
+                                color: Components.ThemeManager.textPrimary
                                 elide: Text.ElideRight
                                 width: parent.width
                             }
-                            
+
                             Label {
                                 text: model.itemCount + " patterns"
-                                color: "#666"
+                                color: Components.ThemeManager.textSecondary
                                 font.pixelSize: 12
                             }
                         }
@@ -190,7 +191,7 @@ Page {
                         Text {
                             text: "▶"
                             font.pixelSize: 16
-                            color: "#999"
+                            color: Components.ThemeManager.textTertiary
                         }
                     }
                     
@@ -215,22 +216,22 @@ Page {
                         
                         Text {
                             text: "♪"
-                            color: "#ccc"
+                            color: Components.ThemeManager.placeholderText
                             font.pixelSize: 64
                             anchors.horizontalCenter: parent.horizontalCenter
                         }
-                        
+
                         Label {
                             text: "No playlists found"
                             anchors.horizontalCenter: parent.horizontalCenter
-                            color: "#999"
+                            color: Components.ThemeManager.textSecondary
                             font.pixelSize: 18
                         }
-                        
+
                         Label {
                             text: "Create playlists to organize\\nyour pattern collections"
                             anchors.horizontalCenter: parent.horizontalCenter
-                            color: "#ccc"
+                            color: Components.ThemeManager.textTertiary
                             font.pixelSize: 14
                             horizontalAlignment: Text.AlignHCenter
                         }
@@ -244,7 +245,7 @@ Page {
     Rectangle {
         id: playlistDetailView
         anchors.fill: parent
-        color: "#f5f5f5"
+        color: Components.ThemeManager.backgroundColor
         visible: showingPlaylistDetail
         
         ColumnLayout {
@@ -255,14 +256,14 @@ Page {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 50
-                color: "white"
-                
+                color: Components.ThemeManager.surfaceColor
+
                 // Bottom border
                 Rectangle {
                     anchors.bottom: parent.bottom
                     width: parent.width
                     height: 1
-                    color: "#e5e7eb"
+                    color: Components.ThemeManager.borderColor
                 }
                 
                 RowLayout {
@@ -287,15 +288,15 @@ Page {
                         text: selectedPlaylist
                         font.pixelSize: 18
                         font.bold: true
-                        color: "#333"
+                        color: Components.ThemeManager.textPrimary
                         Layout.fillWidth: true
                         elide: Text.ElideRight
                     }
-                    
+
                     Label {
                         text: currentPlaylistPatterns.length + " patterns"
                         font.pixelSize: 12
-                        color: "#999"
+                        color: Components.ThemeManager.textTertiary
                     }
                 }
             }
@@ -313,7 +314,7 @@ Page {
                     Rectangle {
                         width: parent.width * 0.4
                         height: parent.height
-                        color: "white"
+                        color: Components.ThemeManager.surfaceColor
                         
                         ColumnLayout {
                             anchors.fill: parent
@@ -324,7 +325,7 @@ Page {
                                 text: "Patterns"
                                 font.pixelSize: 14
                                 font.bold: true
-                                color: "#333"
+                                color: Components.ThemeManager.textPrimary
                             }
                             
                             ScrollView {
@@ -341,9 +342,9 @@ Page {
                                     delegate: Rectangle {
                                         width: patternListView.width
                                         height: 35
-                                        color: index % 2 === 0 ? "#f8f9fa" : "#ffffff"
+                                        color: index % 2 === 0 ? Components.ThemeManager.cardColor : Components.ThemeManager.surfaceColor
                                         radius: 6
-                                        border.color: "#e5e7eb"
+                                        border.color: Components.ThemeManager.borderColor
                                         border.width: 1
                                         
                                         RowLayout {
@@ -354,14 +355,14 @@ Page {
                                             Label {
                                                 text: (index + 1) + "."
                                                 font.pixelSize: 11
-                                                color: "#666"
+                                                color: Components.ThemeManager.textSecondary
                                                 Layout.preferredWidth: 25
                                             }
-                                            
+
                                             Label {
                                                 text: modelData
                                                 font.pixelSize: 11
-                                                color: "#333"
+                                                color: Components.ThemeManager.textPrimary
                                                 Layout.fillWidth: true
                                                 elide: Text.ElideRight
                                             }
@@ -384,14 +385,14 @@ Page {
                                     Text {
                                         text: "♪"
                                         font.pixelSize: 32
-                                        color: "#ccc"
+                                        color: Components.ThemeManager.placeholderText
                                         anchors.horizontalCenter: parent.horizontalCenter
                                     }
-                                    
+
                                     Label {
                                         text: "Empty playlist"
                                         anchors.horizontalCenter: parent.horizontalCenter
-                                        color: "#999"
+                                        color: Components.ThemeManager.textSecondary
                                         font.pixelSize: 14
                                     }
                                 }
@@ -403,14 +404,14 @@ Page {
                     Rectangle {
                         width: 1
                         height: parent.height
-                        color: "#e5e7eb"
+                        color: Components.ThemeManager.borderColor
                     }
-                    
+
                     // Right side - Full height controls (60% of width)
                     Rectangle {
                         width: parent.width * 0.6 - 1
                         height: parent.height
-                        color: "white"
+                        color: Components.ThemeManager.surfaceColor
                         
                         ColumnLayout {
                             anchors.fill: parent
@@ -421,7 +422,7 @@ Page {
                                 text: "Playlist Controls"
                                 font.pixelSize: 16
                                 font.bold: true
-                                color: "#333"
+                                color: Components.ThemeManager.textPrimary
                             }
                             
                             // Main execution buttons
@@ -501,8 +502,8 @@ Page {
                                 Layout.fillHeight: true
                                 Layout.minimumHeight: 250
                                 radius: 10
-                                color: "#f8f9fa"
-                                border.color: "#e5e7eb"
+                                color: Components.ThemeManager.cardColor
+                                border.color: Components.ThemeManager.borderColor
                                 border.width: 1
 
                                 ColumnLayout {
@@ -514,7 +515,7 @@ Page {
                                         text: "Settings"
                                         font.pixelSize: 14
                                         font.bold: true
-                                        color: "#333"
+                                        color: Components.ThemeManager.textPrimary
                                     }
 
                                     // Scrollable settings content
@@ -537,7 +538,7 @@ Page {
                                         Label {
                                             text: "Run Mode:"
                                             font.pixelSize: 12
-                                            color: "#666"
+                                            color: Components.ThemeManager.textSecondary
                                             font.bold: true
                                         }
                                         
@@ -575,7 +576,7 @@ Page {
                                         Label {
                                             text: "Pause between patterns:"
                                             font.pixelSize: 12
-                                            color: "#666"
+                                            color: Components.ThemeManager.textSecondary
                                             font.bold: true
                                         }
                                         
@@ -591,17 +592,17 @@ Page {
                                             Rectangle {
                                                 Layout.preferredWidth: 60
                                                 Layout.preferredHeight: 40
-                                                color: pauseGrid.currentSelection === "0s" ? "#2196F3" : "#f0f0f0"
-                                                border.color: pauseGrid.currentSelection === "0s" ? "#1976D2" : "#ccc"
+                                                color: pauseGrid.currentSelection === "0s" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
+                                                border.color: pauseGrid.currentSelection === "0s" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
                                                 border.width: 2
                                                 radius: 8
-                                                
+
                                                 Label {
                                                     anchors.centerIn: parent
                                                     text: "0s"
                                                     font.pixelSize: 12
                                                     font.bold: true
-                                                    color: pauseGrid.currentSelection === "0s" ? "white" : "#333"
+                                                    color: pauseGrid.currentSelection === "0s" ? "white" : Components.ThemeManager.textPrimary
                                                 }
                                                 
                                                 MouseArea {
@@ -620,17 +621,17 @@ Page {
                                             Rectangle {
                                                 Layout.preferredWidth: 60
                                                 Layout.preferredHeight: 40
-                                                color: pauseGrid.currentSelection === "1 min" ? "#2196F3" : "#f0f0f0"
-                                                border.color: pauseGrid.currentSelection === "1 min" ? "#1976D2" : "#ccc"
+                                                color: pauseGrid.currentSelection === "1 min" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
+                                                border.color: pauseGrid.currentSelection === "1 min" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
                                                 border.width: 2
                                                 radius: 8
-                                                
+
                                                 Label {
                                                     anchors.centerIn: parent
                                                     text: "1m"
                                                     font.pixelSize: 12
                                                     font.bold: true
-                                                    color: pauseGrid.currentSelection === "1 min" ? "white" : "#333"
+                                                    color: pauseGrid.currentSelection === "1 min" ? "white" : Components.ThemeManager.textPrimary
                                                 }
                                                 
                                                 MouseArea {
@@ -649,17 +650,17 @@ Page {
                                             Rectangle {
                                                 Layout.preferredWidth: 60
                                                 Layout.preferredHeight: 40
-                                                color: pauseGrid.currentSelection === "5 min" ? "#2196F3" : "#f0f0f0"
-                                                border.color: pauseGrid.currentSelection === "5 min" ? "#1976D2" : "#ccc"
+                                                color: pauseGrid.currentSelection === "5 min" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
+                                                border.color: pauseGrid.currentSelection === "5 min" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
                                                 border.width: 2
                                                 radius: 8
-                                                
+
                                                 Label {
                                                     anchors.centerIn: parent
                                                     text: "5m"
                                                     font.pixelSize: 12
                                                     font.bold: true
-                                                    color: pauseGrid.currentSelection === "5 min" ? "white" : "#333"
+                                                    color: pauseGrid.currentSelection === "5 min" ? "white" : Components.ThemeManager.textPrimary
                                                 }
                                                 
                                                 MouseArea {
@@ -678,17 +679,17 @@ Page {
                                             Rectangle {
                                                 Layout.preferredWidth: 60
                                                 Layout.preferredHeight: 40
-                                                color: pauseGrid.currentSelection === "15 min" ? "#2196F3" : "#f0f0f0"
-                                                border.color: pauseGrid.currentSelection === "15 min" ? "#1976D2" : "#ccc"
+                                                color: pauseGrid.currentSelection === "15 min" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
+                                                border.color: pauseGrid.currentSelection === "15 min" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
                                                 border.width: 2
                                                 radius: 8
-                                                
+
                                                 Label {
                                                     anchors.centerIn: parent
                                                     text: "15m"
                                                     font.pixelSize: 12
                                                     font.bold: true
-                                                    color: pauseGrid.currentSelection === "15 min" ? "white" : "#333"
+                                                    color: pauseGrid.currentSelection === "15 min" ? "white" : Components.ThemeManager.textPrimary
                                                 }
                                                 
                                                 MouseArea {
@@ -707,17 +708,17 @@ Page {
                                             Rectangle {
                                                 Layout.preferredWidth: 60
                                                 Layout.preferredHeight: 40
-                                                color: pauseGrid.currentSelection === "30 min" ? "#2196F3" : "#f0f0f0"
-                                                border.color: pauseGrid.currentSelection === "30 min" ? "#1976D2" : "#ccc"
+                                                color: pauseGrid.currentSelection === "30 min" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
+                                                border.color: pauseGrid.currentSelection === "30 min" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
                                                 border.width: 2
                                                 radius: 8
-                                                
+
                                                 Label {
                                                     anchors.centerIn: parent
                                                     text: "30m"
                                                     font.pixelSize: 12
                                                     font.bold: true
-                                                    color: pauseGrid.currentSelection === "30 min" ? "white" : "#333"
+                                                    color: pauseGrid.currentSelection === "30 min" ? "white" : Components.ThemeManager.textPrimary
                                                 }
                                                 
                                                 MouseArea {
@@ -736,17 +737,17 @@ Page {
                                             Rectangle {
                                                 Layout.preferredWidth: 60
                                                 Layout.preferredHeight: 40
-                                                color: pauseGrid.currentSelection === "1 hour" ? "#2196F3" : "#f0f0f0"
-                                                border.color: pauseGrid.currentSelection === "1 hour" ? "#1976D2" : "#ccc"
+                                                color: pauseGrid.currentSelection === "1 hour" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
+                                                border.color: pauseGrid.currentSelection === "1 hour" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
                                                 border.width: 2
                                                 radius: 8
-                                                
+
                                                 Label {
                                                     anchors.centerIn: parent
                                                     text: "1h"
                                                     font.pixelSize: 12
                                                     font.bold: true
-                                                    color: pauseGrid.currentSelection === "1 hour" ? "white" : "#333"
+                                                    color: pauseGrid.currentSelection === "1 hour" ? "white" : Components.ThemeManager.textPrimary
                                                 }
                                                 
                                                 MouseArea {
@@ -782,7 +783,7 @@ Page {
                                         Label {
                                             text: "Clear Pattern:"
                                             font.pixelSize: 12
-                                            color: "#666"
+                                            color: Components.ThemeManager.textSecondary
                                             font.bold: true
                                         }
                                         

@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import "../components"
+import "../components" as Components
 
 Page {
     id: page
@@ -9,10 +10,10 @@ Page {
     property string patternPath: ""
     property string patternPreview: ""
     property var backend: null
-    
+
     Rectangle {
         anchors.fill: parent
-        color: "#f5f5f5"
+        color: Components.ThemeManager.backgroundColor
     }
     
     ColumnLayout {
@@ -23,14 +24,14 @@ Page {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 50
-            color: "white"
-            
+            color: Components.ThemeManager.surfaceColor
+
             // Bottom border
             Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
                 height: 1
-                color: "#e5e7eb"
+                color: Components.ThemeManager.borderColor
             }
             
             RowLayout {
@@ -55,7 +56,7 @@ Page {
                     elide: Label.ElideRight
                     font.pixelSize: 16
                     font.bold: true
-                    color: "#333"
+                    color: Components.ThemeManager.textPrimary
                 }
             }
         }
@@ -73,33 +74,33 @@ Page {
                 Rectangle {
                     width: parent.width * 0.6
                     height: parent.height
-                    color: "#ffffff"
-                
+                    color: Components.ThemeManager.previewBackground
+
                 Image {
                     anchors.fill: parent
                     anchors.margins: 10
                     source: patternPreview ? "file:///" + patternPreview : ""
                     fillMode: Image.PreserveAspectFit
-                    
+
                     Rectangle {
                         anchors.fill: parent
-                        color: "#f0f0f0"
+                        color: Components.ThemeManager.placeholderBackground
                         visible: parent.status === Image.Error || parent.source == ""
-                        
+
                         Column {
                             anchors.centerIn: parent
                             spacing: 10
-                            
+
                             Text {
                                 text: "○"
                                 font.pixelSize: 48
-                                color: "#ccc"
+                                color: Components.ThemeManager.placeholderText
                                 anchors.horizontalCenter: parent.horizontalCenter
                             }
-                            
+
                             Text {
                                 text: "No Preview Available"
-                                color: "#999"
+                                color: Components.ThemeManager.textSecondary
                                 font.pixelSize: 14
                                 anchors.horizontalCenter: parent.horizontalCenter
                             }
@@ -112,14 +113,14 @@ Page {
                 Rectangle {
                     width: 1
                     height: parent.height
-                    color: "#e5e7eb"
+                    color: Components.ThemeManager.borderColor
                 }
-                
+
                 // Right side - Controls (40% of width)
                 Rectangle {
                     width: parent.width * 0.4 - 1
                     height: parent.height
-                    color: "white"
+                    color: Components.ThemeManager.surfaceColor
                 
                 Column {
                     anchors.fill: parent
@@ -163,10 +164,10 @@ Page {
                         width: parent.width
                         height: 160  // Increased height to fit all options
                         radius: 8
-                        color: "#f8f9fa"
-                        border.color: "#e5e7eb"
+                        color: Components.ThemeManager.cardColor
+                        border.color: Components.ThemeManager.borderColor
                         border.width: 1
-                        
+
                         Column {
                             id: preExecColumn
                             anchors.left: parent.left
@@ -174,12 +175,12 @@ Page {
                             anchors.top: parent.top
                             anchors.margins: 8  // Reduced margins to save space
                             spacing: 6  // Reduced spacing
-                            
+
                             Label {
                                 text: "Pre-Execution"
                                 font.pixelSize: 12
                                 font.bold: true
-                                color: "#333"
+                                color: Components.ThemeManager.textPrimary
                             }
                             
                             RadioButton {
@@ -214,10 +215,10 @@ Page {
                         width: parent.width
                         height: 80
                         radius: 8
-                        color: "#f8f9fa"
-                        border.color: "#e5e7eb"
+                        color: Components.ThemeManager.cardColor
+                        border.color: Components.ThemeManager.borderColor
                         border.width: 1
-                        
+
                         Column {
                             id: infoColumn
                             anchors.left: parent.left
@@ -225,26 +226,26 @@ Page {
                             anchors.top: parent.top
                             anchors.margins: 10
                             spacing: 6
-                            
+
                             Label {
                                 text: "Pattern Info"
                                 font.pixelSize: 14
                                 font.bold: true
-                                color: "#333"
+                                color: Components.ThemeManager.textPrimary
                             }
-                            
+
                             Label {
                                 text: "Name: " + patternName
                                 font.pixelSize: 11
-                                color: "#666"
+                                color: Components.ThemeManager.textSecondary
                                 elide: Text.ElideRight
                                 width: parent.width
                             }
-                            
+
                             Label {
                                 text: "Type: Sand Pattern"
                                 font.pixelSize: 11
-                                color: "#666"
+                                color: Components.ThemeManager.textSecondary
                             }
                         }
                     }

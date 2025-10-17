@@ -3,6 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import Qt.labs.folderlistmodel 2.15
 import "../components"
+import "../components" as Components
 
 Page {
     id: page
@@ -52,49 +53,49 @@ Page {
         }
     }
     
-    
+
     Rectangle {
         anchors.fill: parent
-        color: "#f5f5f5"
+        color: Components.ThemeManager.backgroundColor
     }
-    
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
-        
+
         // Header (consistent with other pages)
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 50
-            color: "white"
-            
+            color: Components.ThemeManager.surfaceColor
+
             // Bottom border
             Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
                 height: 1
-                color: "#e5e7eb"
+                color: Components.ThemeManager.borderColor
             }
-            
+
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 15
                 anchors.rightMargin: 10
-                
+
                 ConnectionStatus {
                     backend: page.backend
                     Layout.rightMargin: 8
                 }
-                
+
                 Label {
                     text: "Pattern Execution"
                     font.pixelSize: 18
                     font.bold: true
-                    color: "#333"
+                    color: Components.ThemeManager.textPrimary
                 }
-                
-                Item { 
-                    Layout.fillWidth: true 
+
+                Item {
+                    Layout.fillWidth: true
                 }
             }
         }
@@ -112,7 +113,7 @@ Page {
                 Rectangle {
                     width: parent.width * 0.6
                     height: parent.height
-                    color: "#ffffff"
+                    color: Components.ThemeManager.previewBackground
                     
                     Image {
                         anchors.fill: parent
@@ -150,23 +151,23 @@ Page {
                         
                         Rectangle {
                             anchors.fill: parent
-                            color: "#f0f0f0"
+                            color: Components.ThemeManager.placeholderBackground
                             visible: parent.status === Image.Error || parent.source == ""
-                            
+
                             Column {
                                 anchors.centerIn: parent
                                 spacing: 10
-                                
+
                                 Text {
                                     text: "⚙"
                                     font.pixelSize: 48
-                                    color: "#ccc"
+                                    color: Components.ThemeManager.placeholderText
                                     anchors.horizontalCenter: parent.horizontalCenter
                                 }
-                                
+
                                 Text {
                                     text: "Pattern Preview"
-                                    color: "#999"
+                                    color: Components.ThemeManager.textTertiary
                                     font.pixelSize: 14
                                     anchors.horizontalCenter: parent.horizontalCenter
                                 }
@@ -179,14 +180,14 @@ Page {
                 Rectangle {
                     width: 1
                     height: parent.height
-                    color: "#e5e7eb"
+                    color: Components.ThemeManager.borderColor
                 }
-                
+
                 // Right side - Controls (40% of width)
                 Rectangle {
                     width: parent.width * 0.4 - 1
                     height: parent.height
-                    color: "white"
+                    color: Components.ThemeManager.surfaceColor
                     
                     ScrollView {
                         anchors.fill: parent
@@ -203,21 +204,21 @@ Page {
                             width: parent.width
                             height: 50
                             radius: 8
-                            color: "#f8f9fa"
-                            border.color: "#e5e7eb"
+                            color: Components.ThemeManager.cardColor
+                            border.color: Components.ThemeManager.borderColor
                             border.width: 1
-                            
+
                             Column {
                                 anchors.centerIn: parent
                                 spacing: 4
-                                
+
                                 Label {
                                     text: "Current Pattern"
                                     font.pixelSize: 10
-                                    color: "#666"
+                                    color: Components.ThemeManager.textSecondary
                                     anchors.horizontalCenter: parent.horizontalCenter
                                 }
-                                
+
                                 Label {
                                     text: {
                                         // Use WebSocket current pattern first, then fallback to passed parameter
@@ -225,7 +226,7 @@ Page {
                                         if (backend && backend.currentFile) displayName = backend.currentFile
                                         else if (patternName) displayName = patternName
                                         else return "No pattern running"
-                                        
+
                                         // Clean up the name for display
                                         var parts = displayName.split('/')
                                         displayName = parts[parts.length - 1]
@@ -234,7 +235,7 @@ Page {
                                     }
                                     font.pixelSize: 12
                                     font.bold: true
-                                    color: "#333"
+                                    color: Components.ThemeManager.textPrimary
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     width: parent.parent.width - 20
                                     elide: Text.ElideMiddle
@@ -248,20 +249,20 @@ Page {
                             width: parent.width
                             height: 70
                             radius: 8
-                            color: "#f8f9fa"
-                            border.color: "#e5e7eb"
+                            color: Components.ThemeManager.cardColor
+                            border.color: Components.ThemeManager.borderColor
                             border.width: 1
-                            
+
                             Column {
                                 anchors.fill: parent
                                 anchors.margins: 10
                                 spacing: 8
-                                
+
                                 Label {
                                     text: "Progress"
                                     font.pixelSize: 12
                                     font.bold: true
-                                    color: "#333"
+                                    color: Components.ThemeManager.textPrimary
                                 }
                                 
                                 ProgressBar {
@@ -275,30 +276,30 @@ Page {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     font.pixelSize: 14
                                     font.bold: true
-                                    color: "#333"
+                                    color: Components.ThemeManager.textPrimary
                                 }
                             }
                         }
-                        
+
                         // Control Buttons
                         Rectangle {
                             width: parent.width
                             height: 90
                             radius: 8
-                            color: "#f8f9fa"
-                            border.color: "#e5e7eb"
+                            color: Components.ThemeManager.cardColor
+                            border.color: Components.ThemeManager.borderColor
                             border.width: 1
-                            
+
                             Column {
                                 anchors.fill: parent
                                 anchors.margins: 10
                                 spacing: 10
-                                
+
                                 Label {
                                     text: "Controls"
                                     font.pixelSize: 12
                                     font.bold: true
-                                    color: "#333"
+                                    color: Components.ThemeManager.textPrimary
                                 }
                                 
                                 // Control buttons row
@@ -399,20 +400,20 @@ Page {
                             width: parent.width
                             height: 120
                             radius: 8
-                            color: "#f8f9fa"
-                            border.color: "#e5e7eb"
+                            color: Components.ThemeManager.cardColor
+                            border.color: Components.ThemeManager.borderColor
                             border.width: 1
-                            
+
                             Column {
                                 anchors.fill: parent
                                 anchors.margins: 10
                                 spacing: 10
-                                
+
                                 Label {
                                     text: "Speed"
                                     font.pixelSize: 12
                                     font.bold: true
-                                    color: "#333"
+                                    color: Components.ThemeManager.textPrimary
                                 }
                                 
                                 // Touch-friendly button row for speed options
@@ -430,17 +431,17 @@ Page {
                                         Rectangle {
                                             width: (speedControlRow.width - 32) / 5  // Distribute evenly with spacing
                                             height: 50
-                                            color: speedControlRow.currentSelection === modelData ? "#2196F3" : "#f0f0f0"
-                                            border.color: speedControlRow.currentSelection === modelData ? "#1976D2" : "#ccc"
+                                            color: speedControlRow.currentSelection === modelData ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
+                                            border.color: speedControlRow.currentSelection === modelData ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
                                             border.width: 2
                                             radius: 8
-                                            
+
                                             Label {
                                                 anchors.centerIn: parent
                                                 text: modelData
                                                 font.pixelSize: 12
                                                 font.bold: true
-                                                color: speedControlRow.currentSelection === modelData ? "white" : "#333"
+                                                color: speedControlRow.currentSelection === modelData ? "white" : Components.ThemeManager.textPrimary
                                             }
                                             
                                             MouseArea {
