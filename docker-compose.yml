@@ -11,8 +11,6 @@ services:
       - /etc/timezone:/etc/host-timezone:ro
       # Mount GPIO memory for hardware access
       - /dev/gpiomem:/dev/gpiomem
-      # Mount device tree for Raspberry Pi detection
-      - /proc/device-tree:/proc/device-tree:ro
     devices:
       - "/dev/ttyACM0:/dev/ttyACM0"
     privileged: true

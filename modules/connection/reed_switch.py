@@ -19,56 +19,27 @@ class ReedSwitchMonitor:
         """
         self.gpio_pin = gpio_pin
         self.gpio = None
-        self.is_raspberry_pi = self._check_raspberry_pi()
+        self.is_raspberry_pi = False
 
-        if self.is_raspberry_pi:
-            try:
-                import RPi.GPIO as GPIO
-                self.gpio = GPIO
-
-                # Set up GPIO mode (BCM numbering)
-                self.gpio.setmode(GPIO.BCM)
-
-                # Set up the pin as input with pull-up resistor
-                # Reed switch should connect pin to ground when triggered
-                self.gpio.setup(self.gpio_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-
-                logger.info(f"Reed switch initialized on GPIO pin {self.gpio_pin}")
-            except ImportError:
-                logger.warning("RPi.GPIO not available. Reed switch monitoring disabled.")
-                self.is_raspberry_pi = False
-            except Exception as e:
-                logger.error(f"Error initializing reed switch: {e}")
-                self.is_raspberry_pi = False
-        else:
-            logger.info("Not running on Raspberry Pi. Reed switch monitoring disabled.")
-
-    def _check_raspberry_pi(self):
-        """Check if we're running on a Raspberry Pi."""
+        # Try to import and initialize GPIO
         try:
-            # Check if we're on Linux first
-            if platform.system() != 'Linux':
-                return False
+            import RPi.GPIO as GPIO
+            self.gpio = GPIO
 
-            # Check for Raspberry Pi specific identifiers
-            with open('/proc/cpuinfo', 'r') as f:
-                cpuinfo = f.read()
-                if 'Raspberry Pi' in cpuinfo or 'BCM' in cpuinfo:
-                    return True
+            # Set up GPIO mode (BCM numbering)
+            self.gpio.setmode(GPIO.BCM)
 
-            # Alternative check using device tree
-            try:
-                with open('/proc/device-tree/model', 'r') as f:
-                    model = f.read()
-                    if 'Raspberry Pi' in model:
-                        return True
-            except FileNotFoundError:
-                pass
+            # Set up the pin as input with pull-up resistor
+            # Reed switch should connect pin to ground when triggered
+            self.gpio.setup(self.gpio_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-            return False
+            self.is_raspberry_pi = True
+            logger.info(f"Reed switch initialized on GPIO pin {self.gpio_pin}")
+        except ImportError:
+            logger.warning("RPi.GPIO not available. Reed switch monitoring disabled.")
         except Exception as e:
-            logger.debug(f"Error checking for Raspberry Pi: {e}")
-            return False
+            logger.error(f"Error initializing reed switch: {e}")
+            logger.info("Reed switch monitoring disabled.")
 
     def is_triggered(self):
         """
