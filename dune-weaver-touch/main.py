@@ -3,6 +3,7 @@ import os
 import asyncio
 import logging
 import time
+import signal
 from pathlib import Path
 from PySide6.QtCore import QUrl, QTimer, QObject, QEvent
 from PySide6.QtGui import QGuiApplication, QTouchEvent, QMouseEvent
@@ -36,27 +37,34 @@ class FirstTouchFilter(QObject):
 
     def eventFilter(self, obj, event):
         """Filter out the first touch after idle period"""
-        event_type = event.type()
+        try:
+            event_type = event.type()
 
-        # Handle touch events
-        if event_type == QEvent.Type.TouchBegin:
-            current_time = time.time()
-            time_since_last_touch = current_time - self.last_touch_time
+            # Handle touch events
+            if event_type == QEvent.Type.TouchBegin:
+                current_time = time.time()
+                time_since_last_touch = current_time - self.last_touch_time
 
-            # If it's been more than threshold since last touch, ignore this one
-            if time_since_last_touch > self.idle_threshold:
-                logger.debug(f"👆 Ignoring wake-up touch (idle for {time_since_last_touch:.1f}s)")
+                # If it's been more than threshold since last touch, ignore this one
+                if time_since_last_touch > self.idle_threshold:
+                    logger.debug(f"👆 Ignoring wake-up touch (idle for {time_since_last_touch:.1f}s)")
+                    self.last_touch_time = current_time
+                    return True  # Filter out (ignore) this event
+
                 self.last_touch_time = current_time
-                return True  # Filter out (ignore) this event
 
-            self.last_touch_time = current_time
+            elif event_type in (QEvent.Type.TouchUpdate, QEvent.Type.TouchEnd):
+                # Update last touch time for any touch activity
+                self.last_touch_time = time.time()
 
-        elif event_type in (QEvent.Type.TouchUpdate, QEvent.Type.TouchEnd):
-            # Update last touch time for any touch activity
-            self.last_touch_time = time.time()
-
-        # Pass through the event
-        return False
+            # Pass through the event
+            return False
+        except KeyboardInterrupt:
+            # Re-raise KeyboardInterrupt to allow clean shutdown
+            raise
+        except Exception as e:
+            logger.error(f"Error in eventFilter: {e}")
+            return False
 
 async def startup_tasks():
     """Run async startup tasks"""
@@ -119,10 +127,24 @@ def main():
     startup_timer.timeout.connect(schedule_startup)
     startup_timer.setSingleShot(True)
     startup_timer.start(100)  # 100ms delay
-    
-    with loop:
-        loop.run_forever()
-    
+
+    # Setup signal handlers for clean shutdown
+    def signal_handler(signum, frame):
+        logger.info("🛑 Received shutdown signal, exiting...")
+        loop.stop()
+        app.quit()
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    try:
+        with loop:
+            loop.run_forever()
+    except KeyboardInterrupt:
+        logger.info("🛑 KeyboardInterrupt received, shutting down...")
+    finally:
+        loop.close()
+
     return 0
 
 if __name__ == "__main__":

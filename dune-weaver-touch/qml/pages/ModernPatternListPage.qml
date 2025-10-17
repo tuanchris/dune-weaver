@@ -99,6 +99,7 @@ Page {
                             Layout.fillWidth: true
                             placeholderText: searchExpanded ? "Search patterns... (press Enter)" : "Search"
                             font.pixelSize: 14
+                            color: Components.ThemeManager.textPrimary
                             visible: searchExpanded || text.length > 0
                             
                             property string lastSearchText: ""

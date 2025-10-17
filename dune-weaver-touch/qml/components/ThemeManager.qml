@@ -45,7 +45,7 @@ QtObject {
     property color placeholderText: darkMode ? "#606060" : "#cccccc"
 
     // Preview background - lighter in dark mode for better pattern visibility
-    property color previewBackground: darkMode ? "#505050" : "#f8f9fa"
+    property color previewBackground: darkMode ? "#707070" : "#f8f9fa"
 
     // Shadow colors
     property color shadowColor: darkMode ? "#000000" : "#00000020"

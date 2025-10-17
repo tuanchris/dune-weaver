@@ -384,7 +384,7 @@ Page {
                                         MouseArea {
                                             id: skipMouseArea
                                             anchors.fill: parent
-                                            enabled: backend && backend.currentFile !== ""
+                                            enabled: backend
                                             onClicked: {
                                                 if (backend) {
                                                     backend.skipPattern()
