@@ -399,12 +399,12 @@ def get_machine_steps(timeout=10):
         logger.error(f"Failed to get all machine parameters after {timeout}s. Missing: {', '.join(missing)}")
         return False
 
-def home(timeout=15):
+def home(timeout=60):
     """
     Perform homing by checking device configuration and sending the appropriate commands.
-    
+
     Args:
-        timeout: Maximum time in seconds to wait for homing to complete (default: 15)
+        timeout: Maximum time in seconds to wait for homing to complete (default: 60)
     """
     import threading
     
