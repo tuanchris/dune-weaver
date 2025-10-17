@@ -124,6 +124,33 @@ configure_boot_settings() {
     echo "   🖥️  Boot configuration updated for eglfs"
 }
 
+# Function to setup touch rotation via udev rule
+setup_touch_rotation() {
+    echo "👆 Setting up touchscreen rotation..."
+
+    local UDEV_RULE_FILE="/etc/udev/rules.d/99-ft5x06-rotate.rules"
+
+    # Create udev rule for FT5x06 touch controller (180° rotation)
+    cat > "$UDEV_RULE_FILE" << 'EOF'
+# Rotate FT5x06 touchscreen 180 degrees using libinput calibration matrix
+# Matrix format: a b c d e f 0 0 1
+# For 180° rotation: -1 0 1  0 -1 1  0 0 1
+# This inverts both X and Y axes (equivalent to 180° rotation)
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="*generic ft5x06*", \
+  ENV{LIBINPUT_CALIBRATION_MATRIX}="-1 0 1  0 -1 1  0 0 1"
+EOF
+
+    chmod 644 "$UDEV_RULE_FILE"
+    echo "   ✅ Touch rotation udev rule created: $UDEV_RULE_FILE"
+
+    # Reload udev rules
+    udevadm control --reload-rules
+    udevadm trigger
+    echo "   ✅ Udev rules reloaded"
+
+    echo "   👆 Touch rotation configured (180°)"
+}
+
 # Function to setup kiosk optimizations
 setup_kiosk_optimizations() {
     echo "🖥️  Setting up kiosk optimizations..."
@@ -131,10 +158,20 @@ setup_kiosk_optimizations() {
     local CMDLINE_FILE="/boot/firmware/cmdline.txt"
     [ ! -f "$CMDLINE_FILE" ] && CMDLINE_FILE="/boot/cmdline.txt"
 
-    # Disable boot messages for cleaner boot
+    # Configure cmdline.txt for display and boot
     if [ -f "$CMDLINE_FILE" ]; then
+        cp "$CMDLINE_FILE" "${CMDLINE_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+
+        # Add video parameter for DSI display with rotation
+        if ! grep -q "video=DSI-1:800x480@60,rotate=180" "$CMDLINE_FILE"; then
+            sed -i 's/$/ video=DSI-1:800x480@60,rotate=180/' "$CMDLINE_FILE"
+            echo "   ✅ DSI display configuration added (800x480@60, rotated 180°)"
+        else
+            echo "   ℹ️  DSI display configuration already present"
+        fi
+
+        # Add quiet splash for cleaner boot
         if ! grep -q "quiet splash" "$CMDLINE_FILE"; then
-            cp "$CMDLINE_FILE" "${CMDLINE_FILE}.backup"
             sed -i 's/$/ quiet splash/' "$CMDLINE_FILE"
             echo "   ✅ Boot splash enabled"
         else
@@ -216,6 +253,7 @@ setup_python_environment
 install_scripts
 setup_systemd
 configure_boot_settings
+setup_touch_rotation
 setup_kiosk_optimizations
 
 echo ""

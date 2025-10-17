@@ -66,10 +66,8 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
         export QT_QPA_EGLFS_HIDECURSOR=1
         export QT_QPA_EGLFS_ALWAYS_SET_MODE=1
 
-        # Touchscreen configuration (adjust event number if needed)
-        if [ -e /dev/input/event0 ]; then
-            export QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS=/dev/input/event0:rotate=0
-        fi
+        # Touch rotation is handled by udev rule: /etc/udev/rules.d/99-ft5x06-rotate.rules
+        # The rule applies a libinput calibration matrix for 180° rotation
 
         # Use eglfs_config.json with corrected connector name (DSI-1)
         if [ -f "$SCRIPT_DIR/eglfs_config.json" ]; then
