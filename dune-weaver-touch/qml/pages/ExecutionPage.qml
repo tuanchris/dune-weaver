@@ -340,7 +340,6 @@ Page {
                                     
                                     // Stop button
                                     Rectangle {
-                                        width: (parent.width - 16) / 3
                                         height: parent.height
                                         radius: 6
                                         color: stopMouseArea.pressed ? "#b91c1c" : (backend && backend.currentFile !== "" ? "#dc2626" : "#9ca3af")
@@ -426,7 +425,7 @@ Page {
                                     
                                     // Speed buttons
                                     Repeater {
-                                        model: ["50", "100", "200", "300", "500"]
+                                        model: ["100", "150", "200", "300", "500"]
                                         
                                         Rectangle {
                                             width: (speedControlRow.width - 32) / 5  // Distribute evenly with spacing
