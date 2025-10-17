@@ -12,11 +12,13 @@ ApplicationWindow {
     width: 800
     height: 480
     title: "Dune Weaver Touch"
-    
+
     property int currentPageIndex: 0
     property alias stackView: stackView
     property alias backend: backend
     property bool shouldNavigateToExecution: false
+    property string currentPatternName: ""
+    property string currentPatternPreview: ""
     
     onCurrentPageIndexChanged: {
         console.log("📱 currentPageIndex changed to:", currentPageIndex)
@@ -46,6 +48,9 @@ ApplicationWindow {
         onExecutionStarted: function(patternName, patternPreview) {
             console.log("🎯 QML: ExecutionStarted signal received! patternName='" + patternName + "', preview='" + patternPreview + "'")
             console.log("🎯 Setting shouldNavigateToExecution = true")
+            // Store pattern info for ExecutionPage
+            window.currentPatternName = patternName
+            window.currentPatternPreview = patternPreview
             // Navigate to Execution tab (index 3) instead of pushing page
             shouldNavigateToExecution = true
             console.log("🎯 shouldNavigateToExecution set to:", shouldNavigateToExecution)
@@ -169,6 +174,8 @@ ApplicationWindow {
                         onLoaded: {
                             item.backend = backend
                             item.stackView = stackView
+                            item.patternName = Qt.binding(function() { return window.currentPatternName })
+                            item.patternPreview = Qt.binding(function() { return window.currentPatternPreview })
                         }
                     }
                 }

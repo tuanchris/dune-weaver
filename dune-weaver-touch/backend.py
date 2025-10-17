@@ -280,16 +280,27 @@ class Backend(QObject):
             data = json.loads(message)
             if data.get("type") == "status_update":
                 status = data.get("data", {})
-                self._current_file = status.get("current_file", "")
+                new_file = status.get("current_file", "")
+
+                # Detect pattern change and emit executionStarted signal
+                if new_file and new_file != self._current_file:
+                    print(f"🎯 Pattern changed from '{self._current_file}' to '{new_file}'")
+                    # Find preview for the new pattern
+                    preview_path = self._find_pattern_preview(new_file)
+                    print(f"🖼️ Preview path for new pattern: {preview_path}")
+                    # Emit signal so UI can update
+                    self.executionStarted.emit(new_file, preview_path)
+
+                self._current_file = new_file
                 self._is_running = status.get("is_running", False)
-                
+
                 # Handle serial connection status from WebSocket
                 ws_connection_status = status.get("connection_status", False)
                 if ws_connection_status != self._serial_connected:
                     print(f"🔌 WebSocket serial connection status changed: {ws_connection_status}")
                     self._serial_connected = ws_connection_status
                     self.serialConnectionChanged.emit(ws_connection_status)
-                    
+
                     # If we're connected, we need to get the current port
                     if ws_connection_status:
                         # We'll need to fetch the current port via HTTP since WS doesn't include port info
@@ -297,17 +308,17 @@ class Backend(QObject):
                     else:
                         self._current_port = ""
                         self.currentPortChanged.emit("")
-                
+
                 # Handle speed updates from WebSocket
                 ws_speed = status.get("speed", None)
                 if ws_speed and ws_speed != self._current_speed:
                     print(f"⚡ WebSocket speed changed: {ws_speed}")
                     self._current_speed = ws_speed
                     self.speedChanged.emit(ws_speed)
-                
+
                 if status.get("progress"):
                     self._progress = status["progress"].get("percentage", 0)
-                
+
                 self.statusChanged.emit()
                 self.progressChanged.emit()
         except json.JSONDecodeError:

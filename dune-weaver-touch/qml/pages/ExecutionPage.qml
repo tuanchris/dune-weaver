@@ -9,16 +9,7 @@ Page {
     property var backend: null
     property var stackView: null
     property string patternName: ""
-    property string patternPreview: ""
-    
-    // Get current pattern info from backend
-    property string currentPattern: backend ? backend.currentFile : ""
-    property string currentPreviewPath: ""
-    property var allPossiblePaths: []
-    property int currentPathIndex: 0
-    property string activeImageSource: ""  // Separate property to avoid binding loop
-    property string repoRoot: ""  // Will hold the absolute path to repository root
-    property bool imageRetryInProgress: false  // Prevent multiple retry attempts
+    property string patternPreview: ""  // Backend provides this via executionStarted signal
     
     // Debug backend connection
     onBackendChanged: {
@@ -34,163 +25,33 @@ Page {
         if (backend) {
             console.log("ExecutionPage: initial serialConnected =", backend.serialConnected)
         }
-        
-        // Find repository root directory
-        findRepoRoot()
     }
     
     // Direct connection to backend signals
     Connections {
         target: backend
-        
+
         function onSerialConnectionChanged(connected) {
             console.log("ExecutionPage: received serialConnectionChanged signal:", connected)
         }
-        
+
         function onConnectionChanged() {
             console.log("ExecutionPage: received connectionChanged signal")
             if (backend) {
                 console.log("ExecutionPage: after connectionChanged, serialConnected =", backend.serialConnected)
             }
         }
-    }
-    
-    onCurrentPatternChanged: {
-        if (currentPattern) {
-            // Generate preview path from current pattern
-            updatePreviewPath()
+
+        function onExecutionStarted(fileName, preview) {
+            console.log("🎯 ExecutionPage: executionStarted signal received!")
+            console.log("🎯 Pattern:", fileName)
+            console.log("🎯 Preview path:", preview)
+            // Update preview directly from backend signal
+            patternName = fileName
+            patternPreview = preview
         }
     }
     
-    function updatePreviewPath() {
-        if (!currentPattern) {
-            console.log("🔍 No current pattern, clearing preview path")
-            currentPreviewPath = ""
-            return
-        }
-        
-        console.log("🔍 Updating preview for pattern:", currentPattern)
-        
-        // Extract just the filename from the path
-        var fileName = currentPattern.split('/').pop()  // Get last part of path
-        var baseName = fileName.replace(".thr", "")
-        console.log("🔍 File name:", fileName, "Base name:", baseName)
-        
-        // Use absolute paths based on discovered repository root
-        var possibleBasePaths = []
-        
-        if (repoRoot) {
-            // Use the discovered repository root
-            possibleBasePaths = [
-                "file://" + repoRoot + "/patterns/cached_images/"
-            ]
-            console.log("🎯 Using repository root for paths:", repoRoot)
-        } else {
-            console.log("⚠️ Repository root not found, using fallback relative paths")
-            // Fallback to relative paths if repo root discovery failed
-            possibleBasePaths = [
-                "../../../patterns/cached_images/",  // Three levels up from QML file location
-                "../../patterns/cached_images/",     // Two levels up (backup)
-                "../../../../patterns/cached_images/"  // Four levels up (backup)
-            ]
-        }
-        
-        var possiblePaths = []
-        
-        // Build paths using all possible base paths
-        // Prioritize PNG format since WebP is not supported on this system
-        for (var i = 0; i < possibleBasePaths.length; i++) {
-            var basePath = possibleBasePaths[i]
-            // First try with .thr suffix (e.g., pattern.thr.png) - PNG first since WebP failed
-            possiblePaths.push(basePath + fileName + ".png")
-            possiblePaths.push(basePath + fileName + ".jpg")
-            possiblePaths.push(basePath + fileName + ".jpeg")
-            // Then try without .thr suffix (e.g., pattern.png) 
-            possiblePaths.push(basePath + baseName + ".png")
-            possiblePaths.push(basePath + baseName + ".jpg")
-            possiblePaths.push(basePath + baseName + ".jpeg")
-        }
-        
-        console.log("🔍 Possible preview paths:", JSON.stringify(possiblePaths))
-        
-        // Store all possible paths for fallback mechanism
-        allPossiblePaths = possiblePaths
-        currentPathIndex = 0
-        
-        // Set the active image source to avoid binding loops
-        if (possiblePaths.length > 0) {
-            currentPreviewPath = possiblePaths[0]
-            activeImageSource = possiblePaths[0]
-            console.log("🎯 Setting preview path to:", currentPreviewPath)
-            console.log("🎯 Setting active image source to:", activeImageSource)
-        } else {
-            console.log("❌ No possible paths found")
-            currentPreviewPath = ""
-            activeImageSource = ""
-        }
-    }
-    
-    function tryNextPreviewPath() {
-        if (allPossiblePaths.length === 0) {
-            console.log("❌ No more paths to try")
-            return false
-        }
-        
-        currentPathIndex++
-        if (currentPathIndex >= allPossiblePaths.length) {
-            console.log("❌ All paths exhausted")
-            return false
-        }
-        
-        currentPreviewPath = allPossiblePaths[currentPathIndex]
-        activeImageSource = allPossiblePaths[currentPathIndex]
-        console.log("🔄 Trying next preview path:", currentPreviewPath)
-        console.log("🔄 Setting active image source to:", activeImageSource)
-        return true
-    }
-    
-    function findRepoRoot() {
-        // Start from the current QML file location and work our way up
-        var currentPath = Qt.resolvedUrl(".").toString()
-        console.log("🔍 Starting search from QML file location:", currentPath)
-        
-        // Remove file:// prefix and get directory parts
-        if (currentPath.startsWith("file://")) {
-            currentPath = currentPath.substring(7)
-        }
-        
-        var pathParts = currentPath.split("/")
-        console.log("🔍 Path parts:", JSON.stringify(pathParts))
-        
-        // Look for the dune-weaver directory by going up the path
-        for (var i = pathParts.length - 1; i >= 0; i--) {
-            if (pathParts[i] === "dune-weaver" || pathParts[i] === "dune-weaver-touch") {
-                // Found it! Build the repo root path
-                var rootPath = "/" + pathParts.slice(1, i + (pathParts[i] === "dune-weaver" ? 1 : 0)).join("/")
-                if (pathParts[i] === "dune-weaver-touch") {
-                    // We need to go up one more level to get to dune-weaver
-                    rootPath = "/" + pathParts.slice(1, i).join("/")
-                }
-                repoRoot = rootPath
-                console.log("🎯 Found repository root:", repoRoot)
-                return
-            }
-        }
-        
-        console.log("❌ Could not find repository root")
-    }
-    
-    // Timer to handle image retry without causing binding loops
-    Timer {
-        id: imageRetryTimer
-        interval: 100  // Small delay to break the binding cycle
-        onTriggered: {
-            if (tryNextPreviewPath()) {
-                console.log("🔄 Retrying with new path after timer...")
-            }
-            imageRetryInProgress = false
-        }
-    }
     
     Rectangle {
         anchors.fill: parent
@@ -258,40 +119,31 @@ Page {
                         anchors.margins: 10
                         source: {
                             var finalSource = ""
-                            
-                            // Try different sources in priority order
+
+                            // Trust the backend's preview path - it already has recursive search
                             if (patternPreview) {
-                                finalSource = "file:///" + patternPreview
-                                console.log("🖼️ Using patternPreview:", finalSource)
-                            } else if (activeImageSource) {
-                                // Use the activeImageSource to avoid binding loops
-                                finalSource = activeImageSource
-                                console.log("🖼️ Using activeImageSource:", finalSource)
+                                // Backend returns absolute path, just add file:// prefix
+                                finalSource = "file://" + patternPreview
+                                console.log("🖼️ Using backend patternPreview:", finalSource)
                             } else {
-                                console.log("🖼️ No preview source available")
+                                console.log("🖼️ No preview from backend")
                             }
-                            
+
                             return finalSource
                         }
                         fillMode: Image.PreserveAspectFit
-                        
+
                         onStatusChanged: {
                             console.log("📷 Image status:", status, "for source:", source)
                             if (status === Image.Error) {
                                 console.log("❌ Image failed to load:", source)
-                                // Use timer to avoid binding loop
-                                if (!imageRetryInProgress) {
-                                    imageRetryInProgress = true
-                                    imageRetryTimer.start()
-                                }
                             } else if (status === Image.Ready) {
                                 console.log("✅ Image loaded successfully:", source)
-                                imageRetryInProgress = false  // Reset on successful load
                             } else if (status === Image.Loading) {
                                 console.log("🔄 Image loading:", source)
                             }
                         }
-                        
+
                         onSourceChanged: {
                             console.log("🔄 Image source changed to:", source)
                         }
