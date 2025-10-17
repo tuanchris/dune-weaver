@@ -2,9 +2,10 @@ import sys
 import os
 import asyncio
 import logging
+import time
 from pathlib import Path
-from PySide6.QtCore import QUrl, QTimer
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtCore import QUrl, QTimer, QObject, QEvent
+from PySide6.QtGui import QGuiApplication, QTouchEvent, QMouseEvent
 from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterType
 from qasync import QEventLoop
 
@@ -19,6 +20,43 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+class FirstTouchFilter(QObject):
+    """
+    Event filter that ignores the first touch event after inactivity.
+    Many capacitive touchscreens need the first touch to wake up or calibrate,
+    and this touch often has incorrect coordinates.
+    """
+    def __init__(self, idle_threshold_seconds=2.0):
+        super().__init__()
+        self.idle_threshold = idle_threshold_seconds
+        self.last_touch_time = 0
+        self.ignore_next_touch = False
+        logger.info(f"👆 First-touch filter initialized (idle threshold: {idle_threshold_seconds}s)")
+
+    def eventFilter(self, obj, event):
+        """Filter out the first touch after idle period"""
+        event_type = event.type()
+
+        # Handle touch events
+        if event_type == QEvent.Type.TouchBegin:
+            current_time = time.time()
+            time_since_last_touch = current_time - self.last_touch_time
+
+            # If it's been more than threshold since last touch, ignore this one
+            if time_since_last_touch > self.idle_threshold:
+                logger.debug(f"👆 Ignoring wake-up touch (idle for {time_since_last_touch:.1f}s)")
+                self.last_touch_time = current_time
+                return True  # Filter out (ignore) this event
+
+            self.last_touch_time = current_time
+
+        elif event_type in (QEvent.Type.TouchUpdate, QEvent.Type.TouchEnd):
+            # Update last touch time for any touch activity
+            self.last_touch_time = time.time()
+
+        # Pass through the event
+        return False
 
 async def startup_tasks():
     """Run async startup tasks"""
@@ -40,9 +78,15 @@ async def startup_tasks():
 def main():
     # Enable virtual keyboard
     os.environ['QT_IM_MODULE'] = 'qtvirtualkeyboard'
-    
+
     app = QGuiApplication(sys.argv)
-    
+
+    # Install first-touch filter to ignore wake-up touches
+    # Ignores the first touch after 2 seconds of inactivity
+    first_touch_filter = FirstTouchFilter(idle_threshold_seconds=2.0)
+    app.installEventFilter(first_touch_filter)
+    logger.info("✅ First-touch filter installed on application")
+
     # Setup async event loop
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
