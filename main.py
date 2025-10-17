@@ -380,6 +380,29 @@ async def set_scheduled_pause(request: ScheduledPauseRequest):
         logger.error(f"Error updating Still Sands settings: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to update Still Sands settings: {str(e)}")
 
+@app.get("/api/angular-homing")
+async def get_angular_homing():
+    """Get current angular homing setting."""
+    return {
+        "angular_homing_enabled": state.angular_homing_enabled
+    }
+
+class AngularHomingRequest(BaseModel):
+    angular_homing_enabled: bool
+
+@app.post("/api/angular-homing")
+async def set_angular_homing(request: AngularHomingRequest):
+    """Update angular homing setting."""
+    try:
+        state.angular_homing_enabled = request.angular_homing_enabled
+        state.save()
+
+        logger.info(f"Angular homing {'enabled' if request.angular_homing_enabled else 'disabled'}")
+        return {"success": True, "message": "Angular homing setting updated"}
+    except Exception as e:
+        logger.error(f"Error updating angular homing setting: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update angular homing setting: {str(e)}")
+
 @app.get("/list_serial_ports")
 async def list_ports():
     logger.debug("Listing available serial ports")

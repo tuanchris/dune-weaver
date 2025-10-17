@@ -8,6 +8,8 @@ import asyncio
 
 from modules.core.state import state
 from modules.led.led_controller import effect_loading, effect_idle, effect_connected, LEDController
+from modules.connection.reed_switch import ReedSwitchMonitor
+
 logger = logging.getLogger(__name__)
 
 IGNORE_PORTS = ['/dev/cu.debug-console', '/dev/cu.Bluetooth-Incoming-Port']
@@ -445,8 +447,94 @@ def home(timeout=15):
                 finally:
                     loop.close()
 
+            # Wait for device to reach idle state after homing
+            logger.info("Waiting for device to reach idle state after homing...")
+            idle_reached = check_idle()
+
+            if not idle_reached:
+                logger.error("Device did not reach idle state after homing")
+                homing_complete.set()
+                return
+
+            # Perform angular homing if enabled (Raspberry Pi only)
+            if state.angular_homing_enabled:
+                logger.info("Starting angular homing sequence")
+                try:
+                    # Initialize reed switch monitor
+                    reed_switch = ReedSwitchMonitor(gpio_pin=18)
+
+                    if not reed_switch.is_raspberry_pi:
+                        logger.warning("Angular homing is enabled but not running on Raspberry Pi. Skipping angular homing.")
+                    else:
+                        # Move radial arm to perimeter
+                        logger.info("Moving radial arm to perimeter (y20)")
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            result = loop.run_until_complete(send_grbl_coordinates(0, 20, 400, home=False))
+                            if result == False:
+                                logger.error("Failed to move to perimeter for angular homing")
+                                homing_complete.set()
+                                return
+                            state.machine_y += 20
+
+                            # Wait for idle
+                            idle_reached = check_idle()
+                            if not idle_reached:
+                                logger.error("Device did not reach idle state after moving to perimeter")
+                                homing_complete.set()
+                                return
+
+                            # Import pattern_manager here to avoid circular import
+                            from modules.core import pattern_manager
+
+                            # Perform angular rotation until reed switch is triggered
+                            logger.info("Rotating around perimeter to find home position (6.28 radians)")
+                            # We'll do this in small increments to check the reed switch
+                            # One full rotation is 2*pi (6.28) radians
+                            increment = 0.1  # Small angular increment
+                            current_theta = 0
+                            max_theta = 6.28  # One full rotation
+
+                            while current_theta < max_theta:
+                                # Check reed switch
+                                if reed_switch.is_triggered():
+                                    logger.info(f"Reed switch triggered at theta={current_theta}")
+                                    break
+
+                                # Move to next position
+                                current_theta += increment
+                                result = loop.run_until_complete(
+                                    asyncio.to_thread(
+                                        pattern_manager.motion_controller._move_polar_sync,
+                                        current_theta,
+                                        1.0,  # rho = 1.0 (perimeter)
+                                        400   # speed
+                                    )
+                                )
+
+                                # Small delay to allow reed switch to settle
+                                time.sleep(0.05)
+
+                            if current_theta >= max_theta:
+                                logger.warning("Completed full rotation without reed switch trigger")
+
+                            # Set theta to 0 at this position
+                            state.current_theta = 0
+                            logger.info("Angular homing completed")
+
+                        finally:
+                            loop.close()
+                            reed_switch.cleanup()
+
+                except Exception as e:
+                    logger.error(f"Error during angular homing: {e}")
+                    # Continue with normal homing completion even if angular homing fails
+
             state.current_theta = state.current_rho = 0
             homing_success = True
+            logger.info("Homing completed and device is idle")
+
             homing_complete.set()
         except Exception as e:
             logger.error(f"Error during homing: {e}")
