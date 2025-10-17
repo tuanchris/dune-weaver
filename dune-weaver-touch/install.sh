@@ -151,6 +151,36 @@ EOF
     echo "   👆 Touch rotation configured (180°)"
 }
 
+# Function to hide mouse cursor
+hide_mouse_cursor() {
+    echo "🖱️  Configuring mouse cursor hiding..."
+
+    # Install unclutter for hiding mouse cursor when idle
+    echo "   📦 Installing unclutter..."
+    apt install -y unclutter > /dev/null 2>&1
+
+    # Create autostart directory if it doesn't exist
+    local AUTOSTART_DIR="$USER_HOME/.config/autostart"
+    mkdir -p "$AUTOSTART_DIR"
+    chown -R "$ACTUAL_USER:$ACTUAL_USER" "$USER_HOME/.config"
+
+    # Create unclutter autostart entry
+    cat > "$AUTOSTART_DIR/unclutter.desktop" << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=Unclutter
+Comment=Hide mouse cursor when idle
+Exec=unclutter -idle 0.1 -root
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+EOF
+
+    chown "$ACTUAL_USER:$ACTUAL_USER" "$AUTOSTART_DIR/unclutter.desktop"
+
+    echo "   🖱️  Mouse cursor hiding configured"
+}
+
 # Function to setup kiosk optimizations
 setup_kiosk_optimizations() {
     echo "🖥️  Setting up kiosk optimizations..."
@@ -254,6 +284,7 @@ install_scripts
 setup_systemd
 configure_boot_settings
 setup_touch_rotation
+hide_mouse_cursor
 setup_kiosk_optimizations
 
 echo ""
@@ -263,6 +294,7 @@ echo ""
 echo "✅ Python virtual environment created at: $SCRIPT_DIR/venv"
 echo "✅ System scripts installed in /usr/local/bin/"
 echo "✅ Systemd service configured for auto-start"
+echo "✅ Mouse cursor hiding configured (Qt + unclutter)"
 echo "✅ Kiosk optimizations applied"
 echo ""
 echo "🔧 Service Management:"

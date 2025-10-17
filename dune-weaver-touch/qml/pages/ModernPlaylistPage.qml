@@ -498,24 +498,36 @@ Page {
                             // Settings section
                             Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 280
+                                Layout.fillHeight: true
                                 Layout.minimumHeight: 250
                                 radius: 10
                                 color: "#f8f9fa"
                                 border.color: "#e5e7eb"
                                 border.width: 1
-                                
+
                                 ColumnLayout {
                                     anchors.fill: parent
                                     anchors.margins: 15
                                     spacing: 15
-                                    
+
                                     Label {
                                         text: "Settings"
                                         font.pixelSize: 14
                                         font.bold: true
                                         color: "#333"
                                     }
+
+                                    // Scrollable settings content
+                                    ScrollView {
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        clip: true
+
+                                        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+                                        ColumnLayout {
+                                            width: parent.width
+                                            spacing: 15
                                     
                                     // Run mode
                                     Column {
@@ -817,9 +829,7 @@ Page {
                                             }
                                         }
                                     }
-                                    
-                                    Item {
-                                        Layout.fillHeight: true
+                                        }
                                     }
                                 }
                             }

@@ -11,6 +11,8 @@ WorkingDirectory=/home/pi/dune-weaver-touch
 Environment=DISPLAY=:0
 Environment=QT_QPA_PLATFORM=eglfs
 Environment=QT_QPA_EGLFS_ALWAYS_SET_MODE=1
+Environment=QT_QPA_EGLFS_HIDECURSOR=1
+Environment=QT_QPA_FB_HIDECURSOR=1
 ExecStart=/home/pi/dune-weaver-touch/venv/bin/python /home/pi/dune-weaver-touch/main.py
 Restart=always
 RestartSec=5
