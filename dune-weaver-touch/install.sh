@@ -52,22 +52,19 @@ install_scripts() {
 # Function to setup systemd service
 setup_systemd() {
     echo "🚀 Setting up systemd service..."
-    
+
     # Update paths in the service file
     sed "s|/home/pi/dune-weaver-touch|$SCRIPT_DIR|g" "$SCRIPT_DIR/dune-weaver-touch.service" > /tmp/dune-weaver-touch.service
     sed -i "s|User=pi|User=$ACTUAL_USER|g" /tmp/dune-weaver-touch.service
     sed -i "s|Group=pi|Group=$ACTUAL_USER|g" /tmp/dune-weaver-touch.service
-    
-    # Ensure the ExecStart uses the venv python
-    sed -i "s|ExecStart=.*python.*|ExecStart=$SCRIPT_DIR/venv/bin/python $SCRIPT_DIR/main.py|g" /tmp/dune-weaver-touch.service
-    
+
     # Copy service file
     cp /tmp/dune-weaver-touch.service /etc/systemd/system/
-    
+
     # Enable service
     systemctl daemon-reload
     systemctl enable dune-weaver-touch.service
-    
+
     echo "   🚀 Systemd service installed and enabled"
 }
 

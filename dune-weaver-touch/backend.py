@@ -381,7 +381,7 @@ class Backend(QObject):
             # Extract just the filename from the path (remove any directory prefixes)
             clean_filename = fileName.split('/')[-1]  # Get last part of path
             print(f"🔍 Original fileName: {fileName}, clean filename: {clean_filename}")
-            
+
             # Check multiple possible locations for patterns directory
             # Use relative paths that work across different environments
             possible_dirs = [
@@ -389,29 +389,40 @@ class Backend(QObject):
                 Path("patterns"),     # Same level (for when running from main directory)
                 Path(__file__).parent.parent / "patterns"  # Dynamic path relative to backend.py
             ]
-            
+
             for patterns_dir in possible_dirs:
                 cache_dir = patterns_dir / "cached_images"
                 if cache_dir.exists():
-                    print(f"🔍 Checking preview cache directory: {cache_dir}")
-                    # Try different preview image extensions - PNG first for kiosk
-                    # First try with .thr suffix (e.g., pattern.thr.png)
-                    for ext in [".png", ".webp", ".jpg", ".jpeg"]:
-                        preview_file = cache_dir / (clean_filename + ext)
-                        print(f"🔍 Looking for preview: {preview_file}")
-                        if preview_file.exists():
-                            print(f"✅ Found preview: {preview_file}")
-                            return str(preview_file.absolute())
-                    
-                    # Then try without .thr suffix (e.g., pattern.png)
+                    print(f"🔍 Searching for preview in cache directory: {cache_dir}")
+
+                    # Extensions to try - PNG first for better kiosk compatibility
+                    extensions = [".png", ".webp", ".jpg", ".jpeg"]
+
+                    # Filenames to try - with and without .thr suffix
                     base_name = clean_filename.replace(".thr", "")
-                    for ext in [".png", ".webp", ".jpg", ".jpeg"]:
-                        preview_file = cache_dir / (base_name + ext)
-                        print(f"🔍 Looking for preview (no .thr): {preview_file}")
-                        if preview_file.exists():
-                            print(f"✅ Found preview: {preview_file}")
-                            return str(preview_file.absolute())
-            
+                    filenames_to_try = [clean_filename, base_name]
+
+                    # Try direct path in cache_dir first (fastest)
+                    for filename in filenames_to_try:
+                        for ext in extensions:
+                            preview_file = cache_dir / (filename + ext)
+                            if preview_file.exists():
+                                print(f"✅ Found preview (direct): {preview_file}")
+                                return str(preview_file.absolute())
+
+                    # If not found directly, search recursively through subdirectories
+                    print(f"🔍 Searching recursively in {cache_dir}...")
+                    for filename in filenames_to_try:
+                        for ext in extensions:
+                            target_name = filename + ext
+                            # Use rglob to search recursively
+                            matches = list(cache_dir.rglob(target_name))
+                            if matches:
+                                # Return the first match found
+                                preview_file = matches[0]
+                                print(f"✅ Found preview (recursive): {preview_file}")
+                                return str(preview_file.absolute())
+
             print("❌ No preview image found")
             return ""
         except Exception as e:
