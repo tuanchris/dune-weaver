@@ -75,14 +75,15 @@ class ReedSwitchMonitor:
         Check if the reed switch is currently triggered.
 
         Returns:
-            bool: True if reed switch is triggered (pin is LOW), False otherwise
+            bool: True if reed switch is triggered (pin is HIGH), False otherwise
         """
         if not self.is_raspberry_pi or not self.gpio:
             return False
 
         try:
-            # Pin is LOW (0) when reed switch is closed (triggered)
-            return self.gpio.input(self.gpio_pin) == 0
+            # Pin is HIGH (1) when reed switch is closed (triggered)
+            # This assumes the switch connects the pin to 3.3V when closed
+            return self.gpio.input(self.gpio_pin) == 1
         except Exception as e:
             logger.error(f"Error reading reed switch: {e}")
             return False
@@ -102,10 +103,10 @@ class ReedSwitchMonitor:
             return False
 
         try:
-            # Wait for falling edge (pin goes from HIGH to LOW)
+            # Wait for rising edge (pin goes from LOW to HIGH)
             channel = self.gpio.wait_for_edge(
                 self.gpio_pin,
-                self.gpio.FALLING,
+                self.gpio.RISING,
                 timeout=int(timeout * 1000) if timeout else None
             )
             return channel is not None
