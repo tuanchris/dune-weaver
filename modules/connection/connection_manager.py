@@ -470,13 +470,15 @@ def home(timeout=60):
                     # Import pattern_manager here to avoid circular import
                     from modules.core import pattern_manager
 
-                    # Move radial arm to perimeter (theta=0, rho=1)
-                    logger.info("Moving radial arm to perimeter (theta=0, rho=1)")
+                    # Move radial arm to perimeter
+                    # Since current_rho is already 0 from radial homing, we move from (0,0) to (0,1)
+                    logger.info("Moving radial arm to perimeter (rho: 0 -> 1)")
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     try:
-                        # Move to perimeter and wait for completion
-                        loop.run_until_complete(pattern_manager.move_polar(0, 1.0, homing_speed))
+                        # Move radially outward to perimeter while keeping theta at 0
+                        # current_theta is 0, so this moves from (theta=0, rho=0) to (theta=0, rho=1)
+                        loop.run_until_complete(pattern_manager.move_polar(state.current_theta, 1.0, homing_speed))
 
                         # Wait for device to reach idle state
                         idle_reached = check_idle()
@@ -486,26 +488,28 @@ def home(timeout=60):
                             return
 
                         # Wait 1 second for stabilization
+                        logger.info("Radial arm now at perimeter. Starting angular rotation...")
                         time.sleep(1)
 
                         # Perform angular rotation until reed switch is triggered
-                        logger.info("Rotating around perimeter to find home position (theta=6.28, rho=1)")
+                        logger.info("Rotating around perimeter to find home position (up to one full rotation)")
 
                         # Rotate in small increments, checking reed switch after each move
-                        increment = 0.2  # Angular increment in radians
+                        increment = 0.2  # Angular increment in radians (~11.5 degrees)
                         current_theta = 0
-                        max_theta = 6.28  # One full rotation (2*pi)
+                        max_theta = 6.28  # One full rotation (2*pi radians)
                         reed_switch_triggered = False
 
                         while current_theta < max_theta:
                             # Check reed switch before moving
                             if reed_switch.is_triggered():
-                                logger.info(f"Reed switch triggered at theta={current_theta}")
+                                logger.info(f"Reed switch triggered at theta={current_theta:.2f} rad ({current_theta*57.3:.1f} deg)")
                                 reed_switch_triggered = True
                                 break
 
-                            # Move to next position
+                            # Move to next angular position while maintaining rho=1.0
                             current_theta += increment
+                            logger.debug(f"Moving to theta={current_theta:.2f} rad ({current_theta*57.3:.1f} deg), rho=1.0")
                             loop.run_until_complete(
                                 pattern_manager.move_polar(current_theta, 1.0, homing_speed)
                             )
@@ -518,7 +522,7 @@ def home(timeout=60):
 
                             # Check reed switch after move completes
                             if reed_switch.is_triggered():
-                                logger.info(f"Reed switch triggered at theta={current_theta}")
+                                logger.info(f"Reed switch triggered at theta={current_theta:.2f} rad ({current_theta*57.3:.1f} deg)")
                                 reed_switch_triggered = True
                                 break
 
