@@ -499,7 +499,7 @@ def home(timeout=90):
                             asyncio.run(pattern_manager.move_polar(current_theta, 1.0, homing_speed))
 
                             # Small delay to allow reed switch to settle after movement
-                            time.sleep(1)
+                            time.sleep(0.5)
 
                             # Check reed switch AFTER movement completes
                             if reed_switch.is_triggered():
