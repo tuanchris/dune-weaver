@@ -492,10 +492,18 @@ def home(timeout=60):
                         reed_switch_triggered = False
 
                         while current_theta < max_theta:
-                            # Check reed switch
+                            # Check reed switch before moving
                             if reed_switch.is_triggered():
                                 logger.info(f"Reed switch triggered at theta={current_theta}")
                                 reed_switch_triggered = True
+                                # Stop motion immediately
+                                try:
+                                    if state.conn and state.conn.is_connected():
+                                        state.conn.send("!\n")  # Send feed hold to stop immediately
+                                        time.sleep(0.1)
+                                        logger.info("Motion stopped - reed switch detected")
+                                except Exception as stop_err:
+                                    logger.error(f"Error stopping motion: {stop_err}")
                                 break
 
                             # Move to next position
@@ -506,6 +514,20 @@ def home(timeout=60):
 
                             # Small delay to allow reed switch to settle
                             time.sleep(0.05)
+
+                            # Check reed switch immediately after move completes
+                            if reed_switch.is_triggered():
+                                logger.info(f"Reed switch triggered at theta={current_theta} (after move)")
+                                reed_switch_triggered = True
+                                # Stop motion immediately
+                                try:
+                                    if state.conn and state.conn.is_connected():
+                                        state.conn.send("!\n")  # Send feed hold to stop immediately
+                                        time.sleep(0.1)
+                                        logger.info("Motion stopped - reed switch detected after move")
+                                except Exception as stop_err:
+                                    logger.error(f"Error stopping motion: {stop_err}")
+                                break
 
                         if not reed_switch_triggered:
                             logger.warning("Completed full rotation without reed switch trigger")
