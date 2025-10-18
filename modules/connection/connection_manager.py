@@ -456,13 +456,13 @@ def home(timeout=60):
                 homing_complete.set()
                 return
 
-            # Set rho to 0 after radial homing completes
+            # Set both theta and rho to 0 after radial homing completes
+            state.current_theta = 0
             state.current_rho = 0
 
             # Perform angular homing if enabled
             if state.angular_homing_enabled:
                 logger.info("Starting angular homing sequence")
-                angular_homing_success = False
                 try:
                     # Initialize reed switch monitor
                     reed_switch = ReedSwitchMonitor(gpio_pin=18)
@@ -484,57 +484,37 @@ def home(timeout=60):
                         # Perform angular rotation until reed switch is triggered
                         logger.info("Rotating around perimeter to find home position (theta=6.28, rho=1)")
 
-                        # Start rotation to theta=6.28 (one full rotation)
-                        # We'll check the reed switch in small increments during the rotation
-                        increment = 0.1  # Small angular increment
-                        current_theta = 0
-                        max_theta = 6.28  # One full rotation
+                        # Start a full rotation motion in a background task
+                        # We'll monitor the reed switch while it's moving
+                        motion_task = asyncio.ensure_future(
+                            pattern_manager.move_polar(6.28, 1.0, homing_speed),
+                            loop=loop
+                        )
+
+                        # Poll reed switch while motion is in progress
                         reed_switch_triggered = False
+                        check_interval = 0.01  # Check every 10ms for fast response
 
-                        while current_theta < max_theta:
-                            # Check reed switch before moving
+                        while not motion_task.done():
                             if reed_switch.is_triggered():
-                                logger.info(f"Reed switch triggered at theta={current_theta}")
+                                logger.info("Reed switch triggered during rotation")
                                 reed_switch_triggered = True
-                                # Stop motion immediately
+                                # Cancel the motion task
+                                motion_task.cancel()
                                 try:
-                                    if state.conn and state.conn.is_connected():
-                                        state.conn.send("!\n")  # Send feed hold to stop immediately
-                                        time.sleep(0.1)
-                                        logger.info("Motion stopped - reed switch detected")
-                                except Exception as stop_err:
-                                    logger.error(f"Error stopping motion: {stop_err}")
+                                    loop.run_until_complete(motion_task)
+                                except asyncio.CancelledError:
+                                    logger.info("Motion task cancelled successfully")
                                 break
 
-                            # Move to next position
-                            current_theta += increment
-                            loop.run_until_complete(
-                                pattern_manager.move_polar(current_theta, 1.0, homing_speed)
-                            )
+                            time.sleep(check_interval)
 
-                            # Small delay to allow reed switch to settle
-                            time.sleep(0.05)
-
-                            # Check reed switch immediately after move completes
-                            if reed_switch.is_triggered():
-                                logger.info(f"Reed switch triggered at theta={current_theta} (after move)")
-                                reed_switch_triggered = True
-                                # Stop motion immediately
-                                try:
-                                    if state.conn and state.conn.is_connected():
-                                        state.conn.send("!\n")  # Send feed hold to stop immediately
-                                        time.sleep(0.1)
-                                        logger.info("Motion stopped - reed switch detected after move")
-                                except Exception as stop_err:
-                                    logger.error(f"Error stopping motion: {stop_err}")
-                                break
-
-                        if not reed_switch_triggered:
+                        # If motion completed without reed switch trigger
+                        if not reed_switch_triggered and motion_task.done():
                             logger.warning("Completed full rotation without reed switch trigger")
 
                         # Set theta to 0 at this position (home position)
                         state.current_theta = 0
-                        angular_homing_success = True
                         logger.info("Angular homing completed - theta set to 0")
 
                     finally:
@@ -543,15 +523,8 @@ def home(timeout=60):
 
                 except Exception as e:
                     logger.error(f"Error during angular homing: {e}")
-                    # Continue with normal homing completion even if angular homing fails
-
-                # If angular homing failed, still set theta to 0
-                if not angular_homing_success:
+                    # Set theta to 0 even if angular homing fails
                     state.current_theta = 0
-                    logger.info("Angular homing failed - setting theta to 0 as fallback")
-            else:
-                # Angular homing not enabled, set theta to 0
-                state.current_theta = 0
 
             homing_success = True
             logger.info("Homing completed and device is idle")
