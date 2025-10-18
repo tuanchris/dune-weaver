@@ -470,15 +470,29 @@ def home(timeout=60):
                     # Import pattern_manager here to avoid circular import
                     from modules.core import pattern_manager
 
-                    # Move radial arm to perimeter
-                    # Since current_rho is already 0 from radial homing, we move from (0,0) to (0,1)
-                    logger.info("Moving radial arm to perimeter (rho: 0 -> 1)")
+                    # Move radial arm to perimeter using direct GRBL coordinates
+                    logger.info("Moving radial arm to perimeter (Y + 20mm)")
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     try:
-                        # Move radially outward to perimeter while keeping theta at 0
-                        # current_theta is 0, so this moves from (theta=0, rho=0) to (theta=0, rho=1)
-                        loop.run_until_complete(pattern_manager.move_polar(state.current_theta, 1.0, homing_speed))
+                        # Send direct GRBL command: keep X the same, move Y outward by 20mm
+                        target_x = state.machine_x
+                        target_y = state.machine_y + 20
+                        logger.info(f"Sending GRBL: X={target_x:.3f}, Y={target_y:.3f}")
+
+                        result = loop.run_until_complete(
+                            send_grbl_coordinates(target_x, target_y, homing_speed)
+                        )
+
+                        if result == False:
+                            logger.error("Failed to move to perimeter - send_grbl_coordinates returned False")
+                            homing_complete.set()
+                            return
+
+                        # Update machine position and polar coordinates
+                        state.machine_y += 20
+                        state.current_rho = 1.0  # Now at perimeter
+                        logger.info(f"Updated position: theta={state.current_theta}, rho={state.current_rho}")
 
                         # Wait for device to reach idle state
                         idle_reached = check_idle()
