@@ -430,7 +430,7 @@ def home(timeout=60):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
-                    if state.gear_ratio == 6.25:
+                    if state.table_type == 'dune_weaver_mini':
                         result = loop.run_until_complete(send_grbl_coordinates(0, - 30, homing_speed, home=True))
                         if result == False:
                             logger.error("Homing failed - send_grbl_coordinates returned False")
@@ -471,7 +471,7 @@ def home(timeout=60):
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         try:
-                            result = loop.run_until_complete(send_grbl_coordinates(0, 20, 400, home=False))
+                            result = loop.run_until_complete(send_grbl_coordinates(state.machine_x, state.machine_y + 20, 400, home=False))
                             if result == False:
                                 logger.error("Failed to move to perimeter for angular homing")
                                 homing_complete.set()
