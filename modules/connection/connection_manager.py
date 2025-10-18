@@ -400,7 +400,7 @@ def get_machine_steps(timeout=10):
         logger.error(f"Failed to get all machine parameters after {timeout}s. Missing: {', '.join(missing)}")
         return False
 
-def home(timeout=60):
+def home(timeout=90):
     """
     Perform homing by checking device configuration and sending the appropriate commands.
 
@@ -499,7 +499,7 @@ def home(timeout=60):
                             asyncio.run(pattern_manager.move_polar(current_theta, 1.0, homing_speed))
 
                             # Small delay to allow reed switch to settle after movement
-                            time.sleep(0.5)
+                            time.sleep(1)
 
                             # Check reed switch AFTER movement completes
                             if reed_switch.is_triggered():
