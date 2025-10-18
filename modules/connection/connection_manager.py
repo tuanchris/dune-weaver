@@ -466,69 +466,48 @@ def home(timeout=60):
                     # Initialize reed switch monitor
                     reed_switch = ReedSwitchMonitor(gpio_pin=18)
 
-                    # Move radial arm to perimeter
-                    logger.info("Moving radial arm to perimeter (y20)")
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
                     try:
-                        result = loop.run_until_complete(
-                                asyncio.to_thread(
-                                    pattern_manager.motion_controller._move_polar_sync,
-                                    0,
-                                    1.0,  # rho = 1.0 (perimeter)
-                                    homing_speed   # speed
-                                )
-                            )
-                        if result == False:
-                            logger.error("Failed to move to perimeter for angular homing")
-                            homing_complete.set()
-                            return
+                        # Reset theta first
+                        logger.info("Resetting theta before angular homing")
+                        asyncio.run(pattern_manager.reset_theta())
 
-                        # Wait for idle
-                        idle_reached = check_idle()
-                        if not idle_reached:
-                            logger.error("Device did not reach idle state after moving to perimeter")
-                            homing_complete.set()
-                            return
+                        # Move radial arm to perimeter (theta=0, rho=1.0)
+                        logger.info("Moving radial arm to perimeter (theta=0, rho=1.0)")
+                        asyncio.run(pattern_manager.move_polar(0, 1.0, homing_speed))
 
+                        # Wait 1 second for stabilization
+                        logger.info("Waiting for stabilization...")
+                        time.sleep(1)
 
                         # Perform angular rotation until reed switch is triggered
-                        logger.info("Rotating around perimeter to find home position (6.28 radians)")
-                        # We'll do this in small increments to check the reed switch
-                        # One full rotation is 2*pi (6.28) radians
-                        increment = 0.1  # Small angular increment
+                        logger.info("Rotating around perimeter to find home position")
+                        increment = 0.1  # Small angular increment in radians
                         current_theta = 0
-                        max_theta = 6.28  # One full rotation
+                        max_theta = 6.28  # One full rotation (2*pi)
+                        reed_switch_triggered = False
 
                         while current_theta < max_theta:
-                            # Check reed switch
-                            if reed_switch.is_triggered():
-                                logger.info(f"Reed switch triggered at theta={current_theta}")
-                                break
-
                             # Move to next position
                             current_theta += increment
-                            result = loop.run_until_complete(
-                                asyncio.to_thread(
-                                    pattern_manager.motion_controller._move_polar_sync,
-                                    current_theta,
-                                    1.0,  # rho = 1.0 (perimeter)
-                                    400   # speed
-                                )
-                            )
+                            asyncio.run(pattern_manager.move_polar(current_theta, 1.0, homing_speed))
 
-                            # Small delay to allow reed switch to settle
-                            time.sleep(0.05)
+                            # Small delay to allow reed switch to settle after movement
+                            time.sleep(0.5)
 
-                        if current_theta >= max_theta:
+                            # Check reed switch AFTER movement completes
+                            if reed_switch.is_triggered():
+                                logger.info(f"Reed switch triggered at theta={current_theta}")
+                                reed_switch_triggered = True
+                                break
+
+                        if not reed_switch_triggered:
                             logger.warning("Completed full rotation without reed switch trigger")
 
-                        # Set theta to 0 at this position
+                        # Set theta to 0 at this position (home position)
                         state.current_theta = 0
-                        logger.info("Angular homing completed")
+                        logger.info("Angular homing completed - theta set to 0")
 
                     finally:
-                        loop.close()
                         reed_switch.cleanup()
 
                 except Exception as e:
