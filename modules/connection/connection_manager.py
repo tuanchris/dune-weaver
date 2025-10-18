@@ -505,6 +505,7 @@ def home(timeout=60):
 
                         # Set theta to 0 at this position (home position)
                         state.current_theta = 0
+                        state.current_rho = 1
                         logger.info("Angular homing completed - theta set to 0")
 
                     finally:
