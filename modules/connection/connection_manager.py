@@ -470,73 +470,68 @@ def home(timeout=60):
                     # Import pattern_manager here to avoid circular import
                     from modules.core import pattern_manager
 
-                    # Move radial arm to perimeter using direct GRBL coordinates
-                    logger.info("Moving radial arm to perimeter (Y + 20mm)")
+                    # Move radial arm to perimeter (theta=0, rho=1)
+                    logger.info("STEP 1: Moving radial arm to perimeter (theta=0, rho=1)")
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     try:
-                        # Send direct GRBL command: keep X the same, move Y outward by 20mm
-                        target_x = state.machine_x
-                        target_y = state.machine_y + 20
-                        logger.info(f"Sending GRBL: X={target_x:.3f}, Y={target_y:.3f}")
+                        # Move to perimeter and wait for completion
+                        logger.info("Sending move command to theta=0, rho=1.0")
+                        loop.run_until_complete(pattern_manager.move_polar(0, 1.0, homing_speed))
+                        logger.info("Move command completed, waiting for device to reach idle")
 
-                        result = loop.run_until_complete(
-                            send_grbl_coordinates(target_x, target_y, homing_speed)
-                        )
-
-                        if result == False:
-                            logger.error("Failed to move to perimeter - send_grbl_coordinates returned False")
-                            homing_complete.set()
-                            return
-
-                        # Update machine position and polar coordinates
-                        state.machine_y += 20
-                        state.current_rho = 1.0  # Now at perimeter
-                        logger.info(f"Updated position: theta={state.current_theta}, rho={state.current_rho}")
-
-                        # Wait for device to reach idle state
-                        idle_reached = check_idle()
+                        # Wait for device to reach idle state with timeout
+                        idle_reached = check_idle(timeout=30)
                         if not idle_reached:
-                            logger.error("Device did not reach idle state after moving to perimeter")
+                            logger.error("Device did not reach idle state after moving to perimeter (timeout)")
                             homing_complete.set()
                             return
 
-                        # Wait 1 second for stabilization
-                        logger.info("Radial arm now at perimeter. Starting angular rotation...")
-                        time.sleep(1)
+                        logger.info("Device reached idle state after perimeter move")
+
+                        # Query actual position to verify we're at perimeter
+                        actual_position = get_machine_position(timeout=5)
+                        if actual_position:
+                            logger.info(f"Current position after perimeter move: theta={actual_position.get('theta', 'N/A')}, rho={actual_position.get('rho', 'N/A')}")
+                        else:
+                            logger.warning("Could not query machine position after perimeter move")
+
+                        # Wait 2 seconds for stabilization
+                        logger.info("Waiting 2 seconds for mechanical stabilization")
+                        time.sleep(2)
 
                         # Perform angular rotation until reed switch is triggered
-                        logger.info("Rotating around perimeter to find home position (up to one full rotation)")
+                        logger.info("STEP 2: Rotating around perimeter to find home position")
 
                         # Rotate in small increments, checking reed switch after each move
-                        increment = 0.2  # Angular increment in radians (~11.5 degrees)
+                        increment = 0.2  # Angular increment in radians
                         current_theta = 0
-                        max_theta = 6.28  # One full rotation (2*pi radians)
+                        max_theta = 6.28  # One full rotation (2*pi)
                         reed_switch_triggered = False
 
                         while current_theta < max_theta:
                             # Check reed switch before moving
                             if reed_switch.is_triggered():
-                                logger.info(f"Reed switch triggered at theta={current_theta:.2f} rad ({current_theta*57.3:.1f} deg)")
+                                logger.info(f"Reed switch triggered BEFORE move at theta={current_theta}")
                                 reed_switch_triggered = True
                                 break
 
-                            # Move to next angular position while maintaining rho=1.0
+                            # Move to next position
                             current_theta += increment
-                            logger.debug(f"Moving to theta={current_theta:.2f} rad ({current_theta*57.3:.1f} deg), rho=1.0")
+                            logger.info(f"Moving to theta={current_theta:.2f}, rho=1.0")
                             loop.run_until_complete(
                                 pattern_manager.move_polar(current_theta, 1.0, homing_speed)
                             )
 
-                            # Wait for device to reach idle state
-                            idle_reached = check_idle()
+                            # Wait for device to reach idle state with timeout
+                            idle_reached = check_idle(timeout=20)
                             if not idle_reached:
-                                logger.error("Device did not reach idle state during angular homing")
+                                logger.error(f"Device did not reach idle state during angular homing at theta={current_theta}")
                                 break
 
                             # Check reed switch after move completes
                             if reed_switch.is_triggered():
-                                logger.info(f"Reed switch triggered at theta={current_theta:.2f} rad ({current_theta*57.3:.1f} deg)")
+                                logger.info(f"Reed switch triggered AFTER move at theta={current_theta}")
                                 reed_switch_triggered = True
                                 break
 
@@ -589,12 +584,27 @@ def home(timeout=60):
     logger.info("Homing completed successfully")
     return True
 
-def check_idle():
+def check_idle(timeout=None):
     """
     Continuously check if the device is idle (synchronous version).
+
+    Args:
+        timeout (int, optional): Maximum time to wait in seconds. None for infinite.
+
+    Returns:
+        bool: True if idle state reached, False if timeout occurred.
     """
-    logger.info("Checking idle")
+    logger.info(f"Checking idle (timeout={timeout}s)")
+    start_time = time.time()
+
     while True:
+        # Check timeout
+        if timeout is not None:
+            elapsed = time.time() - start_time
+            if elapsed > timeout:
+                logger.warning(f"check_idle() timed out after {elapsed:.1f} seconds")
+                return False
+
         response = get_status_response()
         if response and "Idle" in response:
             logger.info("Device is idle")
