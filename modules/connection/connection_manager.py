@@ -478,39 +478,51 @@ def home(timeout=60):
                         # Move to perimeter and wait for completion
                         loop.run_until_complete(pattern_manager.move_polar(0, 1.0, homing_speed))
 
+                        # Wait for device to reach idle state
+                        idle_reached = check_idle()
+                        if not idle_reached:
+                            logger.error("Device did not reach idle state after moving to perimeter")
+                            homing_complete.set()
+                            return
+
                         # Wait 1 second for stabilization
                         time.sleep(1)
 
                         # Perform angular rotation until reed switch is triggered
                         logger.info("Rotating around perimeter to find home position (theta=6.28, rho=1)")
 
-                        # Start a full rotation motion in a background task
-                        # We'll monitor the reed switch while it's moving
-                        motion_task = asyncio.ensure_future(
-                            pattern_manager.move_polar(6.28, 1.0, homing_speed),
-                            loop=loop
-                        )
-
-                        # Poll reed switch while motion is in progress
+                        # Rotate in small increments, checking reed switch after each move
+                        increment = 0.2  # Angular increment in radians
+                        current_theta = 0
+                        max_theta = 6.28  # One full rotation (2*pi)
                         reed_switch_triggered = False
-                        check_interval = 0.01  # Check every 10ms for fast response
 
-                        while not motion_task.done():
+                        while current_theta < max_theta:
+                            # Check reed switch before moving
                             if reed_switch.is_triggered():
-                                logger.info("Reed switch triggered during rotation")
+                                logger.info(f"Reed switch triggered at theta={current_theta}")
                                 reed_switch_triggered = True
-                                # Cancel the motion task
-                                motion_task.cancel()
-                                try:
-                                    loop.run_until_complete(motion_task)
-                                except asyncio.CancelledError:
-                                    logger.info("Motion task cancelled successfully")
                                 break
 
-                            time.sleep(check_interval)
+                            # Move to next position
+                            current_theta += increment
+                            loop.run_until_complete(
+                                pattern_manager.move_polar(current_theta, 1.0, homing_speed)
+                            )
 
-                        # If motion completed without reed switch trigger
-                        if not reed_switch_triggered and motion_task.done():
+                            # Wait for device to reach idle state
+                            idle_reached = check_idle()
+                            if not idle_reached:
+                                logger.error("Device did not reach idle state during angular homing")
+                                break
+
+                            # Check reed switch after move completes
+                            if reed_switch.is_triggered():
+                                logger.info(f"Reed switch triggered at theta={current_theta}")
+                                reed_switch_triggered = True
+                                break
+
+                        if not reed_switch_triggered:
                             logger.warning("Completed full rotation without reed switch trigger")
 
                         # Set theta to 0 at this position (home position)
