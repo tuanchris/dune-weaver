@@ -331,6 +331,27 @@ input:checked + .slider:before {
         </label>
       </div>
 
+      <!-- Angular Offset Input (shown when angular homing is enabled) -->
+      <div id="angularOffsetContainer" class="space-y-2" style="display: none;">
+        <label for="angularOffsetInput" class="text-sm font-medium text-slate-700 flex items-center gap-2">
+          <span class="material-icons text-slate-600 text-base">straighten</span>
+          Sensor Offset (degrees)
+        </label>
+        <input
+          type="number"
+          id="angularOffsetInput"
+          min="0"
+          max="360"
+          step="0.1"
+          value="0"
+          class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-sm"
+          placeholder="0.0"
+        />
+        <p class="text-xs text-slate-500">
+          Set the angle (in degrees) where your reed switch is physically mounted. 0° = East, increases clockwise (90° = South, 180° = West, 270° = North).
+        </p>
+      </div>
+
       <div id="angularHomingInfo" class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-3" style="display: none;">
         <div class="flex items-start gap-2">
           <span class="material-icons text-blue-600 text-base">info</span>
@@ -339,7 +360,7 @@ input:checked + .slider:before {
             <ul class="mt-1 space-y-1 text-blue-700">
               <li>• After radial homing, the arm moves to the perimeter (y20)</li>
               <li>• The table rotates around the perimeter until the reed switch on GPIO 18 is triggered</li>
-              <li>• This position is set as the angular home (theta = 0)</li>
+              <li>• This position is set as the angular home based on your sensor offset</li>
               <li>• Only works on Raspberry Pi with a reed switch connected to GPIO 18</li>
               <li>• Reed switch should connect GPIO 18 to ground when triggered</li>
             </ul>

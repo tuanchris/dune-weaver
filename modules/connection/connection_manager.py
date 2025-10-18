@@ -510,10 +510,15 @@ def home(timeout=90):
                         if not reed_switch_triggered:
                             logger.warning("Completed full rotation without reed switch trigger")
 
-                        # Set theta to 0 at this position (home position)
-                        state.current_theta = 0
+                        # Set theta to the offset value (accounting for sensor placement)
+                        # If offset is 0, this is the true home position
+                        # If offset is non-zero, the sensor is physically placed at that angle
+                        # Convert degrees to radians for internal use
+                        import math
+                        offset_radians = math.radians(state.angular_homing_offset_degrees)
+                        state.current_theta = offset_radians
                         state.current_rho = 1
-                        logger.info("Angular homing completed - theta set to 0")
+                        logger.info(f"Angular homing completed - theta set to {state.angular_homing_offset_degrees}° ({offset_radians:.3f} radians)")
 
                     finally:
                         reed_switch.cleanup()
