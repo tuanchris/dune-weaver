@@ -1027,6 +1027,7 @@ async function initializeauto_playMode() {
 document.addEventListener('DOMContentLoaded', function() {
     initializeauto_playMode();
     initializeStillSandsMode();
+    initializeAngularHomingConfig();
 });
 
 // Still Sands Mode Functions
@@ -1364,4 +1365,96 @@ async function initializeStillSandsMode() {
             await saveStillSandsSettings();
         });
     }
+}
+
+// Angular Homing Configuration Functions
+async function initializeAngularHomingConfig() {
+    logMessage('Initializing Angular Homing configuration', LOG_TYPE.INFO);
+
+    const angularHomingToggle = document.getElementById('angularHomingToggle');
+    const angularHomingInfo = document.getElementById('angularHomingInfo');
+    const angularOffsetContainer = document.getElementById('angularOffsetContainer');
+    const angularOffsetInput = document.getElementById('angularOffsetInput');
+    const saveHomingConfigButton = document.getElementById('saveHomingConfig');
+
+    // Check if elements exist
+    if (!angularHomingToggle || !angularHomingInfo || !saveHomingConfigButton || !angularOffsetContainer || !angularOffsetInput) {
+        logMessage('Angular Homing elements not found, skipping initialization', LOG_TYPE.WARNING);
+        return;
+    }
+
+    logMessage('All Angular Homing elements found successfully', LOG_TYPE.INFO);
+
+    // Load current angular homing settings
+    try {
+        const response = await fetch('/api/angular-homing');
+        const data = await response.json();
+
+        angularHomingToggle.checked = data.angular_homing_enabled || false;
+        angularOffsetInput.value = data.angular_homing_offset_degrees || 0;
+
+        if (data.angular_homing_enabled) {
+            angularHomingInfo.style.display = 'block';
+            angularOffsetContainer.style.display = 'block';
+        }
+    } catch (error) {
+        logMessage(`Error loading angular homing settings: ${error.message}`, LOG_TYPE.ERROR);
+        // Initialize with defaults if load fails
+        angularHomingToggle.checked = false;
+        angularOffsetInput.value = 0;
+        angularHomingInfo.style.display = 'none';
+        angularOffsetContainer.style.display = 'none';
+    }
+
+    // Function to save settings
+    async function saveAngularHomingSettings() {
+        // Update button UI to show loading state
+        const originalButtonHTML = saveHomingConfigButton.innerHTML;
+        saveHomingConfigButton.disabled = true;
+        saveHomingConfigButton.innerHTML = '<span class="material-icons text-lg animate-spin">refresh</span><span class="truncate">Saving...</span>';
+
+        try {
+            const response = await fetch('/api/angular-homing', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    angular_homing_enabled: angularHomingToggle.checked,
+                    angular_homing_offset_degrees: parseFloat(angularOffsetInput.value) || 0
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Failed to save angular homing settings');
+            }
+
+            // Show success state temporarily
+            saveHomingConfigButton.innerHTML = '<span class="material-icons text-lg">check</span><span class="truncate">Saved!</span>';
+            showStatusMessage('Angular homing configuration saved successfully', 'success');
+
+            // Restore button after 2 seconds
+            setTimeout(() => {
+                saveHomingConfigButton.innerHTML = originalButtonHTML;
+                saveHomingConfigButton.disabled = false;
+            }, 2000);
+        } catch (error) {
+            logMessage(`Error saving angular homing settings: ${error.message}`, LOG_TYPE.ERROR);
+            showStatusMessage(`Failed to save settings: ${error.message}`, 'error');
+
+            // Restore button immediately on error
+            saveHomingConfigButton.innerHTML = originalButtonHTML;
+            saveHomingConfigButton.disabled = false;
+        }
+    }
+
+    // Event listeners
+    angularHomingToggle.addEventListener('change', () => {
+        logMessage(`Angular homing toggle changed: ${angularHomingToggle.checked}`, LOG_TYPE.INFO);
+        const isEnabled = angularHomingToggle.checked;
+        angularHomingInfo.style.display = isEnabled ? 'block' : 'none';
+        angularOffsetContainer.style.display = isEnabled ? 'block' : 'none';
+        logMessage(`Info display set to: ${angularHomingInfo.style.display}`, LOG_TYPE.INFO);
+    });
+
+    saveHomingConfigButton.addEventListener('click', saveAngularHomingSettings);
 }

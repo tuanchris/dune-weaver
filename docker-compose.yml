@@ -9,6 +9,8 @@ services:
       - .:/app
       # Mount timezone file from host for Still Sands scheduling
       - /etc/timezone:/etc/host-timezone:ro
+      # Mount GPIO memory for hardware access
+      - /dev/gpiomem:/dev/gpiomem
     devices:
       - "/dev/ttyACM0:/dev/ttyACM0"
       - "/dev/ttyUSB0:/dev/ttyUSB0"

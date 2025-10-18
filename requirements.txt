@@ -13,3 +13,4 @@ websockets>=11.0.3  # Required for FastAPI WebSocket support
 requests>=2.31.0
 Pillow
 aiohttp
+RPi.GPIO>=0.7.1; platform_machine == "aarch64" or platform_machine == "armv7l"  # Raspberry Pi GPIO support
