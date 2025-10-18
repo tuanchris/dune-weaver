@@ -6,6 +6,7 @@ import serial.tools.list_ports
 import websocket
 import asyncio
 
+from modules.core import pattern_manager
 from modules.core.state import state
 from modules.led.led_controller import effect_loading, effect_idle, effect_connected, LEDController
 from modules.connection.reed_switch import ReedSwitchMonitor
@@ -490,8 +491,6 @@ def home(timeout=60):
                             homing_complete.set()
                             return
 
-                        # Import pattern_manager here to avoid circular import
-                        from modules.core import pattern_manager
 
                         # Perform angular rotation until reed switch is triggered
                         logger.info("Rotating around perimeter to find home position (6.28 radians)")
