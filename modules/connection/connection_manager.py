@@ -474,6 +474,13 @@ def home(timeout=60):
                         # Move radial arm to perimeter (theta=0, rho=1.0)
                         logger.info("Moving radial arm to perimeter (theta=0, rho=1.0)")
                         asyncio.run(pattern_manager.move_polar(0, 1.0, homing_speed))
+                        
+                        idle_reached = check_idle()
+
+                        if not idle_reached:
+                            logger.error("Device did not reach idle state after moving to perimeter")
+                            homing_complete.set()
+                            return
 
                         # Wait 1 second for stabilization
                         logger.info("Waiting for stabilization...")
@@ -515,7 +522,6 @@ def home(timeout=60):
                     logger.error(f"Error during angular homing: {e}")
                     # Continue with normal homing completion even if angular homing fails
 
-            state.current_theta = state.current_rho = 0
             homing_success = True
             logger.info("Homing completed and device is idle")
 
