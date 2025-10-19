@@ -155,18 +155,18 @@ function setWledButtonState(isSet) {
 function updateLedProviderUI() {
     const provider = document.querySelector('input[name="ledProvider"]:checked')?.value || 'none';
     const wledConfig = document.getElementById('wledConfig');
-    const hyperionConfig = document.getElementById('hyperionConfig');
+    const dwLedsConfig = document.getElementById('dwLedsConfig');
 
-    if (wledConfig && hyperionConfig) {
+    if (wledConfig && dwLedsConfig) {
         if (provider === 'wled') {
             wledConfig.classList.remove('hidden');
-            hyperionConfig.classList.add('hidden');
-        } else if (provider === 'hyperion') {
+            dwLedsConfig.classList.add('hidden');
+        } else if (provider === 'dw_leds') {
             wledConfig.classList.add('hidden');
-            hyperionConfig.classList.remove('hidden');
+            dwLedsConfig.classList.remove('hidden');
         } else {
             wledConfig.classList.add('hidden');
-            hyperionConfig.classList.add('hidden');
+            dwLedsConfig.classList.add('hidden');
         }
     }
 }
@@ -194,17 +194,17 @@ async function loadLedConfig() {
                 }
             }
 
-            // Set Hyperion IP and port if configured
-            if (data.hyperion_ip) {
-                const hyperionIpInput = document.getElementById('hyperionIpInput');
-                if (hyperionIpInput) {
-                    hyperionIpInput.value = data.hyperion_ip;
+            // Set DW LED configuration if configured
+            if (data.dw_led_num_leds) {
+                const numLedsInput = document.getElementById('dwLedNumLeds');
+                if (numLedsInput) {
+                    numLedsInput.value = data.dw_led_num_leds;
                 }
             }
-            if (data.hyperion_port) {
-                const hyperionPortInput = document.getElementById('hyperionPortInput');
-                if (hyperionPortInput) {
-                    hyperionPortInput.value = data.hyperion_port;
+            if (data.dw_led_gpio_pin) {
+                const gpioPinInput = document.getElementById('dwLedGpioPin');
+                if (gpioPinInput) {
+                    gpioPinInput.value = data.dw_led_gpio_pin;
                 }
             }
 
@@ -227,7 +227,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         fetch('/serial_status').then(response => response.json()).catch(() => ({ connected: false })),
 
         // Load LED configuration (replaces old WLED-only loading)
-        fetch('/get_led_config').then(response => response.json()).catch(() => ({ provider: 'none', wled_ip: null, hyperion_ip: null, hyperion_port: 8090 })),
+        fetch('/get_led_config').then(response => response.json()).catch(() => ({ provider: 'none', wled_ip: null })),
         
         // Load current version and check for updates
         fetch('/api/version').then(response => response.json()).catch(() => ({ current: '1.0.0', latest: '1.0.0', update_available: false })),
@@ -265,16 +265,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (ledConfigData.wled_ip) {
             const wledIpInput = document.getElementById('wledIpInput');
             if (wledIpInput) wledIpInput.value = ledConfigData.wled_ip;
-        }
-
-        if (ledConfigData.hyperion_ip) {
-            const hyperionIpInput = document.getElementById('hyperionIpInput');
-            if (hyperionIpInput) hyperionIpInput.value = ledConfigData.hyperion_ip;
-        }
-
-        if (ledConfigData.hyperion_port) {
-            const hyperionPortInput = document.getElementById('hyperionPortInput');
-            if (hyperionPortInput) hyperionPortInput.value = ledConfigData.hyperion_port;
         }
 
         updateLedProviderUI()
@@ -462,15 +452,12 @@ function setupEventListeners() {
                     return;
                 }
                 requestBody.ip_address = wledIp;
-            } else if (provider === 'hyperion') {
-                const hyperionIp = document.getElementById('hyperionIpInput')?.value;
-                const hyperionPort = parseInt(document.getElementById('hyperionPortInput')?.value) || 8090;
-                if (!hyperionIp) {
-                    showStatusMessage('Please enter a Hyperion IP address', 'error');
-                    return;
-                }
-                requestBody.ip_address = hyperionIp;
-                requestBody.port = hyperionPort;
+            } else if (provider === 'dw_leds') {
+                const numLeds = parseInt(document.getElementById('dwLedNumLeds')?.value) || 60;
+                const gpioPin = parseInt(document.getElementById('dwLedGpioPin')?.value) || 12;
+
+                requestBody.num_leds = numLeds;
+                requestBody.gpio_pin = gpioPin;
             }
 
             try {
@@ -486,14 +473,17 @@ function setupEventListeners() {
                     if (provider === 'wled' && data.wled_ip) {
                         localStorage.setItem('wled_ip', data.wled_ip);
                         showStatusMessage('WLED configured successfully', 'success');
-                    } else if (provider === 'hyperion' && data.hyperion_ip) {
-                        showStatusMessage('Hyperion configured successfully', 'success');
+                    } else if (provider === 'dw_leds') {
+                        showStatusMessage(`DW LEDs configured: ${data.dw_led_num_leds} LEDs on GPIO${data.dw_led_gpio_pin}`, 'success');
                     } else if (provider === 'none') {
                         localStorage.removeItem('wled_ip');
                         showStatusMessage('LED controller disabled', 'success');
                     }
                 } else {
-                    throw new Error('Failed to save LED configuration');
+                    // Extract error detail from response
+                    const errorData = await response.json().catch(() => ({}));
+                    const errorMessage = errorData.detail || 'Failed to save LED configuration';
+                    showStatusMessage(errorMessage, 'error');
                 }
             } catch (error) {
                 showStatusMessage(`Failed to save LED configuration: ${error.message}`, 'error');

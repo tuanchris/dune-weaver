@@ -10,8 +10,8 @@ async function updateLedNavLabel() {
             if (navLabel) {
                 if (data.provider === 'wled') {
                     navLabel.textContent = 'WLED';
-                } else if (data.provider === 'hyperion') {
-                    navLabel.textContent = 'Hyperion';
+                } else if (data.provider === 'dw_leds') {
+                    navLabel.textContent = 'DW LEDs';
                 } else {
                     navLabel.textContent = 'LED';
                 }

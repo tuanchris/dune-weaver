@@ -488,8 +488,8 @@ input:checked + .slider:before {
             <span class="text-sm text-slate-700">WLED</span>
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="ledProvider" value="hyperion" id="ledProviderHyperion" class="w-4 h-4 text-sky-600 border-slate-300 focus:ring-sky-500">
-            <span class="text-sm text-slate-700">Hyperion</span>
+            <input type="radio" name="ledProvider" value="dw_leds" id="ledProviderDwLeds" class="w-4 h-4 text-sky-600 border-slate-300 focus:ring-sky-500">
+            <span class="text-sm text-slate-700">DW LEDs (Local GPIO)</span>
           </label>
         </div>
         <p class="text-xs text-slate-500">
@@ -523,40 +523,36 @@ input:checked + .slider:before {
         </label>
       </div>
 
-      <!-- Hyperion Configuration (shown when Hyperion is selected) -->
-      <div id="hyperionConfig" class="flex flex-col gap-4 hidden">
+      <!-- DW LEDs Configuration (shown when DW LEDs is selected) -->
+      <div id="dwLedsConfig" class="flex flex-col gap-4 hidden">
         <label class="flex flex-col gap-1.5">
-          <span class="text-slate-700 text-sm font-medium leading-normal">Hyperion IP Address</span>
-          <div class="relative flex-1">
-            <input
-              id="hyperionIpInput"
-              class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 pr-10 text-base font-normal leading-normal transition-colors"
-              placeholder="e.g., 192.168.1.200"
-              value=""
-            />
-            <button
-              type="button"
-              onclick="document.getElementById('hyperionIpInput').value='';"
-              class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
-              aria-label="Clear Hyperion IP"
-            >
-              <span class="material-icons">close</span>
-            </button>
-          </div>
-        </label>
-        <label class="flex flex-col gap-1.5">
-          <span class="text-slate-700 text-sm font-medium leading-normal">Hyperion Port</span>
+          <span class="text-slate-700 text-sm font-medium leading-normal">Number of LEDs</span>
           <input
-            id="hyperionPortInput"
+            id="dwLedNumLeds"
             type="number"
             class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-normal leading-normal transition-colors"
-            placeholder="8090"
-            value="8090"
+            placeholder="60"
+            value="60"
             min="1"
-            max="65535"
+            max="1000"
           />
           <p class="text-xs text-slate-500">
-            Enter the JSON-RPC port (default: 8090)
+            Total number of LEDs in your strip
+          </p>
+        </label>
+        <label class="flex flex-col gap-1.5">
+          <span class="text-slate-700 text-sm font-medium leading-normal">GPIO Pin</span>
+          <select
+            id="dwLedGpioPin"
+            class="form-select flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 px-4 text-base font-normal leading-normal transition-colors"
+          >
+            <option value="12">GPIO 12 (PWM0)</option>
+            <option value="13">GPIO 13 (PWM1)</option>
+            <option value="18">GPIO 18 (PWM0)</option>
+            <option value="19">GPIO 19 (PWM1)</option>
+          </select>
+          <p class="text-xs text-slate-500">
+            Select a PWM-capable GPIO pin for best performance
           </p>
         </label>
       </div>

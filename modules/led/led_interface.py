@@ -1,13 +1,13 @@
 """
-Unified LED interface for different LED control systems (WLED, Hyperion, etc.)
+Unified LED interface for different LED control systems
 Provides a common abstraction layer for pattern manager integration.
 """
 from typing import Optional, Literal
 from modules.led.led_controller import LEDController, effect_loading as wled_loading, effect_idle as wled_idle, effect_connected as wled_connected, effect_playing as wled_playing
-from modules.led.hyperion_controller import HyperionController, effect_loading as hyperion_loading, effect_idle as hyperion_idle, effect_connected as hyperion_connected, effect_playing as hyperion_playing
+from modules.led.dw_led_controller import DWLEDController, effect_loading as dw_led_loading, effect_idle as dw_led_idle, effect_connected as dw_led_connected, effect_playing as dw_led_playing
 
 
-LEDProviderType = Literal["wled", "hyperion", "none"]
+LEDProviderType = Literal["wled", "dw_leds", "none"]
 
 
 class LEDInterface:
@@ -16,30 +16,44 @@ class LEDInterface:
     Automatically delegates to the appropriate controller based on configuration.
     """
 
-    def __init__(self, provider: LEDProviderType = "none", ip_address: Optional[str] = None, port: Optional[int] = None):
+    def __init__(self, provider: LEDProviderType = "none", ip_address: Optional[str] = None,
+                 num_leds: Optional[int] = None, gpio_pin: Optional[int] = None, brightness: Optional[float] = None):
         self.provider = provider
         self._controller = None
 
         if provider == "wled" and ip_address:
             self._controller = LEDController(ip_address)
-        elif provider == "hyperion" and ip_address:
-            port = port or 8090  # Default Hyperion port
-            self._controller = HyperionController(ip_address, port)
+        elif provider == "dw_leds":
+            # DW LEDs uses local GPIO, no IP needed
+            num_leds = num_leds or 60
+            gpio_pin = gpio_pin or 12
+            brightness = brightness if brightness is not None else 0.35
+            self._controller = DWLEDController(num_leds, gpio_pin, brightness)
 
     @property
     def is_configured(self) -> bool:
         """Check if LED controller is configured"""
         return self._controller is not None
 
-    def update_config(self, provider: LEDProviderType, ip_address: Optional[str] = None, port: Optional[int] = None):
+    def update_config(self, provider: LEDProviderType, ip_address: Optional[str] = None,
+                     num_leds: Optional[int] = None, gpio_pin: Optional[int] = None, brightness: Optional[float] = None):
         """Update LED provider configuration"""
         self.provider = provider
 
+        # Stop existing controller if switching providers
+        if self._controller and hasattr(self._controller, 'stop'):
+            try:
+                self._controller.stop()
+            except:
+                pass
+
         if provider == "wled" and ip_address:
             self._controller = LEDController(ip_address)
-        elif provider == "hyperion" and ip_address:
-            port = port or 8090
-            self._controller = HyperionController(ip_address, port)
+        elif provider == "dw_leds":
+            num_leds = num_leds or 60
+            gpio_pin = gpio_pin or 12
+            brightness = brightness if brightness is not None else 0.35
+            self._controller = DWLEDController(num_leds, gpio_pin, brightness)
         else:
             self._controller = None
 
@@ -50,8 +64,8 @@ class LEDInterface:
 
         if self.provider == "wled":
             return wled_loading(self._controller)
-        elif self.provider == "hyperion":
-            return hyperion_loading(self._controller)
+        elif self.provider == "dw_leds":
+            return dw_led_loading(self._controller)
         return False
 
     def effect_idle(self, effect_name: Optional[str] = None) -> bool:
@@ -61,8 +75,8 @@ class LEDInterface:
 
         if self.provider == "wled":
             return wled_idle(self._controller)
-        elif self.provider == "hyperion":
-            return hyperion_idle(self._controller, effect_name)
+        elif self.provider == "dw_leds":
+            return dw_led_idle(self._controller, effect_name)
         return False
 
     def effect_connected(self) -> bool:
@@ -72,8 +86,8 @@ class LEDInterface:
 
         if self.provider == "wled":
             return wled_connected(self._controller)
-        elif self.provider == "hyperion":
-            return hyperion_connected(self._controller)
+        elif self.provider == "dw_leds":
+            return dw_led_connected(self._controller)
         return False
 
     def effect_playing(self, effect_name: Optional[str] = None) -> bool:
@@ -83,8 +97,8 @@ class LEDInterface:
 
         if self.provider == "wled":
             return wled_playing(self._controller)
-        elif self.provider == "hyperion":
-            return hyperion_playing(self._controller, effect_name)
+        elif self.provider == "dw_leds":
+            return dw_led_playing(self._controller, effect_name)
         return False
 
     def set_power(self, state: int) -> dict:
@@ -101,8 +115,8 @@ class LEDInterface:
 
         if self.provider == "wled":
             return self._controller.check_wled_status()
-        elif self.provider == "hyperion":
-            return self._controller.check_hyperion_status()
+        elif self.provider == "dw_leds":
+            return self._controller.check_status()
 
         return {"connected": False, "message": "Unknown provider"}
 

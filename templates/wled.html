@@ -105,7 +105,7 @@
           <div class="flex flex-col items-center gap-4">
             <span class="material-icons text-6xl text-gray-500">lightbulb</span>
             <h2 class="text-2xl font-semibold text-gray-700">LED Controller Not Configured</h2>
-            <p class="text-gray-500 max-w-md">Please configure your LED controller (WLED or Hyperion) in the Settings page.</p>
+            <p class="text-gray-500 max-w-md">Please configure your LED controller (WLED or DW LEDs) in the Settings page.</p>
             <a href="/settings" class="mt-4 flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-md hover:bg-blue-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2">
               <span class="material-icons">settings</span>
               Go to Settings
@@ -130,15 +130,15 @@
     </div>
   </section>
 
-  <!-- Hyperion Controls -->
-  <section id="hyperion-container" class="bg-white rounded-xl shadow-sm overflow-hidden hidden">
+  <!-- DW LEDs Controls -->
+  <section id="dw-leds-container" class="bg-white rounded-xl shadow-sm overflow-hidden hidden">
     <div class="px-6 py-5 space-y-6">
       <h2 class="text-slate-800 text-xl sm:text-2xl font-semibold leading-tight tracking-[-0.01em]">
-        Hyperion Control
+        DW LEDs Control
       </h2>
 
       <!-- Connection Status -->
-      <div id="hyperion-status" class="p-4 rounded-lg bg-gray-100 border border-slate-200">
+      <div id="dw-leds-status" class="p-4 rounded-lg bg-gray-100 border border-slate-200">
         <div class="flex items-center gap-2">
           <span class="material-icons text-gray-500">info</span>
           <span class="text-sm text-gray-700">Checking connection...</span>
@@ -150,9 +150,9 @@
         <!-- Power Control -->
         <div class="flex flex-col gap-3">
           <h3 class="text-slate-800 text-base font-semibold">Power</h3>
-          <button id="hyperion-power-toggle" class="flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-3 text-sm font-semibold text-white shadow-md hover:bg-green-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2">
+          <button id="dw-leds-power-toggle" class="flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-3 text-sm font-semibold text-white shadow-md hover:bg-green-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2">
             <span class="material-icons">power_settings_new</span>
-            <span id="power-button-text">Turn ON</span>
+            <span id="dw-leds-power-text">Turn ON</span>
           </button>
         </div>
 
@@ -160,9 +160,9 @@
         <div class="flex flex-col gap-3">
           <div class="flex items-center justify-between">
             <h3 class="text-slate-800 text-base font-semibold">Brightness</h3>
-            <span id="brightness-value" class="text-sm font-medium text-slate-600">100%</span>
+            <span id="dw-leds-brightness-value" class="text-sm font-medium text-slate-600">35%</span>
           </div>
-          <input type="range" id="hyperion-brightness" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+          <input type="range" id="dw-leds-brightness" min="0" max="100" value="35" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
         </div>
       </div>
 
@@ -171,10 +171,10 @@
         <h3 class="text-slate-800 text-base font-semibold">Color Picker</h3>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div class="flex items-center gap-3">
-            <input type="color" id="hyperion-color" value="#ff0000" class="w-20 h-20 rounded-lg border-2 border-slate-300 cursor-pointer">
+            <input type="color" id="dw-leds-color" value="#ff0000" class="w-20 h-20 rounded-lg border-2 border-slate-300 cursor-pointer">
             <div class="flex flex-col gap-1">
-              <span id="color-hex-display" class="text-sm font-mono font-semibold text-slate-700">#FF0000</span>
-              <button id="hyperion-set-color" class="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-md hover:bg-blue-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2">
+              <span id="dw-leds-color-hex" class="text-sm font-mono font-semibold text-slate-700">#FF0000</span>
+              <button id="dw-leds-set-color" class="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-md hover:bg-blue-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2">
                 <span class="material-icons text-base">palette</span>
                 <span>Apply</span>
               </button>
@@ -185,33 +185,53 @@
           <div class="flex flex-col gap-2">
             <span class="text-sm font-medium text-slate-600">Quick Colors</span>
             <div class="grid grid-cols-4 gap-2">
-              <button class="quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ff0000" style="background-color: #ff0000;" title="Red"></button>
-              <button class="quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#00ff00" style="background-color: #00ff00;" title="Green"></button>
-              <button class="quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#0000ff" style="background-color: #0000ff;" title="Blue"></button>
-              <button class="quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ffff00" style="background-color: #ffff00;" title="Yellow"></button>
-              <button class="quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ff00ff" style="background-color: #ff00ff;" title="Magenta"></button>
-              <button class="quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#00ffff" style="background-color: #00ffff;" title="Cyan"></button>
-              <button class="quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ff8000" style="background-color: #ff8000;" title="Orange"></button>
-              <button class="quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ffffff" style="background-color: #ffffff;" title="White"></button>
+              <button class="dw-leds-quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ff0000" style="background-color: #ff0000;" title="Red"></button>
+              <button class="dw-leds-quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#00ff00" style="background-color: #00ff00;" title="Green"></button>
+              <button class="dw-leds-quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#0000ff" style="background-color: #0000ff;" title="Blue"></button>
+              <button class="dw-leds-quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ffff00" style="background-color: #ffff00;" title="Yellow"></button>
+              <button class="dw-leds-quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ff00ff" style="background-color: #ff00ff;" title="Magenta"></button>
+              <button class="dw-leds-quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#00ffff" style="background-color: #00ffff;" title="Cyan"></button>
+              <button class="dw-leds-quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ff8000" style="background-color: #ff8000;" title="Orange"></button>
+              <button class="dw-leds-quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ffffff" style="background-color: #ffffff;" title="White"></button>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Effects -->
+      <!-- Effects and Palettes -->
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div class="flex flex-col gap-3">
-          <h3 class="text-slate-800 text-base font-semibold">Effects</h3>
-          <select id="hyperion-effect-select" class="form-select w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:outline-0 focus:ring-2 focus:ring-blue-500">
+          <h3 class="text-slate-800 text-base font-semibold">Effect</h3>
+          <select id="dw-leds-effect-select" class="form-select w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:outline-0 focus:ring-2 focus:ring-blue-500">
             <option value="">Loading effects...</option>
           </select>
         </div>
         <div class="flex flex-col gap-3">
-          <h3 class="text-slate-800 text-base font-semibold opacity-0 pointer-events-none">Spacer</h3>
-          <button id="hyperion-set-effect" class="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-md hover:bg-blue-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2">
-            <span class="material-icons">auto_awesome</span>
-            <span>Apply Effect</span>
-          </button>
+          <h3 class="text-slate-800 text-base font-semibold">Palette</h3>
+          <select id="dw-leds-palette-select" class="form-select w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:outline-0 focus:ring-2 focus:ring-blue-500">
+            <option value="">Loading palettes...</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Speed and Intensity -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        <!-- Speed Control -->
+        <div class="flex flex-col gap-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-slate-800 text-base font-semibold">Speed</h3>
+            <span id="dw-leds-speed-value" class="text-sm font-medium text-slate-600">128</span>
+          </div>
+          <input type="range" id="dw-leds-speed" min="0" max="255" value="128" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+        </div>
+
+        <!-- Intensity Control -->
+        <div class="flex flex-col gap-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-slate-800 text-base font-semibold">Intensity</h3>
+            <span id="dw-leds-intensity-value" class="text-sm font-medium text-slate-600">128</span>
+          </div>
+          <input type="range" id="dw-leds-intensity" min="0" max="255" value="128" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
         </div>
       </div>
 
@@ -224,21 +244,21 @@
           <!-- Idle Effect -->
           <div class="flex flex-col gap-2">
             <label class="text-sm font-medium text-slate-700">Idle Effect</label>
-            <select id="hyperion-idle-effect" class="form-select w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-0 focus:ring-2 focus:ring-blue-500">
-              <option value="">Default (Off)</option>
+            <select id="dw-leds-idle-effect" class="form-select w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-0 focus:ring-2 focus:ring-blue-500">
+              <option value="off">Off</option>
             </select>
           </div>
 
           <!-- Playing Effect -->
           <div class="flex flex-col gap-2">
             <label class="text-sm font-medium text-slate-700">Playing Effect</label>
-            <select id="hyperion-playing-effect" class="form-select w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-0 focus:ring-2 focus:ring-blue-500">
-              <option value="">Default (Off)</option>
+            <select id="dw-leds-playing-effect" class="form-select w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-0 focus:ring-2 focus:ring-blue-500">
+              <option value="off">Off</option>
             </select>
           </div>
         </div>
 
-        <button id="save-hyperion-effects" class="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-blue-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2">
+        <button id="dw-leds-save-effects" class="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-blue-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2">
           <span class="material-icons text-base">save</span>
           <span>Save Effect Settings</span>
         </button>

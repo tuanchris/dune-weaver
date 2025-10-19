@@ -5,7 +5,7 @@ services:
     restart: always
     # ports:
     #   - "8080:8080" # Map port 8080 of the container to 8080 of the host (access via http://localhost:8080)
-    network_mode: "host" # Use host network to access Hyperion on localhost
+    network_mode: "host" # Use host network for device access
     volumes:
       - .:/app
       # Mount timezone file from host for Still Sands scheduling
@@ -15,7 +15,11 @@ services:
       - /run/systemd/system:/run/systemd/system:ro
       - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket:ro
       - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      # Mount GPIO for DW LEDs (NeoPixel control)
+      - /sys:/sys
     devices:
-      - "/dev/ttyACM0:/dev/ttyACM0"
-    privileged: true
+      - "/dev/ttyACM0:/dev/ttyACM0"  # Serial device for stepper motors
+      - "/dev/gpiomem:/dev/gpiomem"  # GPIO memory access for DW LEDs
+      - "/dev/mem:/dev/mem"          # Direct memory access for PWM
+    privileged: true  # Required for GPIO/PWM access
     container_name: dune-weaver

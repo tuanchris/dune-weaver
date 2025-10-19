@@ -40,12 +40,15 @@ class AppState:
         self.conn = None
         self.port = None
         self.wled_ip = None
-        self.hyperion_ip = "127.0.0.1"
-        self.hyperion_port = 8090
-        self.led_provider = "none"  # "wled", "hyperion", or "none"
+        self.led_provider = "none"  # "wled", "dw_leds", or "none"
         self.led_controller = None
-        self.hyperion_idle_effect = "off"  # Effect to show when idle ("off" = clear priority)
-        self.hyperion_playing_effect = "off"  # Effect to show when playing ("off" = clear priority)
+
+        # DW LED settings
+        self.dw_led_num_leds = 60  # Number of LEDs in strip
+        self.dw_led_gpio_pin = 12  # GPIO pin (12, 13, 18, or 19)
+        self.dw_led_brightness = 35  # Brightness 0-100
+        self.dw_led_idle_effect = "off"  # Effect to show when idle
+        self.dw_led_playing_effect = "off"  # Effect to show when playing
         self.skip_requested = False
         self.table_type = None
         self._playlist_mode = "loop"
@@ -195,11 +198,12 @@ class AppState:
             "custom_clear_from_out": self.custom_clear_from_out,
             "port": self.port,
             "wled_ip": self.wled_ip,
-            "hyperion_ip": self.hyperion_ip,
-            "hyperion_port": self.hyperion_port,
             "led_provider": self.led_provider,
-            "hyperion_idle_effect": self.hyperion_idle_effect,
-            "hyperion_playing_effect": self.hyperion_playing_effect,
+            "dw_led_num_leds": self.dw_led_num_leds,
+            "dw_led_gpio_pin": self.dw_led_gpio_pin,
+            "dw_led_brightness": self.dw_led_brightness,
+            "dw_led_idle_effect": self.dw_led_idle_effect,
+            "dw_led_playing_effect": self.dw_led_playing_effect,
             "app_name": self.app_name,
             "auto_play_enabled": self.auto_play_enabled,
             "auto_play_playlist": self.auto_play_playlist,
@@ -239,11 +243,12 @@ class AppState:
         self.custom_clear_from_out = data.get("custom_clear_from_out", None)
         self.port = data.get("port", None)
         self.wled_ip = data.get('wled_ip', None)
-        self.hyperion_ip = data.get('hyperion_ip', "127.0.0.1")
-        self.hyperion_port = data.get('hyperion_port', 8090)
         self.led_provider = data.get('led_provider', "none")
-        self.hyperion_idle_effect = data.get('hyperion_idle_effect', "off")
-        self.hyperion_playing_effect = data.get('hyperion_playing_effect', "off")
+        self.dw_led_num_leds = data.get('dw_led_num_leds', 60)
+        self.dw_led_gpio_pin = data.get('dw_led_gpio_pin', 12)
+        self.dw_led_brightness = data.get('dw_led_brightness', 35)
+        self.dw_led_idle_effect = data.get('dw_led_idle_effect', "off")
+        self.dw_led_playing_effect = data.get('dw_led_playing_effect', "off")
         self.app_name = data.get("app_name", "Dune Weaver")
         self.auto_play_enabled = data.get("auto_play_enabled", False)
         self.auto_play_playlist = data.get("auto_play_playlist", None)
