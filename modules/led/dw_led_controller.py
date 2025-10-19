@@ -363,6 +363,10 @@ class DWLEDController:
 
     def check_status(self) -> Dict:
         """Get current controller status"""
+        # Attempt initialization if not already initialized
+        if not self._initialized:
+            self._initialize_hardware()
+
         status = {
             "connected": self._initialized,
             "power_on": self._powered_on,

@@ -13,5 +13,7 @@ websockets>=11.0.3  # Required for FastAPI WebSocket support
 requests>=2.31.0
 Pillow
 aiohttp
+# GPIO/NeoPixel support for DW LEDs
+RPi.GPIO>=0.7.1  # Required by Adafruit Blinka on Raspberry Pi
 adafruit-circuitpython-neopixel>=6.3.0
 Adafruit-Blinka>=8.0.0

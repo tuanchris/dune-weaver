@@ -1164,6 +1164,14 @@ async def set_led_config(request: LEDConfigRequest):
         )
         logger.info(f"DW LEDs configured: {state.dw_led_num_leds} LEDs on GPIO{state.dw_led_gpio_pin}")
 
+        # Check if initialization succeeded by checking status
+        status = state.led_controller.check_status()
+        if not status.get("connected", False) and status.get("error"):
+            error_msg = status["error"]
+            state.led_controller = None
+            state.led_provider = "none"
+            raise HTTPException(status_code=400, detail=error_msg)
+
     else:  # none
         state.wled_ip = None
         state.led_controller = None
