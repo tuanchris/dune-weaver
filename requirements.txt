@@ -15,5 +15,6 @@ Pillow
 aiohttp
 # GPIO/NeoPixel support for DW LEDs
 RPi.GPIO>=0.7.1  # Required by Adafruit Blinka on Raspberry Pi
+rpi-ws281x>=5.0.0  # Low-level NeoPixel/WS281x driver
 adafruit-circuitpython-neopixel>=6.3.0
 Adafruit-Blinka>=8.0.0
