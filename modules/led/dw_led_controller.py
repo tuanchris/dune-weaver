@@ -553,9 +553,11 @@ def effect_idle(controller: DWLEDController, effect_settings: Optional[dict] = N
                 g3 = int(color3[3:5], 16)
                 b3 = int(color3[5:7], 16)
 
-                controller.set_color_slot(0, r1, g1, b1)
-                controller.set_color_slot(1, r2, g2, b2)
-                controller.set_color_slot(2, r3, g3, b3)
+                controller.set_colors(
+                    color1=(r1, g1, b1),
+                    color2=(r2, g2, b2),
+                    color3=(r3, g3, b3)
+                )
 
             return True
 
@@ -614,9 +616,11 @@ def effect_playing(controller: DWLEDController, effect_settings: Optional[dict] 
                 g3 = int(color3[3:5], 16)
                 b3 = int(color3[5:7], 16)
 
-                controller.set_color_slot(0, r1, g1, b1)
-                controller.set_color_slot(1, r2, g2, b2)
-                controller.set_color_slot(2, r3, g3, b3)
+                controller.set_colors(
+                    color1=(r1, g1, b1),
+                    color2=(r2, g2, b2),
+                    color3=(r3, g3, b3)
+                )
 
             return True
 

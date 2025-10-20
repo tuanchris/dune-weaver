@@ -198,7 +198,9 @@ async def lifespan(app: FastAPI):
                 # Turn off LEDs if timeout expired
                 if idle_seconds >= timeout_seconds:
                     status = state.led_controller.check_status()
-                    if status.get("power", False):  # Only turn off if currently on
+                    # Check both "power" (WLED) and "power_on" (DW LEDs) keys
+                    is_powered_on = status.get("power", False) or status.get("power_on", False)
+                    if is_powered_on:  # Only turn off if currently on
                         logger.info(f"Idle timeout ({state.dw_led_idle_timeout_minutes} minutes) expired, turning off LEDs")
                         state.led_controller.set_power(0)
                         # Reset activity time to prevent repeated turn-off attempts
