@@ -675,6 +675,397 @@ def mode_juggle(seg: Segment) -> int:
 
     return FRAMETIME
 
+def mode_meteor(seg: Segment) -> int:
+    """Meteor shower effect with trails"""
+    if seg.call == 0:
+        seg.aux0 = 0
+        seg.aux1 = 0
+
+    # Fade all pixels
+    seg.fade_out(200)
+
+    size = 1 + ((seg.intensity * seg.length) >> 8)
+    cycle_time = 10 + (255 - seg.speed)
+    iteration = seg.now() // cycle_time
+
+    if iteration != seg.step:
+        seg.aux0 = (seg.aux0 + 1) % (seg.length + size)
+        seg.step = iteration
+
+    # Draw meteor head and tail
+    if seg.aux0 < seg.length:
+        for i in range(size):
+            pos = seg.aux0 - i
+            if 0 <= pos < seg.length:
+                brightness = 255 - (i * 200 // max(1, size))
+                color = color_blend(0, seg.color_from_palette(pos), brightness)
+                # Add to existing color for brighter effect
+                existing = seg.get_pixel_color(pos)
+                seg.set_pixel_color(pos, color_add(existing, color))
+
+    return FRAMETIME
+
+def mode_pride(seg: Segment) -> int:
+    """Pride flag colors moving effect"""
+    counter = seg.now() * ((seg.speed >> 3) + 1)
+
+    # Pride flag colors (6 stripes)
+    pride_colors = [
+        (0xE4, 0x00, 0x3A),  # Red
+        (0xFF, 0x8C, 0x00),  # Orange
+        (0xFF, 0xED, 0x00),  # Yellow
+        (0x00, 0x81, 0x1F),  # Green
+        (0x00, 0x4C, 0xFF),  # Blue
+        (0x76, 0x01, 0x89),  # Purple
+    ]
+
+    for i in range(seg.length):
+        # Determine which stripe this pixel belongs to
+        stripe_size = max(1, seg.length // 6)
+        offset = (counter >> 7) & 0xFF
+        stripe_idx = ((i + offset) // stripe_size) % 6
+
+        r, g, b = pride_colors[stripe_idx]
+        color = (r << 16) | (g << 8) | b
+
+        # Intensity controls blending with background
+        if seg.intensity < 255:
+            color = color_blend(seg.get_color(1), color, seg.intensity)
+
+        seg.set_pixel_color(i, color)
+
+    return FRAMETIME
+
+def mode_pacifica(seg: Segment) -> int:
+    """Ocean/water simulation"""
+    if seg.call == 0:
+        seg.data = [0] * seg.length
+
+    counter = seg.now() * ((seg.speed >> 4) + 1)
+
+    for i in range(seg.length):
+        # Create multiple layered waves
+        wave1 = sin8(((i * 5) + (counter >> 5)) & 0xFF)
+        wave2 = sin8(((i * 3) + (counter >> 3)) & 0xFF)
+        wave3 = sin8(((i * 7) + (counter >> 6)) & 0xFF)
+
+        # Combine waves
+        brightness = (wave1 + wave2 + wave3) // 3
+
+        # Blue-green ocean colors
+        if brightness < 64:
+            # Deep blue
+            r, g, b = 0, 0, 60 + brightness
+        elif brightness < 128:
+            # Blue-cyan
+            val = brightness - 64
+            r, g, b = 0, val * 2, 100 + val
+        else:
+            # Cyan-white (foam)
+            val = brightness - 128
+            r, g, b = val, 128 + val, 180 + (val // 2)
+
+        # Apply intensity
+        brightness = 128 + ((brightness - 128) * seg.intensity // 255)
+        color = (r << 16) | (g << 8) | b
+        color = color_blend(0, color, brightness)
+
+        seg.set_pixel_color(i, color)
+
+    return FRAMETIME
+
+def mode_plasma(seg: Segment) -> int:
+    """Plasma effect"""
+    counter = seg.now() * ((seg.speed >> 3) + 1)
+
+    for i in range(seg.length):
+        # Create plasma using multiple sine waves
+        phase1 = sin8(((i * 16) + (counter >> 5)) & 0xFF)
+        phase2 = sin8(((i * 8) + (counter >> 6)) & 0xFF)
+        phase3 = sin8((counter >> 4) & 0xFF)
+
+        # Combine phases
+        hue = (phase1 + phase2 + phase3) & 0xFF
+        color = color_wheel(hue)
+
+        # Intensity controls saturation
+        if seg.intensity < 255:
+            color = color_blend(color, WHITE, 255 - seg.intensity)
+
+        seg.set_pixel_color(i, color)
+
+    return FRAMETIME
+
+def mode_dissolve(seg: Segment) -> int:
+    """Random pixel dissolve/fade"""
+    if seg.call == 0:
+        seg.data = [0] * seg.length
+        for i in range(seg.length):
+            seg.data[i] = random.randint(0, 255)
+
+    cycle_time = 20 + (255 - seg.speed)
+    iteration = seg.now() // cycle_time
+
+    if iteration != seg.step:
+        # Randomly update some pixels
+        for i in range(seg.length):
+            if random.randint(0, 255) < seg.intensity:
+                seg.data[i] = random.randint(0, 255)
+
+        seg.step = iteration
+
+    for i in range(seg.length):
+        brightness = seg.data[i]
+        color = color_blend(seg.get_color(1),
+                          seg.color_from_palette(i),
+                          brightness)
+        seg.set_pixel_color(i, color)
+
+    return FRAMETIME
+
+def mode_glitter(seg: Segment) -> int:
+    """Sparkle glitter overlay"""
+    # Fill with base color
+    for i in range(seg.length):
+        seg.set_pixel_color(i, seg.color_from_palette(i))
+
+    # Add random sparkles based on intensity
+    sparkle_chance = seg.intensity
+    num_sparkles = max(1, (seg.length * sparkle_chance) // 255)
+
+    for _ in range(num_sparkles):
+        if random.randint(0, 255) < seg.speed:
+            pos = random.randint(0, seg.length - 1)
+            seg.set_pixel_color(pos, WHITE)
+
+    return FRAMETIME
+
+def mode_confetti(seg: Segment) -> int:
+    """Random colored pixels"""
+    seg.fade_out(224)
+
+    cycle_time = 10 + (255 - seg.speed)
+    iteration = seg.now() // cycle_time
+
+    if iteration != seg.step:
+        # Add random confetti
+        density = 1 + (seg.intensity >> 5)
+        for _ in range(density):
+            pos = random.randint(0, seg.length - 1)
+            hue = random.randint(0, 255)
+            color = color_wheel(hue)
+            seg.set_pixel_color(pos, color)
+
+        seg.step = iteration
+
+    return FRAMETIME
+
+def mode_sinelon(seg: Segment) -> int:
+    """Sine wave colored dot"""
+    seg.fade_out(224)
+
+    counter = seg.now() * ((seg.speed >> 2) + 1)
+    phase = (counter >> 8) & 0xFFFF
+
+    # Calculate position using sine
+    pos = (sin16(phase) + 32768) * seg.length // 65536
+    pos = max(0, min(seg.length - 1, pos))
+
+    # Color rotates
+    hue = (counter >> 7) & 0xFF
+    color = color_wheel(hue)
+
+    # Intensity controls trail length (via fade)
+    if seg.intensity < 255:
+        color = color_blend(0, color, seg.intensity)
+
+    seg.set_pixel_color(pos, color)
+
+    return FRAMETIME
+
+def mode_candle(seg: Segment) -> int:
+    """Flickering candle simulation"""
+    if seg.call == 0:
+        seg.data = [128] * seg.length
+
+    # Random flicker for each pixel
+    for i in range(seg.length):
+        # Small random changes
+        change = random.randint(-20, 20)
+        seg.data[i] = max(30, min(255, seg.data[i] + change))
+
+        # Speed affects flicker rate
+        if seg.speed > 128 and random.randint(0, 255) < (seg.speed - 128):
+            seg.data[i] = random.randint(50, 200)
+
+        # Warm orange/yellow color
+        brightness = seg.data[i]
+        r = brightness
+        g = (brightness * 2) // 3
+        b = (brightness * seg.intensity) // 512  # Intensity controls blue
+
+        color = (r << 16) | (g << 8) | b
+        seg.set_pixel_color(i, color)
+
+    return FRAMETIME
+
+def mode_aurora(seg: Segment) -> int:
+    """Northern lights effect"""
+    if seg.call == 0:
+        seg.data = [0] * seg.length
+
+    counter = seg.now() * ((seg.speed >> 4) + 1)
+
+    for i in range(seg.length):
+        # Multiple slow-moving waves
+        wave1 = sin8(((i * 3) + (counter >> 6)) & 0xFF)
+        wave2 = sin8(((i * 5) + (counter >> 7) + 85) & 0xFF)
+        wave3 = sin8(((i * 2) + (counter >> 5) + 170) & 0xFF)
+
+        # Aurora colors: green, blue, purple
+        brightness = (wave1 + wave2 + wave3) // 3
+
+        if brightness < 85:
+            # Green
+            r, g, b = 0, brightness * 2, brightness // 2
+        elif brightness < 170:
+            # Blue-green
+            val = brightness - 85
+            r, g, b = 0, 100 + val, 100 + val
+        else:
+            # Purple-pink
+            val = brightness - 170
+            r, g, b = val * 2, val, 150 + val
+
+        # Apply intensity for brightness variation
+        brightness_mod = 128 + ((brightness - 128) * seg.intensity // 255)
+        color = (r << 16) | (g << 8) | b
+        color = color_blend(0, color, brightness_mod)
+
+        seg.set_pixel_color(i, color)
+
+    return FRAMETIME
+
+def mode_rain(seg: Segment) -> int:
+    """Rain drops falling"""
+    if seg.call == 0:
+        seg.data = [0] * seg.length
+        seg.aux0 = 0
+
+    seg.fade_out(235)
+
+    cycle_time = 15 + (255 - seg.speed)
+    iteration = seg.now() // cycle_time
+
+    if iteration != seg.step:
+        # New rain drops
+        if random.randint(0, 255) < seg.intensity:
+            pos = random.randint(0, min(5, seg.length - 1))  # Start near beginning
+            seg.data[pos] = 255
+
+        # Move drops down
+        new_data = [0] * seg.length
+        for i in range(seg.length - 1):
+            if seg.data[i] > 0:
+                # Drop moves forward
+                if i + 1 < seg.length:
+                    new_data[i + 1] = seg.data[i] - 10
+        seg.data = new_data
+
+        seg.step = iteration
+
+    # Draw rain drops (blue)
+    for i in range(seg.length):
+        if seg.data[i] > 0:
+            brightness = seg.data[i]
+            color = color_blend(0, seg.color_from_palette(i), brightness)
+            seg.set_pixel_color(i, color)
+
+    return FRAMETIME
+
+def mode_halloween(seg: Segment) -> int:
+    """Halloween orange and purple"""
+    counter = seg.now() * ((seg.speed >> 3) + 1)
+
+    # Alternating orange and purple
+    orange = (0xFF << 16) | (0x44 << 8) | 0x00
+    purple = (0x88 << 16) | (0x00 << 8) | 0xFF
+
+    for i in range(seg.length):
+        # Create moving pattern
+        phase = ((i * 255 // max(1, seg.length)) + (counter >> 7)) & 0xFF
+        wave = sin8(phase)
+
+        # Blend between orange and purple
+        if wave < 128:
+            color = orange
+        else:
+            color = purple
+
+        # Intensity controls blending smoothness
+        if seg.intensity > 0:
+            blend_amt = (wave * seg.intensity) // 255
+            color = color_blend(orange, purple, blend_amt)
+
+        seg.set_pixel_color(i, color)
+
+    return FRAMETIME
+
+def mode_noise(seg: Segment) -> int:
+    """Perlin-like noise pattern"""
+    if seg.call == 0:
+        seg.data = [random.randint(0, 255) for _ in range(seg.length)]
+
+    cycle_time = 20 + (255 - seg.speed) // 2
+    iteration = seg.now() // cycle_time
+
+    if iteration != seg.step:
+        # Smooth noise by averaging neighbors
+        new_data = seg.data.copy()
+        for i in range(1, seg.length - 1):
+            avg = (seg.data[i - 1] + seg.data[i] * 2 + seg.data[i + 1]) // 4
+            variation = random.randint(-20, 20)
+            new_data[i] = max(0, min(255, avg + variation))
+
+        # Occasionally inject new random values
+        if random.randint(0, 255) < seg.intensity:
+            pos = random.randint(0, seg.length - 1)
+            new_data[pos] = random.randint(0, 255)
+
+        seg.data = new_data
+        seg.step = iteration
+
+    # Map noise to colors
+    for i in range(seg.length):
+        hue = seg.data[i]
+        color = color_wheel(hue)
+        seg.set_pixel_color(i, color)
+
+    return FRAMETIME
+
+def mode_funky_plank(seg: Segment) -> int:
+    """Multiple colored bars moving"""
+    if seg.call == 0:
+        seg.aux0 = 0
+
+    cycle_time = 10 + (255 - seg.speed)
+    iteration = seg.now() // cycle_time
+
+    if iteration != seg.step:
+        seg.aux0 = (seg.aux0 + 1) % seg.length
+        seg.step = iteration
+
+    num_planks = max(2, 1 + (seg.intensity >> 5))
+    plank_size = max(1, seg.length // num_planks)
+
+    for i in range(seg.length):
+        plank_idx = ((i + seg.aux0) // plank_size) % num_planks
+        hue = (plank_idx * 256 // num_planks) & 0xFF
+        color = color_wheel(hue)
+        seg.set_pixel_color(i, color)
+
+    return FRAMETIME
+
 # Effect registry
 EFFECTS = {
     0: ("Static", mode_static),
@@ -708,6 +1099,20 @@ EFFECTS = {
     28: ("Waves", mode_waves),
     29: ("BPM", mode_bpm),
     30: ("Juggle", mode_juggle),
+    31: ("Meteor", mode_meteor),
+    32: ("Pride", mode_pride),
+    33: ("Pacifica", mode_pacifica),
+    34: ("Plasma", mode_plasma),
+    35: ("Dissolve", mode_dissolve),
+    36: ("Glitter", mode_glitter),
+    37: ("Confetti", mode_confetti),
+    38: ("Sinelon", mode_sinelon),
+    39: ("Candle", mode_candle),
+    40: ("Aurora", mode_aurora),
+    41: ("Rain", mode_rain),
+    42: ("Halloween", mode_halloween),
+    43: ("Noise", mode_noise),
+    44: ("Funky Plank", mode_funky_plank),
 }
 
 def get_effect(effect_id: int):
