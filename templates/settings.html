@@ -525,6 +525,16 @@ input:checked + .slider:before {
 
       <!-- DW LEDs Configuration (shown when DW LEDs is selected) -->
       <div id="dwLedsConfig" class="flex flex-col gap-4 hidden">
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <div class="flex items-start gap-2">
+            <span class="material-icons text-blue-600 text-base">info</span>
+            <div class="text-xs text-blue-700">
+              <p class="font-medium text-blue-800">Supported LED Strips: WS281x Only</p>
+              <p class="mt-1">Compatible with WS2811, WS2812, WS2812B, WS2813, WS2815 (12V), and other WS281x RGB LED strips. RGBW strips (SK6812, SK6812W) are not supported.</p>
+            </div>
+          </div>
+        </div>
+
         <label class="flex flex-col gap-1.5">
           <span class="text-slate-700 text-sm font-medium leading-normal">Number of LEDs</span>
           <input
@@ -537,7 +547,7 @@ input:checked + .slider:before {
             max="1000"
           />
           <p class="text-xs text-slate-500">
-            Total number of LEDs in your strip
+            Total number of LEDs in your WS281x strip
           </p>
         </label>
         <label class="flex flex-col gap-1.5">
@@ -552,7 +562,24 @@ input:checked + .slider:before {
             <option value="19">GPIO 19 (PWM1)</option>
           </select>
           <p class="text-xs text-slate-500">
-            Select a PWM-capable GPIO pin for best performance
+            Select a PWM-capable GPIO pin for WS281x timing
+          </p>
+        </label>
+        <label class="flex flex-col gap-1.5">
+          <span class="text-slate-700 text-sm font-medium leading-normal">Pixel Color Order (WS281x)</span>
+          <select
+            id="dwLedPixelOrder"
+            class="form-select flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 px-4 text-base font-normal leading-normal transition-colors"
+          >
+            <option value="GRB" selected>GRB - WS2812/WS2812B/WS2815 (most common)</option>
+            <option value="RGB">RGB - WS2811 and some variants</option>
+            <option value="BGR">BGR - Some WS2811 variants</option>
+            <option value="RBG">RBG - Rare variant</option>
+            <option value="GBR">GBR - Rare variant</option>
+            <option value="BRG">BRG - Rare variant</option>
+          </select>
+          <p class="text-xs text-slate-500">
+            Most WS2812B and WS2815 strips use GRB. WS2811 often uses RGB. If colors appear wrong, try different orders.
           </p>
         </label>
       </div>

@@ -105,11 +105,12 @@ async def lifespan(app: FastAPI):
                 "dw_leds",
                 num_leds=state.dw_led_num_leds,
                 gpio_pin=state.dw_led_gpio_pin,
+                pixel_order=state.dw_led_pixel_order,
                 brightness=state.dw_led_brightness / 100.0,
                 speed=state.dw_led_speed,
                 intensity=state.dw_led_intensity
             )
-            logger.info(f"LED controller initialized: DW LEDs ({state.dw_led_num_leds} LEDs on GPIO{state.dw_led_gpio_pin})")
+            logger.info(f"LED controller initialized: DW LEDs ({state.dw_led_num_leds} LEDs on GPIO{state.dw_led_gpio_pin}, pixel order: {state.dw_led_pixel_order})")
         else:
             state.led_controller = None
             logger.info("LED controller not configured")
@@ -234,6 +235,7 @@ class LEDConfigRequest(BaseModel):
     # DW LED specific fields
     num_leds: Optional[int] = None
     gpio_pin: Optional[int] = None
+    pixel_order: Optional[str] = None
     brightness: Optional[int] = None
 
 class DeletePlaylistRequest(BaseModel):
@@ -1156,17 +1158,19 @@ async def set_led_config(request: LEDConfigRequest):
     elif request.provider == "dw_leds":
         state.dw_led_num_leds = request.num_leds or 60
         state.dw_led_gpio_pin = request.gpio_pin or 12
+        state.dw_led_pixel_order = request.pixel_order or "GRB"
         state.dw_led_brightness = request.brightness or 35
         state.wled_ip = None
         state.led_controller = LEDInterface(
             "dw_leds",
             num_leds=state.dw_led_num_leds,
             gpio_pin=state.dw_led_gpio_pin,
+            pixel_order=state.dw_led_pixel_order,
             brightness=state.dw_led_brightness / 100.0,
             speed=state.dw_led_speed,
             intensity=state.dw_led_intensity
         )
-        logger.info(f"DW LEDs configured: {state.dw_led_num_leds} LEDs on GPIO{state.dw_led_gpio_pin}")
+        logger.info(f"DW LEDs configured: {state.dw_led_num_leds} LEDs on GPIO{state.dw_led_gpio_pin}, pixel order: {state.dw_led_pixel_order}")
 
         # Check if initialization succeeded by checking status
         status = state.led_controller.check_status()
@@ -1217,6 +1221,7 @@ async def get_led_config():
         "wled_ip": state.wled_ip,
         "dw_led_num_leds": state.dw_led_num_leds,
         "dw_led_gpio_pin": state.dw_led_gpio_pin,
+        "dw_led_pixel_order": state.dw_led_pixel_order,
         "dw_led_brightness": state.dw_led_brightness,
         "dw_led_idle_effect": state.dw_led_idle_effect,
         "dw_led_playing_effect": state.dw_led_playing_effect

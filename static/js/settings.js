@@ -207,6 +207,12 @@ async function loadLedConfig() {
                     gpioPinInput.value = data.dw_led_gpio_pin;
                 }
             }
+            if (data.dw_led_pixel_order) {
+                const pixelOrderInput = document.getElementById('dwLedPixelOrder');
+                if (pixelOrderInput) {
+                    pixelOrderInput.value = data.dw_led_pixel_order;
+                }
+            }
 
             // Update UI to show correct config section
             updateLedProviderUI();
@@ -455,9 +461,11 @@ function setupEventListeners() {
             } else if (provider === 'dw_leds') {
                 const numLeds = parseInt(document.getElementById('dwLedNumLeds')?.value) || 60;
                 const gpioPin = parseInt(document.getElementById('dwLedGpioPin')?.value) || 12;
+                const pixelOrder = document.getElementById('dwLedPixelOrder')?.value || 'GRB';
 
                 requestBody.num_leds = numLeds;
                 requestBody.gpio_pin = gpioPin;
+                requestBody.pixel_order = pixelOrder;
             }
 
             try {
