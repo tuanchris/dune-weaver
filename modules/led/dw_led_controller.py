@@ -41,9 +41,9 @@ class DWLEDController:
         self._current_palette_id = 0
         self._speed = speed
         self._intensity = intensity
-        self._color1 = (255, 0, 0)  # Red
-        self._color2 = (0, 0, 255)  # Blue
-        self._color3 = (0, 255, 0)  # Green
+        self._color1 = (255, 0, 0)  # Red (primary)
+        self._color2 = (0, 0, 0)  # Black (background/off)
+        self._color3 = (0, 0, 255)  # Blue (tertiary)
 
         # Threading
         self._pixels = None
@@ -244,6 +244,58 @@ class DWLEDController:
             "color": [r, g, b],
             "power_on": self._powered_on,
             "message": "Color set"
+        }
+
+    def set_colors(self, color1: Optional[Tuple[int, int, int]] = None,
+                   color2: Optional[Tuple[int, int, int]] = None,
+                   color3: Optional[Tuple[int, int, int]] = None) -> Dict:
+        """
+        Set effect colors (does not change effect or auto-power on)
+
+        Args:
+            color1: Primary color RGB tuple (0-255)
+            color2: Secondary/background color RGB tuple (0-255)
+            color3: Tertiary color RGB tuple (0-255)
+
+        Returns:
+            Dict with status
+        """
+        if not self._initialized:
+            if not self._initialize_hardware():
+                return {"connected": False, "error": self._init_error or "Hardware not initialized"}
+
+        colors_set = []
+        with self._lock:
+            if color1 is not None:
+                self._color1 = color1
+                if self._segment:
+                    self._segment.colors[0] = rgb_to_color(*color1)
+                colors_set.append(f"color1={color1}")
+
+            if color2 is not None:
+                self._color2 = color2
+                if self._segment:
+                    self._segment.colors[1] = rgb_to_color(*color2)
+                colors_set.append(f"color2={color2}")
+
+            if color3 is not None:
+                self._color3 = color3
+                if self._segment:
+                    self._segment.colors[2] = rgb_to_color(*color3)
+                colors_set.append(f"color3={color3}")
+
+            # Reset effect to apply new colors
+            if self._segment and colors_set:
+                self._segment.reset()
+
+        return {
+            "connected": True,
+            "colors": {
+                "color1": self._color1,
+                "color2": self._color2,
+                "color3": self._color3
+            },
+            "message": f"Colors updated: {', '.join(colors_set)}"
         }
 
     def set_effect(self, effect_id: int, speed: Optional[int] = None,

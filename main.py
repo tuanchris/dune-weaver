@@ -1497,6 +1497,48 @@ async def dw_leds_color(request: dict):
         logger.error(f"Failed to set DW LED color: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/dw_leds/colors")
+async def dw_leds_colors(request: dict):
+    """Set effect colors (color1, color2, color3)"""
+    if not state.led_controller or state.led_provider != "dw_leds":
+        raise HTTPException(status_code=400, detail="DW LEDs not configured")
+
+    # Parse colors from request
+    color1 = None
+    color2 = None
+    color3 = None
+
+    if "color1" in request:
+        c = request["color1"]
+        if isinstance(c, list) and len(c) == 3:
+            color1 = tuple(c)
+        else:
+            raise HTTPException(status_code=400, detail="color1 must be [R, G, B] array")
+
+    if "color2" in request:
+        c = request["color2"]
+        if isinstance(c, list) and len(c) == 3:
+            color2 = tuple(c)
+        else:
+            raise HTTPException(status_code=400, detail="color2 must be [R, G, B] array")
+
+    if "color3" in request:
+        c = request["color3"]
+        if isinstance(c, list) and len(c) == 3:
+            color3 = tuple(c)
+        else:
+            raise HTTPException(status_code=400, detail="color3 must be [R, G, B] array")
+
+    if not any([color1, color2, color3]):
+        raise HTTPException(status_code=400, detail="Must provide at least one color")
+
+    try:
+        controller = state.led_controller.get_controller()
+        return controller.set_colors(color1=color1, color2=color2, color3=color3)
+    except Exception as e:
+        logger.error(f"Failed to set DW LED colors: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/dw_leds/effects")
 async def dw_leds_effects():
     """Get list of available effects"""

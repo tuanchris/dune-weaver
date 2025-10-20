@@ -156,6 +156,19 @@ async function initializeDWLedsControls() {
         });
     });
 
+    // Effect color pickers - apply immediately on change
+    document.querySelectorAll('.effect-color-picker').forEach(picker => {
+        picker.addEventListener('change', async () => {
+            const color1 = document.getElementById('dw-leds-color1')?.value;
+            const color2 = document.getElementById('dw-leds-color2')?.value;
+            const color3 = document.getElementById('dw-leds-color3')?.value;
+
+            if (color1 && color2 && color3) {
+                await applyAllColors(color1, color2, color3);
+            }
+        });
+    });
+
     // Effect selector
     document.getElementById('dw-leds-effect-select')?.addEventListener('change', async (e) => {
         const effectId = parseInt(e.target.value);
@@ -173,6 +186,10 @@ async function initializeDWLedsControls() {
 
             if (data.connected) {
                 showStatus(`Effect changed`, 'success');
+                // Update power button state if backend auto-powered on
+                if (data.power_on !== undefined) {
+                    updatePowerButtonUI(data.power_on);
+                }
             } else {
                 showStatus(data.error || 'Failed to set effect', 'error');
             }
@@ -198,6 +215,10 @@ async function initializeDWLedsControls() {
 
             if (data.connected) {
                 showStatus(`Palette changed`, 'success');
+                // Update power button state if backend auto-powered on
+                if (data.power_on !== undefined) {
+                    updatePowerButtonUI(data.power_on);
+                }
             } else {
                 showStatus(data.error || 'Failed to set palette', 'error');
             }
@@ -308,11 +329,60 @@ async function applyColor(hexColor) {
 
         if (data.connected) {
             showStatus(`Color set to ${hexColor.toUpperCase()}`, 'success');
+            // Update power button state if backend auto-powered on
+            if (data.power_on !== undefined) {
+                updatePowerButtonUI(data.power_on);
+            }
         } else {
             showStatus(data.error || 'Failed to set color', 'error');
         }
     } catch (error) {
         showStatus(`Failed to set color: ${error.message}`, 'error');
+    }
+}
+
+// Helper function to apply all effect colors
+async function applyAllColors(hexColor1, hexColor2, hexColor3) {
+    try {
+        const payload = {};
+
+        if (hexColor1) {
+            const r = parseInt(hexColor1.slice(1, 3), 16);
+            const g = parseInt(hexColor1.slice(3, 5), 16);
+            const b = parseInt(hexColor1.slice(5, 7), 16);
+            payload.color1 = [r, g, b];
+        }
+
+        if (hexColor2) {
+            const r = parseInt(hexColor2.slice(1, 3), 16);
+            const g = parseInt(hexColor2.slice(3, 5), 16);
+            const b = parseInt(hexColor2.slice(5, 7), 16);
+            payload.color2 = [r, g, b];
+        }
+
+        if (hexColor3) {
+            const r = parseInt(hexColor3.slice(1, 3), 16);
+            const g = parseInt(hexColor3.slice(3, 5), 16);
+            const b = parseInt(hexColor3.slice(5, 7), 16);
+            payload.color3 = [r, g, b];
+        }
+
+        const response = await fetch('/api/dw_leds/colors', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+
+        if (data.connected) {
+            showStatus(`Effect colors updated`, 'success');
+        } else {
+            showStatus(data.error || 'Failed to set colors', 'error');
+        }
+    } catch (error) {
+        showStatus(`Failed to set colors: ${error.message}`, 'error');
     }
 }
 
@@ -340,7 +410,7 @@ async function loadEffectsAndPalettes() {
             // Add effects to automation selectors
             if (idleEffectSelect && effectsData.effects) {
                 idleEffectSelect.innerHTML = '<option value="off">Off</option>';
-                effectsData.effects.forEach(([id, name]) => {
+                effectsData.effects.forEach(([, name]) => {
                     const option = document.createElement('option');
                     option.value = name.toLowerCase();
                     option.textContent = name;
@@ -350,7 +420,7 @@ async function loadEffectsAndPalettes() {
 
             if (playingEffectSelect && effectsData.effects) {
                 playingEffectSelect.innerHTML = '<option value="off">Off</option>';
-                effectsData.effects.forEach(([id, name]) => {
+                effectsData.effects.forEach(([, name]) => {
                     const option = document.createElement('option');
                     option.value = name.toLowerCase();
                     option.textContent = name;
@@ -393,6 +463,22 @@ async function loadEffectsAndPalettes() {
     }
 }
 
+// Helper function to update power button UI based on power state
+function updatePowerButtonUI(powerOn) {
+    const powerButton = document.getElementById('dw-leds-power-toggle');
+    const powerButtonText = document.getElementById('dw-leds-power-text');
+
+    if (powerButton && powerButtonText) {
+        if (powerOn) {
+            powerButton.className = 'flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-3 text-sm font-semibold text-white shadow-md hover:bg-red-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2';
+            powerButtonText.textContent = 'Turn OFF';
+        } else {
+            powerButton.className = 'flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-3 text-sm font-semibold text-white shadow-md hover:bg-green-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2';
+            powerButtonText.textContent = 'Turn ON';
+        }
+    }
+}
+
 // Check DW LEDs connection status
 async function checkDWLedsStatus() {
     try {
@@ -406,18 +492,7 @@ async function checkDWLedsStatus() {
             showStatus(`Connected: ${data.num_leds} LEDs on GPIO ${data.gpio_pin} - Power: ${powerState}`, 'success');
 
             // Update power button appearance
-            const powerButton = document.getElementById('dw-leds-power-toggle');
-            const powerButtonText = document.getElementById('dw-leds-power-text');
-
-            if (powerButton && powerButtonText) {
-                if (data.power_on) {
-                    powerButton.className = 'flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-3 text-sm font-semibold text-white shadow-md hover:bg-red-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2';
-                    powerButtonText.textContent = 'Turn OFF';
-                } else {
-                    powerButton.className = 'flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-3 text-sm font-semibold text-white shadow-md hover:bg-green-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2';
-                    powerButtonText.textContent = 'Turn ON';
-                }
-            }
+            updatePowerButtonUI(data.power_on);
 
             // Update slider values
             const brightnessSlider = document.getElementById('dw-leds-brightness');
