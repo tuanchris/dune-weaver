@@ -1156,11 +1156,32 @@ async def set_led_config(request: LEDConfigRequest):
         logger.info(f"LED provider set to WLED at {request.ip_address}")
 
     elif request.provider == "dw_leds":
+        # Check if hardware settings changed (requires restart)
+        old_gpio_pin = state.dw_led_gpio_pin
+        old_pixel_order = state.dw_led_pixel_order
+        hardware_changed = (
+            old_gpio_pin != (request.gpio_pin or 12) or
+            old_pixel_order != (request.pixel_order or "GRB")
+        )
+
+        # Stop existing DW LED controller if hardware settings changed
+        if hardware_changed and state.led_controller and state.led_provider == "dw_leds":
+            logger.info("Hardware settings changed, stopping existing LED controller...")
+            controller = state.led_controller.get_controller()
+            if controller and hasattr(controller, 'stop'):
+                try:
+                    controller.stop()
+                    logger.info("LED controller stopped successfully")
+                except Exception as e:
+                    logger.error(f"Error stopping LED controller: {e}")
+
         state.dw_led_num_leds = request.num_leds or 60
         state.dw_led_gpio_pin = request.gpio_pin or 12
         state.dw_led_pixel_order = request.pixel_order or "GRB"
         state.dw_led_brightness = request.brightness or 35
         state.wled_ip = None
+
+        # Create new LED controller with updated settings
         state.led_controller = LEDInterface(
             "dw_leds",
             num_leds=state.dw_led_num_leds,
@@ -1170,7 +1191,9 @@ async def set_led_config(request: LEDConfigRequest):
             speed=state.dw_led_speed,
             intensity=state.dw_led_intensity
         )
-        logger.info(f"DW LEDs configured: {state.dw_led_num_leds} LEDs on GPIO{state.dw_led_gpio_pin}, pixel order: {state.dw_led_pixel_order}")
+
+        restart_msg = " (restarted)" if hardware_changed else ""
+        logger.info(f"DW LEDs configured{restart_msg}: {state.dw_led_num_leds} LEDs on GPIO{state.dw_led_gpio_pin}, pixel order: {state.dw_led_pixel_order}")
 
         # Check if initialization succeeded by checking status
         status = state.led_controller.check_status()
