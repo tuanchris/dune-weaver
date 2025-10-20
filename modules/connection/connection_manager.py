@@ -212,8 +212,8 @@ def connect_device(homing=True):
         logger.info("Showing LED connected effect (green flash)")
         state.led_controller.effect_connected()
         # Set the configured idle effect after connection
-        logger.info(f"Setting LED to idle effect: {state.hyperion_idle_effect}")
-        state.led_controller.effect_idle(state.hyperion_idle_effect)
+        logger.info(f"Setting LED to idle effect: {state.dw_led_idle_effect}")
+        state.led_controller.effect_idle(state.dw_led_idle_effect)
 
 def get_status_response() -> str:
     """
