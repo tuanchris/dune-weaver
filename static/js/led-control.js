@@ -311,6 +311,9 @@ async function initializeDWLedsControls() {
 
     // Update remaining time periodically
     setInterval(updateIdleTimeoutRemaining, 60000); // Update every minute
+
+    // Initialize Coloris color picker for effect colors
+    initializeColoris();
 }
 
 // Save current LED settings as idle or playing effect
@@ -747,9 +750,18 @@ async function checkDWLedsStatus() {
                 const color2 = document.getElementById('dw-leds-color2');
                 const color3 = document.getElementById('dw-leds-color3');
 
-                if (color1 && data.colors[0]) color1.value = data.colors[0];
-                if (color2 && data.colors[1]) color2.value = data.colors[1];
-                if (color3 && data.colors[2]) color3.value = data.colors[2];
+                if (color1 && data.colors[0]) {
+                    color1.value = data.colors[0];
+                    updateColorPickerStyle(color1, data.colors[0]);
+                }
+                if (color2 && data.colors[1]) {
+                    color2.value = data.colors[1];
+                    updateColorPickerStyle(color2, data.colors[1]);
+                }
+                if (color3 && data.colors[2]) {
+                    color3.value = data.colors[2];
+                    updateColorPickerStyle(color3, data.colors[2]);
+                }
             }
         } else {
             // Show error message from controller
@@ -759,6 +771,49 @@ async function checkDWLedsStatus() {
     } catch (error) {
         showStatus(`Cannot connect to DW LEDs: ${error.message}`, 'error');
     }
+}
+
+// Helper function to update color picker background
+function updateColorPickerStyle(input, color) {
+    if (!input || !color) return;
+    input.style.backgroundColor = color;
+}
+
+// Initialize Coloris color picker
+function initializeColoris() {
+    // Initialize Coloris with custom configuration
+    Coloris({
+        theme: 'polaroid',
+        themeMode: 'auto',
+        formatToggle: true,
+        alpha: false,  // No transparency for LED colors
+        swatches: [
+            '#ff0000',  // Red
+            '#00ff00',  // Green
+            '#0000ff',  // Blue
+            '#ffff00',  // Yellow
+            '#ff00ff',  // Magenta
+            '#00ffff',  // Cyan
+            '#ff8000',  // Orange
+            '#ffffff',  // White
+            '#2a9d8f',  // Teal
+            '#e9c46a',  // Sand
+            'coral',    // Coral
+            'Crimson'   // Crimson
+        ],
+        onChange: (color, input) => {
+            // Update the input background to show the selected color
+            updateColorPickerStyle(input, color);
+        }
+    });
+
+    // Apply Coloris to all effect color pickers and set initial background colors
+    const colorPickers = document.querySelectorAll('.effect-color-picker');
+    colorPickers.forEach(picker => {
+        picker.setAttribute('data-coloris', '');
+        // Set initial background color and text color
+        updateColorPickerStyle(picker, picker.value);
+    });
 }
 
 // Initialize on page load

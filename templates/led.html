@@ -1,5 +1,9 @@
 {% extends "base.html" %} {% block title %}LED Control - {{ app_name or 'Dune Weaver' }}{% endblock %}
 
+{% block additional_head %}
+<link rel="stylesheet" href="/static/css/coloris.min.css">
+{% endblock %}
+
 {% block additional_styles %}
 /* Dark mode styles for LED page */
 .dark .bg-white {
@@ -83,6 +87,22 @@
 /* Iframe border */
 .dark iframe {
   border-color: #404040;
+}
+
+/* Hide hex input in Coloris picker */
+.clr-field input {
+  display: none !important;
+}
+.clr-field button {
+  display: none !important;
+}
+
+/* Hide text inside the circular color pickers */
+.effect-color-picker {
+  color: transparent !important;
+  text-indent: -9999px;
+  font-size: 0;
+  caret-color: transparent;
 }
 {% endblock %}
 
@@ -199,15 +219,15 @@
         <h3 class="text-slate-800 text-base font-semibold">Effect Colors:</h3>
         <div class="flex items-center gap-2">
           <label class="text-xs font-medium text-slate-600">Slot 1</label>
-          <input type="color" id="dw-leds-color1" value="#ff0000" class="w-14 h-14 rounded-lg border-2 border-slate-300 cursor-pointer effect-color-picker">
+          <input type="text" id="dw-leds-color1" value="#ff0000" class="w-8 h-8 rounded-full border-2 border-slate-300 cursor-pointer effect-color-picker text-transparent" readonly>
         </div>
         <div class="flex items-center gap-2">
           <label class="text-xs font-medium text-slate-600">Slot 2</label>
-          <input type="color" id="dw-leds-color2" value="#000000" class="w-14 h-14 rounded-lg border-2 border-slate-300 cursor-pointer effect-color-picker">
+          <input type="text" id="dw-leds-color2" value="#000000" class="w-8 h-8 rounded-full border-2 border-slate-300 cursor-pointer effect-color-picker text-transparent" readonly>
         </div>
         <div class="flex items-center gap-2">
           <label class="text-xs font-medium text-slate-600">Slot 3</label>
-          <input type="color" id="dw-leds-color3" value="#0000ff" class="w-14 h-14 rounded-lg border-2 border-slate-300 cursor-pointer effect-color-picker">
+          <input type="text" id="dw-leds-color3" value="#0000ff" class="w-8 h-8 rounded-full border-2 border-slate-300 cursor-pointer effect-color-picker text-transparent" readonly>
         </div>
       </div>
 
@@ -336,5 +356,6 @@
 
 </div>
 
+<script src="/static/js/coloris.min.js"></script>
 <script src="/static/js/led-control.js"></script>
 {% endblock %}
