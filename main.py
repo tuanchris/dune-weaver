@@ -1473,13 +1473,22 @@ async def dw_leds_color(request: dict):
     if not state.led_controller or state.led_provider != "dw_leds":
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
-    color = request.get("color", [255, 0, 0])
-    if not isinstance(color, list) or len(color) != 3:
-        raise HTTPException(status_code=400, detail="Color must be [R, G, B] array")
+    # Accept both formats: {"r": 255, "g": 0, "b": 0} or {"color": [255, 0, 0]}
+    if "color" in request:
+        color = request["color"]
+        if not isinstance(color, list) or len(color) != 3:
+            raise HTTPException(status_code=400, detail="Color must be [R, G, B] array")
+        r, g, b = color[0], color[1], color[2]
+    elif "r" in request and "g" in request and "b" in request:
+        r = request["r"]
+        g = request["g"]
+        b = request["b"]
+    else:
+        raise HTTPException(status_code=400, detail="Color must include r, g, b fields or color array")
 
     try:
         controller = state.led_controller.get_controller()
-        return controller.set_color(color[0], color[1], color[2])
+        return controller.set_color(r, g, b)
     except Exception as e:
         logger.error(f"Failed to set DW LED color: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1493,9 +1502,11 @@ async def dw_leds_effects():
     try:
         controller = state.led_controller.get_controller()
         effects = controller.get_effects()
+        # Convert tuples to lists for JSON serialization
+        effects_list = [[eid, name] for eid, name in effects]
         return {
             "success": True,
-            "effects": [{"id": eid, "name": name} for eid, name in effects]
+            "effects": effects_list
         }
     except Exception as e:
         logger.error(f"Failed to get DW LED effects: {str(e)}")
@@ -1510,9 +1521,11 @@ async def dw_leds_palettes():
     try:
         controller = state.led_controller.get_controller()
         palettes = controller.get_palettes()
+        # Convert tuples to lists for JSON serialization
+        palettes_list = [[pid, name] for pid, name in palettes]
         return {
             "success": True,
-            "palettes": [{"id": pid, "name": name} for pid, name in palettes]
+            "palettes": palettes_list
         }
     except Exception as e:
         logger.error(f"Failed to get DW LED palettes: {str(e)}")
