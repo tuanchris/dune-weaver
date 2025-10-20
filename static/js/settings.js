@@ -273,6 +273,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (wledIpInput) wledIpInput.value = ledConfigData.wled_ip;
         }
 
+        // Load DW LED settings
+        if (ledConfigData.dw_led_num_leds) {
+            const numLedsInput = document.getElementById('dwLedNumLeds');
+            if (numLedsInput) numLedsInput.value = ledConfigData.dw_led_num_leds;
+        }
+        if (ledConfigData.dw_led_gpio_pin) {
+            const gpioPinInput = document.getElementById('dwLedGpioPin');
+            if (gpioPinInput) gpioPinInput.value = ledConfigData.dw_led_gpio_pin;
+        }
+        if (ledConfigData.dw_led_pixel_order) {
+            const pixelOrderInput = document.getElementById('dwLedPixelOrder');
+            if (pixelOrderInput) pixelOrderInput.value = ledConfigData.dw_led_pixel_order;
+        }
+
         updateLedProviderUI()
         
         // Update version display
