@@ -341,7 +341,7 @@ async function saveCurrentEffectSettings(type) {
 
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-        const data = await response.json();
+        await response.json();
         showStatus(`${type.charAt(0).toUpperCase() + type.slice(1)} effect settings saved successfully`, 'success');
 
         // Refresh display
@@ -647,6 +647,17 @@ async function checkDWLedsStatus() {
             const paletteSelect = document.getElementById('dw-leds-palette-select');
             if (paletteSelect && data.current_palette !== undefined) {
                 paletteSelect.value = data.current_palette;
+            }
+
+            // Update color pickers if colors are provided
+            if (data.colors && Array.isArray(data.colors)) {
+                const color1 = document.getElementById('dw-leds-color1');
+                const color2 = document.getElementById('dw-leds-color2');
+                const color3 = document.getElementById('dw-leds-color3');
+
+                if (color1 && data.colors[0]) color1.value = data.colors[0];
+                if (color2 && data.colors[1]) color2.value = data.colors[1];
+                if (color3 && data.colors[2]) color3.value = data.colors[2];
             }
         } else {
             // Show error message from controller

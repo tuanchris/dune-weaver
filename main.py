@@ -1421,9 +1421,9 @@ async def playlists(request: Request):
 async def image2sand(request: Request):
     return templates.TemplateResponse("image2sand.html", {"request": request, "app_name": state.app_name})
 
-@app.get("/wled")
-async def wled(request: Request):
-    return templates.TemplateResponse("wled.html", {"request": request, "app_name": state.app_name})
+@app.get("/led")
+async def led_control_page(request: Request):
+    return templates.TemplateResponse("led.html", {"request": request, "app_name": state.app_name})
 
 # DW LED control endpoints
 @app.get("/api/dw_leds/status")

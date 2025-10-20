@@ -459,6 +459,18 @@ class DWLEDController:
         if not self._initialized:
             self._initialize_hardware()
 
+        # Get color slots from segment if available
+        colors = []
+        if self._segment and hasattr(self._segment, 'colors'):
+            for color_int in self._segment.colors[:3]:  # Get up to 3 colors
+                # Convert integer color to hex string
+                r = (color_int >> 16) & 0xFF
+                g = (color_int >> 8) & 0xFF
+                b = color_int & 0xFF
+                colors.append(f"#{r:02x}{g:02x}{b:02x}")
+        else:
+            colors = ["#ff0000", "#000000", "#0000ff"]  # Defaults
+
         status = {
             "connected": self._initialized,
             "power_on": self._powered_on,
@@ -469,6 +481,7 @@ class DWLEDController:
             "current_palette": self._current_palette_id,
             "speed": self._speed,
             "intensity": self._intensity,
+            "colors": colors,
             "effect_running": self._effect_thread is not None and self._effect_thread.is_alive()
         }
 
