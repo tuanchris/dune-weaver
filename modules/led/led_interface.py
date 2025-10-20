@@ -17,7 +17,8 @@ class LEDInterface:
     """
 
     def __init__(self, provider: LEDProviderType = "none", ip_address: Optional[str] = None,
-                 num_leds: Optional[int] = None, gpio_pin: Optional[int] = None, brightness: Optional[float] = None):
+                 num_leds: Optional[int] = None, gpio_pin: Optional[int] = None, brightness: Optional[float] = None,
+                 speed: Optional[int] = None, intensity: Optional[int] = None):
         self.provider = provider
         self._controller = None
 
@@ -28,7 +29,9 @@ class LEDInterface:
             num_leds = num_leds or 60
             gpio_pin = gpio_pin or 12
             brightness = brightness if brightness is not None else 0.35
-            self._controller = DWLEDController(num_leds, gpio_pin, brightness)
+            speed = speed if speed is not None else 128
+            intensity = intensity if intensity is not None else 128
+            self._controller = DWLEDController(num_leds, gpio_pin, brightness, speed=speed, intensity=intensity)
 
     @property
     def is_configured(self) -> bool:
@@ -36,7 +39,8 @@ class LEDInterface:
         return self._controller is not None
 
     def update_config(self, provider: LEDProviderType, ip_address: Optional[str] = None,
-                     num_leds: Optional[int] = None, gpio_pin: Optional[int] = None, brightness: Optional[float] = None):
+                     num_leds: Optional[int] = None, gpio_pin: Optional[int] = None, brightness: Optional[float] = None,
+                     speed: Optional[int] = None, intensity: Optional[int] = None):
         """Update LED provider configuration"""
         self.provider = provider
 
@@ -53,7 +57,9 @@ class LEDInterface:
             num_leds = num_leds or 60
             gpio_pin = gpio_pin or 12
             brightness = brightness if brightness is not None else 0.35
-            self._controller = DWLEDController(num_leds, gpio_pin, brightness)
+            speed = speed if speed is not None else 128
+            intensity = intensity if intensity is not None else 128
+            self._controller = DWLEDController(num_leds, gpio_pin, brightness, speed=speed, intensity=intensity)
         else:
             self._controller = None
 

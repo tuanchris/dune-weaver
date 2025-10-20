@@ -18,7 +18,7 @@ class DWLEDController:
     """Dune Weaver LED Controller for NeoPixel LED strips"""
 
     def __init__(self, num_leds: int = 60, gpio_pin: int = 12, brightness: float = 0.35,
-                 pixel_order: str = "GRB"):
+                 pixel_order: str = "GRB", speed: int = 128, intensity: int = 128):
         """
         Initialize Dune Weaver LED controller
 
@@ -27,6 +27,8 @@ class DWLEDController:
             gpio_pin: GPIO pin number (BCM numbering: 12, 13, 18, or 19)
             brightness: Global brightness (0.0 - 1.0)
             pixel_order: Pixel color order (GRB, RGB, RGBW, GRBW)
+            speed: Effect speed 0-255 (default: 128)
+            intensity: Effect intensity 0-255 (default: 128)
         """
         self.num_leds = num_leds
         self.gpio_pin = gpio_pin
@@ -37,8 +39,8 @@ class DWLEDController:
         self._powered_on = False
         self._current_effect_id = 0
         self._current_palette_id = 0
-        self._speed = 128
-        self._intensity = 128
+        self._speed = speed
+        self._intensity = intensity
         self._color1 = (255, 0, 0)  # Red
         self._color2 = (0, 0, 255)  # Blue
         self._color3 = (0, 255, 0)  # Green
@@ -361,6 +363,8 @@ class DWLEDController:
             self._speed = speed
             if self._segment:
                 self._segment.speed = speed
+                # Reset effect state so speed change takes effect immediately
+                self._segment.reset()
 
         return {
             "connected": True,
@@ -380,6 +384,8 @@ class DWLEDController:
             self._intensity = intensity
             if self._segment:
                 self._segment.intensity = intensity
+                # Reset effect state so intensity change takes effect immediately
+                self._segment.reset()
 
         return {
             "connected": True,

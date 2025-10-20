@@ -105,7 +105,9 @@ async def lifespan(app: FastAPI):
                 "dw_leds",
                 num_leds=state.dw_led_num_leds,
                 gpio_pin=state.dw_led_gpio_pin,
-                brightness=state.dw_led_brightness / 100.0
+                brightness=state.dw_led_brightness / 100.0,
+                speed=state.dw_led_speed,
+                intensity=state.dw_led_intensity
             )
             logger.info(f"LED controller initialized: DW LEDs ({state.dw_led_num_leds} LEDs on GPIO{state.dw_led_gpio_pin})")
         else:
@@ -1160,7 +1162,9 @@ async def set_led_config(request: LEDConfigRequest):
             "dw_leds",
             num_leds=state.dw_led_num_leds,
             gpio_pin=state.dw_led_gpio_pin,
-            brightness=state.dw_led_brightness / 100.0
+            brightness=state.dw_led_brightness / 100.0,
+            speed=state.dw_led_speed,
+            intensity=state.dw_led_intensity
         )
         logger.info(f"DW LEDs configured: {state.dw_led_num_leds} LEDs on GPIO{state.dw_led_gpio_pin}")
 
@@ -1569,13 +1573,17 @@ async def dw_leds_speed(request: dict):
     if not state.led_controller or state.led_provider != "dw_leds":
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
-    value = request.get("value", 128)
+    value = request.get("speed", 128)
     if not 0 <= value <= 255:
         raise HTTPException(status_code=400, detail="Speed must be between 0 and 255")
 
     try:
         controller = state.led_controller.get_controller()
-        return controller.set_speed(value)
+        result = controller.set_speed(value)
+        # Save speed to state
+        state.dw_led_speed = value
+        state.save()
+        return result
     except Exception as e:
         logger.error(f"Failed to set DW LED speed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1586,13 +1594,17 @@ async def dw_leds_intensity(request: dict):
     if not state.led_controller or state.led_provider != "dw_leds":
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
-    value = request.get("value", 128)
+    value = request.get("intensity", 128)
     if not 0 <= value <= 255:
         raise HTTPException(status_code=400, detail="Intensity must be between 0 and 255")
 
     try:
         controller = state.led_controller.get_controller()
-        return controller.set_intensity(value)
+        result = controller.set_intensity(value)
+        # Save intensity to state
+        state.dw_led_intensity = value
+        state.save()
+        return result
     except Exception as e:
         logger.error(f"Failed to set DW LED intensity: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

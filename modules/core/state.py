@@ -47,6 +47,8 @@ class AppState:
         self.dw_led_num_leds = 60  # Number of LEDs in strip
         self.dw_led_gpio_pin = 12  # GPIO pin (12, 13, 18, or 19)
         self.dw_led_brightness = 35  # Brightness 0-100
+        self.dw_led_speed = 128  # Effect speed 0-255
+        self.dw_led_intensity = 128  # Effect intensity 0-255
         self.dw_led_idle_effect = "off"  # Effect to show when idle
         self.dw_led_playing_effect = "off"  # Effect to show when playing
         self.skip_requested = False
@@ -202,6 +204,8 @@ class AppState:
             "dw_led_num_leds": self.dw_led_num_leds,
             "dw_led_gpio_pin": self.dw_led_gpio_pin,
             "dw_led_brightness": self.dw_led_brightness,
+            "dw_led_speed": self.dw_led_speed,
+            "dw_led_intensity": self.dw_led_intensity,
             "dw_led_idle_effect": self.dw_led_idle_effect,
             "dw_led_playing_effect": self.dw_led_playing_effect,
             "app_name": self.app_name,
@@ -247,6 +251,8 @@ class AppState:
         self.dw_led_num_leds = data.get('dw_led_num_leds', 60)
         self.dw_led_gpio_pin = data.get('dw_led_gpio_pin', 12)
         self.dw_led_brightness = data.get('dw_led_brightness', 35)
+        self.dw_led_speed = data.get('dw_led_speed', 128)
+        self.dw_led_intensity = data.get('dw_led_intensity', 128)
         self.dw_led_idle_effect = data.get('dw_led_idle_effect', "off")
         self.dw_led_playing_effect = data.get('dw_led_playing_effect', "off")
         self.app_name = data.get("app_name", "Dune Weaver")
