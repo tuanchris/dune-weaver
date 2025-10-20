@@ -655,7 +655,11 @@ async function loadEffectsAndPalettes() {
 
             if (effectSelect && effectsData.effects) {
                 effectSelect.innerHTML = '';
-                effectsData.effects.forEach(([id, name]) => {
+                // Sort effects alphabetically by name
+                const sortedEffects = [...effectsData.effects].sort((a, b) =>
+                    a[1].localeCompare(b[1])
+                );
+                sortedEffects.forEach(([id, name]) => {
                     const option = document.createElement('option');
                     option.value = id;
                     option.textContent = name;
@@ -666,7 +670,11 @@ async function loadEffectsAndPalettes() {
             // Add effects to automation selectors
             if (idleEffectSelect && effectsData.effects) {
                 idleEffectSelect.innerHTML = '<option value="off">Off</option>';
-                effectsData.effects.forEach(([, name]) => {
+                // Sort effects alphabetically by name
+                const sortedEffects = [...effectsData.effects].sort((a, b) =>
+                    a[1].localeCompare(b[1])
+                );
+                sortedEffects.forEach(([, name]) => {
                     const option = document.createElement('option');
                     option.value = name.toLowerCase();
                     option.textContent = name;
@@ -676,7 +684,11 @@ async function loadEffectsAndPalettes() {
 
             if (playingEffectSelect && effectsData.effects) {
                 playingEffectSelect.innerHTML = '<option value="off">Off</option>';
-                effectsData.effects.forEach(([, name]) => {
+                // Sort effects alphabetically by name
+                const sortedEffects = [...effectsData.effects].sort((a, b) =>
+                    a[1].localeCompare(b[1])
+                );
+                sortedEffects.forEach(([, name]) => {
                     const option = document.createElement('option');
                     option.value = name.toLowerCase();
                     option.textContent = name;
@@ -705,7 +717,11 @@ async function loadEffectsAndPalettes() {
 
             if (paletteSelect && palettesData.palettes) {
                 paletteSelect.innerHTML = '';
-                palettesData.palettes.forEach(([id, name]) => {
+                // Sort palettes alphabetically by name
+                const sortedPalettes = [...palettesData.palettes].sort((a, b) =>
+                    a[1].localeCompare(b[1])
+                );
+                sortedPalettes.forEach(([id, name]) => {
                     const option = document.createElement('option');
                     option.value = id;
                     option.textContent = name;
