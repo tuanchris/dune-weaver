@@ -504,7 +504,18 @@ function setupEventListeners() {
                         localStorage.setItem('wled_ip', data.wled_ip);
                         showStatusMessage('WLED configured successfully', 'success');
                     } else if (provider === 'dw_leds') {
-                        showStatusMessage(`DW LEDs configured: ${data.dw_led_num_leds} LEDs on GPIO${data.dw_led_gpio_pin}`, 'success');
+                        // Check if there's a warning (hardware not available but settings saved)
+                        if (data.warning) {
+                            showStatusMessage(
+                                `Settings saved for testing. Hardware issue: ${data.warning}`,
+                                'warning'
+                            );
+                        } else {
+                            showStatusMessage(
+                                `DW LEDs configured: ${data.dw_led_num_leds} LEDs on GPIO${data.dw_led_gpio_pin}`,
+                                'success'
+                            );
+                        }
                     } else if (provider === 'none') {
                         localStorage.removeItem('wled_ip');
                         showStatusMessage('LED controller disabled', 'success');

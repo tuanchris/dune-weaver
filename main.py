@@ -165,6 +165,51 @@ async def lifespan(app: FastAPI):
     # Start cache check in background immediately
     asyncio.create_task(delayed_cache_check())
 
+    # Start idle timeout monitor
+    async def idle_timeout_monitor():
+        """Monitor LED idle timeout and turn off LEDs when timeout expires."""
+        import time
+        while True:
+            try:
+                await asyncio.sleep(30)  # Check every 30 seconds
+
+                if not state.dw_led_idle_timeout_enabled:
+                    continue
+
+                if not state.led_controller or not state.led_controller.is_configured:
+                    continue
+
+                # Check if we're currently playing a pattern
+                is_playing = bool(state.current_playing_file or state.current_playlist)
+                if is_playing:
+                    # Reset activity time when playing
+                    state.dw_led_last_activity_time = time.time()
+                    continue
+
+                # If no activity time set, initialize it
+                if state.dw_led_last_activity_time is None:
+                    state.dw_led_last_activity_time = time.time()
+                    continue
+
+                # Calculate idle duration
+                idle_seconds = time.time() - state.dw_led_last_activity_time
+                timeout_seconds = state.dw_led_idle_timeout_minutes * 60
+
+                # Turn off LEDs if timeout expired
+                if idle_seconds >= timeout_seconds:
+                    status = state.led_controller.check_status()
+                    if status.get("power", False):  # Only turn off if currently on
+                        logger.info(f"Idle timeout ({state.dw_led_idle_timeout_minutes} minutes) expired, turning off LEDs")
+                        state.led_controller.set_power(0)
+                        # Reset activity time to prevent repeated turn-off attempts
+                        state.dw_led_last_activity_time = time.time()
+
+            except Exception as e:
+                logger.error(f"Error in idle timeout monitor: {e}")
+                await asyncio.sleep(60)  # Wait longer on error
+
+    asyncio.create_task(idle_timeout_monitor())
+
     yield  # This separates startup from shutdown code
 
     # Shutdown
@@ -1199,9 +1244,25 @@ async def set_led_config(request: LEDConfigRequest):
         status = state.led_controller.check_status()
         if not status.get("connected", False) and status.get("error"):
             error_msg = status["error"]
+            logger.warning(f"DW LED initialization failed: {error_msg}, but configuration saved for testing")
             state.led_controller = None
-            state.led_provider = "none"
-            raise HTTPException(status_code=400, detail=error_msg)
+            # Keep the provider setting for testing purposes
+            # state.led_provider remains "dw_leds" so settings can be saved/tested
+
+            # Save state even with error
+            state.save()
+
+            # Return success with warning instead of error
+            return {
+                "success": True,
+                "warning": error_msg,
+                "hardware_available": False,
+                "provider": state.led_provider,
+                "dw_led_num_leds": state.dw_led_num_leds,
+                "dw_led_gpio_pin": state.dw_led_gpio_pin,
+                "dw_led_pixel_order": state.dw_led_pixel_order,
+                "dw_led_brightness": state.dw_led_brightness
+            }
 
     else:  # none
         state.wled_ip = None
@@ -1729,6 +1790,51 @@ async def dw_leds_get_effect_settings():
     return {
         "idle_effect": state.dw_led_idle_effect,
         "playing_effect": state.dw_led_playing_effect
+    }
+
+@app.post("/api/dw_leds/idle_timeout")
+async def dw_leds_set_idle_timeout(request: dict):
+    """Configure LED idle timeout settings"""
+    enabled = request.get("enabled", False)
+    minutes = request.get("minutes", 30)
+
+    # Validate minutes (between 1 and 1440 - 24 hours)
+    if minutes < 1 or minutes > 1440:
+        raise HTTPException(status_code=400, detail="Timeout must be between 1 and 1440 minutes")
+
+    state.dw_led_idle_timeout_enabled = enabled
+    state.dw_led_idle_timeout_minutes = minutes
+
+    # Reset activity time when settings change
+    import time
+    state.dw_led_last_activity_time = time.time()
+
+    state.save()
+    logger.info(f"DW LED idle timeout configured: enabled={enabled}, minutes={minutes}")
+
+    return {
+        "success": True,
+        "enabled": enabled,
+        "minutes": minutes
+    }
+
+@app.get("/api/dw_leds/idle_timeout")
+async def dw_leds_get_idle_timeout():
+    """Get LED idle timeout settings"""
+    import time
+
+    # Calculate remaining time if timeout is active
+    remaining_minutes = None
+    if state.dw_led_idle_timeout_enabled and state.dw_led_last_activity_time:
+        elapsed_seconds = time.time() - state.dw_led_last_activity_time
+        timeout_seconds = state.dw_led_idle_timeout_minutes * 60
+        remaining_seconds = max(0, timeout_seconds - elapsed_seconds)
+        remaining_minutes = round(remaining_seconds / 60, 1)
+
+    return {
+        "enabled": state.dw_led_idle_timeout_enabled,
+        "minutes": state.dw_led_idle_timeout_minutes,
+        "remaining_minutes": remaining_minutes
     }
 
 @app.get("/table_control")

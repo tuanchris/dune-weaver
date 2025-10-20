@@ -629,6 +629,11 @@ async def run_theta_rho_file(file_path, is_playlist=False):
 
         state.current_playing_file = file_path
         state.stop_requested = False
+
+        # Reset LED idle timeout activity time when pattern starts
+        import time as time_module
+        state.dw_led_last_activity_time = time_module.time()
+
         logger.info(f"Starting pattern execution: {file_path}")
         logger.info(f"t: {state.current_theta}, r: {state.current_rho}")
         await reset_theta()
@@ -760,7 +765,11 @@ async def run_theta_rho_file(file_path, is_playlist=False):
 async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
     """Run multiple .thr files in sequence with options."""
     state.stop_requested = False
-    
+
+    # Reset LED idle timeout activity time when playlist starts
+    import time as time_module
+    state.dw_led_last_activity_time = time_module.time()
+
     # Set initial playlist state
     state.playlist_mode = run_mode
     state.current_playlist_index = 0

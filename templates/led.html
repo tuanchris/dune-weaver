@@ -259,35 +259,11 @@
           <p class="text-xs text-slate-500 mt-1">Configure LED effects to automatically activate when idle or playing patterns</p>
         </div>
 
-        <!-- Idle Effect Configuration -->
-        <div class="bg-slate-50 rounded-lg p-4 border border-slate-200">
-          <div class="flex items-center justify-between mb-3">
-            <h4 class="text-slate-700 text-sm font-semibold flex items-center gap-2">
-              <span class="material-icons text-blue-600 text-lg">bedtime</span>
-              Idle Effect
-            </h4>
-            <div class="flex gap-2">
-              <button id="dw-leds-save-current-idle" class="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-400">
-                <span class="material-icons text-sm">save</span>
-                Save Current
-              </button>
-              <button id="dw-leds-clear-idle" class="flex items-center gap-1.5 rounded-lg bg-gray-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-400">
-                <span class="material-icons text-sm">clear</span>
-                Clear
-              </button>
-            </div>
-          </div>
-
-          <div id="idle-current-settings" class="text-xs text-slate-600 mb-3 p-2 bg-white rounded border border-slate-200">
-            <span class="font-medium">Current:</span> <span id="idle-settings-display">Not configured</span>
-          </div>
-        </div>
-
         <!-- Playing Effect Configuration -->
         <div class="bg-slate-50 rounded-lg p-4 border border-slate-200">
           <div class="flex items-center justify-between mb-3">
             <h4 class="text-slate-700 text-sm font-semibold flex items-center gap-2">
-              <span class="material-icons text-blue-600 text-lg">play_circle</span>
+              <span class="material-icons text-green-600 text-lg">play_circle</span>
               Playing Effect
             </h4>
             <div class="flex gap-2">
@@ -302,8 +278,72 @@
             </div>
           </div>
 
-          <div id="playing-current-settings" class="text-xs text-slate-600 mb-3 p-2 bg-white rounded border border-slate-200">
+          <div id="playing-current-settings" class="text-xs text-slate-600 p-2 bg-white rounded border border-slate-200">
             <span class="font-medium">Current:</span> <span id="playing-settings-display">Not configured</span>
+          </div>
+        </div>
+
+        <!-- Idle Configuration (Effect + Timeout) -->
+        <div class="bg-slate-50 rounded-lg p-4 border border-slate-200">
+          <div class="flex items-center justify-between mb-4">
+            <h4 class="text-slate-700 text-sm font-semibold flex items-center gap-2">
+              <span class="material-icons text-blue-600 text-lg">bedtime</span>
+              Idle Configuration
+            </h4>
+          </div>
+
+          <!-- Idle Effect -->
+          <div class="mb-4 pb-4 border-b border-slate-200">
+            <div class="flex items-center justify-between mb-3">
+              <label class="text-xs font-medium text-slate-600">Idle Effect</label>
+              <div class="flex gap-2">
+                <button id="dw-leds-save-current-idle" class="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-400">
+                  <span class="material-icons text-sm">save</span>
+                  Save Current
+                </button>
+                <button id="dw-leds-clear-idle" class="flex items-center gap-1.5 rounded-lg bg-gray-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-400">
+                  <span class="material-icons text-sm">clear</span>
+                  Clear
+                </button>
+              </div>
+            </div>
+            <div id="idle-current-settings" class="text-xs text-slate-600 p-2 bg-white rounded border border-slate-200">
+              <span class="font-medium">Current:</span> <span id="idle-settings-display">Not configured</span>
+            </div>
+          </div>
+
+          <!-- Idle Timeout -->
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <label class="text-xs font-medium text-slate-600 flex items-center gap-2">
+                <span class="material-icons text-blue-600 text-base">schedule</span>
+                Auto Turn Off
+              </label>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="dw-leds-idle-timeout-enabled" class="sr-only peer">
+                <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+
+            <div id="idle-timeout-settings" class="space-y-3">
+              <div>
+                <label class="block text-xs text-slate-500 mb-2">Turn off LEDs after</label>
+                <div class="flex items-center gap-3">
+                  <input type="number" id="dw-leds-idle-timeout-minutes" min="1" max="1440" value="30"
+                         class="flex-1 rounded-lg border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm">
+                  <span class="text-sm text-slate-600 whitespace-nowrap">minutes idle</span>
+                </div>
+              </div>
+
+              <div id="idle-timeout-remaining" class="text-xs text-slate-600 p-2 bg-white rounded border border-slate-200 hidden">
+                <span class="font-medium">Time remaining:</span> <span id="idle-timeout-remaining-display">--</span>
+              </div>
+
+              <button id="dw-leds-save-idle-timeout" class="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <span class="material-icons text-base">save</span>
+                Save Timeout Settings
+              </button>
+            </div>
           </div>
         </div>
 

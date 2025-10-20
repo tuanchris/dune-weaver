@@ -56,6 +56,11 @@ class AppState:
 
         # Playing effect settings (all parameters)
         self.dw_led_playing_effect = None  # Full effect configuration dict or None
+
+        # Idle timeout settings
+        self.dw_led_idle_timeout_enabled = False  # Enable automatic LED turn off after idle period
+        self.dw_led_idle_timeout_minutes = 30  # Idle timeout duration in minutes
+        self.dw_led_last_activity_time = None  # Last activity timestamp (runtime only, not persisted)
         self.skip_requested = False
         self.table_type = None
         self._playlist_mode = "loop"
@@ -214,6 +219,8 @@ class AppState:
             "dw_led_intensity": self.dw_led_intensity,
             "dw_led_idle_effect": self.dw_led_idle_effect,
             "dw_led_playing_effect": self.dw_led_playing_effect,
+            "dw_led_idle_timeout_enabled": self.dw_led_idle_timeout_enabled,
+            "dw_led_idle_timeout_minutes": self.dw_led_idle_timeout_minutes,
             "app_name": self.app_name,
             "auto_play_enabled": self.auto_play_enabled,
             "auto_play_playlist": self.auto_play_playlist,
@@ -277,6 +284,11 @@ class AppState:
         else:
             # New format: full dict or None
             self.dw_led_playing_effect = playing_effect_data
+
+        # Load idle timeout settings
+        self.dw_led_idle_timeout_enabled = data.get('dw_led_idle_timeout_enabled', False)
+        self.dw_led_idle_timeout_minutes = data.get('dw_led_idle_timeout_minutes', 30)
+
         self.app_name = data.get("app_name", "Dune Weaver")
         self.auto_play_enabled = data.get("auto_play_enabled", False)
         self.auto_play_playlist = data.get("auto_play_playlist", None)

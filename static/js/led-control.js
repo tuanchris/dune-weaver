@@ -307,6 +307,29 @@ async function initializeDWLedsControls() {
 
     // Load and display saved effect settings
     await loadEffectSettings();
+
+    // Idle timeout controls
+    await loadIdleTimeout();
+
+    const idleTimeoutEnabled = document.getElementById('dw-leds-idle-timeout-enabled');
+    const idleTimeoutSettings = document.getElementById('idle-timeout-settings');
+
+    // Toggle idle timeout settings visibility
+    idleTimeoutEnabled?.addEventListener('change', (e) => {
+        if (e.target.checked) {
+            idleTimeoutSettings?.classList.remove('opacity-50', 'pointer-events-none');
+        } else {
+            idleTimeoutSettings?.classList.add('opacity-50', 'pointer-events-none');
+        }
+    });
+
+    // Save idle timeout settings
+    document.getElementById('dw-leds-save-idle-timeout')?.addEventListener('click', async () => {
+        await saveIdleTimeout();
+    });
+
+    // Update remaining time periodically
+    setInterval(updateIdleTimeoutRemaining, 60000); // Update every minute
 }
 
 // Save current LED settings as idle or playing effect
@@ -430,6 +453,106 @@ function formatEffectSettings(settings) {
     }
 
     return parts.join(' | ');
+}
+
+// Load idle timeout settings
+async function loadIdleTimeout() {
+    try {
+        const response = await fetch('/api/dw_leds/idle_timeout');
+        if (!response.ok) return;
+
+        const data = await response.json();
+
+        const enabledCheckbox = document.getElementById('dw-leds-idle-timeout-enabled');
+        const minutesInput = document.getElementById('dw-leds-idle-timeout-minutes');
+        const idleTimeoutSettings = document.getElementById('idle-timeout-settings');
+
+        if (enabledCheckbox) {
+            enabledCheckbox.checked = data.enabled;
+        }
+
+        if (minutesInput) {
+            minutesInput.value = data.minutes;
+        }
+
+        // Set initial state of settings panel
+        if (data.enabled) {
+            idleTimeoutSettings?.classList.remove('opacity-50', 'pointer-events-none');
+        } else {
+            idleTimeoutSettings?.classList.add('opacity-50', 'pointer-events-none');
+        }
+
+        // Update remaining time display
+        updateIdleTimeoutRemainingDisplay(data.remaining_minutes);
+    } catch (error) {
+        console.error('Failed to load idle timeout settings:', error);
+    }
+}
+
+// Save idle timeout settings
+async function saveIdleTimeout() {
+    try {
+        const enabled = document.getElementById('dw-leds-idle-timeout-enabled')?.checked || false;
+        const minutes = parseInt(document.getElementById('dw-leds-idle-timeout-minutes')?.value) || 30;
+
+        const response = await fetch('/api/dw_leds/idle_timeout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled, minutes })
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+
+        if (data.success) {
+            showStatus(`Idle timeout ${enabled ? 'enabled' : 'disabled'} (${minutes} minutes)`, 'success');
+            await loadIdleTimeout(); // Reload to get updated remaining time
+        } else {
+            showStatus('Failed to save idle timeout settings', 'error');
+        }
+    } catch (error) {
+        showStatus(`Failed to save idle timeout: ${error.message}`, 'error');
+    }
+}
+
+// Update idle timeout remaining time
+async function updateIdleTimeoutRemaining() {
+    try {
+        const response = await fetch('/api/dw_leds/idle_timeout');
+        if (!response.ok) return;
+
+        const data = await response.json();
+        updateIdleTimeoutRemainingDisplay(data.remaining_minutes);
+    } catch (error) {
+        console.error('Failed to update idle timeout remaining:', error);
+    }
+}
+
+// Update idle timeout remaining time display
+function updateIdleTimeoutRemainingDisplay(remainingMinutes) {
+    const remainingDiv = document.getElementById('idle-timeout-remaining');
+    const remainingDisplay = document.getElementById('idle-timeout-remaining-display');
+
+    if (!remainingDiv || !remainingDisplay) return;
+
+    if (remainingMinutes !== null && remainingMinutes !== undefined) {
+        remainingDiv.classList.remove('hidden');
+        if (remainingMinutes <= 0) {
+            remainingDisplay.textContent = 'Timeout expired - LEDs will turn off';
+        } else if (remainingMinutes < 1) {
+            remainingDisplay.textContent = 'Less than 1 minute';
+        } else {
+            const hours = Math.floor(remainingMinutes / 60);
+            const mins = Math.round(remainingMinutes % 60);
+            if (hours > 0) {
+                remainingDisplay.textContent = `${hours}h ${mins}m`;
+            } else {
+                remainingDisplay.textContent = `${mins} minutes`;
+            }
+        }
+    } else {
+        remainingDiv.classList.add('hidden');
+    }
 }
 
 // Helper function to apply color
