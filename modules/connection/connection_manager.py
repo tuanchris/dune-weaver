@@ -450,7 +450,7 @@ def home(timeout=15):
             idle_reached = check_idle()
 
             if idle_reached:
-                state.current_theta = state.current_rho = 0
+                state.current_rho = 0
                 homing_success = True
                 logger.info("Homing completed and device is idle")
             else:
