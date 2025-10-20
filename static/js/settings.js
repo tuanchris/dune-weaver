@@ -7,6 +7,14 @@ const LOG_TYPE = {
     DEBUG: 'debug'
 };
 
+// Helper function to convert provider name to camelCase for ID lookup
+// e.g., "dw_leds" -> "DwLeds", "wled" -> "Wled", "none" -> "None"
+function providerToCamelCase(provider) {
+    return provider.split('_').map(word =>
+        word.charAt(0).toUpperCase() + word.slice(1)
+    ).join('');
+}
+
 // Constants for cache
 const CACHE_KEYS = {
     CONNECTION_STATUS: 'connection_status',
@@ -179,7 +187,7 @@ async function loadLedConfig() {
             const data = await response.json();
 
             // Set provider radio button
-            const providerRadio = document.getElementById(`ledProvider${data.provider.charAt(0).toUpperCase() + data.provider.slice(1)}`);
+            const providerRadio = document.getElementById(`ledProvider${providerToCamelCase(data.provider)}`);
             if (providerRadio) {
                 providerRadio.checked = true;
             } else {
@@ -261,7 +269,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateConnectionUI(statusData);
 
         // Update LED configuration
-        const providerRadio = document.getElementById(`ledProvider${ledConfigData.provider.charAt(0).toUpperCase() + ledConfigData.provider.slice(1)}`);
+        const providerRadio = document.getElementById(`ledProvider${providerToCamelCase(ledConfigData.provider)}`);
         if (providerRadio) {
             providerRadio.checked = true;
         } else {
