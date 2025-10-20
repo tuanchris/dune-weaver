@@ -114,12 +114,13 @@ class DWLEDController:
 
     def _effect_loop(self):
         """Background thread that runs the current effect"""
-        effect_func = get_effect(self._current_effect_id)
-
         while not self._stop_thread.is_set():
             try:
                 with self._lock:
                     if self._pixels and self._segment and self._powered_on:
+                        # Get current effect function (allows dynamic effect switching)
+                        effect_func = get_effect(self._current_effect_id)
+
                         # Run effect and get delay
                         delay_ms = effect_func(self._segment)
 
@@ -226,9 +227,20 @@ class DWLEDController:
                 self._current_effect_id = 0
                 self._segment.reset()
 
+            # Auto power on when setting color
+            if not self._powered_on:
+                self._powered_on = True
+
+            # Ensure effect thread is running
+            if self._effect_thread is None or not self._effect_thread.is_alive():
+                self._stop_thread.clear()
+                self._effect_thread = threading.Thread(target=self._effect_loop, daemon=True)
+                self._effect_thread.start()
+
         return {
             "connected": True,
             "color": [r, g, b],
+            "power_on": self._powered_on,
             "message": "Color set"
         }
 
@@ -274,11 +286,22 @@ class DWLEDController:
             if self._segment:
                 self._segment.reset()
 
+            # Auto power on when setting effect
+            if not self._powered_on:
+                self._powered_on = True
+
+            # Ensure effect thread is running
+            if self._effect_thread is None or not self._effect_thread.is_alive():
+                self._stop_thread.clear()
+                self._effect_thread = threading.Thread(target=self._effect_loop, daemon=True)
+                self._effect_thread.start()
+
         effect_name = next(name for eid, name in effects if eid == effect_id)
         return {
             "connected": True,
             "effect_id": effect_id,
             "effect_name": effect_name,
+            "power_on": self._powered_on,
             "message": f"Effect set to {effect_name}"
         }
 
@@ -307,11 +330,22 @@ class DWLEDController:
             if self._segment:
                 self._segment.palette_id = palette_id
 
+            # Auto power on when setting palette
+            if not self._powered_on:
+                self._powered_on = True
+
+            # Ensure effect thread is running
+            if self._effect_thread is None or not self._effect_thread.is_alive():
+                self._stop_thread.clear()
+                self._effect_thread = threading.Thread(target=self._effect_loop, daemon=True)
+                self._effect_thread.start()
+
         palette_name = get_palette_name(palette_id)
         return {
             "connected": True,
             "palette_id": palette_id,
             "palette_name": palette_name,
+            "power_on": self._powered_on,
             "message": f"Palette set to {palette_name}"
         }
 
