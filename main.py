@@ -1656,20 +1656,54 @@ async def dw_leds_intensity(request: dict):
         logger.error(f"Failed to set DW LED intensity: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/dw_leds/set_effects")
-async def dw_leds_set_effects(request: dict):
-    """Configure idle and playing effects"""
-    idle_effect = request.get("idle_effect")
-    playing_effect = request.get("playing_effect")
+@app.post("/api/dw_leds/save_effect_settings")
+async def dw_leds_save_effect_settings(request: dict):
+    """Save current LED settings as idle or playing effect"""
+    effect_type = request.get("type")  # 'idle' or 'playing'
 
-    state.dw_led_idle_effect = idle_effect if idle_effect else "off"
-    state.dw_led_playing_effect = playing_effect if playing_effect else "off"
+    settings = {
+        "effect_id": request.get("effect_id"),
+        "palette_id": request.get("palette_id"),
+        "speed": request.get("speed"),
+        "intensity": request.get("intensity"),
+        "color1": request.get("color1"),
+        "color2": request.get("color2"),
+        "color3": request.get("color3")
+    }
+
+    if effect_type == "idle":
+        state.dw_led_idle_effect = settings
+    elif effect_type == "playing":
+        state.dw_led_playing_effect = settings
+    else:
+        raise HTTPException(status_code=400, detail="Invalid effect type. Must be 'idle' or 'playing'")
+
     state.save()
+    logger.info(f"DW LED {effect_type} effect settings saved: {settings}")
 
-    logger.info(f"DW LED effects configured - Idle: {state.dw_led_idle_effect}, Playing: {state.dw_led_playing_effect}")
+    return {"success": True, "type": effect_type, "settings": settings}
 
+@app.post("/api/dw_leds/clear_effect_settings")
+async def dw_leds_clear_effect_settings(request: dict):
+    """Clear idle or playing effect settings"""
+    effect_type = request.get("type")  # 'idle' or 'playing'
+
+    if effect_type == "idle":
+        state.dw_led_idle_effect = None
+    elif effect_type == "playing":
+        state.dw_led_playing_effect = None
+    else:
+        raise HTTPException(status_code=400, detail="Invalid effect type. Must be 'idle' or 'playing'")
+
+    state.save()
+    logger.info(f"DW LED {effect_type} effect settings cleared")
+
+    return {"success": True, "type": effect_type}
+
+@app.get("/api/dw_leds/get_effect_settings")
+async def dw_leds_get_effect_settings():
+    """Get saved idle and playing effect settings"""
     return {
-        "success": True,
         "idle_effect": state.dw_led_idle_effect,
         "playing_effect": state.dw_led_playing_effect
     }

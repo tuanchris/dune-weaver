@@ -253,32 +253,74 @@
       </div>
 
       <!-- Effect Settings -->
-      <div class="flex flex-col gap-4 pt-4 border-t border-slate-200">
-        <h3 class="text-slate-800 text-base font-semibold">Automation Settings</h3>
-        <p class="text-xs text-slate-500">Configure which effects to show when idle or playing patterns</p>
+      <div class="flex flex-col gap-6 pt-4 border-t border-slate-200">
+        <div>
+          <h3 class="text-slate-800 text-base font-semibold">Automation Settings</h3>
+          <p class="text-xs text-slate-500 mt-1">Configure LED effects to automatically activate when idle or playing patterns</p>
+        </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <!-- Idle Effect -->
-          <div class="flex flex-col gap-2">
-            <label class="text-sm font-medium text-slate-700">Idle Effect</label>
-            <select id="dw-leds-idle-effect" class="form-select w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-0 focus:ring-2 focus:ring-blue-500">
-              <option value="off">Off</option>
-            </select>
+        <!-- Idle Effect Configuration -->
+        <div class="bg-slate-50 rounded-lg p-4 border border-slate-200">
+          <div class="flex items-center justify-between mb-3">
+            <h4 class="text-slate-700 text-sm font-semibold flex items-center gap-2">
+              <span class="material-icons text-blue-600 text-lg">bedtime</span>
+              Idle Effect
+            </h4>
+            <div class="flex gap-2">
+              <button id="dw-leds-save-current-idle" class="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-400">
+                <span class="material-icons text-sm">save</span>
+                Save Current
+              </button>
+              <button id="dw-leds-clear-idle" class="flex items-center gap-1.5 rounded-lg bg-gray-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-400">
+                <span class="material-icons text-sm">clear</span>
+                Clear
+              </button>
+            </div>
           </div>
 
-          <!-- Playing Effect -->
-          <div class="flex flex-col gap-2">
-            <label class="text-sm font-medium text-slate-700">Playing Effect</label>
-            <select id="dw-leds-playing-effect" class="form-select w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-0 focus:ring-2 focus:ring-blue-500">
-              <option value="off">Off</option>
-            </select>
+          <div id="idle-current-settings" class="text-xs text-slate-600 mb-3 p-2 bg-white rounded border border-slate-200">
+            <span class="font-medium">Current:</span> <span id="idle-settings-display">Not configured</span>
           </div>
         </div>
 
-        <button id="dw-leds-save-effects" class="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-blue-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2">
-          <span class="material-icons text-base">save</span>
-          <span>Save Effect Settings</span>
-        </button>
+        <!-- Playing Effect Configuration -->
+        <div class="bg-slate-50 rounded-lg p-4 border border-slate-200">
+          <div class="flex items-center justify-between mb-3">
+            <h4 class="text-slate-700 text-sm font-semibold flex items-center gap-2">
+              <span class="material-icons text-blue-600 text-lg">play_circle</span>
+              Playing Effect
+            </h4>
+            <div class="flex gap-2">
+              <button id="dw-leds-save-current-playing" class="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-400">
+                <span class="material-icons text-sm">save</span>
+                Save Current
+              </button>
+              <button id="dw-leds-clear-playing" class="flex items-center gap-1.5 rounded-lg bg-gray-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-400">
+                <span class="material-icons text-sm">clear</span>
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <div id="playing-current-settings" class="text-xs text-slate-600 mb-3 p-2 bg-white rounded border border-slate-200">
+            <span class="font-medium">Current:</span> <span id="playing-settings-display">Not configured</span>
+          </div>
+        </div>
+
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <div class="flex items-start gap-2">
+            <span class="material-icons text-blue-600 text-base">info</span>
+            <div class="text-xs text-blue-700">
+              <p class="font-medium text-blue-800">How to use:</p>
+              <ul class="mt-1 space-y-1 list-disc list-inside">
+                <li>Adjust LED settings above (effect, palette, speed, intensity, colors)</li>
+                <li>Click "Save Current" to capture current settings for automation</li>
+                <li>Click "Clear" to turn off automation for that state</li>
+                <li>Settings are applied automatically when table changes state</li>
+              </ul>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </section>

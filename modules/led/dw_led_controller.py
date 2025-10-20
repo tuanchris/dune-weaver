@@ -506,19 +506,47 @@ def effect_loading(controller: DWLEDController) -> bool:
         return False
 
 
-def effect_idle(controller: DWLEDController, effect_name: Optional[str] = None) -> bool:
-    """Show idle effect"""
+def effect_idle(controller: DWLEDController, effect_settings: Optional[dict] = None) -> bool:
+    """Show idle effect with full settings"""
     try:
-        if effect_name and effect_name.lower() != "off":
-            # Try to find effect by name
-            effects = controller.get_effects()
-            for eid, name in effects:
-                if name.lower() == effect_name.lower():
-                    controller.set_power(1)
-                    controller.set_effect(eid)
-                    return True
+        if effect_settings and isinstance(effect_settings, dict):
+            # New format: full settings dict
+            controller.set_power(1)
 
-        # Default: turn off
+            # Set effect
+            effect_id = effect_settings.get("effect_id", 0)
+            palette_id = effect_settings.get("palette_id", 0)
+            speed = effect_settings.get("speed", 128)
+            intensity = effect_settings.get("intensity", 128)
+
+            controller.set_effect(effect_id, speed=speed, intensity=intensity)
+            controller.set_palette(palette_id)
+
+            # Set colors if provided
+            color1 = effect_settings.get("color1")
+            if color1:
+                # Convert hex to RGB
+                r1 = int(color1[1:3], 16)
+                g1 = int(color1[3:5], 16)
+                b1 = int(color1[5:7], 16)
+
+                color2 = effect_settings.get("color2", "#000000")
+                r2 = int(color2[1:3], 16)
+                g2 = int(color2[3:5], 16)
+                b2 = int(color2[5:7], 16)
+
+                color3 = effect_settings.get("color3", "#0000ff")
+                r3 = int(color3[1:3], 16)
+                g3 = int(color3[3:5], 16)
+                b3 = int(color3[5:7], 16)
+
+                controller.set_color_slot(0, r1, g1, b1)
+                controller.set_color_slot(1, r2, g2, b2)
+                controller.set_color_slot(2, r3, g3, b3)
+
+            return True
+
+        # Default or old format: turn off
         controller.set_power(0)
         return True
     except Exception as e:
@@ -539,20 +567,48 @@ def effect_connected(controller: DWLEDController) -> bool:
         return False
 
 
-def effect_playing(controller: DWLEDController, effect_name: Optional[str] = None) -> bool:
-    """Show playing effect"""
+def effect_playing(controller: DWLEDController, effect_settings: Optional[dict] = None) -> bool:
+    """Show playing effect with full settings"""
     try:
-        if effect_name and effect_name.lower() != "off":
-            # Try to find effect by name
-            effects = controller.get_effects()
-            for eid, name in effects:
-                if name.lower() == effect_name.lower():
-                    controller.set_power(1)
-                    controller.set_effect(eid)
-                    return True
-        else:
-            # Default: turn off
-            controller.set_power(0)
+        if effect_settings and isinstance(effect_settings, dict):
+            # New format: full settings dict
+            controller.set_power(1)
+
+            # Set effect
+            effect_id = effect_settings.get("effect_id", 0)
+            palette_id = effect_settings.get("palette_id", 0)
+            speed = effect_settings.get("speed", 128)
+            intensity = effect_settings.get("intensity", 128)
+
+            controller.set_effect(effect_id, speed=speed, intensity=intensity)
+            controller.set_palette(palette_id)
+
+            # Set colors if provided
+            color1 = effect_settings.get("color1")
+            if color1:
+                # Convert hex to RGB
+                r1 = int(color1[1:3], 16)
+                g1 = int(color1[3:5], 16)
+                b1 = int(color1[5:7], 16)
+
+                color2 = effect_settings.get("color2", "#000000")
+                r2 = int(color2[1:3], 16)
+                g2 = int(color2[3:5], 16)
+                b2 = int(color2[5:7], 16)
+
+                color3 = effect_settings.get("color3", "#0000ff")
+                r3 = int(color3[1:3], 16)
+                g3 = int(color3[3:5], 16)
+                b3 = int(color3[5:7], 16)
+
+                controller.set_color_slot(0, r1, g1, b1)
+                controller.set_color_slot(1, r2, g2, b2)
+                controller.set_color_slot(2, r3, g3, b3)
+
+            return True
+
+        # Default or old format: turn off
+        controller.set_power(0)
         return True
     except Exception as e:
         logger.error(f"Error setting playing effect: {e}")

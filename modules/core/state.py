@@ -50,8 +50,12 @@ class AppState:
         self.dw_led_brightness = 35  # Brightness 0-100
         self.dw_led_speed = 128  # Effect speed 0-255
         self.dw_led_intensity = 128  # Effect intensity 0-255
-        self.dw_led_idle_effect = "off"  # Effect to show when idle
-        self.dw_led_playing_effect = "off"  # Effect to show when playing
+
+        # Idle effect settings (all parameters)
+        self.dw_led_idle_effect = None  # Full effect configuration dict or None
+
+        # Playing effect settings (all parameters)
+        self.dw_led_playing_effect = None  # Full effect configuration dict or None
         self.skip_requested = False
         self.table_type = None
         self._playlist_mode = "loop"
@@ -256,8 +260,23 @@ class AppState:
         self.dw_led_brightness = data.get('dw_led_brightness', 35)
         self.dw_led_speed = data.get('dw_led_speed', 128)
         self.dw_led_intensity = data.get('dw_led_intensity', 128)
-        self.dw_led_idle_effect = data.get('dw_led_idle_effect', "off")
-        self.dw_led_playing_effect = data.get('dw_led_playing_effect', "off")
+
+        # Load effect settings (handle both old string format and new dict format)
+        idle_effect_data = data.get('dw_led_idle_effect', None)
+        if isinstance(idle_effect_data, str):
+            # Old format: just effect name
+            self.dw_led_idle_effect = None if idle_effect_data == "off" else {"effect_id": 0}
+        else:
+            # New format: full dict or None
+            self.dw_led_idle_effect = idle_effect_data
+
+        playing_effect_data = data.get('dw_led_playing_effect', None)
+        if isinstance(playing_effect_data, str):
+            # Old format: just effect name
+            self.dw_led_playing_effect = None if playing_effect_data == "off" else {"effect_id": 0}
+        else:
+            # New format: full dict or None
+            self.dw_led_playing_effect = playing_effect_data
         self.app_name = data.get("app_name", "Dune Weaver")
         self.auto_play_enabled = data.get("auto_play_enabled", False)
         self.auto_play_playlist = data.get("auto_play_playlist", None)

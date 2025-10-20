@@ -285,29 +285,151 @@ async function initializeDWLedsControls() {
         }
     });
 
-    // Save automation effects button
-    document.getElementById('dw-leds-save-effects')?.addEventListener('click', async () => {
-        try {
-            const idleEffect = document.getElementById('dw-leds-idle-effect')?.value || 'off';
-            const playingEffect = document.getElementById('dw-leds-playing-effect')?.value || 'off';
-
-            const response = await fetch('/api/dw_leds/set_effects', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    idle_effect: idleEffect,
-                    playing_effect: playingEffect
-                })
-            });
-
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-            await response.json();
-            showStatus('Effect settings saved successfully', 'success');
-        } catch (error) {
-            showStatus(`Failed to save effect settings: ${error.message}`, 'error');
-        }
+    // Save Current Idle Effect
+    document.getElementById('dw-leds-save-current-idle')?.addEventListener('click', async () => {
+        await saveCurrentEffectSettings('idle');
     });
+
+    // Clear Idle Effect
+    document.getElementById('dw-leds-clear-idle')?.addEventListener('click', async () => {
+        await clearEffectSettings('idle');
+    });
+
+    // Save Current Playing Effect
+    document.getElementById('dw-leds-save-current-playing')?.addEventListener('click', async () => {
+        await saveCurrentEffectSettings('playing');
+    });
+
+    // Clear Playing Effect
+    document.getElementById('dw-leds-clear-playing')?.addEventListener('click', async () => {
+        await clearEffectSettings('playing');
+    });
+
+    // Load and display saved effect settings
+    await loadEffectSettings();
+}
+
+// Save current LED settings as idle or playing effect
+async function saveCurrentEffectSettings(type) {
+    try {
+        const effectId = parseInt(document.getElementById('dw-leds-effect-select')?.value) || 0;
+        const paletteId = parseInt(document.getElementById('dw-leds-palette-select')?.value) || 0;
+        const speed = parseInt(document.getElementById('dw-leds-speed')?.value) || 128;
+        const intensity = parseInt(document.getElementById('dw-leds-intensity')?.value) || 128;
+
+        // Get effect colors
+        const color1 = document.getElementById('dw-leds-color1')?.value || '#ff0000';
+        const color2 = document.getElementById('dw-leds-color2')?.value || '#000000';
+        const color3 = document.getElementById('dw-leds-color3')?.value || '#0000ff';
+
+        const settings = {
+            type: type,  // 'idle' or 'playing'
+            effect_id: effectId,
+            palette_id: paletteId,
+            speed: speed,
+            intensity: intensity,
+            color1: color1,
+            color2: color2,
+            color3: color3
+        };
+
+        const response = await fetch('/api/dw_leds/save_effect_settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings)
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data = await response.json();
+        showStatus(`${type.charAt(0).toUpperCase() + type.slice(1)} effect settings saved successfully`, 'success');
+
+        // Refresh display
+        await loadEffectSettings();
+    } catch (error) {
+        showStatus(`Failed to save ${type} effect settings: ${error.message}`, 'error');
+    }
+}
+
+// Clear effect settings
+async function clearEffectSettings(type) {
+    try {
+        const response = await fetch('/api/dw_leds/clear_effect_settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: type })
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        showStatus(`${type.charAt(0).toUpperCase() + type.slice(1)} effect cleared`, 'success');
+
+        // Refresh display
+        await loadEffectSettings();
+    } catch (error) {
+        showStatus(`Failed to clear ${type} effect: ${error.message}`, 'error');
+    }
+}
+
+// Load and display saved effect settings
+async function loadEffectSettings() {
+    try {
+        const response = await fetch('/api/dw_leds/get_effect_settings');
+        if (!response.ok) return;
+
+        const data = await response.json();
+
+        // Display idle settings
+        const idleDisplay = document.getElementById('idle-settings-display');
+        if (idleDisplay) {
+            idleDisplay.textContent = formatEffectSettings(data.idle_effect);
+        }
+
+        // Display playing settings
+        const playingDisplay = document.getElementById('playing-settings-display');
+        if (playingDisplay) {
+            playingDisplay.textContent = formatEffectSettings(data.playing_effect);
+        }
+    } catch (error) {
+        console.error('Failed to load effect settings:', error);
+    }
+}
+
+// Format effect settings for display
+function formatEffectSettings(settings) {
+    if (!settings) {
+        return 'Not configured (LEDs will turn off)';
+    }
+
+    const parts = [];
+
+    // Get effect name from select (if available)
+    const effectSelect = document.getElementById('dw-leds-effect-select');
+    if (effectSelect && settings.effect_id !== undefined) {
+        const effectOption = effectSelect.querySelector(`option[value="${settings.effect_id}"]`);
+        parts.push(`Effect: ${effectOption ? effectOption.textContent : settings.effect_id}`);
+    }
+
+    // Get palette name from select (if available)
+    const paletteSelect = document.getElementById('dw-leds-palette-select');
+    if (paletteSelect && settings.palette_id !== undefined) {
+        const paletteOption = paletteSelect.querySelector(`option[value="${settings.palette_id}"]`);
+        parts.push(`Palette: ${paletteOption ? paletteOption.textContent : settings.palette_id}`);
+    }
+
+    if (settings.speed !== undefined) {
+        parts.push(`Speed: ${settings.speed}`);
+    }
+
+    if (settings.intensity !== undefined) {
+        parts.push(`Intensity: ${settings.intensity}`);
+    }
+
+    if (settings.color1) {
+        parts.push(`Colors: ${settings.color1}, ${settings.color2 || '#000000'}, ${settings.color3 || '#0000ff'}`);
+    }
+
+    return parts.join(' | ');
 }
 
 // Helper function to apply color
