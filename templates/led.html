@@ -40,10 +40,6 @@
 .dark input[type="range"] {
   background-color: #404040;
 }
-.dark input[type="color"] {
-  background-color: #262626;
-  border-color: #404040;
-}
 .dark select,
 .dark .form-select {
   background-color: #1f1f1f;
@@ -53,11 +49,6 @@
 .dark select option {
   background-color: #262626;
   color: #e5e5e5;
-}
-
-/* Quick color buttons - ensure they remain visible */
-.dark .quick-color {
-  border-color: #525252;
 }
 
 /* Status messages - keep backgrounds but adjust borders */
@@ -163,38 +154,6 @@
             <span id="dw-leds-brightness-value" class="text-sm font-medium text-slate-600">35%</span>
           </div>
           <input type="range" id="dw-leds-brightness" min="0" max="100" value="35" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-        </div>
-      </div>
-
-      <!-- Color Control -->
-      <div class="flex flex-col gap-3">
-        <h3 class="text-slate-800 text-base font-semibold">Color Picker</h3>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div class="flex items-center gap-3">
-            <input type="color" id="dw-leds-color" value="#ff0000" class="w-20 h-20 rounded-lg border-2 border-slate-300 cursor-pointer">
-            <div class="flex flex-col gap-1">
-              <span id="dw-leds-color-hex" class="text-sm font-mono font-semibold text-slate-700">#FF0000</span>
-              <button id="dw-leds-set-color" class="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-md hover:bg-blue-700 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2">
-                <span class="material-icons text-base">palette</span>
-                <span>Apply</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Quick Colors -->
-          <div class="flex flex-col gap-2">
-            <span class="text-sm font-medium text-slate-600">Quick Colors</span>
-            <div class="grid grid-cols-4 gap-2">
-              <button class="dw-leds-quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ff0000" style="background-color: #ff0000;" title="Red"></button>
-              <button class="dw-leds-quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#00ff00" style="background-color: #00ff00;" title="Green"></button>
-              <button class="dw-leds-quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#0000ff" style="background-color: #0000ff;" title="Blue"></button>
-              <button class="dw-leds-quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ffff00" style="background-color: #ffff00;" title="Yellow"></button>
-              <button class="dw-leds-quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ff00ff" style="background-color: #ff00ff;" title="Magenta"></button>
-              <button class="dw-leds-quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#00ffff" style="background-color: #00ffff;" title="Cyan"></button>
-              <button class="dw-leds-quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ff8000" style="background-color: #ff8000;" title="Orange"></button>
-              <button class="dw-leds-quick-color h-10 rounded-lg border-2 border-slate-300 hover:scale-105 transition-transform" data-color="#ffffff" style="background-color: #ffffff;" title="White"></button>
-            </div>
-          </div>
         </div>
       </div>
 

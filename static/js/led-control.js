@@ -129,33 +129,6 @@ async function initializeDWLedsControls() {
         }
     });
 
-    // Color picker - update display when color changes
-    const colorPicker = document.getElementById('dw-leds-color');
-    const colorHexDisplay = document.getElementById('dw-leds-color-hex');
-
-    colorPicker?.addEventListener('input', (e) => {
-        if (colorHexDisplay) {
-            colorHexDisplay.textContent = e.target.value.toUpperCase();
-        }
-    });
-
-    // Color picker - apply button
-    document.getElementById('dw-leds-set-color')?.addEventListener('click', async () => {
-        await applyColor(colorPicker.value);
-    });
-
-    // Quick color buttons
-    document.querySelectorAll('.dw-leds-quick-color').forEach(button => {
-        button.addEventListener('click', async () => {
-            const hexColor = button.getAttribute('data-color');
-            await applyColor(hexColor);
-
-            // Update color picker and hex display to match
-            if (colorPicker) colorPicker.value = hexColor;
-            if (colorHexDisplay) colorHexDisplay.textContent = hexColor.toUpperCase();
-        });
-    });
-
     // Effect color pickers - apply immediately on change
     document.querySelectorAll('.effect-color-picker').forEach(picker => {
         picker.addEventListener('change', async () => {
@@ -563,37 +536,6 @@ function updateIdleTimeoutRemainingDisplay(remainingMinutes) {
         }
     } else {
         remainingDiv.classList.add('hidden');
-    }
-}
-
-// Helper function to apply color
-async function applyColor(hexColor) {
-    try {
-        // Convert hex to RGB
-        const r = parseInt(hexColor.slice(1, 3), 16);
-        const g = parseInt(hexColor.slice(3, 5), 16);
-        const b = parseInt(hexColor.slice(5, 7), 16);
-
-        const response = await fetch('/api/dw_leds/color', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ r, g, b })
-        });
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
-
-        if (data.connected) {
-            showStatus(`Color set to ${hexColor.toUpperCase()}`, 'success');
-            // Update power button state if backend auto-powered on
-            if (data.power_on !== undefined) {
-                updatePowerButtonUI(data.power_on);
-            }
-        } else {
-            showStatus(data.error || 'Failed to set color', 'error');
-        }
-    } catch (error) {
-        showStatus(`Failed to set color: ${error.message}`, 'error');
     }
 }
 
