@@ -319,13 +319,23 @@
                 <span class="material-icons text-blue-600 text-base">schedule</span>
                 Auto Turn Off
               </label>
-              <label class="relative inline-flex items-center cursor-pointer">
+              <label class="relative inline-flex items-center cursor-pointer" title="Enable automatic LED turn off after idle period">
                 <input type="checkbox" id="dw-leds-idle-timeout-enabled" class="sr-only peer">
                 <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
             </div>
 
-            <div id="idle-timeout-settings" class="space-y-3">
+            <!-- Help text when disabled -->
+            <div id="idle-timeout-disabled-help" class="hidden mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div class="flex items-start gap-2">
+                <span class="material-icons text-blue-600 text-sm">info</span>
+                <p class="text-xs text-blue-700">
+                  <span class="font-semibold">Enable the toggle above</span> to automatically turn off LEDs after a period of inactivity.
+                </p>
+              </div>
+            </div>
+
+            <div id="idle-timeout-settings" class="space-y-3 transition-opacity duration-200">
               <div>
                 <label class="block text-xs text-slate-500 mb-2">Turn off LEDs after</label>
                 <div class="flex items-center gap-3">

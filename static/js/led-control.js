@@ -313,14 +313,22 @@ async function initializeDWLedsControls() {
 
     const idleTimeoutEnabled = document.getElementById('dw-leds-idle-timeout-enabled');
     const idleTimeoutSettings = document.getElementById('idle-timeout-settings');
+    const idleTimeoutDisabledHelp = document.getElementById('idle-timeout-disabled-help');
 
-    // Toggle idle timeout settings visibility
+    // Toggle idle timeout settings visibility and help text
     idleTimeoutEnabled?.addEventListener('change', (e) => {
-        if (e.target.checked) {
+        const isEnabled = e.target.checked;
+
+        if (isEnabled) {
             idleTimeoutSettings?.classList.remove('opacity-50', 'pointer-events-none');
+            idleTimeoutDisabledHelp?.classList.add('hidden');
         } else {
             idleTimeoutSettings?.classList.add('opacity-50', 'pointer-events-none');
+            idleTimeoutDisabledHelp?.classList.remove('hidden');
         }
+
+        // Auto-save when toggle changes for better UX
+        saveIdleTimeout();
     });
 
     // Save idle timeout settings
@@ -466,6 +474,7 @@ async function loadIdleTimeout() {
         const enabledCheckbox = document.getElementById('dw-leds-idle-timeout-enabled');
         const minutesInput = document.getElementById('dw-leds-idle-timeout-minutes');
         const idleTimeoutSettings = document.getElementById('idle-timeout-settings');
+        const idleTimeoutDisabledHelp = document.getElementById('idle-timeout-disabled-help');
 
         if (enabledCheckbox) {
             enabledCheckbox.checked = data.enabled;
@@ -475,11 +484,13 @@ async function loadIdleTimeout() {
             minutesInput.value = data.minutes;
         }
 
-        // Set initial state of settings panel
+        // Set initial state of settings panel and help text
         if (data.enabled) {
             idleTimeoutSettings?.classList.remove('opacity-50', 'pointer-events-none');
+            idleTimeoutDisabledHelp?.classList.add('hidden');
         } else {
             idleTimeoutSettings?.classList.add('opacity-50', 'pointer-events-none');
+            idleTimeoutDisabledHelp?.classList.remove('hidden');
         }
 
         // Update remaining time display
