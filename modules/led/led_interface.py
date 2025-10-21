@@ -4,7 +4,19 @@ Provides a common abstraction layer for pattern manager integration.
 """
 from typing import Optional, Literal
 from modules.led.led_controller import LEDController, effect_loading as wled_loading, effect_idle as wled_idle, effect_connected as wled_connected, effect_playing as wled_playing
-from modules.led.dw_led_controller import DWLEDController, effect_loading as dw_led_loading, effect_idle as dw_led_idle, effect_connected as dw_led_connected, effect_playing as dw_led_playing
+
+# Try to import DW LED controller - it requires RPi-specific dependencies
+try:
+    from modules.led.dw_led_controller import DWLEDController, effect_loading as dw_led_loading, effect_idle as dw_led_idle, effect_connected as dw_led_connected, effect_playing as dw_led_playing
+    DW_LEDS_AVAILABLE = True
+except ImportError:
+    # Running on non-RPi platform - DW LEDs not available
+    DWLEDController = None
+    dw_led_loading = None
+    dw_led_idle = None
+    dw_led_connected = None
+    dw_led_playing = None
+    DW_LEDS_AVAILABLE = False
 
 
 LEDProviderType = Literal["wled", "dw_leds", "none"]
@@ -25,6 +37,8 @@ class LEDInterface:
         if provider == "wled" and ip_address:
             self._controller = LEDController(ip_address)
         elif provider == "dw_leds":
+            if not DW_LEDS_AVAILABLE:
+                raise ImportError("DW LED controller requires Raspberry Pi GPIO libraries. Install with: pip install -r requirements.txt")
             # DW LEDs uses local GPIO, no IP needed
             num_leds = num_leds or 60
             gpio_pin = gpio_pin or 12
@@ -55,6 +69,8 @@ class LEDInterface:
         if provider == "wled" and ip_address:
             self._controller = LEDController(ip_address)
         elif provider == "dw_leds":
+            if not DW_LEDS_AVAILABLE:
+                raise ImportError("DW LED controller requires Raspberry Pi GPIO libraries. Install with: pip install -r requirements.txt")
             num_leds = num_leds or 60
             gpio_pin = gpio_pin or 12
             pixel_order = pixel_order or "GRB"
