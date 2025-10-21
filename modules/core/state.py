@@ -40,7 +40,27 @@ class AppState:
         self.conn = None
         self.port = None
         self.wled_ip = None
+        self.led_provider = "none"  # "wled", "dw_leds", or "none"
         self.led_controller = None
+
+        # DW LED settings
+        self.dw_led_num_leds = 60  # Number of LEDs in strip
+        self.dw_led_gpio_pin = 12  # GPIO pin (12, 13, 18, or 19)
+        self.dw_led_pixel_order = "GRB"  # Pixel color order for WS281x (GRB, RGB, BGR, etc.)
+        self.dw_led_brightness = 35  # Brightness 0-100
+        self.dw_led_speed = 128  # Effect speed 0-255
+        self.dw_led_intensity = 128  # Effect intensity 0-255
+
+        # Idle effect settings (all parameters)
+        self.dw_led_idle_effect = None  # Full effect configuration dict or None
+
+        # Playing effect settings (all parameters)
+        self.dw_led_playing_effect = None  # Full effect configuration dict or None
+
+        # Idle timeout settings
+        self.dw_led_idle_timeout_enabled = False  # Enable automatic LED turn off after idle period
+        self.dw_led_idle_timeout_minutes = 30  # Idle timeout duration in minutes
+        self.dw_led_last_activity_time = None  # Last activity timestamp (runtime only, not persisted)
         self.skip_requested = False
         self.table_type = None
         self._playlist_mode = "loop"
@@ -190,6 +210,17 @@ class AppState:
             "custom_clear_from_out": self.custom_clear_from_out,
             "port": self.port,
             "wled_ip": self.wled_ip,
+            "led_provider": self.led_provider,
+            "dw_led_num_leds": self.dw_led_num_leds,
+            "dw_led_gpio_pin": self.dw_led_gpio_pin,
+            "dw_led_pixel_order": self.dw_led_pixel_order,
+            "dw_led_brightness": self.dw_led_brightness,
+            "dw_led_speed": self.dw_led_speed,
+            "dw_led_intensity": self.dw_led_intensity,
+            "dw_led_idle_effect": self.dw_led_idle_effect,
+            "dw_led_playing_effect": self.dw_led_playing_effect,
+            "dw_led_idle_timeout_enabled": self.dw_led_idle_timeout_enabled,
+            "dw_led_idle_timeout_minutes": self.dw_led_idle_timeout_minutes,
             "app_name": self.app_name,
             "auto_play_enabled": self.auto_play_enabled,
             "auto_play_playlist": self.auto_play_playlist,
@@ -229,6 +260,35 @@ class AppState:
         self.custom_clear_from_out = data.get("custom_clear_from_out", None)
         self.port = data.get("port", None)
         self.wled_ip = data.get('wled_ip', None)
+        self.led_provider = data.get('led_provider', "none")
+        self.dw_led_num_leds = data.get('dw_led_num_leds', 60)
+        self.dw_led_gpio_pin = data.get('dw_led_gpio_pin', 12)
+        self.dw_led_pixel_order = data.get('dw_led_pixel_order', "GRB")
+        self.dw_led_brightness = data.get('dw_led_brightness', 35)
+        self.dw_led_speed = data.get('dw_led_speed', 128)
+        self.dw_led_intensity = data.get('dw_led_intensity', 128)
+
+        # Load effect settings (handle both old string format and new dict format)
+        idle_effect_data = data.get('dw_led_idle_effect', None)
+        if isinstance(idle_effect_data, str):
+            # Old format: just effect name
+            self.dw_led_idle_effect = None if idle_effect_data == "off" else {"effect_id": 0}
+        else:
+            # New format: full dict or None
+            self.dw_led_idle_effect = idle_effect_data
+
+        playing_effect_data = data.get('dw_led_playing_effect', None)
+        if isinstance(playing_effect_data, str):
+            # Old format: just effect name
+            self.dw_led_playing_effect = None if playing_effect_data == "off" else {"effect_id": 0}
+        else:
+            # New format: full dict or None
+            self.dw_led_playing_effect = playing_effect_data
+
+        # Load idle timeout settings
+        self.dw_led_idle_timeout_enabled = data.get('dw_led_idle_timeout_enabled', False)
+        self.dw_led_idle_timeout_minutes = data.get('dw_led_idle_timeout_minutes', 30)
+
         self.app_name = data.get("app_name", "Dune Weaver")
         self.auto_play_enabled = data.get("auto_play_enabled", False)
         self.auto_play_playlist = data.get("auto_play_playlist", None)

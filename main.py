@@ -20,6 +20,7 @@ import sys
 import asyncio
 from contextlib import asynccontextmanager
 from modules.led.led_controller import LEDController, effect_idle
+from modules.led.led_interface import LEDInterface
 import math
 from modules.core.cache_manager import generate_all_image_previews, get_cache_path, generate_image_preview, get_pattern_metadata
 from modules.core.version_manager import version_manager
@@ -29,6 +30,8 @@ import time
 import argparse
 from concurrent.futures import ProcessPoolExecutor
 import multiprocessing
+import subprocess
+import platform
 
 # Get log level from environment variable, default to INFO
 log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -84,7 +87,41 @@ async def lifespan(app: FastAPI):
         connection_manager.connect_device()
     except Exception as e:
         logger.warning(f"Failed to auto-connect to serial port: {str(e)}")
-    
+
+    # Initialize LED controller based on saved configuration
+    try:
+        # Auto-detect provider for backward compatibility with existing installations
+        if not state.led_provider or state.led_provider == "none":
+            if state.wled_ip:
+                state.led_provider = "wled"
+                logger.info("Auto-detected WLED provider from existing configuration")
+
+        # Initialize the appropriate controller
+        if state.led_provider == "wled" and state.wled_ip:
+            state.led_controller = LEDInterface("wled", state.wled_ip)
+            logger.info(f"LED controller initialized: WLED at {state.wled_ip}")
+        elif state.led_provider == "dw_leds":
+            state.led_controller = LEDInterface(
+                "dw_leds",
+                num_leds=state.dw_led_num_leds,
+                gpio_pin=state.dw_led_gpio_pin,
+                pixel_order=state.dw_led_pixel_order,
+                brightness=state.dw_led_brightness / 100.0,
+                speed=state.dw_led_speed,
+                intensity=state.dw_led_intensity
+            )
+            logger.info(f"LED controller initialized: DW LEDs ({state.dw_led_num_leds} LEDs on GPIO{state.dw_led_gpio_pin}, pixel order: {state.dw_led_pixel_order})")
+        else:
+            state.led_controller = None
+            logger.info("LED controller not configured")
+
+        # Save if provider was auto-detected
+        if state.led_provider and state.wled_ip:
+            state.save()
+    except Exception as e:
+        logger.warning(f"Failed to initialize LED controller: {str(e)}")
+        state.led_controller = None
+
     # Check if auto_play mode is enabled and auto-play playlist (right after connection attempt)
     if state.auto_play_enabled and state.auto_play_playlist:
         logger.info(f"auto_play mode enabled, checking for connection before auto-playing playlist: {state.auto_play_playlist}")
@@ -127,6 +164,53 @@ async def lifespan(app: FastAPI):
     
     # Start cache check in background immediately
     asyncio.create_task(delayed_cache_check())
+
+    # Start idle timeout monitor
+    async def idle_timeout_monitor():
+        """Monitor LED idle timeout and turn off LEDs when timeout expires."""
+        import time
+        while True:
+            try:
+                await asyncio.sleep(30)  # Check every 30 seconds
+
+                if not state.dw_led_idle_timeout_enabled:
+                    continue
+
+                if not state.led_controller or not state.led_controller.is_configured:
+                    continue
+
+                # Check if we're currently playing a pattern
+                is_playing = bool(state.current_playing_file or state.current_playlist)
+                if is_playing:
+                    # Reset activity time when playing
+                    state.dw_led_last_activity_time = time.time()
+                    continue
+
+                # If no activity time set, initialize it
+                if state.dw_led_last_activity_time is None:
+                    state.dw_led_last_activity_time = time.time()
+                    continue
+
+                # Calculate idle duration
+                idle_seconds = time.time() - state.dw_led_last_activity_time
+                timeout_seconds = state.dw_led_idle_timeout_minutes * 60
+
+                # Turn off LEDs if timeout expired
+                if idle_seconds >= timeout_seconds:
+                    status = state.led_controller.check_status()
+                    # Check both "power" (WLED) and "power_on" (DW LEDs) keys
+                    is_powered_on = status.get("power", False) or status.get("power_on", False)
+                    if is_powered_on:  # Only turn off if currently on
+                        logger.info(f"Idle timeout ({state.dw_led_idle_timeout_minutes} minutes) expired, turning off LEDs")
+                        state.led_controller.set_power(0)
+                        # Reset activity time to prevent repeated turn-off attempts
+                        state.dw_led_last_activity_time = time.time()
+
+            except Exception as e:
+                logger.error(f"Error in idle timeout monitor: {e}")
+                await asyncio.sleep(60)  # Wait longer on error
+
+    asyncio.create_task(idle_timeout_monitor())
 
     yield  # This separates startup from shutdown code
 
@@ -191,6 +275,15 @@ class SpeedRequest(BaseModel):
 
 class WLEDRequest(BaseModel):
     wled_ip: Optional[str] = None
+
+class LEDConfigRequest(BaseModel):
+    provider: str  # "wled", "dw_leds", or "none"
+    ip_address: Optional[str] = None  # For WLED only
+    # DW LED specific fields
+    num_leds: Optional[int] = None
+    gpio_pin: Optional[int] = None
+    pixel_order: Optional[str] = None
+    brightness: Optional[int] = None
 
 class DeletePlaylistRequest(BaseModel):
     playlist_name: str
@@ -1077,18 +1170,148 @@ async def update_software():
 
 @app.post("/set_wled_ip")
 async def set_wled_ip(request: WLEDRequest):
+    """Legacy endpoint for backward compatibility - sets WLED as LED provider"""
     state.wled_ip = request.wled_ip
-    state.led_controller = LEDController(request.wled_ip)
-    effect_idle(state.led_controller)
+    state.led_provider = "wled" if request.wled_ip else "none"
+    state.led_controller = LEDInterface("wled", request.wled_ip) if request.wled_ip else None
+    if state.led_controller:
+        state.led_controller.effect_idle()
     state.save()
     logger.info(f"WLED IP updated: {request.wled_ip}")
     return {"success": True, "wled_ip": state.wled_ip}
 
 @app.get("/get_wled_ip")
 async def get_wled_ip():
+    """Legacy endpoint for backward compatibility"""
     if not state.wled_ip:
         raise HTTPException(status_code=404, detail="No WLED IP set")
     return {"success": True, "wled_ip": state.wled_ip}
+
+@app.post("/set_led_config")
+async def set_led_config(request: LEDConfigRequest):
+    """Configure LED provider (WLED, DW LEDs, or none)"""
+    if request.provider not in ["wled", "dw_leds", "none"]:
+        raise HTTPException(status_code=400, detail="Invalid provider. Must be 'wled', 'dw_leds', or 'none'")
+
+    state.led_provider = request.provider
+
+    if request.provider == "wled":
+        if not request.ip_address:
+            raise HTTPException(status_code=400, detail="IP address required for WLED")
+        state.wled_ip = request.ip_address
+        state.led_controller = LEDInterface("wled", request.ip_address)
+        logger.info(f"LED provider set to WLED at {request.ip_address}")
+
+    elif request.provider == "dw_leds":
+        # Check if hardware settings changed (requires restart)
+        old_gpio_pin = state.dw_led_gpio_pin
+        old_pixel_order = state.dw_led_pixel_order
+        hardware_changed = (
+            old_gpio_pin != (request.gpio_pin or 12) or
+            old_pixel_order != (request.pixel_order or "GRB")
+        )
+
+        # Stop existing DW LED controller if hardware settings changed
+        if hardware_changed and state.led_controller and state.led_provider == "dw_leds":
+            logger.info("Hardware settings changed, stopping existing LED controller...")
+            controller = state.led_controller.get_controller()
+            if controller and hasattr(controller, 'stop'):
+                try:
+                    controller.stop()
+                    logger.info("LED controller stopped successfully")
+                except Exception as e:
+                    logger.error(f"Error stopping LED controller: {e}")
+
+        state.dw_led_num_leds = request.num_leds or 60
+        state.dw_led_gpio_pin = request.gpio_pin or 12
+        state.dw_led_pixel_order = request.pixel_order or "GRB"
+        state.dw_led_brightness = request.brightness or 35
+        state.wled_ip = None
+
+        # Create new LED controller with updated settings
+        state.led_controller = LEDInterface(
+            "dw_leds",
+            num_leds=state.dw_led_num_leds,
+            gpio_pin=state.dw_led_gpio_pin,
+            pixel_order=state.dw_led_pixel_order,
+            brightness=state.dw_led_brightness / 100.0,
+            speed=state.dw_led_speed,
+            intensity=state.dw_led_intensity
+        )
+
+        restart_msg = " (restarted)" if hardware_changed else ""
+        logger.info(f"DW LEDs configured{restart_msg}: {state.dw_led_num_leds} LEDs on GPIO{state.dw_led_gpio_pin}, pixel order: {state.dw_led_pixel_order}")
+
+        # Check if initialization succeeded by checking status
+        status = state.led_controller.check_status()
+        if not status.get("connected", False) and status.get("error"):
+            error_msg = status["error"]
+            logger.warning(f"DW LED initialization failed: {error_msg}, but configuration saved for testing")
+            state.led_controller = None
+            # Keep the provider setting for testing purposes
+            # state.led_provider remains "dw_leds" so settings can be saved/tested
+
+            # Save state even with error
+            state.save()
+
+            # Return success with warning instead of error
+            return {
+                "success": True,
+                "warning": error_msg,
+                "hardware_available": False,
+                "provider": state.led_provider,
+                "dw_led_num_leds": state.dw_led_num_leds,
+                "dw_led_gpio_pin": state.dw_led_gpio_pin,
+                "dw_led_pixel_order": state.dw_led_pixel_order,
+                "dw_led_brightness": state.dw_led_brightness
+            }
+
+    else:  # none
+        state.wled_ip = None
+        state.led_controller = None
+        logger.info("LED provider disabled")
+
+    # Show idle effect if controller is configured
+    if state.led_controller:
+        state.led_controller.effect_idle()
+
+    state.save()
+
+    return {
+        "success": True,
+        "provider": state.led_provider,
+        "wled_ip": state.wled_ip,
+        "dw_led_num_leds": state.dw_led_num_leds,
+        "dw_led_gpio_pin": state.dw_led_gpio_pin,
+        "dw_led_brightness": state.dw_led_brightness
+    }
+
+@app.get("/get_led_config")
+async def get_led_config():
+    """Get current LED provider configuration"""
+    # Auto-detect provider for backward compatibility with existing installations
+    provider = state.led_provider
+    if not provider or provider == "none":
+        # If no provider set but we have IPs configured, auto-detect
+        if state.wled_ip:
+            provider = "wled"
+            state.led_provider = "wled"
+            state.save()
+            logger.info("Auto-detected WLED provider from existing configuration")
+        else:
+            provider = "none"
+
+    return {
+        "success": True,
+        "provider": provider,
+        "wled_ip": state.wled_ip,
+        "dw_led_num_leds": state.dw_led_num_leds,
+        "dw_led_gpio_pin": state.dw_led_gpio_pin,
+        "dw_led_pixel_order": state.dw_led_pixel_order,
+        "dw_led_brightness": state.dw_led_brightness,
+        "dw_led_idle_effect": state.dw_led_idle_effect,
+        "dw_led_playing_effect": state.dw_led_playing_effect
+    }
 
 @app.post("/skip_pattern")
 async def skip_pattern():
@@ -1284,9 +1507,337 @@ async def playlists(request: Request):
 async def image2sand(request: Request):
     return templates.TemplateResponse("image2sand.html", {"request": request, "app_name": state.app_name})
 
-@app.get("/wled")
-async def wled(request: Request):
-    return templates.TemplateResponse("wled.html", {"request": request, "app_name": state.app_name})
+@app.get("/led")
+async def led_control_page(request: Request):
+    return templates.TemplateResponse("led.html", {"request": request, "app_name": state.app_name})
+
+# DW LED control endpoints
+@app.get("/api/dw_leds/status")
+async def dw_leds_status():
+    """Get DW LED controller status"""
+    if not state.led_controller or state.led_provider != "dw_leds":
+        return {"connected": False, "message": "DW LEDs not configured"}
+
+    try:
+        return state.led_controller.check_status()
+    except Exception as e:
+        logger.error(f"Failed to check DW LED status: {str(e)}")
+        return {"connected": False, "message": str(e)}
+
+@app.post("/api/dw_leds/power")
+async def dw_leds_power(request: dict):
+    """Control DW LED power (0=off, 1=on, 2=toggle)"""
+    if not state.led_controller or state.led_provider != "dw_leds":
+        raise HTTPException(status_code=400, detail="DW LEDs not configured")
+
+    state_value = request.get("state", 1)
+    if state_value not in [0, 1, 2]:
+        raise HTTPException(status_code=400, detail="State must be 0 (off), 1 (on), or 2 (toggle)")
+
+    try:
+        return state.led_controller.set_power(state_value)
+    except Exception as e:
+        logger.error(f"Failed to set DW LED power: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/dw_leds/brightness")
+async def dw_leds_brightness(request: dict):
+    """Set DW LED brightness (0-100)"""
+    if not state.led_controller or state.led_provider != "dw_leds":
+        raise HTTPException(status_code=400, detail="DW LEDs not configured")
+
+    value = request.get("value", 50)
+    if not 0 <= value <= 100:
+        raise HTTPException(status_code=400, detail="Brightness must be between 0 and 100")
+
+    try:
+        controller = state.led_controller.get_controller()
+        result = controller.set_brightness(value)
+        # Update state if successful
+        if result.get("connected"):
+            state.dw_led_brightness = value
+            state.save()
+        return result
+    except Exception as e:
+        logger.error(f"Failed to set DW LED brightness: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/dw_leds/color")
+async def dw_leds_color(request: dict):
+    """Set solid color"""
+    if not state.led_controller or state.led_provider != "dw_leds":
+        raise HTTPException(status_code=400, detail="DW LEDs not configured")
+
+    # Accept both formats: {"r": 255, "g": 0, "b": 0} or {"color": [255, 0, 0]}
+    if "color" in request:
+        color = request["color"]
+        if not isinstance(color, list) or len(color) != 3:
+            raise HTTPException(status_code=400, detail="Color must be [R, G, B] array")
+        r, g, b = color[0], color[1], color[2]
+    elif "r" in request and "g" in request and "b" in request:
+        r = request["r"]
+        g = request["g"]
+        b = request["b"]
+    else:
+        raise HTTPException(status_code=400, detail="Color must include r, g, b fields or color array")
+
+    try:
+        controller = state.led_controller.get_controller()
+        return controller.set_color(r, g, b)
+    except Exception as e:
+        logger.error(f"Failed to set DW LED color: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/dw_leds/colors")
+async def dw_leds_colors(request: dict):
+    """Set effect colors (color1, color2, color3)"""
+    if not state.led_controller or state.led_provider != "dw_leds":
+        raise HTTPException(status_code=400, detail="DW LEDs not configured")
+
+    # Parse colors from request
+    color1 = None
+    color2 = None
+    color3 = None
+
+    if "color1" in request:
+        c = request["color1"]
+        if isinstance(c, list) and len(c) == 3:
+            color1 = tuple(c)
+        else:
+            raise HTTPException(status_code=400, detail="color1 must be [R, G, B] array")
+
+    if "color2" in request:
+        c = request["color2"]
+        if isinstance(c, list) and len(c) == 3:
+            color2 = tuple(c)
+        else:
+            raise HTTPException(status_code=400, detail="color2 must be [R, G, B] array")
+
+    if "color3" in request:
+        c = request["color3"]
+        if isinstance(c, list) and len(c) == 3:
+            color3 = tuple(c)
+        else:
+            raise HTTPException(status_code=400, detail="color3 must be [R, G, B] array")
+
+    if not any([color1, color2, color3]):
+        raise HTTPException(status_code=400, detail="Must provide at least one color")
+
+    try:
+        controller = state.led_controller.get_controller()
+        return controller.set_colors(color1=color1, color2=color2, color3=color3)
+    except Exception as e:
+        logger.error(f"Failed to set DW LED colors: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/dw_leds/effects")
+async def dw_leds_effects():
+    """Get list of available effects"""
+    if not state.led_controller or state.led_provider != "dw_leds":
+        raise HTTPException(status_code=400, detail="DW LEDs not configured")
+
+    try:
+        controller = state.led_controller.get_controller()
+        effects = controller.get_effects()
+        # Convert tuples to lists for JSON serialization
+        effects_list = [[eid, name] for eid, name in effects]
+        return {
+            "success": True,
+            "effects": effects_list
+        }
+    except Exception as e:
+        logger.error(f"Failed to get DW LED effects: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/dw_leds/palettes")
+async def dw_leds_palettes():
+    """Get list of available palettes"""
+    if not state.led_controller or state.led_provider != "dw_leds":
+        raise HTTPException(status_code=400, detail="DW LEDs not configured")
+
+    try:
+        controller = state.led_controller.get_controller()
+        palettes = controller.get_palettes()
+        # Convert tuples to lists for JSON serialization
+        palettes_list = [[pid, name] for pid, name in palettes]
+        return {
+            "success": True,
+            "palettes": palettes_list
+        }
+    except Exception as e:
+        logger.error(f"Failed to get DW LED palettes: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/dw_leds/effect")
+async def dw_leds_effect(request: dict):
+    """Set effect by ID"""
+    if not state.led_controller or state.led_provider != "dw_leds":
+        raise HTTPException(status_code=400, detail="DW LEDs not configured")
+
+    effect_id = request.get("effect_id", 0)
+    speed = request.get("speed")
+    intensity = request.get("intensity")
+
+    try:
+        controller = state.led_controller.get_controller()
+        return controller.set_effect(effect_id, speed=speed, intensity=intensity)
+    except Exception as e:
+        logger.error(f"Failed to set DW LED effect: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/dw_leds/palette")
+async def dw_leds_palette(request: dict):
+    """Set palette by ID"""
+    if not state.led_controller or state.led_provider != "dw_leds":
+        raise HTTPException(status_code=400, detail="DW LEDs not configured")
+
+    palette_id = request.get("palette_id", 0)
+
+    try:
+        controller = state.led_controller.get_controller()
+        return controller.set_palette(palette_id)
+    except Exception as e:
+        logger.error(f"Failed to set DW LED palette: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/dw_leds/speed")
+async def dw_leds_speed(request: dict):
+    """Set effect speed (0-255)"""
+    if not state.led_controller or state.led_provider != "dw_leds":
+        raise HTTPException(status_code=400, detail="DW LEDs not configured")
+
+    value = request.get("speed", 128)
+    if not 0 <= value <= 255:
+        raise HTTPException(status_code=400, detail="Speed must be between 0 and 255")
+
+    try:
+        controller = state.led_controller.get_controller()
+        result = controller.set_speed(value)
+        # Save speed to state
+        state.dw_led_speed = value
+        state.save()
+        return result
+    except Exception as e:
+        logger.error(f"Failed to set DW LED speed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/dw_leds/intensity")
+async def dw_leds_intensity(request: dict):
+    """Set effect intensity (0-255)"""
+    if not state.led_controller or state.led_provider != "dw_leds":
+        raise HTTPException(status_code=400, detail="DW LEDs not configured")
+
+    value = request.get("intensity", 128)
+    if not 0 <= value <= 255:
+        raise HTTPException(status_code=400, detail="Intensity must be between 0 and 255")
+
+    try:
+        controller = state.led_controller.get_controller()
+        result = controller.set_intensity(value)
+        # Save intensity to state
+        state.dw_led_intensity = value
+        state.save()
+        return result
+    except Exception as e:
+        logger.error(f"Failed to set DW LED intensity: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/dw_leds/save_effect_settings")
+async def dw_leds_save_effect_settings(request: dict):
+    """Save current LED settings as idle or playing effect"""
+    effect_type = request.get("type")  # 'idle' or 'playing'
+
+    settings = {
+        "effect_id": request.get("effect_id"),
+        "palette_id": request.get("palette_id"),
+        "speed": request.get("speed"),
+        "intensity": request.get("intensity"),
+        "color1": request.get("color1"),
+        "color2": request.get("color2"),
+        "color3": request.get("color3")
+    }
+
+    if effect_type == "idle":
+        state.dw_led_idle_effect = settings
+    elif effect_type == "playing":
+        state.dw_led_playing_effect = settings
+    else:
+        raise HTTPException(status_code=400, detail="Invalid effect type. Must be 'idle' or 'playing'")
+
+    state.save()
+    logger.info(f"DW LED {effect_type} effect settings saved: {settings}")
+
+    return {"success": True, "type": effect_type, "settings": settings}
+
+@app.post("/api/dw_leds/clear_effect_settings")
+async def dw_leds_clear_effect_settings(request: dict):
+    """Clear idle or playing effect settings"""
+    effect_type = request.get("type")  # 'idle' or 'playing'
+
+    if effect_type == "idle":
+        state.dw_led_idle_effect = None
+    elif effect_type == "playing":
+        state.dw_led_playing_effect = None
+    else:
+        raise HTTPException(status_code=400, detail="Invalid effect type. Must be 'idle' or 'playing'")
+
+    state.save()
+    logger.info(f"DW LED {effect_type} effect settings cleared")
+
+    return {"success": True, "type": effect_type}
+
+@app.get("/api/dw_leds/get_effect_settings")
+async def dw_leds_get_effect_settings():
+    """Get saved idle and playing effect settings"""
+    return {
+        "idle_effect": state.dw_led_idle_effect,
+        "playing_effect": state.dw_led_playing_effect
+    }
+
+@app.post("/api/dw_leds/idle_timeout")
+async def dw_leds_set_idle_timeout(request: dict):
+    """Configure LED idle timeout settings"""
+    enabled = request.get("enabled", False)
+    minutes = request.get("minutes", 30)
+
+    # Validate minutes (between 1 and 1440 - 24 hours)
+    if minutes < 1 or minutes > 1440:
+        raise HTTPException(status_code=400, detail="Timeout must be between 1 and 1440 minutes")
+
+    state.dw_led_idle_timeout_enabled = enabled
+    state.dw_led_idle_timeout_minutes = minutes
+
+    # Reset activity time when settings change
+    import time
+    state.dw_led_last_activity_time = time.time()
+
+    state.save()
+    logger.info(f"DW LED idle timeout configured: enabled={enabled}, minutes={minutes}")
+
+    return {
+        "success": True,
+        "enabled": enabled,
+        "minutes": minutes
+    }
+
+@app.get("/api/dw_leds/idle_timeout")
+async def dw_leds_get_idle_timeout():
+    """Get LED idle timeout settings"""
+    import time
+
+    # Calculate remaining time if timeout is active
+    remaining_minutes = None
+    if state.dw_led_idle_timeout_enabled and state.dw_led_last_activity_time:
+        elapsed_seconds = time.time() - state.dw_led_last_activity_time
+        timeout_seconds = state.dw_led_idle_timeout_minutes * 60
+        remaining_seconds = max(0, timeout_seconds - elapsed_seconds)
+        remaining_minutes = round(remaining_seconds / 60, 1)
+
+    return {
+        "enabled": state.dw_led_idle_timeout_enabled,
+        "minutes": state.dw_led_idle_timeout_minutes,
+        "remaining_minutes": remaining_minutes
+    }
 
 @app.get("/table_control")
 async def table_control(request: Request):
@@ -1380,6 +1931,36 @@ async def trigger_update():
         logger.error(f"Error triggering update: {e}")
         return JSONResponse(
             content={"success": False, "message": "Failed to check for updates"},
+            status_code=500
+        )
+
+@app.post("/api/system/shutdown")
+async def shutdown_system():
+    """Shutdown the system"""
+    try:
+        logger.warning("Shutdown initiated via API")
+
+        # Schedule shutdown command after a short delay to allow response to be sent
+        def delayed_shutdown():
+            time.sleep(2)  # Give time for response to be sent
+            try:
+                # Use systemctl to shutdown the host (via mounted systemd socket)
+                subprocess.run(["systemctl", "poweroff"], check=True)
+                logger.info("Host shutdown command executed successfully via systemctl")
+            except FileNotFoundError:
+                logger.error("systemctl command not found - ensure systemd volumes are mounted")
+            except Exception as e:
+                logger.error(f"Error executing host shutdown command: {e}")
+
+        import threading
+        shutdown_thread = threading.Thread(target=delayed_shutdown)
+        shutdown_thread.start()
+
+        return {"success": True, "message": "System shutdown initiated"}
+    except Exception as e:
+        logger.error(f"Error initiating shutdown: {e}")
+        return JSONResponse(
+            content={"success": False, "message": str(e)},
             status_code=500
         )
 

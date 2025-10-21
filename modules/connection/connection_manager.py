@@ -7,7 +7,7 @@ import websocket
 import asyncio
 
 from modules.core.state import state
-from modules.led.led_controller import effect_loading, effect_idle, effect_connected, LEDController
+from modules.led.led_interface import LEDInterface
 logger = logging.getLogger(__name__)
 
 IGNORE_PORTS = ['/dev/cu.debug-console', '/dev/cu.Bluetooth-Incoming-Port']
@@ -179,10 +179,22 @@ def device_init(homing=True):
 
 
 def connect_device(homing=True):
-    if state.wled_ip:
-        state.led_controller = LEDController(state.wled_ip)
-        effect_loading(state.led_controller)
-        
+    # Initialize LED interface based on configured provider
+    if state.led_provider == "wled" and state.wled_ip:
+        state.led_controller = LEDInterface(provider="wled", ip_address=state.wled_ip)
+    elif state.led_provider == "hyperion" and state.hyperion_ip:
+        state.led_controller = LEDInterface(
+            provider="hyperion",
+            ip_address=state.hyperion_ip,
+            port=state.hyperion_port
+        )
+    else:
+        state.led_controller = None
+
+    # Show loading effect
+    if state.led_controller:
+        state.led_controller.effect_loading()
+
     ports = list_serial_ports()
 
     if state.port and state.port in ports:
@@ -192,11 +204,79 @@ def connect_device(homing=True):
     else:
         logger.error("Auto connect failed.")
         # state.conn = WebSocketConnection('ws://fluidnc.local:81')
+
     if (state.conn.is_connected() if state.conn else False):
+        # Check for alarm state and unlock if needed before initializing
+        if not check_and_unlock_alarm():
+            logger.error("Failed to unlock device from alarm state")
+            # Still proceed with device_init but log the issue
+
         device_init(homing)
-        
+
+    # Show connected effect, then transition to configured idle effect
     if state.led_controller:
-        effect_connected(state.led_controller)
+        logger.info("Showing LED connected effect (green flash)")
+        state.led_controller.effect_connected()
+        # Set the configured idle effect after connection
+        logger.info(f"Setting LED to idle effect: {state.dw_led_idle_effect}")
+        state.led_controller.effect_idle(state.dw_led_idle_effect)
+
+def check_and_unlock_alarm():
+    """
+    Check if GRBL is in alarm state and unlock it with $X if needed.
+    Returns True if device is ready (unlocked or no alarm), False on error.
+    """
+    try:
+        logger.info("Checking device status for alarm state...")
+
+        # Send status query
+        state.conn.send('?\n')
+        time.sleep(0.1)
+
+        # Read response with timeout
+        max_attempts = 5
+        response = None
+
+        for attempt in range(max_attempts):
+            if state.conn.in_waiting() > 0:
+                response = state.conn.readline()
+                logger.debug(f"Status response: {response}")
+                break
+            time.sleep(0.1)
+
+        if not response:
+            logger.warning("No status response received, proceeding anyway")
+            return True
+
+        # Check for alarm state
+        if "Alarm" in response:
+            logger.warning(f"Device in ALARM state: {response}")
+            logger.info("Sending $X to unlock...")
+
+            # Send unlock command
+            state.conn.send('$X\n')
+            time.sleep(0.5)
+
+            # Verify unlock succeeded
+            state.conn.send('?\n')
+            time.sleep(0.1)
+
+            verify_response = state.conn.readline()
+            logger.debug(f"Verification response: {verify_response}")
+
+            if "Alarm" in verify_response:
+                logger.error("Failed to unlock device from alarm state")
+                return False
+            else:
+                logger.info("Device successfully unlocked")
+                return True
+        else:
+            logger.info("Device not in alarm state, proceeding normally")
+            return True
+
+    except Exception as e:
+        logger.error(f"Error checking/unlocking alarm: {e}")
+        return False
 
 def get_status_response() -> str:
     """
