@@ -224,6 +224,7 @@ def connect_device(homing=True):
 def check_and_unlock_alarm():
     """
     Check if GRBL is in alarm state and unlock it with $X if needed.
+    Uses $A command to log detailed alarm information before unlocking.
     Returns True if device is ready (unlocked or no alarm), False on error.
     """
     try:
@@ -251,9 +252,22 @@ def check_and_unlock_alarm():
         # Check for alarm state
         if "Alarm" in response:
             logger.warning(f"Device in ALARM state: {response}")
-            logger.info("Sending $X to unlock...")
+
+            # Query alarm details with $A command
+            logger.info("Querying alarm details with $A command...")
+            state.conn.send('$A\n')
+            time.sleep(0.2)
+
+            # Read and log alarm details
+            for attempt in range(max_attempts):
+                if state.conn.in_waiting() > 0:
+                    alarm_details = state.conn.readline()
+                    logger.warning(f"Alarm details: {alarm_details}")
+                    break
+                time.sleep(0.1)
 
             # Send unlock command
+            logger.info("Sending $X to unlock...")
             state.conn.send('$X\n')
             time.sleep(0.5)
 
@@ -477,19 +491,24 @@ def get_machine_steps(timeout=10):
         logger.error(f"Failed to get all machine parameters after {timeout}s. Missing: {', '.join(missing)}")
         return False
 
-def home(timeout=15):
+def home(timeout=30):
     """
     Perform homing by checking device configuration and sending the appropriate commands.
-    
+
     Args:
         timeout: Maximum time in seconds to wait for homing to complete (default: 15)
     """
     import threading
-    
+
+    # Check for alarm state before homing and unlock if needed
+    if not check_and_unlock_alarm():
+        logger.error("Failed to unlock device from alarm state, cannot proceed with homing")
+        return False
+
     # Flag to track if homing completed
     homing_complete = threading.Event()
     homing_success = False
-    
+
     def home_internal():
         nonlocal homing_success
         try:
