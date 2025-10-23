@@ -7,19 +7,24 @@ endblock %}
   background-color: #262626;
 }
 .dark .text-slate-900 {
-  color: #e5e5e5;
+  color: #ffffff;
 }
 .dark .text-slate-800 {
-  color: #e5e5e5;
+  color: #f8fafc;
 }
 .dark .text-slate-700 {
-  color: #d1d5db;
+  color: #f1f5f9;
 }
 .dark .text-slate-600 {
-  color: #9ca3af;
+  color: #e2e8f0;
 }
 .dark .text-slate-500 {
-  color: #9ca3af;
+  color: #e2e8f0;
+}
+
+/* Label overrides for better visibility */
+.dark label {
+  color: #f1f5f9;
 }
 .dark .border-slate-200 {
   border-color: #404040;
@@ -39,8 +44,10 @@ endblock %}
 .dark .bg-slate-100 {
   background-color: #404040;
 }
-.dark .form-input {
-  background-color: #262626;
+.dark .form-input,
+.dark input[type="number"],
+.dark input[type="text"] {
+  background-color: #1f1f1f;
   border-color: #404040;
   color: #e5e5e5;
 }
@@ -52,7 +59,7 @@ endblock %}
   ring-color: #0c7ff2;
 }
 .dark .form-select {
-  background-color: #262626;
+  background-color: #1f1f1f;
   border-color: #404040;
   color: #e5e5e5;
 }
@@ -214,25 +221,38 @@ input:checked + .slider:before {
   border-color: #64748b;
 }
 
-/* Info box dark mode */
+/* Info box dark mode - grey theme */
 .dark .bg-blue-50 {
-  background-color: #1e3a8a;
+  background-color: #1f1f1f;
 }
 
 .dark .border-blue-200 {
-  border-color: #1e40af;
+  border-color: #404040;
 }
 
 .dark .text-blue-600 {
-  color: #60a5fa;
+  color: #e2e8f0;
 }
 
 .dark .text-blue-800 {
-  color: #dbeafe;
+  color: #f1f5f9;
 }
 
 .dark .text-blue-700 {
-  color: #bfdbfe;
+  color: #e2e8f0;
+}
+
+/* Amber box dark mode - grey theme */
+.dark .bg-amber-50 {
+  background-color: #1f1f1f;
+}
+
+.dark .border-amber-200 {
+  border-color: #404040;
+}
+
+.dark .text-amber-600 {
+  color: #f1f5f9;
 }
 {% endblock %}
 
@@ -585,14 +605,35 @@ input:checked + .slider:before {
     <h2
       class="text-slate-800 text-xl sm:text-2xl font-semibold leading-tight tracking-[-0.01em] px-6 py-4 border-b border-slate-200"
     >
-      WLED Configuration
+      LED Controller Configuration
     </h2>
     <div class="px-6 py-5 space-y-6">
-      <label class="flex flex-col gap-1.5">
-        <span class="text-slate-700 text-sm font-medium leading-normal"
-          >IP Address</span
-        >
-        <div class="flex gap-3 items-center">
+      <!-- LED Provider Selection -->
+      <div class="flex flex-col gap-2">
+        <span class="text-slate-700 text-sm font-medium leading-normal">LED Provider</span>
+        <div class="flex gap-3">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="ledProvider" value="none" id="ledProviderNone" class="w-4 h-4 text-sky-600 border-slate-300 focus:ring-sky-500">
+            <span class="text-sm text-slate-700">None</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="ledProvider" value="wled" id="ledProviderWled" class="w-4 h-4 text-sky-600 border-slate-300 focus:ring-sky-500">
+            <span class="text-sm text-slate-700">WLED</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="ledProvider" value="dw_leds" id="ledProviderDwLeds" class="w-4 h-4 text-sky-600 border-slate-300 focus:ring-sky-500">
+            <span class="text-sm text-slate-700">DW LEDs (Local GPIO)</span>
+          </label>
+        </div>
+        <p class="text-xs text-slate-500">
+          Select your LED control system (settings are mutually exclusive)
+        </p>
+      </div>
+
+      <!-- WLED Configuration (shown when WLED is selected) -->
+      <div id="wledConfig" class="flex flex-col gap-4 hidden">
+        <label class="flex flex-col gap-1.5">
+          <span class="text-slate-700 text-sm font-medium leading-normal">WLED IP Address</span>
           <div class="relative flex-1">
             <input
               id="wledIpInput"
@@ -609,18 +650,81 @@ input:checked + .slider:before {
               <span class="material-icons">close</span>
             </button>
           </div>
-          <button
-            id="saveWledConfig"
-            class="flex items-center justify-center gap-2 min-w-[140px] cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors flex-shrink-0"
-          >
-            <span class="material-icons text-lg">save</span>
-            <span class="truncate">Save Configuration</span>
-          </button>
+          <p class="text-xs text-slate-500">
+            Enter the IP address of your WLED controller
+          </p>
+        </label>
+      </div>
+
+      <!-- DW LEDs Configuration (shown when DW LEDs is selected) -->
+      <div id="dwLedsConfig" class="flex flex-col gap-4 hidden">
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <div class="flex items-start gap-2">
+            <span class="material-icons text-blue-600 text-base">info</span>
+            <div class="text-xs text-blue-700">
+              <p class="font-medium text-blue-800">Supported LED Strips: WS281x Only</p>
+              <p class="mt-1">Compatible with WS2811, WS2812, WS2812B, WS2813, WS2815 (12V), and other WS281x RGB LED strips. RGBW strips (SK6812, SK6812W) are not supported.</p>
+            </div>
+          </div>
         </div>
-        <p class="text-xs text-slate-500 mt-2">
-          Enter the IP address of your WLED controller.
-        </p>
-      </label>
+
+        <label class="flex flex-col gap-1.5">
+          <span class="text-slate-700 text-sm font-medium leading-normal">Number of LEDs</span>
+          <input
+            id="dwLedNumLeds"
+            type="number"
+            class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-normal leading-normal transition-colors"
+            placeholder="60"
+            value="60"
+            min="1"
+            max="1000"
+          />
+          <p class="text-xs text-slate-500">
+            Total number of LEDs in your WS281x strip
+          </p>
+        </label>
+        <label class="flex flex-col gap-1.5">
+          <span class="text-slate-700 text-sm font-medium leading-normal">GPIO Pin</span>
+          <select
+            id="dwLedGpioPin"
+            class="form-select flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 px-4 text-base font-normal leading-normal transition-colors"
+          >
+            <option value="12">GPIO 12 (PWM0)</option>
+            <option value="13">GPIO 13 (PWM1)</option>
+            <option value="18">GPIO 18 (PWM0)</option>
+            <option value="19">GPIO 19 (PWM1)</option>
+          </select>
+          <p class="text-xs text-slate-500">
+            Select a PWM-capable GPIO pin for WS281x timing
+          </p>
+        </label>
+        <label class="flex flex-col gap-1.5">
+          <span class="text-slate-700 text-sm font-medium leading-normal">Pixel Color Order (WS281x)</span>
+          <select
+            id="dwLedPixelOrder"
+            class="form-select flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 px-4 text-base font-normal leading-normal transition-colors"
+          >
+            <option value="GRB" selected>GRB - WS2812/WS2812B (most common)</option>
+            <option value="RGB">RGB - WS2815/WS2811 and some variants</option>
+            <option value="BGR">BGR - Some WS2811 variants</option>
+            <option value="RBG">RBG - Rare variant</option>
+            <option value="GBR">GBR - Rare variant</option>
+            <option value="BRG">BRG - Rare variant</option>
+          </select>
+          <p class="text-xs text-slate-500">
+            Most WS2812B and WS2815 strips use GRB. WS2811 often uses RGB. If colors appear wrong, try different orders.
+          </p>
+        </label>
+      </div>
+
+      <!-- Save Button -->
+      <button
+        id="saveLedConfig"
+        class="flex items-center justify-center gap-2 w-full sm:w-auto cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors"
+      >
+        <span class="material-icons text-lg">save</span>
+        <span class="truncate">Save LED Configuration</span>
+      </button>
     </div>
   </section>
   <section class="bg-white rounded-xl shadow-sm overflow-hidden">
