@@ -499,6 +499,8 @@ def get_machine_steps(timeout=10):
             state.table_type = 'dune_weaver_pro'
         elif y_steps_per_mm == 287:
             state.table_type = 'dune_weaver'
+        elif y_steps_per_mm == 164:
+            state.table_type == 'dune_weaver_mini_pro'
         else:
             state.table_type = None
             logger.warning(f"Unknown table type with Y steps/mm: {y_steps_per_mm}")
