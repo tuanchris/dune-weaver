@@ -10,14 +10,16 @@ logger = logging.getLogger(__name__)
 class ReedSwitchMonitor:
     """Monitor a reed switch connected to a Raspberry Pi GPIO pin."""
 
-    def __init__(self, gpio_pin=18):
+    def __init__(self, gpio_pin=18, invert_state=False):
         """
         Initialize the reed switch monitor.
 
         Args:
             gpio_pin: GPIO pin number (BCM numbering) for the reed switch
+            invert_state: If True, invert the logic (triggered = LOW instead of HIGH)
         """
         self.gpio_pin = gpio_pin
+        self.invert_state = invert_state
         self.gpio = None
         self.is_raspberry_pi = False
 
@@ -34,7 +36,7 @@ class ReedSwitchMonitor:
             self.gpio.setup(self.gpio_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
             self.is_raspberry_pi = True
-            logger.info(f"Reed switch initialized on GPIO pin {self.gpio_pin}")
+            logger.info(f"Reed switch initialized on GPIO pin {self.gpio_pin} (invert_state={self.invert_state})")
         except ImportError:
             logger.warning("RPi.GPIO not available. Reed switch monitoring disabled.")
         except Exception as e:
@@ -46,15 +48,26 @@ class ReedSwitchMonitor:
         Check if the reed switch is currently triggered.
 
         Returns:
-            bool: True if reed switch is triggered (pin is HIGH), False otherwise
+            bool: True if reed switch is triggered, False otherwise
+
+        Notes:
+            - If invert_state=False: triggered when pin is HIGH (1)
+            - If invert_state=True: triggered when pin is LOW (0)
         """
         if not self.is_raspberry_pi or not self.gpio:
             return False
 
         try:
-            # Pin is HIGH (1) when reed switch is closed (triggered)
-            # This assumes the switch connects the pin to 3.3V when closed
-            return self.gpio.input(self.gpio_pin) == 1
+            # Read the GPIO pin state
+            pin_state = self.gpio.input(self.gpio_pin)
+
+            # Apply inversion if configured
+            if self.invert_state:
+                # Inverted: triggered when LOW (0)
+                return pin_state == 0
+            else:
+                # Normal: triggered when HIGH (1)
+                return pin_state == 1
         except Exception as e:
             logger.error(f"Error reading reed switch: {e}")
             return False

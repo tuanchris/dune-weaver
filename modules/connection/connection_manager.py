@@ -463,8 +463,11 @@ def home(timeout=90):
             if state.angular_homing_enabled:
                 logger.info("Starting angular homing sequence")
                 try:
-                    # Initialize reed switch monitor
-                    reed_switch = ReedSwitchMonitor(gpio_pin=18)
+                    # Initialize reed switch monitor with configured GPIO pin and invert state
+                    gpio_pin = state.angular_homing_gpio_pin
+                    invert_state = state.angular_homing_invert_state
+                    logger.info(f"Using GPIO pin {gpio_pin} for reed switch (invert_state={invert_state})")
+                    reed_switch = ReedSwitchMonitor(gpio_pin=gpio_pin, invert_state=invert_state)
 
                     try:
                         # Reset theta first

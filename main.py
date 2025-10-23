@@ -385,23 +385,35 @@ async def get_angular_homing():
     """Get current angular homing settings."""
     return {
         "angular_homing_enabled": state.angular_homing_enabled,
+        "angular_homing_gpio_pin": state.angular_homing_gpio_pin,
+        "angular_homing_invert_state": state.angular_homing_invert_state,
         "angular_homing_offset_degrees": state.angular_homing_offset_degrees
     }
 
 class AngularHomingRequest(BaseModel):
     angular_homing_enabled: bool
+    angular_homing_gpio_pin: int = 18
+    angular_homing_invert_state: bool = False
     angular_homing_offset_degrees: float = 0.0
 
 @app.post("/api/angular-homing")
 async def set_angular_homing(request: AngularHomingRequest):
     """Update angular homing settings."""
     try:
+        # Validate GPIO pin
+        if request.angular_homing_gpio_pin < 2 or request.angular_homing_gpio_pin > 27:
+            raise HTTPException(status_code=400, detail="GPIO pin must be between 2 and 27")
+
         state.angular_homing_enabled = request.angular_homing_enabled
+        state.angular_homing_gpio_pin = request.angular_homing_gpio_pin
+        state.angular_homing_invert_state = request.angular_homing_invert_state
         state.angular_homing_offset_degrees = request.angular_homing_offset_degrees
         state.save()
 
-        logger.info(f"Angular homing {'enabled' if request.angular_homing_enabled else 'disabled'}, offset: {request.angular_homing_offset_degrees}°")
+        logger.info(f"Angular homing {'enabled' if request.angular_homing_enabled else 'disabled'}, GPIO pin: {request.angular_homing_gpio_pin}, invert: {request.angular_homing_invert_state}, offset: {request.angular_homing_offset_degrees}°")
         return {"success": True, "message": "Angular homing settings updated"}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error updating angular homing settings: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to update angular homing settings: {str(e)}")
