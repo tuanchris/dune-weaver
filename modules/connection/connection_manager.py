@@ -8,9 +8,29 @@ import asyncio
 
 from modules.core.state import state
 from modules.led.led_interface import LEDInterface
+from modules.led.idle_timeout_manager import idle_timeout_manager
 logger = logging.getLogger(__name__)
 
 IGNORE_PORTS = ['/dev/cu.debug-console', '/dev/cu.Bluetooth-Incoming-Port']
+
+
+async def _check_table_is_idle() -> bool:
+    """Helper function to check if table is idle."""
+    return not state.current_playing_file or state.pause_requested
+
+
+def _start_idle_led_timeout():
+    """Start idle LED timeout if enabled."""
+    if not state.dw_led_idle_timeout_enabled or state.dw_led_idle_timeout_minutes <= 0:
+        return
+
+    logger.debug(f"Starting idle LED timeout: {state.dw_led_idle_timeout_minutes} minutes")
+    idle_timeout_manager.start_idle_timeout(
+        timeout_minutes=state.dw_led_idle_timeout_minutes,
+        state=state,
+        check_idle_callback=_check_table_is_idle
+    )
+
 
 ###############################################################################
 # Connection Abstraction
@@ -220,6 +240,7 @@ def connect_device(homing=True):
         # Set the configured idle effect after connection
         logger.info(f"Setting LED to idle effect: {state.dw_led_idle_effect}")
         state.led_controller.effect_idle(state.dw_led_idle_effect)
+        _start_idle_led_timeout()
 
 def check_and_unlock_alarm():
     """
