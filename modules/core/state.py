@@ -34,6 +34,10 @@ class AppState:
         self.gear_ratio = 10
         # 0 for crash homing, 1 for auto homing
         self.homing = 0
+        # Advanced calibration feature flag (Desert Compass)
+        # Set via environment variable ADVANCED_CALIBRATION=true
+        self.advanced_calibration_enabled = False
+
         # Angular homing with reed switch (Raspberry Pi only)
         self.angular_homing_enabled = False
         # GPIO pin number (BCM numbering) for reed switch

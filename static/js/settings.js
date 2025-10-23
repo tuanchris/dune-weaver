@@ -1494,7 +1494,29 @@ async function initializeStillSandsMode() {
 
 // Desert Compass Configuration Functions
 async function initializeAngularHomingConfig() {
-    logMessage('Initializing Desert Compass configuration', LOG_TYPE.INFO);
+    logMessage('Checking Desert Compass feature availability', LOG_TYPE.INFO);
+
+    // Check if advanced calibration features are enabled
+    try {
+        const statusResponse = await fetch('/api/advanced-calibration-status');
+        const statusData = await statusResponse.json();
+
+        if (!statusData.enabled) {
+            logMessage('Advanced calibration features not enabled, skipping Desert Compass', LOG_TYPE.INFO);
+            return;
+        }
+
+        logMessage('Advanced calibration enabled, initializing Desert Compass', LOG_TYPE.INFO);
+
+        // Show the Desert Compass section
+        const desertCompassSection = document.getElementById('desertCompassSection');
+        if (desertCompassSection) {
+            desertCompassSection.style.display = 'block';
+        }
+    } catch (error) {
+        logMessage(`Failed to check advanced calibration status: ${error.message}`, LOG_TYPE.ERROR);
+        return;
+    }
 
     const angularHomingToggle = document.getElementById('angularHomingToggle');
     const angularHomingInfo = document.getElementById('angularHomingInfo');

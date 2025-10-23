@@ -94,6 +94,13 @@ def normalize_file_path(file_path: str) -> str:
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Dune Weaver application...")
+
+    # Check for advanced calibration feature flag (Desert Compass)
+    advanced_cal_env = os.getenv('ADVANCED_CALIBRATION', 'false').lower()
+    state.advanced_calibration_enabled = advanced_cal_env in ('true', '1', 'yes')
+    if state.advanced_calibration_enabled:
+        logger.info("Advanced calibration features enabled (Desert Compass)")
+
     # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
@@ -102,7 +109,7 @@ async def lifespan(app: FastAPI):
     global process_pool
     process_pool = ProcessPoolExecutor(max_workers=process_pool_size)
     logger.info(f"Initialized process pool with {process_pool_size} workers (detected {cpu_count} cores total)")
-    
+
     try:
         connection_manager.connect_device()
     except Exception as e:
@@ -493,9 +500,19 @@ async def set_scheduled_pause(request: ScheduledPauseRequest):
         logger.error(f"Error updating Still Sands settings: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to update Still Sands settings: {str(e)}")
 
+@app.get("/api/advanced-calibration-status")
+async def get_advanced_calibration_status():
+    """Check if advanced calibration features (Desert Compass) are enabled."""
+    return {
+        "enabled": state.advanced_calibration_enabled
+    }
+
 @app.get("/api/angular-homing")
 async def get_angular_homing():
     """Get current Desert Compass settings."""
+    if not state.advanced_calibration_enabled:
+        raise HTTPException(status_code=403, detail="Advanced calibration features not enabled")
+
     return {
         "angular_homing_enabled": state.angular_homing_enabled,
         "angular_homing_gpio_pin": state.angular_homing_gpio_pin,
@@ -512,6 +529,9 @@ class AngularHomingRequest(BaseModel):
 @app.post("/api/angular-homing")
 async def set_angular_homing(request: AngularHomingRequest):
     """Update Desert Compass settings."""
+    if not state.advanced_calibration_enabled:
+        raise HTTPException(status_code=403, detail="Advanced calibration features not enabled")
+
     try:
         # Validate GPIO pin
         if request.angular_homing_gpio_pin < 2 or request.angular_homing_gpio_pin > 27:
