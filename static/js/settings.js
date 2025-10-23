@@ -1152,6 +1152,7 @@ async function initializeauto_playMode() {
 document.addEventListener('DOMContentLoaded', function() {
     initializeauto_playMode();
     initializeStillSandsMode();
+    initializeAngularHomingConfig();
 });
 
 // Still Sands Mode Functions
@@ -1489,4 +1490,143 @@ async function initializeStillSandsMode() {
             await saveStillSandsSettings();
         });
     }
+}
+
+// Desert Compass Configuration Functions
+async function initializeAngularHomingConfig() {
+    logMessage('Checking Desert Compass feature availability', LOG_TYPE.INFO);
+
+    // Check if advanced calibration features are enabled
+    try {
+        const statusResponse = await fetch('/api/advanced-calibration-status');
+        const statusData = await statusResponse.json();
+
+        if (!statusData.enabled) {
+            logMessage('Advanced calibration features not enabled, skipping Desert Compass', LOG_TYPE.INFO);
+            return;
+        }
+
+        logMessage('Advanced calibration enabled, initializing Desert Compass', LOG_TYPE.INFO);
+
+        // Show the Desert Compass section
+        const desertCompassSection = document.getElementById('desertCompassSection');
+        if (desertCompassSection) {
+            desertCompassSection.style.display = 'block';
+        }
+    } catch (error) {
+        logMessage(`Failed to check advanced calibration status: ${error.message}`, LOG_TYPE.ERROR);
+        return;
+    }
+
+    const angularHomingToggle = document.getElementById('angularHomingToggle');
+    const angularHomingInfo = document.getElementById('angularHomingInfo');
+    const gpioSelectionContainer = document.getElementById('gpioSelectionContainer');
+    const gpioInput = document.getElementById('gpioInput');
+    const invertStateContainer = document.getElementById('invertStateContainer');
+    const invertStateToggle = document.getElementById('invertStateToggle');
+    const angularOffsetContainer = document.getElementById('angularOffsetContainer');
+    const angularOffsetInput = document.getElementById('angularOffsetInput');
+    const saveHomingConfigButton = document.getElementById('saveHomingConfig');
+
+    // Check if elements exist
+    if (!angularHomingToggle || !angularHomingInfo || !saveHomingConfigButton ||
+        !gpioSelectionContainer || !gpioInput || !invertStateContainer ||
+        !invertStateToggle || !angularOffsetContainer || !angularOffsetInput) {
+        logMessage('Desert Compass elements not found, skipping initialization', LOG_TYPE.WARNING);
+        return;
+    }
+
+    logMessage('All Desert Compass elements found successfully', LOG_TYPE.INFO);
+
+    // Load current Desert Compass settings
+    try {
+        const response = await fetch('/api/angular-homing');
+        const data = await response.json();
+
+        angularHomingToggle.checked = data.angular_homing_enabled || false;
+        gpioInput.value = data.angular_homing_gpio_pin || 18;
+        invertStateToggle.checked = data.angular_homing_invert_state || false;
+        angularOffsetInput.value = data.angular_homing_offset_degrees || 0;
+
+        if (data.angular_homing_enabled) {
+            angularHomingInfo.style.display = 'block';
+            gpioSelectionContainer.style.display = 'block';
+            invertStateContainer.style.display = 'block';
+            angularOffsetContainer.style.display = 'block';
+        }
+    } catch (error) {
+        logMessage(`Error loading Desert Compass settings: ${error.message}`, LOG_TYPE.ERROR);
+        // Initialize with defaults if load fails
+        angularHomingToggle.checked = false;
+        gpioInput.value = 18;
+        invertStateToggle.checked = false;
+        angularOffsetInput.value = 0;
+        angularHomingInfo.style.display = 'none';
+        gpioSelectionContainer.style.display = 'none';
+        invertStateContainer.style.display = 'none';
+        angularOffsetContainer.style.display = 'none';
+    }
+
+    // Function to save Desert Compass settings
+    async function saveAngularHomingSettings() {
+        // Validate GPIO pin
+        const gpioPin = parseInt(gpioInput.value);
+        if (isNaN(gpioPin) || gpioPin < 2 || gpioPin > 27) {
+            showStatusMessage('GPIO pin must be between 2 and 27', 'error');
+            return;
+        }
+
+        // Update button UI to show loading state
+        const originalButtonHTML = saveHomingConfigButton.innerHTML;
+        saveHomingConfigButton.disabled = true;
+        saveHomingConfigButton.innerHTML = '<span class="material-icons text-lg animate-spin">refresh</span><span class="truncate">Saving...</span>';
+
+        try {
+            const response = await fetch('/api/angular-homing', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    angular_homing_enabled: angularHomingToggle.checked,
+                    angular_homing_gpio_pin: gpioPin,
+                    angular_homing_invert_state: invertStateToggle.checked,
+                    angular_homing_offset_degrees: parseFloat(angularOffsetInput.value) || 0
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Failed to save Desert Compass settings');
+            }
+
+            // Show success state temporarily
+            saveHomingConfigButton.innerHTML = '<span class="material-icons text-lg">check</span><span class="truncate">Saved!</span>';
+            showStatusMessage('Desert Compass configuration saved successfully', 'success');
+
+            // Restore button after 2 seconds
+            setTimeout(() => {
+                saveHomingConfigButton.innerHTML = originalButtonHTML;
+                saveHomingConfigButton.disabled = false;
+            }, 2000);
+        } catch (error) {
+            logMessage(`Error saving Desert Compass settings: ${error.message}`, LOG_TYPE.ERROR);
+            showStatusMessage(`Failed to save settings: ${error.message}`, 'error');
+
+            // Restore button immediately on error
+            saveHomingConfigButton.innerHTML = originalButtonHTML;
+            saveHomingConfigButton.disabled = false;
+        }
+    }
+
+    // Event listeners
+    angularHomingToggle.addEventListener('change', () => {
+        logMessage(`Desert Compass toggle changed: ${angularHomingToggle.checked}`, LOG_TYPE.INFO);
+        const isEnabled = angularHomingToggle.checked;
+        angularHomingInfo.style.display = isEnabled ? 'block' : 'none';
+        gpioSelectionContainer.style.display = isEnabled ? 'block' : 'none';
+        invertStateContainer.style.display = isEnabled ? 'block' : 'none';
+        angularOffsetContainer.style.display = isEnabled ? 'block' : 'none';
+        logMessage(`Info display set to: ${angularHomingInfo.style.display}`, LOG_TYPE.INFO);
+    });
+
+    saveHomingConfigButton.addEventListener('click', saveAngularHomingSettings);
 }

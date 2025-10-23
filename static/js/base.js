@@ -628,15 +628,21 @@ function setupPlayerPreviewModalEvents() {
 async function togglePauseResume() {
     const pauseButton = document.getElementById('modal-pause-button');
     if (!pauseButton) return;
-    
+
     try {
         const pauseIcon = pauseButton.querySelector('.material-icons');
         const isCurrentlyPaused = pauseIcon.textContent === 'play_arrow';
-        
+
+        // Show immediate feedback
+        showStatusMessage(isCurrentlyPaused ? 'Resuming...' : 'Pausing...', 'info');
+
         const endpoint = isCurrentlyPaused ? '/resume_execution' : '/pause_execution';
         const response = await fetch(endpoint, { method: 'POST' });
-        
+
         if (!response.ok) throw new Error(`Failed to ${isCurrentlyPaused ? 'resume' : 'pause'}`);
+
+        // Show success message
+        showStatusMessage(isCurrentlyPaused ? 'Pattern resumed' : 'Pattern paused', 'success');
     } catch (error) {
         console.error('Error toggling pause:', error);
         showStatusMessage('Failed to pause/resume pattern', 'error');
@@ -659,8 +665,14 @@ function setupModalControls() {
     // Skip button click handler
     skipButton.addEventListener('click', async () => {
         try {
+            // Show immediate feedback
+            showStatusMessage('Skipping to next pattern...', 'info');
+
             const response = await fetch('/skip_pattern', { method: 'POST' });
             if (!response.ok) throw new Error('Failed to skip pattern');
+
+            // Show success message
+            showStatusMessage('Skipped to next pattern', 'success');
         } catch (error) {
             console.error('Error skipping pattern:', error);
             showStatusMessage('Failed to skip pattern', 'error');
@@ -670,9 +682,15 @@ function setupModalControls() {
     // Stop button click handler
     stopButton.addEventListener('click', async () => {
         try {
+            // Show immediate feedback
+            showStatusMessage('Stopping...', 'info');
+
             const response = await fetch('/stop_execution', { method: 'POST' });
             if (!response.ok) throw new Error('Failed to stop pattern');
             else {
+                // Show success message
+                showStatusMessage('Pattern stopped', 'success');
+
                 // Hide modal when stopping
                 const modal = document.getElementById('playerPreviewModal');
                 if (modal) modal.classList.add('hidden');

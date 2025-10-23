@@ -34,7 +34,20 @@ class AppState:
         self.gear_ratio = 10
         # 0 for crash homing, 1 for auto homing
         self.homing = 0
-        
+        # Advanced calibration feature flag (Desert Compass)
+        # Set via environment variable ADVANCED_CALIBRATION=true
+        self.advanced_calibration_enabled = False
+
+        # Angular homing with reed switch (Raspberry Pi only)
+        self.angular_homing_enabled = False
+        # GPIO pin number (BCM numbering) for reed switch
+        self.angular_homing_gpio_pin = 18
+        # Invert the reed switch state (False = triggered on HIGH, True = triggered on LOW)
+        self.angular_homing_invert_state = False
+        # Angular offset in degrees for reed switch sensor placement
+        # This allows correcting for the physical position of the reed switch
+        self.angular_homing_offset_degrees = 0.0
+
         self.STATE_FILE = "state.json"
         self.mqtt_handler = None  # Will be set by the MQTT handler
         self.conn = None
@@ -199,6 +212,10 @@ class AppState:
             "y_steps_per_mm": self.y_steps_per_mm,
             "gear_ratio": self.gear_ratio,
             "homing": self.homing,
+            "angular_homing_enabled": self.angular_homing_enabled,
+            "angular_homing_gpio_pin": self.angular_homing_gpio_pin,
+            "angular_homing_invert_state": self.angular_homing_invert_state,
+            "angular_homing_offset_degrees": self.angular_homing_offset_degrees,
             "current_playlist": self._current_playlist,
             "current_playlist_name": self._current_playlist_name,
             "current_playlist_index": self.current_playlist_index,
@@ -249,6 +266,10 @@ class AppState:
         self.y_steps_per_mm = data.get("y_steps_per_mm", 0.0)
         self.gear_ratio = data.get('gear_ratio', 10)
         self.homing = data.get('homing', 0)
+        self.angular_homing_enabled = data.get('angular_homing_enabled', False)
+        self.angular_homing_gpio_pin = data.get('angular_homing_gpio_pin', 18)
+        self.angular_homing_invert_state = data.get('angular_homing_invert_state', False)
+        self.angular_homing_offset_degrees = data.get('angular_homing_offset_degrees', 0.0)
         self._current_playlist = data.get("current_playlist", None)
         self._current_playlist_name = data.get("current_playlist_name", None)
         self.current_playlist_index = data.get("current_playlist_index", None)

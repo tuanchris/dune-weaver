@@ -15,7 +15,7 @@ services:
       - /run/systemd/system:/run/systemd/system:ro
       - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket:ro
       - /sys/fs/cgroup:/sys/fs/cgroup:ro
-      # Mount GPIO for DW LEDs (NeoPixel control)
+      # Mount GPIO for DW LEDs and Desert Compass (reed switch)
       - /sys:/sys
     devices:
       - "/dev/ttyACM0:/dev/ttyACM0"  # Serial device for stepper motors
