@@ -833,17 +833,103 @@ input:checked + .slider:before {
           </p>
           <p id="latestVersionText" class="text-slate-500 text-sm font-normal leading-normal">Checking...</p>
         </div>
+      </div>
+      <div class="px-6 py-5 space-y-4">
+        <label class="flex flex-col gap-1.5">
+          <span class="text-slate-700 text-sm font-medium leading-normal">Select Version</span>
+          <select
+            id="versionSelect"
+            class="form-select flex-1 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-medium leading-normal transition-colors"
+          >
+            <option value="latest">Latest Version</option>
+          </select>
+          <p class="text-xs text-slate-500 mt-1">
+            Choose a specific version to update to, or select "Latest Version" for the newest release.
+          </p>
+        </label>
         <button
           id="updateSoftware"
-          class="flex items-center justify-center gap-1.5 min-w-[84px] cursor-pointer rounded-lg h-9 px-3 bg-gray-400 text-white text-xs font-medium leading-normal tracking-[0.015em] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          class="flex items-center justify-center gap-2 w-full sm:w-auto cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           disabled
         >
-          <span id="updateIcon" class="material-icons text-base">download</span>
-          <span id="updateText" class="truncate">Update</span>
+          <span id="updateIcon" class="material-icons text-lg">download</span>
+          <span id="updateText" class="truncate">Update Software</span>
         </button>
       </div>
     </div>
   </section>
+
+  <!-- Update Confirmation Modal -->
+  <div id="updateConfirmModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden p-4">
+    <div class="bg-white dark:bg-neutral-900 rounded-xl shadow-xl max-w-3xl w-full max-h-[90vh] flex flex-col">
+      <!-- Modal Header -->
+      <div class="px-6 py-4 border-b border-slate-200 dark:border-neutral-700 flex items-center justify-between">
+        <h3 class="text-xl font-semibold text-slate-900 dark:text-white">Confirm Software Update</h3>
+        <button id="closeUpdateModal" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+          <span class="material-icons">close</span>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="px-6 py-4 flex-1 overflow-y-auto space-y-4">
+        <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+          <div class="flex items-start gap-2">
+            <span class="material-icons text-amber-600 dark:text-amber-500 text-xl">warning</span>
+            <div class="text-sm text-amber-800 dark:text-amber-300">
+              <p class="font-medium">Important:</p>
+              <ul class="mt-2 space-y-1 list-disc list-inside">
+                <li>The system will restart during the update process</li>
+                <li>This may take several minutes</li>
+                <li>Do not close this window or refresh the page</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <p class="text-sm text-slate-700 dark:text-slate-300">
+            <span class="font-medium">Target version:</span>
+            <span id="targetVersionDisplay" class="text-sky-600 dark:text-sky-400 font-mono">latest</span>
+          </p>
+        </div>
+
+        <!-- Progress Log Container -->
+        <div id="updateProgressContainer" class="hidden space-y-2">
+          <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Update Progress:</label>
+          <div class="bg-slate-900 dark:bg-black rounded-lg p-4 max-h-96 overflow-y-auto font-mono text-xs text-green-400">
+            <div id="updateProgressLog"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div id="updateModalActions" class="px-6 py-4 border-t border-slate-200 dark:border-neutral-700 flex justify-end gap-3">
+        <button
+          id="cancelUpdate"
+          class="px-4 py-2 rounded-lg border border-slate-300 dark:border-neutral-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-neutral-800 text-sm font-medium transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          id="confirmUpdate"
+          class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium transition-colors flex items-center gap-2"
+        >
+          <span class="material-icons text-lg">download</span>
+          <span>Start Update</span>
+        </button>
+      </div>
+
+      <!-- Update Complete Actions -->
+      <div id="updateCompleteActions" class="px-6 py-4 border-t border-slate-200 dark:border-neutral-700 flex justify-end gap-3 hidden">
+        <button
+          id="closeUpdateComplete"
+          class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium transition-colors"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %} {% block scripts %}
 <script src="/static/js/settings.js"></script>

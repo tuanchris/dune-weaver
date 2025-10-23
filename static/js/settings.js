@@ -532,36 +532,195 @@ function setupEventListeners() {
         });
     }
 
-    // Update software
+    // Fetch and populate available versions
+    async function loadAvailableVersions() {
+        try {
+            const response = await fetch('/api/versions');
+            const data = await response.json();
+
+            if (data.success && data.versions) {
+                const versionSelect = document.getElementById('versionSelect');
+                if (versionSelect) {
+                    // Clear existing options except "Latest"
+                    versionSelect.innerHTML = '<option value="latest">Latest Version</option>';
+
+                    // Add optgroup for tags
+                    if (data.versions.tags && data.versions.tags.length > 0) {
+                        const tagsOptgroup = document.createElement('optgroup');
+                        tagsOptgroup.label = 'Tags (Releases)';
+                        data.versions.tags.forEach(tag => {
+                            const option = document.createElement('option');
+                            option.value = tag;
+                            option.textContent = tag;
+                            tagsOptgroup.appendChild(option);
+                        });
+                        versionSelect.appendChild(tagsOptgroup);
+                    }
+
+                    // Add optgroup for branches
+                    if (data.versions.branches && data.versions.branches.length > 0) {
+                        const branchesOptgroup = document.createElement('optgroup');
+                        branchesOptgroup.label = 'Branches';
+                        data.versions.branches.forEach(branch => {
+                            const option = document.createElement('option');
+                            option.value = branch;
+                            option.textContent = branch;
+                            branchesOptgroup.appendChild(option);
+                        });
+                        versionSelect.appendChild(branchesOptgroup);
+                    }
+
+                    // Enable update button
+                    const updateButton = document.getElementById('updateSoftware');
+                    if (updateButton) {
+                        updateButton.disabled = false;
+                        updateButton.classList.remove('bg-gray-400');
+                        updateButton.classList.add('bg-sky-600', 'hover:bg-sky-700');
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error loading versions:', error);
+            showStatusMessage('Failed to load available versions', 'error');
+        }
+    }
+
+    // Load versions on page load
+    loadAvailableVersions();
+
+    // Update confirmation modal logic
+    let updateWebSocket = null;
+
+    function showUpdateConfirmModal() {
+        const modal = document.getElementById('updateConfirmModal');
+        const versionSelect = document.getElementById('versionSelect');
+        const targetVersionDisplay = document.getElementById('targetVersionDisplay');
+
+        if (modal && versionSelect && targetVersionDisplay) {
+            const selectedVersion = versionSelect.value;
+            targetVersionDisplay.textContent = selectedVersion;
+            modal.classList.remove('hidden');
+        }
+    }
+
+    function hideUpdateConfirmModal() {
+        const modal = document.getElementById('updateConfirmModal');
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+        // Clean up WebSocket if exists
+        if (updateWebSocket) {
+            updateWebSocket.close();
+            updateWebSocket = null;
+        }
+    }
+
+    function appendUpdateLog(message) {
+        const logContainer = document.getElementById('updateProgressLog');
+        if (logContainer) {
+            const logLine = document.createElement('div');
+            logLine.textContent = message;
+            logContainer.appendChild(logLine);
+            // Auto-scroll to bottom
+            logContainer.parentElement.scrollTop = logContainer.parentElement.scrollHeight;
+        }
+    }
+
+    function startUpdateProcess() {
+        const versionSelect = document.getElementById('versionSelect');
+        const progressContainer = document.getElementById('updateProgressContainer');
+        const modalActions = document.getElementById('updateModalActions');
+        const completeActions = document.getElementById('updateCompleteActions');
+        const selectedVersion = versionSelect ? versionSelect.value : 'latest';
+
+        // Show progress container and hide action buttons
+        if (progressContainer) progressContainer.classList.remove('hidden');
+        if (modalActions) modalActions.classList.add('hidden');
+
+        // Connect to WebSocket for live logs
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        updateWebSocket = new WebSocket(`${wsProtocol}//${window.location.host}/ws/update-progress`);
+
+        updateWebSocket.onopen = () => {
+            console.log('Update WebSocket connected');
+            appendUpdateLog('Connected to update stream...');
+
+            // Trigger the update
+            fetch('/api/update_to_version', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ version: selectedVersion })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    appendUpdateLog(`ERROR: ${data.message || 'Failed to start update'}`);
+                }
+            })
+            .catch(error => {
+                appendUpdateLog(`ERROR: ${error.message}`);
+            });
+        };
+
+        updateWebSocket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'log') {
+                appendUpdateLog(data.message);
+
+                // Check for completion
+                if (data.message.includes('Update completed successfully') ||
+                    data.message.includes('Update failed')) {
+                    if (completeActions) completeActions.classList.remove('hidden');
+                }
+            }
+        };
+
+        updateWebSocket.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            appendUpdateLog('ERROR: WebSocket connection error');
+        };
+
+        updateWebSocket.onclose = () => {
+            console.log('Update WebSocket closed');
+        };
+    }
+
+    // Update software button - show confirmation modal
     const updateSoftware = document.getElementById('updateSoftware');
     if (updateSoftware) {
-        updateSoftware.addEventListener('click', async () => {
+        updateSoftware.addEventListener('click', () => {
             if (updateSoftware.disabled) {
                 return;
             }
-            
-            try {
-                const response = await fetch('/api/update', {
-                    method: 'POST'
-                });
-                const data = await response.json();
-                
-                if (data.success) {
-                    showStatusMessage('Software update started successfully', 'success');
-                } else if (data.manual_update_url) {
-                    // Show modal with manual update instructions, but use wiki link
-                    const wikiData = {
-                        ...data,
-                        manual_update_url: 'https://github.com/tuanchris/dune-weaver/wiki/Updating-software'
-                    };
-                    showUpdateInstructionsModal(wikiData);
-                } else {
-                    showStatusMessage(data.message || 'No updates available', 'info');
-                }
-            } catch (error) {
-                logMessage(`Error updating software: ${error.message}`, LOG_TYPE.ERROR);
-                showStatusMessage('Failed to check for updates', 'error');
-            }
+            showUpdateConfirmModal();
+        });
+    }
+
+    // Modal action buttons
+    const closeUpdateModal = document.getElementById('closeUpdateModal');
+    const cancelUpdate = document.getElementById('cancelUpdate');
+    const confirmUpdate = document.getElementById('confirmUpdate');
+    const closeUpdateComplete = document.getElementById('closeUpdateComplete');
+
+    if (closeUpdateModal) {
+        closeUpdateModal.addEventListener('click', hideUpdateConfirmModal);
+    }
+
+    if (cancelUpdate) {
+        cancelUpdate.addEventListener('click', hideUpdateConfirmModal);
+    }
+
+    if (confirmUpdate) {
+        confirmUpdate.addEventListener('click', () => {
+            startUpdateProcess();
+        });
+    }
+
+    if (closeUpdateComplete) {
+        closeUpdateComplete.addEventListener('click', () => {
+            hideUpdateConfirmModal();
+            // Optionally reload the page to show new version
+            setTimeout(() => window.location.reload(), 1000);
         });
     }
 

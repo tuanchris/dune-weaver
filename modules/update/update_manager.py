@@ -1,6 +1,7 @@
 import os
 import subprocess
 import logging
+from typing import Dict, List, Optional, Tuple, Callable
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -50,43 +51,138 @@ def check_git_updates():
             "latest_local_tag": None,
         }
 
-def update_software():
-    """Update the software to the latest version."""
-    error_log = []
-    logger.info("Starting software update process")
-
-    def run_command(command, error_message):
-        try:
-            logger.debug(f"Running command: {' '.join(command)}")
-            subprocess.run(command, check=True)
-        except subprocess.CalledProcessError as e:
-            logger.error(f"{error_message}: {e}")
-            error_log.append(error_message)
-
+def list_available_versions() -> Dict[str, List[str]]:
+    """List all available Git tags and branches."""
     try:
-        subprocess.run(["git", "fetch", "--tags"], check=True)
-        latest_remote_tag = subprocess.check_output(
-            ["git", "describe", "--tags", "--abbrev=0", "origin/main"]
-        ).strip().decode()
-        logger.info(f"Latest remote tag: {latest_remote_tag}")
+        logger.debug("Fetching available versions")
+        # Fetch latest from remote
+        subprocess.run(["git", "fetch", "--all", "--tags", "--force"], check=True, capture_output=True)
+
+        # Get all tags, sorted by version (newest first)
+        tags_output = subprocess.check_output(
+            ["git", "tag", "--sort=-version:refname"],
+            text=True
+        ).strip()
+        tags = [tag for tag in tags_output.split('\n') if tag]
+
+        # Get all remote branches
+        branches_output = subprocess.check_output(
+            ["git", "branch", "-r", "--format=%(refname:short)"],
+            text=True
+        ).strip()
+        # Filter out HEAD and extract branch names
+        branches = []
+        for branch in branches_output.split('\n'):
+            if branch and not branch.endswith('/HEAD'):
+                # Remove 'origin/' prefix
+                branch_name = branch.replace('origin/', '')
+                if branch_name not in ['HEAD']:
+                    branches.append(branch_name)
+
+        logger.info(f"Found {len(tags)} tags and {len(branches)} branches")
+        return {
+            "tags": tags,
+            "branches": branches
+        }
     except subprocess.CalledProcessError as e:
-        error_msg = f"Failed to fetch tags or get latest remote tag: {e}"
-        logger.error(error_msg)
+        logger.error(f"Error listing versions: {e}")
+        return {
+            "tags": [],
+            "branches": []
+        }
+
+def update_software(version: Optional[str] = None, log_callback: Optional[Callable[[str], None]] = None):
+    """Update the software to the specified version or latest."""
+    error_log = []
+
+    def log(message: str):
+        """Log message and call callback if provided."""
+        logger.info(message)
+        if log_callback:
+            log_callback(message)
+
+    log("Starting software update process")
+
+    def run_command_with_output(command, description):
+        """Run command and stream output to log callback."""
+        try:
+            log(f"Running: {description}")
+            log(f"Command: {' '.join(command)}")
+
+            # Run command and capture output in real-time
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1
+            )
+
+            # Stream output line by line
+            for line in iter(process.stdout.readline, ''):
+                if line:
+                    log(line.rstrip())
+
+            process.wait()
+
+            if process.returncode != 0:
+                error_msg = f"{description} failed with return code {process.returncode}"
+                log(f"ERROR: {error_msg}")
+                error_log.append(error_msg)
+                return False
+
+            log(f"✓ {description} completed successfully")
+            return True
+
+        except Exception as e:
+            error_msg = f"{description} failed: {str(e)}"
+            log(f"ERROR: {error_msg}")
+            error_log.append(error_msg)
+            return False
+
+    # Determine target version
+    try:
+        log("Fetching latest version information...")
+        subprocess.run(["git", "fetch", "--all", "--tags", "--force"], check=True, capture_output=True)
+
+        if not version or version == "latest":
+            # Get latest tag
+            target_version = subprocess.check_output(
+                ["git", "describe", "--tags", "--abbrev=0", "origin/main"]
+            ).strip().decode()
+            log(f"Target version: {target_version} (latest)")
+        else:
+            target_version = version
+            log(f"Target version: {target_version} (user selected)")
+
+    except subprocess.CalledProcessError as e:
+        error_msg = f"Failed to fetch version information: {e}"
+        log(f"ERROR: {error_msg}")
         error_log.append(error_msg)
         return False, error_msg, error_log
 
-    run_command(["git", "checkout", latest_remote_tag, '--force'], f"Failed to checkout version {latest_remote_tag}")
-    run_command(["docker", "compose", "pull"], "Failed to fetch Docker containers")
-    run_command(["docker", "compose", "up", "-d"], "Failed to restart Docker containers")
-
-    update_status = check_git_updates()
-
-    if (
-        update_status["updates_available"] is False
-        and update_status["latest_local_tag"] == update_status["latest_remote_tag"]
+    # Pull Docker images
+    if not run_command_with_output(
+        ["docker", "compose", "pull"],
+        "Pulling Docker images"
     ):
-        logger.info("Software update completed successfully")
-        return True, None, None
-    else:
-        logger.error("Software update incomplete")
-        return False, "Update incomplete", error_log
+        return False, "Failed to pull Docker images", error_log
+
+    # Checkout target version
+    if not run_command_with_output(
+        ["git", "checkout", target_version, "--force"],
+        f"Checking out version {target_version}"
+    ):
+        return False, f"Failed to checkout version {target_version}", error_log
+
+    # Restart Docker containers
+    if not run_command_with_output(
+        ["docker", "compose", "up", "-d", "--remove-orphans"],
+        "Restarting Docker containers"
+    ):
+        return False, "Failed to restart Docker containers", error_log
+
+    log("✓ Software update completed successfully!")
+    log(f"System is now running version: {target_version}")
+
+    return True, None, None

@@ -318,6 +318,7 @@ class GetCoordinatesRequest(BaseModel):
 # Store active WebSocket connections
 active_status_connections = set()
 active_cache_progress_connections = set()
+active_update_progress_connections = set()
 
 @app.websocket("/ws/status")
 async def websocket_status_endpoint(websocket: WebSocket):
@@ -1174,7 +1175,7 @@ async def check_updates():
 async def update_software():
     logger.info("Starting software update process")
     success, error_message, error_log = update_manager.update_software()
-    
+
     if success:
         logger.info("Software update completed successfully")
         return {"success": True}
@@ -1187,6 +1188,96 @@ async def update_software():
                 "details": error_log
             }
         )
+
+@app.get("/api/versions")
+async def get_available_versions():
+    """Get list of available Git tags and branches."""
+    try:
+        versions = update_manager.list_available_versions()
+        return {
+            "success": True,
+            "versions": versions
+        }
+    except Exception as e:
+        logger.error(f"Error fetching versions: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "Failed to fetch available versions"}
+        )
+
+class UpdateVersionRequest(BaseModel):
+    version: str
+
+@app.post("/api/update_to_version")
+async def update_to_version(request: UpdateVersionRequest, background_tasks: BackgroundTasks):
+    """Update to a specific version."""
+    try:
+        version = request.version if request.version != "latest" else None
+        logger.info(f"Starting update to version: {version or 'latest'}")
+
+        # Define callback to broadcast log messages
+        async def send_log(message: str):
+            """Send log message to all connected WebSocket clients."""
+            disconnected = set()
+            for websocket in active_update_progress_connections:
+                try:
+                    await websocket.send_json({
+                        "type": "log",
+                        "message": message
+                    })
+                except Exception:
+                    disconnected.add(websocket)
+            active_update_progress_connections.difference_update(disconnected)
+
+        # Run update in background
+        def run_update():
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            def log_callback(message: str):
+                loop.run_until_complete(send_log(message))
+
+            success, error_message, error_log = update_manager.update_software(
+                version=version,
+                log_callback=log_callback
+            )
+
+            # Send completion message
+            loop.run_until_complete(send_log(
+                "✓ Update completed successfully!" if success else f"✗ Update failed: {error_message}"
+            ))
+            loop.close()
+
+        background_tasks.add_task(run_update)
+
+        return {"success": True, "message": "Update started"}
+
+    except Exception as e:
+        logger.error(f"Error starting update: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail={"error": str(e)}
+        )
+
+@app.websocket("/ws/update-progress")
+async def websocket_update_progress_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for streaming update progress logs."""
+    await websocket.accept()
+    active_update_progress_connections.add(websocket)
+    logger.info("Update progress WebSocket connection established")
+
+    try:
+        # Keep connection alive
+        while True:
+            # Wait for messages (client won't send any, just keep alive)
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        active_update_progress_connections.discard(websocket)
+        logger.info("Update progress WebSocket connection closed")
+    except Exception as e:
+        logger.error(f"Update progress WebSocket error: {e}")
+        active_update_progress_connections.discard(websocket)
 
 @app.post("/set_wled_ip")
 async def set_wled_ip(request: WLEDRequest):
