@@ -10,7 +10,6 @@ from modules.core import pattern_manager
 from modules.core.state import state
 from modules.led.led_interface import LEDInterface
 from modules.led.idle_timeout_manager import idle_timeout_manager
-from modules.connection.reed_switch import ReedSwitchMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -519,12 +518,23 @@ def get_machine_steps(timeout=10):
 
 def home(timeout=90):
     """
-    Perform homing by checking device configuration and sending the appropriate commands.
+    Perform homing sequence based on configured mode:
+
+    Mode 0 (Crash):
+        - Y axis moves -22mm (or -30mm for mini) until physical stop
+        - Set theta=0, rho=0 (no x0 y0 command)
+
+    Mode 1 (Sensor):
+        - Send $H command to home both X and Y axes
+        - Wait for [MSG:Homed:X] and [MSG:Homed:Y] messages
+        - Send x0 y0 to zero positions
+        - Set theta to compass offset, rho=0
 
     Args:
-        timeout: Maximum time in seconds to wait for homing to complete (default: 60)
+        timeout: Maximum time in seconds to wait for homing to complete (default: 90)
     """
     import threading
+    import math
 
     # Check for alarm state before homing and unlock if needed
     if not check_and_unlock_alarm():
@@ -538,133 +548,145 @@ def home(timeout=90):
     def home_internal():
         nonlocal homing_success
         try:
-            if state.homing:
-                logger.info("Using sensorless homing")
+            if state.homing == 1:
+                # Mode 1: Sensor-based homing using $H
+                logger.info("Using sensor-based homing mode ($H)")
+
+                # Clear any pending responses
+                state.homed_x = False
+                state.homed_y = False
+
+                # Send $H command
                 state.conn.send("$H\n")
-                state.conn.send("G1 Y0 F100\n")
+                logger.info("Sent $H command, waiting for homing messages...")
+
+                # Wait for [MSG:Homed:X] and [MSG:Homed:Y] messages
+                max_wait_time = 30  # 30 seconds timeout for homing messages
+                start_time = time.time()
+
+                while (time.time() - start_time) < max_wait_time:
+                    try:
+                        response = state.conn.readline()
+                        if response:
+                            logger.debug(f"Homing response: {response}")
+
+                            # Check for homing messages
+                            if "[MSG:Homed:X]" in response:
+                                state.homed_x = True
+                                logger.info("Received [MSG:Homed:X]")
+                            if "[MSG:Homed:Y]" in response:
+                                state.homed_y = True
+                                logger.info("Received [MSG:Homed:Y]")
+
+                            # Break if we've received both messages
+                            if state.homed_x and state.homed_y:
+                                logger.info("Received both homing confirmation messages")
+                                break
+                    except Exception as e:
+                        logger.error(f"Error reading homing response: {e}")
+
+                    time.sleep(0.1)
+
+                if not (state.homed_x and state.homed_y):
+                    logger.warning(f"Did not receive all homing messages (X:{state.homed_x}, Y:{state.homed_y})")
+
+                # Wait for idle state after $H
+                logger.info("Waiting for device to reach idle state after $H...")
+                idle_reached = check_idle()
+
+                if not idle_reached:
+                    logger.error("Device did not reach idle state after $H command")
+                    homing_complete.set()
+                    return
+
+                # Send x0 y0 to zero both positions using send_grbl_coordinates
+                logger.info("Zeroing positions with x0 y0")
+
+                # Run async function in new event loop
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    # Send x0 y0 command (G1 X0 Y0)
+                    result = loop.run_until_complete(send_grbl_coordinates(0, 0, 600))
+                    if result == False:
+                        logger.error("Position zeroing failed - send_grbl_coordinates returned False")
+                        homing_complete.set()
+                        return
+                finally:
+                    loop.close()
+
+                # Wait for idle state after zeroing
+                logger.info("Waiting for device to reach idle state after position zeroing...")
+                idle_reached = check_idle()
+
+                if not idle_reached:
+                    logger.error("Device did not reach idle state after position zeroing")
+                    homing_complete.set()
+                    return
+
+                # Set current position based on compass reference point (sensor mode only)
+                offset_radians = math.radians(state.angular_homing_offset_degrees)
+                state.current_theta = offset_radians
+                state.current_rho = 0
+
+                logger.info(f"Sensor homing completed - theta set to {state.angular_homing_offset_degrees}° ({offset_radians:.3f} rad), rho=0")
+
             else:
+                # Mode 0: Crash homing for radial axis (Y)
                 homing_speed = 400
                 if state.table_type == 'dune_weaver_mini':
                     homing_speed = 120
-                logger.info("Sensorless homing not supported. Using crash homing")
-                logger.info(f"Homing with speed {homing_speed}")
+
+                logger.info(f"Using crash homing mode at {homing_speed} mm/min")
 
                 # Run async function in new event loop
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
                     if state.table_type == 'dune_weaver_mini':
-                        result = loop.run_until_complete(send_grbl_coordinates(0, - 30, homing_speed, home=True))
+                        result = loop.run_until_complete(send_grbl_coordinates(0, -30, homing_speed, home=True))
                         if result == False:
-                            logger.error("Homing failed - send_grbl_coordinates returned False")
+                            logger.error("Crash homing failed - send_grbl_coordinates returned False")
                             homing_complete.set()
                             return
                         state.machine_y -= 30
                     else:
                         result = loop.run_until_complete(send_grbl_coordinates(0, -22, homing_speed, home=True))
                         if result == False:
-                            logger.error("Homing failed - send_grbl_coordinates returned False")
+                            logger.error("Crash homing failed - send_grbl_coordinates returned False")
                             homing_complete.set()
                             return
                         state.machine_y -= 22
                 finally:
                     loop.close()
 
-            # Wait for device to reach idle state after homing
-            logger.info("Waiting for device to reach idle state after homing...")
-            idle_reached = check_idle()
+                # Wait for device to reach idle state after crash homing
+                logger.info("Waiting for device to reach idle state after crash homing...")
+                idle_reached = check_idle()
 
-            if not idle_reached:
-                logger.error("Device did not reach idle state after homing")
-                homing_complete.set()
-                return
-            else:
-                state.current_theta = state.current_rho = 0
+                if not idle_reached:
+                    logger.error("Device did not reach idle state after crash homing")
+                    homing_complete.set()
+                    return
 
-            # Perform Desert Compass calibration if enabled (Raspberry Pi only)
-            if state.angular_homing_enabled:
-                logger.info("Starting Desert Compass calibration sequence")
-                try:
-                    # Initialize reed switch monitor with configured GPIO pin and invert state
-                    gpio_pin = state.angular_homing_gpio_pin
-                    invert_state = state.angular_homing_invert_state
-                    logger.info(f"Desert Compass: Using GPIO pin {gpio_pin} for reed switch (invert_state={invert_state})")
-                    reed_switch = ReedSwitchMonitor(gpio_pin=gpio_pin, invert_state=invert_state)
+                # Crash homing just sets theta and rho to 0 (no x0 y0 command)
+                state.current_theta = 0
+                state.current_rho = 0
 
-                    try:
-                        # Reset theta first
-                        logger.info("Desert Compass: Resetting theta before calibration")
-                        asyncio.run(pattern_manager.reset_theta())
-
-                        # Move radial arm to perimeter (theta=0, rho=1.0)
-                        logger.info("Desert Compass: Moving radial arm to perimeter (theta=0, rho=1.0)")
-                        asyncio.run(pattern_manager.move_polar(0, 1.0, homing_speed))
-
-                        idle_reached = check_idle()
-
-                        if not idle_reached:
-                            logger.error("Desert Compass: Device did not reach idle state after moving to perimeter")
-                            homing_complete.set()
-                            return
-
-                        # Wait 1 second for stabilization
-                        logger.info("Desert Compass: Waiting for stabilization...")
-                        time.sleep(1)
-
-                        # Perform angular rotation until reed switch is triggered
-                        logger.info("Desert Compass: Rotating around perimeter to find reference point")
-                        increment = 0.1  # Small angular increment in radians
-                        current_theta = 0
-                        max_theta = 6.28  # One full rotation (2*pi)
-                        reed_switch_triggered = False
-
-                        while current_theta < max_theta:
-                            # Move to next position
-                            current_theta += increment
-                            asyncio.run(pattern_manager.move_polar(current_theta, 1.0, homing_speed))
-
-                            # Small delay to allow reed switch to settle after movement
-                            time.sleep(0.5)
-
-                            # Check reed switch AFTER movement completes
-                            if reed_switch.is_triggered():
-                                logger.info(f"Desert Compass: Reed switch triggered at theta={current_theta}")
-                                reed_switch_triggered = True
-                                break
-
-                        if not reed_switch_triggered:
-                            logger.warning("Desert Compass: Completed full rotation without reed switch trigger")
-
-                        # Set theta to the offset value (accounting for sensor placement)
-                        # If offset is 0, this is the true reference position
-                        # If offset is non-zero, the sensor is physically placed at that angle
-                        # Convert degrees to radians for internal use
-                        import math
-                        offset_radians = math.radians(state.angular_homing_offset_degrees)
-                        state.current_theta = offset_radians
-                        state.current_rho = 1
-                        logger.info(f"Desert Compass: Calibration completed - theta set to {state.angular_homing_offset_degrees}° ({offset_radians:.3f} radians)")
-
-                    finally:
-                        reed_switch.cleanup()
-
-                except Exception as e:
-                    logger.error(f"Error during Desert Compass calibration: {e}")
-                    # Continue with normal homing completion even if Desert Compass calibration fails
+                logger.info("Crash homing completed - theta=0, rho=0")
 
             homing_success = True
-            logger.info("Homing completed and device is idle")
-
             homing_complete.set()
+
         except Exception as e:
             logger.error(f"Error during homing: {e}")
             homing_complete.set()
-    
+
     # Start homing in a separate thread
     homing_thread = threading.Thread(target=home_internal)
     homing_thread.daemon = True
     homing_thread.start()
-    
+
     # Wait for homing to complete or timeout
     if not homing_complete.wait(timeout):
         logger.error(f"Homing timeout after {timeout} seconds")
@@ -677,11 +699,11 @@ def home(timeout=90):
         except Exception as e:
             logger.error(f"Error stopping movement after timeout: {e}")
         return False
-    
+
     if not homing_success:
         logger.error("Homing failed")
         return False
-    
+
     logger.info("Homing completed successfully")
     return True
 
