@@ -13,6 +13,7 @@ import asyncio
 import json
 # Import for legacy support, but we'll use LED interface through state
 from modules.led.led_controller import effect_playing, effect_idle
+from modules.led.idle_timeout_manager import idle_timeout_manager
 import queue
 from dataclasses import dataclass
 from typing import Optional, Callable
@@ -135,6 +136,37 @@ def is_in_scheduled_pause_period():
                 return True
 
     return False
+
+
+async def check_table_is_idle() -> bool:
+    """
+    Check if the table is currently idle (not playing anything).
+    Returns True if idle, False if playing.
+    """
+    return not state.current_playing_file or state.pause_requested
+
+
+def start_idle_led_timeout():
+    """
+    Start the idle LED timeout if enabled.
+    Should be called whenever the idle effect is activated.
+    """
+    if not state.dw_led_idle_timeout_enabled:
+        logger.debug("Idle LED timeout not enabled")
+        return
+
+    timeout_minutes = state.dw_led_idle_timeout_minutes
+    if timeout_minutes <= 0:
+        logger.debug("Idle LED timeout not configured (timeout <= 0)")
+        return
+
+    logger.debug(f"Starting idle LED timeout: {timeout_minutes} minutes")
+    idle_timeout_manager.start_idle_timeout(
+        timeout_minutes=timeout_minutes,
+        state=state,
+        check_idle_callback=check_table_is_idle
+    )
+
 
 # Motion Control Thread Infrastructure
 @dataclass
@@ -642,7 +674,9 @@ async def run_theta_rho_file(file_path, is_playlist=False):
         if state.led_controller:
             logger.info(f"Setting LED to playing effect: {state.dw_led_playing_effect}")
             state.led_controller.effect_playing(state.dw_led_playing_effect)
-            
+            # Cancel idle timeout when playing starts
+            idle_timeout_manager.cancel_timeout()
+
         with tqdm(
             total=total_coordinates,
             unit="coords",
@@ -657,6 +691,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                     logger.info("Execution stopped by user")
                     if state.led_controller:
                         state.led_controller.effect_idle(state.dw_led_idle_effect)
+                        start_idle_led_timeout()
                     break
 
                 if state.skip_requested:
@@ -664,6 +699,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                     await connection_manager.check_idle_async()
                     if state.led_controller:
                         state.led_controller.effect_idle(state.dw_led_idle_effect)
+                        start_idle_led_timeout()
                     break
 
                 # Wait for resume if paused (manual or scheduled)
@@ -686,6 +722,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                     # (manual pause always shows idle effect)
                     if state.led_controller and not (scheduled_pause and state.scheduled_pause_control_wled):
                         state.led_controller.effect_idle(state.dw_led_idle_effect)
+                        start_idle_led_timeout()
 
                     # Remember if we turned off LED controller for scheduled pause
                     wled_was_off_for_scheduled = scheduled_pause and state.scheduled_pause_control_wled and not manual_pause
@@ -707,6 +744,8 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                             # Without this delay, rapid-fire requests can crash controllers on resource-constrained Pis
                             await asyncio.sleep(0.5)
                         state.led_controller.effect_playing(state.dw_led_playing_effect)
+                        # Cancel idle timeout when resuming from pause
+                        idle_timeout_manager.cancel_timeout()
 
                 # Dynamically determine the speed for each movement
                 # Use clear_pattern_speed if it's set and this is a clear file, otherwise use state.speed
@@ -742,6 +781,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
         if state.led_controller and not state.stop_requested:
             logger.info(f"Setting LED to idle effect: {state.dw_led_idle_effect}")
             state.led_controller.effect_idle(state.dw_led_idle_effect)
+            start_idle_led_timeout()
             logger.debug("LED effect set to idle after pattern completion")
         
         # Only clear state if not part of a playlist
@@ -884,6 +924,7 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
 
         if state.led_controller:
             state.led_controller.effect_idle(state.dw_led_idle_effect)
+            start_idle_led_timeout()
 
         logger.info("All requested patterns completed (or stopped) and state cleared")
 

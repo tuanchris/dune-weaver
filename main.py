@@ -21,6 +21,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from modules.led.led_controller import LEDController, effect_idle
 from modules.led.led_interface import LEDInterface
+from modules.led.idle_timeout_manager import idle_timeout_manager
 import math
 from modules.core.cache_manager import generate_all_image_previews, get_cache_path, generate_image_preview, get_pattern_metadata
 from modules.core.version_manager import version_manager
@@ -53,6 +54,25 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def _check_table_is_idle() -> bool:
+    """Helper function to check if table is idle."""
+    return not state.current_playing_file or state.pause_requested
+
+
+def _start_idle_led_timeout():
+    """Start idle LED timeout if enabled."""
+    if not state.dw_led_idle_timeout_enabled or state.dw_led_idle_timeout_minutes <= 0:
+        return
+
+    logger.debug(f"Starting idle LED timeout: {state.dw_led_idle_timeout_minutes} minutes")
+    idle_timeout_manager.start_idle_timeout(
+        timeout_minutes=state.dw_led_idle_timeout_minutes,
+        state=state,
+        check_idle_callback=_check_table_is_idle
+    )
+
 
 def normalize_file_path(file_path: str) -> str:
     """Normalize file path separators for consistent cross-platform handling."""
@@ -1176,6 +1196,7 @@ async def set_wled_ip(request: WLEDRequest):
     state.led_controller = LEDInterface("wled", request.wled_ip) if request.wled_ip else None
     if state.led_controller:
         state.led_controller.effect_idle()
+        _start_idle_led_timeout()
     state.save()
     logger.info(f"WLED IP updated: {request.wled_ip}")
     return {"success": True, "wled_ip": state.wled_ip}
@@ -1274,6 +1295,7 @@ async def set_led_config(request: LEDConfigRequest):
     # Show idle effect if controller is configured
     if state.led_controller:
         state.led_controller.effect_idle()
+        _start_idle_led_timeout()
 
     state.save()
 
