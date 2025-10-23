@@ -711,6 +711,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                         logger.info("Execution paused (manual + scheduled pause active)...")
                     elif manual_pause:
                         logger.info("Execution paused (manual)...")
+                        # Manual pause LED effects are handled by hardware_pause() in pause_execution()
                     else:
                         logger.info("Execution paused (scheduled pause period)...")
                         # Turn off LED controller if scheduled pause and control_wled is enabled
@@ -718,9 +719,9 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                             logger.info("Turning off LED lights during Still Sands period")
                             state.led_controller.set_power(0)
 
-                    # Only show idle effect if NOT in scheduled pause with LED control
-                    # (manual pause always shows idle effect)
-                    if state.led_controller and not (scheduled_pause and state.scheduled_pause_control_wled):
+                    # Show idle effect for scheduled pause only (manual pause handled by hardware_pause())
+                    # If both manual and scheduled pause, hardware_pause() already handled LED
+                    if state.led_controller and scheduled_pause and not manual_pause and not state.scheduled_pause_control_wled:
                         state.led_controller.effect_idle(state.dw_led_idle_effect)
                         start_idle_led_timeout()
 
@@ -735,7 +736,9 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                             await pause_event.wait()
 
                     logger.info("Execution resumed...")
-                    if state.led_controller:
+                    # Handle scheduled pause LED restoration (manual resume handled by hardware_resume())
+                    # If both manual and scheduled pause, hardware_resume() already handled LED
+                    if state.led_controller and scheduled_pause and not manual_pause:
                         # Turn LED controller back on if it was turned off for scheduled pause
                         if wled_was_off_for_scheduled:
                             logger.info("Turning LED lights back on as Still Sands period ended")
@@ -744,7 +747,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                             # Without this delay, rapid-fire requests can crash controllers on resource-constrained Pis
                             await asyncio.sleep(0.5)
                         state.led_controller.effect_playing(state.dw_led_playing_effect)
-                        # Cancel idle timeout when resuming from pause
+                        # Cancel idle timeout when resuming from scheduled pause
                         idle_timeout_manager.cancel_timeout()
 
                 # Dynamically determine the speed for each movement
@@ -1010,15 +1013,31 @@ async def move_polar(theta, rho, speed=None):
     await future
     
 def pause_execution():
-    """Pause pattern execution using asyncio Event."""
+    """
+    Pause pattern execution using hardware feed hold and asyncio Event.
+    Sends GRBL '!' command for immediate hardware pause.
+    """
     logger.info("Pausing pattern execution")
+
+    # Send hardware pause command first for immediate response
+    connection_manager.hardware_pause()
+
+    # Update software state for coordination
     state.pause_requested = True
     pause_event.clear()  # Clear the event to pause execution
     return True
 
 def resume_execution():
-    """Resume pattern execution using asyncio Event."""
+    """
+    Resume pattern execution using hardware cycle start and asyncio Event.
+    Sends GRBL '~' command for immediate hardware resume.
+    """
     logger.info("Resuming pattern execution")
+
+    # Send hardware resume command first for immediate response
+    connection_manager.hardware_resume()
+
+    # Update software state for coordination
     state.pause_requested = False
     pause_event.set()  # Set the event to resume execution
     return True

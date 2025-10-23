@@ -610,6 +610,60 @@ def home(timeout=30):
     logger.info("Homing completed successfully")
     return True
 
+
+def hardware_pause():
+    """
+    Execute immediate hardware pause using GRBL feed hold command.
+    Sends '!' command to GRBL for instant motion pause without flushing buffer.
+    """
+    try:
+        if not state.conn or not state.conn.is_connected():
+            logger.warning("Cannot send hardware pause - device not connected")
+            return False
+
+        logger.info("Sending hardware pause command (!) to GRBL")
+        state.conn.send("!")
+
+        # Show idle LED effect
+        if state.led_controller:
+            logger.debug("Setting LED to idle effect after hardware pause")
+            state.led_controller.effect_idle(state.dw_led_idle_effect)
+            _start_idle_led_timeout()
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Error sending hardware pause: {e}")
+        return False
+
+
+def hardware_resume():
+    """
+    Execute immediate hardware resume using GRBL cycle start command.
+    Sends '~' command to GRBL to resume motion from exact pause position.
+    """
+    try:
+        if not state.conn or not state.conn.is_connected():
+            logger.warning("Cannot send hardware resume - device not connected")
+            return False
+
+        logger.info("Sending hardware resume command (~) to GRBL")
+        state.conn.send("~")
+
+        # Show playing LED effect
+        if state.led_controller:
+            logger.debug("Setting LED to playing effect after hardware resume")
+            state.led_controller.effect_playing(state.dw_led_playing_effect)
+            # Cancel idle timeout when resuming
+            idle_timeout_manager.cancel_timeout()
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Error sending hardware resume: {e}")
+        return False
+
+
 def check_idle():
     """
     Continuously check if the device is idle (synchronous version).
