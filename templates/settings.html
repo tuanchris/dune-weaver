@@ -312,17 +312,17 @@ input:checked + .slider:before {
     <h2
       class="text-slate-800 text-xl sm:text-2xl font-semibold leading-tight tracking-[-0.01em] px-6 py-4 border-b border-slate-200"
     >
-      Homing Configuration
+      Desert Compass
     </h2>
     <div class="px-6 py-5 space-y-6">
       <div class="flex items-center justify-between">
         <div class="flex-1">
           <h3 class="text-slate-700 text-base font-medium leading-normal flex items-center gap-2">
             <span class="material-icons text-slate-600">explore</span>
-            Angular Homing (Raspberry Pi Only)
+            Enable Desert Compass (Raspberry Pi Only)
           </h3>
           <p class="text-xs text-slate-500 mt-1">
-            Enable angular homing using a reed switch connected to a GPIO pin to establish a home position for rotation.
+            Use a reed switch and magnet to establish a precise angular reference point for the table's rotation.
           </p>
         </div>
         <label class="switch">
@@ -331,11 +331,11 @@ input:checked + .slider:before {
         </label>
       </div>
 
-      <!-- GPIO Pin Selection (shown when angular homing is enabled) -->
+      <!-- GPIO Pin Selection (shown when Desert Compass is enabled) -->
       <div id="gpioSelectionContainer" class="space-y-2" style="display: none;">
         <label for="gpioInput" class="text-sm font-medium text-slate-700 flex items-center gap-2">
           <span class="material-icons text-slate-600 text-base">settings_input_component</span>
-          GPIO Pin Number
+          Reed Switch GPIO Pin
         </label>
         <input
           type="number"
@@ -352,13 +352,13 @@ input:checked + .slider:before {
         </p>
       </div>
 
-      <!-- Invert State Toggle (shown when angular homing is enabled) -->
+      <!-- Invert State Toggle (shown when Desert Compass is enabled) -->
       <div id="invertStateContainer" class="space-y-2" style="display: none;">
         <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
           <div class="flex-1">
             <label for="invertStateToggle" class="text-sm font-medium text-slate-700 flex items-center gap-2 cursor-pointer">
               <span class="material-icons text-slate-600 text-base">swap_vert</span>
-              Invert Reed Switch State
+              Invert Sensor Logic
             </label>
             <p class="text-xs text-slate-500 mt-1">
               Enable if your reed switch is triggered when LOW instead of HIGH (normally closed configuration).
@@ -371,11 +371,11 @@ input:checked + .slider:before {
         </div>
       </div>
 
-      <!-- Angular Offset Input (shown when angular homing is enabled) -->
+      <!-- Compass Calibration (shown when Desert Compass is enabled) -->
       <div id="angularOffsetContainer" class="space-y-2" style="display: none;">
         <label for="angularOffsetInput" class="text-sm font-medium text-slate-700 flex items-center gap-2">
           <span class="material-icons text-slate-600 text-base">straighten</span>
-          Sensor Offset (degrees)
+          Compass Reference Point (degrees)
         </label>
         <input
           type="number"
@@ -388,7 +388,7 @@ input:checked + .slider:before {
           placeholder="0.0"
         />
         <p class="text-xs text-slate-500">
-          Set the angle (in degrees) where your reed switch is physically mounted. 0° = East, increases clockwise (90° = South, 180° = West, 270° = North).
+          Set the angle (in degrees) where your magnet/sensor is physically mounted. 0° = East, increases clockwise (90° = South, 180° = West, 270° = North).
         </p>
       </div>
 
@@ -396,15 +396,15 @@ input:checked + .slider:before {
         <div class="flex items-start gap-2">
           <span class="material-icons text-blue-600 text-base">info</span>
           <div>
-            <p class="font-medium text-blue-800">Angular Homing Details:</p>
+            <p class="font-medium text-blue-800">How Desert Compass Works:</p>
             <ul class="mt-1 space-y-1 text-blue-700">
-              <li>• After radial homing, the arm moves to the perimeter (y20)</li>
-              <li>• The table rotates around the perimeter until the reed switch is triggered</li>
-              <li>• This position is set as the angular home based on your sensor offset</li>
-              <li>• Only works on Raspberry Pi with a reed switch connected to your selected GPIO pin</li>
-              <li>• Standard wiring: Reed switch connects GPIO pin to 3.3V (triggered = HIGH)</li>
-              <li>• Inverted wiring: Reed switch connects GPIO pin to ground (triggered = LOW)</li>
-              <li>• Use BCM GPIO numbering (not physical pin numbers)</li>
+              <li>• After radial calibration, the arm moves to the table's edge</li>
+              <li>• The table rotates until the magnet triggers the reed switch</li>
+              <li>• This position becomes the angular reference point based on your compass setting</li>
+              <li>• Requires Raspberry Pi with reed switch connected to selected GPIO pin</li>
+              <li>• Standard wiring: Reed switch to 3.3V (triggered = HIGH)</li>
+              <li>• Inverted wiring: Reed switch to ground (triggered = LOW)</li>
+              <li>• Uses BCM GPIO numbering (not physical pin numbers)</li>
             </ul>
           </div>
         </div>
@@ -416,7 +416,7 @@ input:checked + .slider:before {
           class="flex items-center justify-center gap-2 min-w-[140px] cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors"
         >
           <span class="material-icons text-lg">save</span>
-          <span class="truncate">Save Homing Config</span>
+          <span class="truncate">Save Compass Config</span>
         </button>
       </div>
     </div>

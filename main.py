@@ -382,7 +382,7 @@ async def set_scheduled_pause(request: ScheduledPauseRequest):
 
 @app.get("/api/angular-homing")
 async def get_angular_homing():
-    """Get current angular homing settings."""
+    """Get current Desert Compass settings."""
     return {
         "angular_homing_enabled": state.angular_homing_enabled,
         "angular_homing_gpio_pin": state.angular_homing_gpio_pin,
@@ -398,7 +398,7 @@ class AngularHomingRequest(BaseModel):
 
 @app.post("/api/angular-homing")
 async def set_angular_homing(request: AngularHomingRequest):
-    """Update angular homing settings."""
+    """Update Desert Compass settings."""
     try:
         # Validate GPIO pin
         if request.angular_homing_gpio_pin < 2 or request.angular_homing_gpio_pin > 27:
@@ -410,13 +410,13 @@ async def set_angular_homing(request: AngularHomingRequest):
         state.angular_homing_offset_degrees = request.angular_homing_offset_degrees
         state.save()
 
-        logger.info(f"Angular homing {'enabled' if request.angular_homing_enabled else 'disabled'}, GPIO pin: {request.angular_homing_gpio_pin}, invert: {request.angular_homing_invert_state}, offset: {request.angular_homing_offset_degrees}°")
-        return {"success": True, "message": "Angular homing settings updated"}
+        logger.info(f"Desert Compass {'enabled' if request.angular_homing_enabled else 'disabled'}, GPIO pin: {request.angular_homing_gpio_pin}, invert: {request.angular_homing_invert_state}, offset: {request.angular_homing_offset_degrees}°")
+        return {"success": True, "message": "Desert Compass settings updated"}
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating angular homing settings: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update angular homing settings: {str(e)}")
+        logger.error(f"Error updating Desert Compass settings: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update Desert Compass settings: {str(e)}")
 
 @app.get("/list_serial_ports")
 async def list_ports():

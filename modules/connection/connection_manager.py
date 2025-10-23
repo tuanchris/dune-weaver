@@ -459,38 +459,38 @@ def home(timeout=90):
             else:
                 state.current_theta = state.current_rho = 0
 
-            # Perform angular homing if enabled (Raspberry Pi only)
+            # Perform Desert Compass calibration if enabled (Raspberry Pi only)
             if state.angular_homing_enabled:
-                logger.info("Starting angular homing sequence")
+                logger.info("Starting Desert Compass calibration sequence")
                 try:
                     # Initialize reed switch monitor with configured GPIO pin and invert state
                     gpio_pin = state.angular_homing_gpio_pin
                     invert_state = state.angular_homing_invert_state
-                    logger.info(f"Using GPIO pin {gpio_pin} for reed switch (invert_state={invert_state})")
+                    logger.info(f"Desert Compass: Using GPIO pin {gpio_pin} for reed switch (invert_state={invert_state})")
                     reed_switch = ReedSwitchMonitor(gpio_pin=gpio_pin, invert_state=invert_state)
 
                     try:
                         # Reset theta first
-                        logger.info("Resetting theta before angular homing")
+                        logger.info("Desert Compass: Resetting theta before calibration")
                         asyncio.run(pattern_manager.reset_theta())
 
                         # Move radial arm to perimeter (theta=0, rho=1.0)
-                        logger.info("Moving radial arm to perimeter (theta=0, rho=1.0)")
+                        logger.info("Desert Compass: Moving radial arm to perimeter (theta=0, rho=1.0)")
                         asyncio.run(pattern_manager.move_polar(0, 1.0, homing_speed))
-                        
+
                         idle_reached = check_idle()
 
                         if not idle_reached:
-                            logger.error("Device did not reach idle state after moving to perimeter")
+                            logger.error("Desert Compass: Device did not reach idle state after moving to perimeter")
                             homing_complete.set()
                             return
 
                         # Wait 1 second for stabilization
-                        logger.info("Waiting for stabilization...")
+                        logger.info("Desert Compass: Waiting for stabilization...")
                         time.sleep(1)
 
                         # Perform angular rotation until reed switch is triggered
-                        logger.info("Rotating around perimeter to find home position")
+                        logger.info("Desert Compass: Rotating around perimeter to find reference point")
                         increment = 0.1  # Small angular increment in radians
                         current_theta = 0
                         max_theta = 6.28  # One full rotation (2*pi)
@@ -506,29 +506,29 @@ def home(timeout=90):
 
                             # Check reed switch AFTER movement completes
                             if reed_switch.is_triggered():
-                                logger.info(f"Reed switch triggered at theta={current_theta}")
+                                logger.info(f"Desert Compass: Reed switch triggered at theta={current_theta}")
                                 reed_switch_triggered = True
                                 break
 
                         if not reed_switch_triggered:
-                            logger.warning("Completed full rotation without reed switch trigger")
+                            logger.warning("Desert Compass: Completed full rotation without reed switch trigger")
 
                         # Set theta to the offset value (accounting for sensor placement)
-                        # If offset is 0, this is the true home position
+                        # If offset is 0, this is the true reference position
                         # If offset is non-zero, the sensor is physically placed at that angle
                         # Convert degrees to radians for internal use
                         import math
                         offset_radians = math.radians(state.angular_homing_offset_degrees)
                         state.current_theta = offset_radians
                         state.current_rho = 1
-                        logger.info(f"Angular homing completed - theta set to {state.angular_homing_offset_degrees}° ({offset_radians:.3f} radians)")
+                        logger.info(f"Desert Compass: Calibration completed - theta set to {state.angular_homing_offset_degrees}° ({offset_radians:.3f} radians)")
 
                     finally:
                         reed_switch.cleanup()
 
                 except Exception as e:
-                    logger.error(f"Error during angular homing: {e}")
-                    # Continue with normal homing completion even if angular homing fails
+                    logger.error(f"Error during Desert Compass calibration: {e}")
+                    # Continue with normal homing completion even if Desert Compass calibration fails
 
             homing_success = True
             logger.info("Homing completed and device is idle")

@@ -1367,9 +1367,9 @@ async function initializeStillSandsMode() {
     }
 }
 
-// Angular Homing Configuration Functions
+// Desert Compass Configuration Functions
 async function initializeAngularHomingConfig() {
-    logMessage('Initializing Angular Homing configuration', LOG_TYPE.INFO);
+    logMessage('Initializing Desert Compass configuration', LOG_TYPE.INFO);
 
     const angularHomingToggle = document.getElementById('angularHomingToggle');
     const angularHomingInfo = document.getElementById('angularHomingInfo');
@@ -1385,13 +1385,13 @@ async function initializeAngularHomingConfig() {
     if (!angularHomingToggle || !angularHomingInfo || !saveHomingConfigButton ||
         !gpioSelectionContainer || !gpioInput || !invertStateContainer ||
         !invertStateToggle || !angularOffsetContainer || !angularOffsetInput) {
-        logMessage('Angular Homing elements not found, skipping initialization', LOG_TYPE.WARNING);
+        logMessage('Desert Compass elements not found, skipping initialization', LOG_TYPE.WARNING);
         return;
     }
 
-    logMessage('All Angular Homing elements found successfully', LOG_TYPE.INFO);
+    logMessage('All Desert Compass elements found successfully', LOG_TYPE.INFO);
 
-    // Load current angular homing settings
+    // Load current Desert Compass settings
     try {
         const response = await fetch('/api/angular-homing');
         const data = await response.json();
@@ -1408,7 +1408,7 @@ async function initializeAngularHomingConfig() {
             angularOffsetContainer.style.display = 'block';
         }
     } catch (error) {
-        logMessage(`Error loading angular homing settings: ${error.message}`, LOG_TYPE.ERROR);
+        logMessage(`Error loading Desert Compass settings: ${error.message}`, LOG_TYPE.ERROR);
         // Initialize with defaults if load fails
         angularHomingToggle.checked = false;
         gpioInput.value = 18;
@@ -1420,7 +1420,7 @@ async function initializeAngularHomingConfig() {
         angularOffsetContainer.style.display = 'none';
     }
 
-    // Function to save settings
+    // Function to save Desert Compass settings
     async function saveAngularHomingSettings() {
         // Validate GPIO pin
         const gpioPin = parseInt(gpioInput.value);
@@ -1448,12 +1448,12 @@ async function initializeAngularHomingConfig() {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.detail || 'Failed to save angular homing settings');
+                throw new Error(errorData.detail || 'Failed to save Desert Compass settings');
             }
 
             // Show success state temporarily
             saveHomingConfigButton.innerHTML = '<span class="material-icons text-lg">check</span><span class="truncate">Saved!</span>';
-            showStatusMessage('Angular homing configuration saved successfully', 'success');
+            showStatusMessage('Desert Compass configuration saved successfully', 'success');
 
             // Restore button after 2 seconds
             setTimeout(() => {
@@ -1461,7 +1461,7 @@ async function initializeAngularHomingConfig() {
                 saveHomingConfigButton.disabled = false;
             }, 2000);
         } catch (error) {
-            logMessage(`Error saving angular homing settings: ${error.message}`, LOG_TYPE.ERROR);
+            logMessage(`Error saving Desert Compass settings: ${error.message}`, LOG_TYPE.ERROR);
             showStatusMessage(`Failed to save settings: ${error.message}`, 'error');
 
             // Restore button immediately on error
@@ -1472,7 +1472,7 @@ async function initializeAngularHomingConfig() {
 
     // Event listeners
     angularHomingToggle.addEventListener('change', () => {
-        logMessage(`Angular homing toggle changed: ${angularHomingToggle.checked}`, LOG_TYPE.INFO);
+        logMessage(`Desert Compass toggle changed: ${angularHomingToggle.checked}`, LOG_TYPE.INFO);
         const isEnabled = angularHomingToggle.checked;
         angularHomingInfo.style.display = isEnabled ? 'block' : 'none';
         gpioSelectionContainer.style.display = isEnabled ? 'block' : 'none';
