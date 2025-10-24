@@ -547,6 +547,9 @@ def home(timeout=90):
 
     def home_internal():
         nonlocal homing_success
+        homing_speed = 400
+        if state.table_type == 'dune_weaver_mini':
+            homing_speed = 100
         try:
             if state.homing == 1:
                 # Mode 1: Sensor-based homing using $H
@@ -599,21 +602,9 @@ def home(timeout=90):
                     homing_complete.set()
                     return
 
-                # Send x0 y0 to zero both positions using send_grbl_coordinates
-                logger.info("Zeroing positions with x0 y0")
-
-                # Run async function in new event loop
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    # Send x0 y0 command (G1 X0 Y0)
-                    result = loop.run_until_complete(send_grbl_coordinates(0, 0, 600))
-                    if result == False:
-                        logger.error("Position zeroing failed - send_grbl_coordinates returned False")
-                        homing_complete.set()
-                        return
-                finally:
-                    loop.close()
+                # Send x0 y0 to zero both positions
+                logger.info(f"Zeroing positions with x0 y0 f{homing_speed}")
+                state.conn.send(f"x0 y0 f{homing_speed}\n")
 
                 # Wait for idle state after zeroing
                 logger.info("Waiting for device to reach idle state after position zeroing...")
@@ -632,11 +623,6 @@ def home(timeout=90):
                 logger.info(f"Sensor homing completed - theta set to {state.angular_homing_offset_degrees}° ({offset_radians:.3f} rad), rho=0")
 
             else:
-                # Mode 0: Crash homing for radial axis (Y)
-                homing_speed = 400
-                if state.table_type == 'dune_weaver_mini':
-                    homing_speed = 120
-
                 logger.info(f"Using crash homing mode at {homing_speed} mm/min")
 
                 # Run async function in new event loop
