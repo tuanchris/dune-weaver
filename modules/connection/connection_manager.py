@@ -424,7 +424,6 @@ def get_machine_steps(timeout=10):
 
     x_steps_per_mm = None
     y_steps_per_mm = None
-    gear_ratio = None
     start_time = time.time()
 
     # Clear any pending data in the buffer
@@ -465,10 +464,6 @@ def get_machine_steps(timeout=10):
                             y_steps_per_mm = float(line.split("=")[1])
                             state.y_steps_per_mm = y_steps_per_mm
                             logger.info(f"Y steps per mm: {y_steps_per_mm}")
-                        elif line.startswith("$131="):
-                            gear_ratio = float(line.split("=")[1])
-                            state.gear_ratio = gear_ratio
-                            logger.info(f"Gear ratio: {gear_ratio}")
                         elif line.startswith("$22="):
                             # $22 reports if the homing cycle is enabled
                             # returns 0 if disabled, 1 if enabled
@@ -477,7 +472,7 @@ def get_machine_steps(timeout=10):
                             logger.info(f"Homing enabled: {homing}")
                 
                 # Check if we've received all the settings we need
-                if x_steps_per_mm is not None and y_steps_per_mm is not None and gear_ratio is not None:
+                if x_steps_per_mm is not None and y_steps_per_mm is not None:
                     settings_complete = True
             else:
                 # No data waiting, small sleep to prevent CPU thrashing
@@ -502,17 +497,23 @@ def get_machine_steps(timeout=10):
         elif y_steps_per_mm == 287:
             state.table_type = 'dune_weaver'
         elif y_steps_per_mm == 164:
-            state.table_type == 'dune_weaver_mini_pro'
+            state.table_type = 'dune_weaver_mini_pro'
         else:
             state.table_type = None
             logger.warning(f"Unknown table type with Y steps/mm: {y_steps_per_mm}")
-        logger.info(f"Machine type detected: {state.table_type}")
+
+        # Set gear ratio based on table type (hardcoded)
+        if state.table_type in ['dune_weaver_mini', 'dune_weaver_mini_pro']:
+            state.gear_ratio = 6.25
+        else:
+            state.gear_ratio = 10
+
+        logger.info(f"Machine type detected: {state.table_type}, gear ratio: {state.gear_ratio} (hardcoded)")
         return True
     else:
         missing = []
         if x_steps_per_mm is None: missing.append("X steps/mm")
         if y_steps_per_mm is None: missing.append("Y steps/mm")
-        if gear_ratio is None: missing.append("gear ratio")
         logger.error(f"Failed to get all machine parameters after {timeout}s. Missing: {', '.join(missing)}")
         return False
 
