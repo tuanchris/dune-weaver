@@ -1152,7 +1152,7 @@ async function initializeauto_playMode() {
 document.addEventListener('DOMContentLoaded', function() {
     initializeauto_playMode();
     initializeStillSandsMode();
-    initializeAngularHomingConfig();
+    initializeHomingConfig();
 });
 
 // Still Sands Mode Functions
@@ -1492,115 +1492,110 @@ async function initializeStillSandsMode() {
     }
 }
 
-// Desert Compass Configuration Functions
-async function initializeAngularHomingConfig() {
-    logMessage('Checking Desert Compass feature availability', LOG_TYPE.INFO);
+// Homing Configuration
+async function initializeHomingConfig() {
+    logMessage('Initializing homing configuration', LOG_TYPE.INFO);
 
-    // Check if advanced calibration features are enabled
-    try {
-        const statusResponse = await fetch('/api/advanced-calibration-status');
-        const statusData = await statusResponse.json();
-
-        if (!statusData.enabled) {
-            logMessage('Advanced calibration features not enabled, skipping Desert Compass', LOG_TYPE.INFO);
-            return;
-        }
-
-        logMessage('Advanced calibration enabled, initializing Desert Compass', LOG_TYPE.INFO);
-
-        // Show the Desert Compass section
-        const desertCompassSection = document.getElementById('desertCompassSection');
-        if (desertCompassSection) {
-            desertCompassSection.style.display = 'block';
-        }
-    } catch (error) {
-        logMessage(`Failed to check advanced calibration status: ${error.message}`, LOG_TYPE.ERROR);
-        return;
-    }
-
-    const angularHomingToggle = document.getElementById('angularHomingToggle');
-    const angularHomingInfo = document.getElementById('angularHomingInfo');
-    const gpioSelectionContainer = document.getElementById('gpioSelectionContainer');
-    const gpioInput = document.getElementById('gpioInput');
-    const invertStateContainer = document.getElementById('invertStateContainer');
-    const invertStateToggle = document.getElementById('invertStateToggle');
-    const angularOffsetContainer = document.getElementById('angularOffsetContainer');
+    const homingModeCrash = document.getElementById('homingModeCrash');
+    const homingModeSensor = document.getElementById('homingModeSensor');
     const angularOffsetInput = document.getElementById('angularOffsetInput');
+    const compassOffsetContainer = document.getElementById('compassOffsetContainer');
     const saveHomingConfigButton = document.getElementById('saveHomingConfig');
+    const homingInfoContent = document.getElementById('homingInfoContent');
 
     // Check if elements exist
-    if (!angularHomingToggle || !angularHomingInfo || !saveHomingConfigButton ||
-        !gpioSelectionContainer || !gpioInput || !invertStateContainer ||
-        !invertStateToggle || !angularOffsetContainer || !angularOffsetInput) {
-        logMessage('Desert Compass elements not found, skipping initialization', LOG_TYPE.WARNING);
+    if (!homingModeCrash || !homingModeSensor || !angularOffsetInput || !saveHomingConfigButton || !homingInfoContent || !compassOffsetContainer) {
+        logMessage('Homing configuration elements not found, skipping initialization', LOG_TYPE.WARNING);
         return;
     }
 
-    logMessage('All Desert Compass elements found successfully', LOG_TYPE.INFO);
+    logMessage('Homing configuration elements found successfully', LOG_TYPE.INFO);
 
-    // Load current Desert Compass settings
-    try {
-        const response = await fetch('/api/angular-homing');
-        const data = await response.json();
-
-        angularHomingToggle.checked = data.angular_homing_enabled || false;
-        gpioInput.value = data.angular_homing_gpio_pin || 18;
-        invertStateToggle.checked = data.angular_homing_invert_state || false;
-        angularOffsetInput.value = data.angular_homing_offset_degrees || 0;
-
-        if (data.angular_homing_enabled) {
-            angularHomingInfo.style.display = 'block';
-            gpioSelectionContainer.style.display = 'block';
-            invertStateContainer.style.display = 'block';
-            angularOffsetContainer.style.display = 'block';
-        }
-    } catch (error) {
-        logMessage(`Error loading Desert Compass settings: ${error.message}`, LOG_TYPE.ERROR);
-        // Initialize with defaults if load fails
-        angularHomingToggle.checked = false;
-        gpioInput.value = 18;
-        invertStateToggle.checked = false;
-        angularOffsetInput.value = 0;
-        angularHomingInfo.style.display = 'none';
-        gpioSelectionContainer.style.display = 'none';
-        invertStateContainer.style.display = 'none';
-        angularOffsetContainer.style.display = 'none';
+    // Function to get selected homing mode
+    function getSelectedMode() {
+        return homingModeCrash.checked ? 0 : 1;
     }
 
-    // Function to save Desert Compass settings
-    async function saveAngularHomingSettings() {
-        // Validate GPIO pin
-        const gpioPin = parseInt(gpioInput.value);
-        if (isNaN(gpioPin) || gpioPin < 2 || gpioPin > 27) {
-            showStatusMessage('GPIO pin must be between 2 and 27', 'error');
-            return;
+    // Function to update info box and visibility based on selected mode
+    function updateHomingInfo() {
+        const mode = getSelectedMode();
+
+        // Show/hide compass offset based on mode
+        if (mode === 0) {
+            compassOffsetContainer.style.display = 'none';
+            homingInfoContent.innerHTML = `
+                <p class="font-medium text-blue-800">Crash Homing Mode:</p>
+                <ul class="mt-1 space-y-1 text-blue-700">
+                    <li>• Y axis moves -22mm (or -30mm for mini) until physical stop</li>
+                    <li>• Theta set to 0, rho set to 0</li>
+                    <li>• No x0 y0 command sent</li>
+                    <li>• No hardware sensors required</li>
+                </ul>
+            `;
+        } else {
+            compassOffsetContainer.style.display = 'block';
+            homingInfoContent.innerHTML = `
+                <p class="font-medium text-blue-800">Sensor Homing Mode ($H):</p>
+                <ul class="mt-1 space-y-1 text-blue-700">
+                    <li>• $H command homes both X and Y axes</li>
+                    <li>• Waits for [MSG:Homed:X] and [MSG:Homed:Y] confirmation</li>
+                    <li>• Sends x0 y0 to zero positions</li>
+                    <li>• Theta set to compass reference point, rho set to 0</li>
+                    <li>• Requires hardware limit switches configured in FluidNC firmware</li>
+                </ul>
+            `;
+        }
+    }
+
+    // Load current homing configuration
+    try {
+        const response = await fetch('/api/homing-config');
+        const data = await response.json();
+
+        // Set radio button based on mode
+        if (data.homing_mode === 1) {
+            homingModeSensor.checked = true;
+        } else {
+            homingModeCrash.checked = true;
         }
 
+        angularOffsetInput.value = data.angular_homing_offset_degrees || 0;
+        updateHomingInfo();
+
+        logMessage(`Loaded homing config: mode=${data.homing_mode}, offset=${data.angular_homing_offset_degrees}°`, LOG_TYPE.INFO);
+    } catch (error) {
+        logMessage(`Error loading homing configuration: ${error.message}`, LOG_TYPE.ERROR);
+        // Initialize with defaults if load fails
+        homingModeCrash.checked = true;
+        angularOffsetInput.value = 0;
+        updateHomingInfo();
+    }
+
+    // Function to save homing configuration
+    async function saveHomingConfig() {
         // Update button UI to show loading state
         const originalButtonHTML = saveHomingConfigButton.innerHTML;
         saveHomingConfigButton.disabled = true;
         saveHomingConfigButton.innerHTML = '<span class="material-icons text-lg animate-spin">refresh</span><span class="truncate">Saving...</span>';
 
         try {
-            const response = await fetch('/api/angular-homing', {
+            const response = await fetch('/api/homing-config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    angular_homing_enabled: angularHomingToggle.checked,
-                    angular_homing_gpio_pin: gpioPin,
-                    angular_homing_invert_state: invertStateToggle.checked,
+                    homing_mode: getSelectedMode(),
                     angular_homing_offset_degrees: parseFloat(angularOffsetInput.value) || 0
                 })
             });
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.detail || 'Failed to save Desert Compass settings');
+                throw new Error(errorData.detail || 'Failed to save homing configuration');
             }
 
             // Show success state temporarily
             saveHomingConfigButton.innerHTML = '<span class="material-icons text-lg">check</span><span class="truncate">Saved!</span>';
-            showStatusMessage('Desert Compass configuration saved successfully', 'success');
+            showStatusMessage('Homing configuration saved successfully', 'success');
 
             // Restore button after 2 seconds
             setTimeout(() => {
@@ -1608,8 +1603,8 @@ async function initializeAngularHomingConfig() {
                 saveHomingConfigButton.disabled = false;
             }, 2000);
         } catch (error) {
-            logMessage(`Error saving Desert Compass settings: ${error.message}`, LOG_TYPE.ERROR);
-            showStatusMessage(`Failed to save settings: ${error.message}`, 'error');
+            logMessage(`Error saving homing configuration: ${error.message}`, LOG_TYPE.ERROR);
+            showStatusMessage(`Failed to save homing configuration: ${error.message}`, 'error');
 
             // Restore button immediately on error
             saveHomingConfigButton.innerHTML = originalButtonHTML;
@@ -1618,15 +1613,7 @@ async function initializeAngularHomingConfig() {
     }
 
     // Event listeners
-    angularHomingToggle.addEventListener('change', () => {
-        logMessage(`Desert Compass toggle changed: ${angularHomingToggle.checked}`, LOG_TYPE.INFO);
-        const isEnabled = angularHomingToggle.checked;
-        angularHomingInfo.style.display = isEnabled ? 'block' : 'none';
-        gpioSelectionContainer.style.display = isEnabled ? 'block' : 'none';
-        invertStateContainer.style.display = isEnabled ? 'block' : 'none';
-        angularOffsetContainer.style.display = isEnabled ? 'block' : 'none';
-        logMessage(`Info display set to: ${angularHomingInfo.style.display}`, LOG_TYPE.INFO);
-    });
-
-    saveHomingConfigButton.addEventListener('click', saveAngularHomingSettings);
+    homingModeCrash.addEventListener('change', updateHomingInfo);
+    homingModeSensor.addEventListener('change', updateHomingInfo);
+    saveHomingConfigButton.addEventListener('click', saveHomingConfig);
 }

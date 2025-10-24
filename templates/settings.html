@@ -328,75 +328,63 @@ input:checked + .slider:before {
       </div>
     </div>
   </section>
-  <!-- Desert Compass Section (hidden unless advanced calibration enabled) -->
-  <section id="desertCompassSection" class="bg-white rounded-xl shadow-sm overflow-hidden" style="display: none;">
+  <!-- Homing Configuration Section -->
+  <section id="homingSection" class="bg-white rounded-xl shadow-sm overflow-hidden">
     <h2
       class="text-slate-800 text-xl sm:text-2xl font-semibold leading-tight tracking-[-0.01em] px-6 py-4 border-b border-slate-200"
     >
-      Desert Compass
+      Homing Configuration
     </h2>
     <div class="px-6 py-5 space-y-6">
-      <div class="flex items-center justify-between">
-        <div class="flex-1">
-          <h3 class="text-slate-700 text-base font-medium leading-normal flex items-center gap-2">
-            <span class="material-icons text-slate-600">explore</span>
-            Enable Desert Compass (Raspberry Pi Only)
-          </h3>
-          <p class="text-xs text-slate-500 mt-1">
-            Use a reed switch and magnet to establish a precise angular reference point for the table's rotation.
-          </p>
-        </div>
-        <label class="switch">
-          <input type="checkbox" id="angularHomingToggle">
-          <span class="slider round"></span>
+      <!-- Homing Mode Selection -->
+      <div class="space-y-3">
+        <label class="text-sm font-medium text-slate-700 flex items-center gap-2">
+          <span class="material-icons text-slate-600 text-base">home</span>
+          Homing Mode
         </label>
-      </div>
 
-      <!-- GPIO Pin Selection (shown when Desert Compass is enabled) -->
-      <div id="gpioSelectionContainer" class="space-y-2" style="display: none;">
-        <label for="gpioInput" class="text-sm font-medium text-slate-700 flex items-center gap-2">
-          <span class="material-icons text-slate-600 text-base">settings_input_component</span>
-          Reed Switch GPIO Pin
-        </label>
-        <input
-          type="number"
-          id="gpioInput"
-          min="2"
-          max="27"
-          step="1"
-          value="18"
-          class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-sm"
-          placeholder="18"
-        />
-        <p class="text-xs text-slate-500">
-          GPIO pin number (BCM numbering) where the reed switch is connected. Common pins: 17, 18, 22, 23, 24, 25, 27.
-        </p>
-      </div>
+        <div class="space-y-3">
+          <!-- Crash Homing Option -->
+          <label class="flex items-start gap-3 p-3 border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors">
+            <input
+              type="radio"
+              name="homingMode"
+              value="0"
+              id="homingModeCrash"
+              class="mt-0.5 w-4 h-4 text-sky-600 focus:ring-sky-500"
+            />
+            <div class="flex-1">
+              <div class="text-sm font-medium text-slate-700">Crash Homing</div>
+              <div class="text-xs text-slate-500 mt-1">
+                Y axis moves until physical stop, then theta and rho set to 0 (no x0 y0 command)
+              </div>
+            </div>
+          </label>
 
-      <!-- Invert State Toggle (shown when Desert Compass is enabled) -->
-      <div id="invertStateContainer" class="space-y-2" style="display: none;">
-        <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-          <div class="flex-1">
-            <label for="invertStateToggle" class="text-sm font-medium text-slate-700 flex items-center gap-2 cursor-pointer">
-              <span class="material-icons text-slate-600 text-base">swap_vert</span>
-              Invert Sensor Logic
-            </label>
-            <p class="text-xs text-slate-500 mt-1">
-              Enable if your reed switch is triggered when LOW instead of HIGH (normally closed configuration).
-            </p>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="invertStateToggle">
-            <span class="slider round"></span>
+          <!-- Sensor Homing Option -->
+          <label class="flex items-start gap-3 p-3 border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors">
+            <input
+              type="radio"
+              name="homingMode"
+              value="1"
+              id="homingModeSensor"
+              class="mt-0.5 w-4 h-4 text-sky-600 focus:ring-sky-500"
+            />
+            <div class="flex-1">
+              <div class="text-sm font-medium text-slate-700">Sensor Homing ($H command)</div>
+              <div class="text-xs text-slate-500 mt-1">
+                Homes both X and Y axes via FluidNC firmware, then zeroes positions with x0 y0
+              </div>
+            </div>
           </label>
         </div>
       </div>
 
-      <!-- Compass Calibration (shown when Desert Compass is enabled) -->
-      <div id="angularOffsetContainer" class="space-y-2" style="display: none;">
+      <!-- Compass Reference Point (Sensor mode only) -->
+      <div id="compassOffsetContainer" class="space-y-2">
         <label for="angularOffsetInput" class="text-sm font-medium text-slate-700 flex items-center gap-2">
-          <span class="material-icons text-slate-600 text-base">straighten</span>
-          Compass Reference Point (degrees)
+          <span class="material-icons text-slate-600 text-base">explore</span>
+          Compass Reference Point (degrees) <span class="text-xs text-slate-400">(Sensor mode only)</span>
         </label>
         <input
           type="number"
@@ -409,23 +397,21 @@ input:checked + .slider:before {
           placeholder="0.0"
         />
         <p class="text-xs text-slate-500">
-          Set the angle (in degrees) where your magnet/sensor is physically mounted. 0° = East, increases clockwise (90° = South, 180° = West, 270° = North).
+          Set the angle (in degrees) where your angular sensor is physically mounted. After sensor homing, theta will be set to this value. 0° = East, increases clockwise (90° = South, 180° = West, 270° = North).
         </p>
       </div>
 
-      <div id="angularHomingInfo" class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-3" style="display: none;">
+      <!-- Homing Info Box -->
+      <div id="homingInfoBox" class="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
         <div class="flex items-start gap-2">
           <span class="material-icons text-blue-600 text-base">info</span>
-          <div>
-            <p class="font-medium text-blue-800">How Desert Compass Works:</p>
+          <div id="homingInfoContent">
+            <p class="font-medium text-blue-800">Crash Homing Mode:</p>
             <ul class="mt-1 space-y-1 text-blue-700">
-              <li>• After radial calibration, the arm moves to the table's edge</li>
-              <li>• The table rotates until the magnet triggers the reed switch</li>
-              <li>• This position becomes the angular reference point based on your compass setting</li>
-              <li>• Requires Raspberry Pi with reed switch connected to selected GPIO pin</li>
-              <li>• Standard wiring: Reed switch to 3.3V (triggered = HIGH)</li>
-              <li>• Inverted wiring: Reed switch to ground (triggered = LOW)</li>
-              <li>• Uses BCM GPIO numbering (not physical pin numbers)</li>
+              <li>• Y axis moves -22mm (or -30mm for mini) until physical stop</li>
+              <li>• Theta set to 0, rho set to 0</li>
+              <li>• No x0 y0 command sent</li>
+              <li>• No hardware sensors required</li>
             </ul>
           </div>
         </div>
@@ -437,7 +423,7 @@ input:checked + .slider:before {
           class="flex items-center justify-center gap-2 min-w-[140px] cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors"
         >
           <span class="material-icons text-lg">save</span>
-          <span class="truncate">Save Compass Config</span>
+          <span class="truncate">Save Configuration</span>
         </button>
       </div>
     </div>
