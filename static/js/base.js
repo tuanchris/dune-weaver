@@ -1,5 +1,30 @@
 // Player status bar functionality - Updated to fix logMessage errors
 
+// Update LED nav label based on provider
+async function updateLedNavLabel() {
+    try {
+        const response = await fetch('/get_led_config');
+        if (response.ok) {
+            const data = await response.json();
+            const navLabel = document.getElementById('led-nav-label');
+            if (navLabel) {
+                if (data.provider === 'wled') {
+                    navLabel.textContent = 'WLED';
+                } else if (data.provider === 'dw_leds') {
+                    navLabel.textContent = 'DW LEDs';
+                } else {
+                    navLabel.textContent = 'LED';
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error updating LED nav label:', error);
+    }
+}
+
+// Call on page load
+document.addEventListener('DOMContentLoaded', updateLedNavLabel);
+
 // Pattern files cache for improved performance with localStorage persistence
 const PATTERN_CACHE_KEY = 'dune_weaver_pattern_files_cache';
 const PATTERN_CACHE_EXPIRY = 30 * 60 * 1000; // 30 minutes cache (longer since it persists)
@@ -603,15 +628,21 @@ function setupPlayerPreviewModalEvents() {
 async function togglePauseResume() {
     const pauseButton = document.getElementById('modal-pause-button');
     if (!pauseButton) return;
-    
+
     try {
         const pauseIcon = pauseButton.querySelector('.material-icons');
         const isCurrentlyPaused = pauseIcon.textContent === 'play_arrow';
-        
+
+        // Show immediate feedback
+        showStatusMessage(isCurrentlyPaused ? 'Resuming...' : 'Pausing...', 'info');
+
         const endpoint = isCurrentlyPaused ? '/resume_execution' : '/pause_execution';
         const response = await fetch(endpoint, { method: 'POST' });
-        
+
         if (!response.ok) throw new Error(`Failed to ${isCurrentlyPaused ? 'resume' : 'pause'}`);
+
+        // Show success message
+        showStatusMessage(isCurrentlyPaused ? 'Pattern resumed' : 'Pattern paused', 'success');
     } catch (error) {
         console.error('Error toggling pause:', error);
         showStatusMessage('Failed to pause/resume pattern', 'error');
@@ -634,8 +665,14 @@ function setupModalControls() {
     // Skip button click handler
     skipButton.addEventListener('click', async () => {
         try {
+            // Show immediate feedback
+            showStatusMessage('Skipping to next pattern...', 'info');
+
             const response = await fetch('/skip_pattern', { method: 'POST' });
             if (!response.ok) throw new Error('Failed to skip pattern');
+
+            // Show success message
+            showStatusMessage('Skipped to next pattern', 'success');
         } catch (error) {
             console.error('Error skipping pattern:', error);
             showStatusMessage('Failed to skip pattern', 'error');
@@ -645,9 +682,15 @@ function setupModalControls() {
     // Stop button click handler
     stopButton.addEventListener('click', async () => {
         try {
+            // Show immediate feedback
+            showStatusMessage('Stopping...', 'info');
+
             const response = await fetch('/stop_execution', { method: 'POST' });
             if (!response.ok) throw new Error('Failed to stop pattern');
             else {
+                // Show success message
+                showStatusMessage('Pattern stopped', 'success');
+
                 // Hide modal when stopping
                 const modal = document.getElementById('playerPreviewModal');
                 if (modal) modal.classList.add('hidden');

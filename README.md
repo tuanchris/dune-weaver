@@ -109,10 +109,19 @@ The project exposes RESTful APIs for various actions. Here are some key endpoint
    ```
 
 2. **Install dependencies**:
+
+   **On Raspberry Pi (full hardware support):**
    ```bash
    pip install -r requirements.txt
    npm install
    ```
+
+   **On Windows/Linux/macOS (development/testing):**
+   ```bash
+   pip install -r requirements-nonrpi.txt
+   npm install
+   ```
+   > **Note**: The development installation excludes Raspberry Pi GPIO libraries. The application will run fully but DW LED features will be disabled. WLED integration will still work.
 
 3. **Build CSS**:
    ```bash

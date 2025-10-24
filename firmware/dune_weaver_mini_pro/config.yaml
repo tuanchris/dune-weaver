@@ -1,6 +1,6 @@
 board: MKS-DLC32 V2.1
-name: Dune Weaver Pro
-meta: By Tuan Nguyen (2025-02-16)
+name: Dune Weaver Mini Pro
+meta: By Tuan Nguyen (2025-10-22)
 kinematics: {}
 stepping:
   engine: I2S_STATIC
@@ -11,7 +11,7 @@ stepping:
 axes:
   shared_stepper_disable_pin: i2so.0
   x:
-    steps_per_mm: 320
+    steps_per_mm: 200
     max_rate_mm_per_min: 500
     acceleration_mm_per_sec2: 10
     max_travel_mm: 325
@@ -30,13 +30,14 @@ axes:
       limit_pos_pin: NO_PIN
       limit_all_pin: NO_PIN
   y:
-    steps_per_mm: 533
+    steps_per_mm: 164
     max_rate_mm_per_min: 500
     acceleration_mm_per_sec2: 10
-    max_travel_mm: 10
+    max_travel_mm: 6.25
     soft_limits: false
     motor0:
       limit_neg_pin: gpio.35
+      hard_limits: false
       pulloff_mm: 2
       stepstick:
         step_pin: i2so.5

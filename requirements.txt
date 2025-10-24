@@ -13,3 +13,8 @@ websockets>=11.0.3  # Required for FastAPI WebSocket support
 requests>=2.31.0
 Pillow
 aiohttp
+# GPIO/NeoPixel support for DW LEDs and Desert Compass
+RPi.GPIO>=0.7.1  # Required by Adafruit Blinka on Raspberry Pi and for reed switch
+rpi-ws281x>=5.0.0  # Low-level NeoPixel/WS281x driver
+adafruit-circuitpython-neopixel>=6.3.0
+Adafruit-Blinka>=8.0.0

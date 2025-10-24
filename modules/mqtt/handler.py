@@ -51,6 +51,14 @@ class MQTTHandler(BaseMQTTHandler):
         self.completion_topic = f"{self.device_id}/state/completion"
         self.time_remaining_topic = f"{self.device_id}/state/time_remaining"
 
+        # LED control topics
+        self.led_power_topic = f"{self.device_id}/led/power/set"
+        self.led_brightness_topic = f"{self.device_id}/led/brightness/set"
+        self.led_effect_topic = f"{self.device_id}/led/effect/set"
+        self.led_speed_topic = f"{self.device_id}/led/speed/set"
+        self.led_intensity_topic = f"{self.device_id}/led/intensity/set"
+        self.led_color_topic = f"{self.device_id}/led/color/set"
+
         # Store current state
         self.current_file = ""
         self.is_running_state = False
@@ -262,6 +270,101 @@ class MQTTHandler(BaseMQTTHandler):
         }
         self._publish_discovery("sensor", "time_remaining", time_remaining_config)
 
+        # LED Control Entities (only for DW LEDs - WLED has its own MQTT integration)
+        if state.led_provider == "dw_leds":
+            # LED Power Switch
+            led_power_config = {
+                "name": f"{self.device_name} LED Power",
+                "unique_id": f"{self.device_id}_led_power",
+                "command_topic": self.led_power_topic,
+                "state_topic": f"{self.device_id}/led/power/state",
+                "payload_on": "ON",
+                "payload_off": "OFF",
+                "device": base_device,
+                "icon": "mdi:lightbulb",
+                "optimistic": False
+            }
+            self._publish_discovery("switch", "led_power", led_power_config)
+
+            # LED Brightness Control
+            led_brightness_config = {
+                "name": f"{self.device_name} LED Brightness",
+                "unique_id": f"{self.device_id}_led_brightness",
+                "command_topic": self.led_brightness_topic,
+                "state_topic": f"{self.device_id}/led/brightness/state",
+                "device": base_device,
+                "icon": "mdi:brightness-6",
+                "min": 0,
+                "max": 100,
+                "mode": "slider"
+            }
+            self._publish_discovery("number", "led_brightness", led_brightness_config)
+
+            # LED Effect Selector
+            led_effect_options = [
+                "Static", "Blink", "Breathe", "Wipe", "Fade", "Scan", "Dual Scan",
+                "Rainbow Cycle", "Rainbow", "Theater Chase", "Running Lights",
+                "Random Color", "Dynamic", "Twinkle", "Sparkle", "Strobe", "Fire",
+                "Comet", "Chase", "Police", "Lightning", "Fireworks", "Ripple", "Flow",
+                "Colorloop", "Palette Flow", "Gradient", "Multi Strobe", "Waves", "BPM",
+                "Juggle", "Meteor", "Pride", "Pacifica", "Plasma", "Dissolve", "Glitter",
+                "Confetti", "Sinelon", "Candle", "Aurora", "Rain", "Halloween", "Noise",
+                "Funky Plank"
+            ]
+            led_effect_config = {
+                "name": f"{self.device_name} LED Effect",
+                "unique_id": f"{self.device_id}_led_effect",
+                "command_topic": self.led_effect_topic,
+                "state_topic": f"{self.device_id}/led/effect/state",
+                "options": led_effect_options,
+                "device": base_device,
+                "icon": "mdi:palette"
+            }
+            self._publish_discovery("select", "led_effect", led_effect_config)
+
+            # LED Speed Control
+            led_speed_config = {
+                "name": f"{self.device_name} LED Speed",
+                "unique_id": f"{self.device_id}_led_speed",
+                "command_topic": self.led_speed_topic,
+                "state_topic": f"{self.device_id}/led/speed/state",
+                "device": base_device,
+                "icon": "mdi:speedometer",
+                "min": 0,
+                "max": 255,
+                "mode": "slider"
+            }
+            self._publish_discovery("number", "led_speed", led_speed_config)
+
+            # LED Intensity Control
+            led_intensity_config = {
+                "name": f"{self.device_name} LED Intensity",
+                "unique_id": f"{self.device_id}_led_intensity",
+                "command_topic": self.led_intensity_topic,
+                "state_topic": f"{self.device_id}/led/intensity/state",
+                "device": base_device,
+                "icon": "mdi:brightness-7",
+                "min": 0,
+                "max": 255,
+                "mode": "slider"
+            }
+            self._publish_discovery("number", "led_intensity", led_intensity_config)
+
+            # LED RGB Color Control
+            led_color_config = {
+                "name": f"{self.device_name} LED Color",
+                "unique_id": f"{self.device_id}_led_color",
+                "command_topic": self.led_color_topic,
+                "state_topic": f"{self.device_id}/led/color/state",
+                "rgb_command_topic": self.led_color_topic,
+                "rgb_state_topic": f"{self.device_id}/led/color/state",
+                "device": base_device,
+                "icon": "mdi:palette-swatch",
+                "schema": "json",
+                "rgb": True
+            }
+            self._publish_discovery("light", "led_color", led_color_config)
+
     def _publish_discovery(self, component: str, config_type: str, config: dict):
         """Helper method to publish HA discovery configs."""
         if not self.is_enabled:
@@ -340,6 +443,66 @@ class MQTTHandler(BaseMQTTHandler):
             self.client.publish(self.completion_topic, 0, retain=True)
             self.client.publish(self.time_remaining_topic, 0, retain=True)
 
+    def _publish_led_state(self):
+        """Helper to publish LED state to MQTT (DW LEDs only - WLED has its own MQTT)."""
+        if not state.led_controller or state.led_provider != "dw_leds":
+            return
+
+        try:
+            status = state.led_controller.check_status()
+            if not status.get("connected", False):
+                return
+
+            # Publish power state
+            power_state = "ON" if status.get("power", False) else "OFF"
+            self.client.publish(f"{self.device_id}/led/power/state", power_state, retain=True)
+
+            # Publish brightness (convert from 0-1 to 0-100)
+            if "brightness" in status:
+                brightness = int(status["brightness"] * 100)
+                self.client.publish(f"{self.device_id}/led/brightness/state", brightness, retain=True)
+
+            # Publish effect
+            if "effect_id" in status:
+                effect_map = {
+                    0: "Static", 1: "Blink", 2: "Breathe", 3: "Wipe", 4: "Fade",
+                    5: "Scan", 6: "Dual Scan", 7: "Rainbow Cycle", 8: "Rainbow",
+                    9: "Theater Chase", 10: "Running Lights", 11: "Random Color",
+                    12: "Dynamic", 13: "Twinkle", 14: "Sparkle", 15: "Strobe",
+                    16: "Fire", 17: "Comet", 18: "Chase", 19: "Police", 20: "Lightning",
+                    21: "Fireworks", 22: "Ripple", 23: "Flow", 24: "Colorloop",
+                    25: "Palette Flow", 26: "Gradient", 27: "Multi Strobe", 28: "Waves",
+                    29: "BPM", 30: "Juggle", 31: "Meteor", 32: "Pride", 33: "Pacifica",
+                    34: "Plasma", 35: "Dissolve", 36: "Glitter", 37: "Confetti",
+                    38: "Sinelon", 39: "Candle", 40: "Aurora", 41: "Rain",
+                    42: "Halloween", 43: "Noise", 44: "Funky Plank"
+                }
+                effect_name = effect_map.get(status["effect_id"], "Static")
+                self.client.publish(f"{self.device_id}/led/effect/state", effect_name, retain=True)
+
+            # Publish speed
+            if "speed" in status:
+                self.client.publish(f"{self.device_id}/led/speed/state", status["speed"], retain=True)
+
+            # Publish intensity
+            if "intensity" in status:
+                self.client.publish(f"{self.device_id}/led/intensity/state", status["intensity"], retain=True)
+
+            # Publish color (RGB)
+            if "colors" in status and len(status["colors"]) > 0:
+                # colors is array of hex strings like ["#ff0000", "#00ff00", "#0000ff"]
+                # Convert first color to RGB dict
+                color_hex = status["colors"][0]
+                if color_hex and color_hex.startswith('#') and len(color_hex) == 7:
+                    r = int(color_hex[1:3], 16)
+                    g = int(color_hex[3:5], 16)
+                    b = int(color_hex[5:7], 16)
+                    self.client.publish(f"{self.device_id}/led/color/state",
+                                      json.dumps({"r": r, "g": g, "b": b}), retain=True)
+
+        except Exception as e:
+            logger.error(f"Error publishing LED state: {e}")
+
     def update_state(self, current_file=None, is_running=None, playlist=None, playlist_name=None):
         """Update state in Home Assistant. Only publishes the attributes that are explicitly passed."""
         if not self.is_enabled:
@@ -374,6 +537,12 @@ class MQTTHandler(BaseMQTTHandler):
                 (f"{self.device_id}/playlist/mode/set", 0),
                 (f"{self.device_id}/playlist/pause_time/set", 0),
                 (f"{self.device_id}/playlist/clear_pattern/set", 0),
+                (self.led_power_topic, 0),
+                (self.led_brightness_topic, 0),
+                (self.led_effect_topic, 0),
+                (self.led_speed_topic, 0),
+                (self.led_intensity_topic, 0),
+                (self.led_color_topic, 0),
             ])
             # Publish discovery configurations
             self.setup_ha_discovery()
@@ -469,6 +638,74 @@ class MQTTHandler(BaseMQTTHandler):
                 if clear_pattern in ["none", "random", "adaptive", "clear_from_in", "clear_from_out", "clear_sideway"]:
                     state.clear_pattern = clear_pattern
                     self.client.publish(f"{self.device_id}/playlist/clear_pattern/state", clear_pattern, retain=True)
+            elif msg.topic == self.led_power_topic:
+                # Handle LED power command (DW LEDs only)
+                payload = msg.payload.decode()
+                if state.led_controller and state.led_provider == "dw_leds":
+                    power_state = 1 if payload == "ON" else 0
+                    state.led_controller.set_power(power_state)
+                    self.client.publish(f"{self.device_id}/led/power/state", payload, retain=True)
+            elif msg.topic == self.led_brightness_topic:
+                # Handle LED brightness command (DW LEDs only)
+                brightness = int(msg.payload.decode())
+                if 0 <= brightness <= 100 and state.led_controller and state.led_provider == "dw_leds":
+                    controller = state.led_controller.get_controller()
+                    if controller and hasattr(controller, 'set_brightness'):
+                        controller.set_brightness(brightness / 100.0)
+                        self.client.publish(f"{self.device_id}/led/brightness/state", brightness, retain=True)
+            elif msg.topic == self.led_effect_topic:
+                # Handle LED effect command (DW LEDs only)
+                effect_name = msg.payload.decode()
+                if state.led_controller and state.led_provider == "dw_leds":
+                    # Map effect name to ID
+                    effect_map = {
+                        "Static": 0, "Blink": 1, "Breathe": 2, "Wipe": 3, "Fade": 4,
+                        "Scan": 5, "Dual Scan": 6, "Rainbow Cycle": 7, "Rainbow": 8,
+                        "Theater Chase": 9, "Running Lights": 10, "Random Color": 11,
+                        "Dynamic": 12, "Twinkle": 13, "Sparkle": 14, "Strobe": 15,
+                        "Fire": 16, "Comet": 17, "Chase": 18, "Police": 19, "Lightning": 20,
+                        "Fireworks": 21, "Ripple": 22, "Flow": 23, "Colorloop": 24,
+                        "Palette Flow": 25, "Gradient": 26, "Multi Strobe": 27, "Waves": 28,
+                        "BPM": 29, "Juggle": 30, "Meteor": 31, "Pride": 32, "Pacifica": 33,
+                        "Plasma": 34, "Dissolve": 35, "Glitter": 36, "Confetti": 37,
+                        "Sinelon": 38, "Candle": 39, "Aurora": 40, "Rain": 41,
+                        "Halloween": 42, "Noise": 43, "Funky Plank": 44
+                    }
+                    effect_id = effect_map.get(effect_name)
+                    if effect_id is not None:
+                        controller = state.led_controller.get_controller()
+                        if controller and hasattr(controller, 'set_effect'):
+                            controller.set_effect(effect_id)
+                            self.client.publish(f"{self.device_id}/led/effect/state", effect_name, retain=True)
+            elif msg.topic == self.led_speed_topic:
+                # Handle LED speed command (DW LEDs only)
+                speed = int(msg.payload.decode())
+                if 0 <= speed <= 255 and state.led_controller and state.led_provider == "dw_leds":
+                    controller = state.led_controller.get_controller()
+                    if controller and hasattr(controller, 'set_speed'):
+                        controller.set_speed(speed)
+                        self.client.publish(f"{self.device_id}/led/speed/state", speed, retain=True)
+            elif msg.topic == self.led_intensity_topic:
+                # Handle LED intensity command (DW LEDs only)
+                intensity = int(msg.payload.decode())
+                if 0 <= intensity <= 255 and state.led_controller and state.led_provider == "dw_leds":
+                    controller = state.led_controller.get_controller()
+                    if controller and hasattr(controller, 'set_intensity'):
+                        controller.set_intensity(intensity)
+                        self.client.publish(f"{self.device_id}/led/intensity/state", intensity, retain=True)
+            elif msg.topic == self.led_color_topic:
+                # Handle LED color command (RGB) (DW LEDs only)
+                try:
+                    color_data = json.loads(msg.payload.decode())
+                    if state.led_controller and state.led_provider == "dw_leds" and 'r' in color_data and 'g' in color_data and 'b' in color_data:
+                        controller = state.led_controller.get_controller()
+                        if controller and hasattr(controller, 'set_color'):
+                            r, g, b = color_data['r'], color_data['g'], color_data['b']
+                            controller.set_color(r, g, b)
+                            self.client.publish(f"{self.device_id}/led/color/state",
+                                              json.dumps({"r": r, "g": g, "b": b}), retain=True)
+                except json.JSONDecodeError:
+                    logger.error(f"Invalid JSON for color command: {msg.payload}")
             else:
                 # Handle other commands
                 payload = json.loads(msg.payload.decode())
@@ -498,7 +735,10 @@ class MQTTHandler(BaseMQTTHandler):
                 
                 # Update speed state
                 self.client.publish(f"{self.speed_topic}/state", self.state.speed, retain=True)
-                
+
+                # Update LED state
+                self._publish_led_state()
+
                 # Publish keepalive status
                 status = {
                     "timestamp": time.time(),
@@ -539,7 +779,8 @@ class MQTTHandler(BaseMQTTHandler):
             self._publish_playlist_state()
             self._publish_serial_state()
             self._publish_progress_state()
-            
+            self._publish_led_state()
+
             # Setup Home Assistant discovery
             self.setup_ha_discovery()
             
