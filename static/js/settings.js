@@ -1535,13 +1535,10 @@ async function initializeHomingConfig() {
         } else {
             compassOffsetContainer.style.display = 'block';
             homingInfoContent.innerHTML = `
-                <p class="font-medium text-blue-800">Sensor Homing Mode ($H):</p>
+                <p class="font-medium text-blue-800">Sensor Homing Mode:</p>
                 <ul class="mt-1 space-y-1 text-blue-700">
-                    <li>• $H command homes both X and Y axes</li>
-                    <li>• Waits for [MSG:Homed:X] and [MSG:Homed:Y] confirmation</li>
-                    <li>• Sends x0 y0 to zero positions</li>
-                    <li>• Theta set to compass reference point, rho set to 0</li>
-                    <li>• Requires hardware limit switches configured in FluidNC firmware</li>
+                    <li>• Requires hardware limit switches</li>
+                    <li>• Requires additional configuration</li>
                 </ul>
             `;
         }

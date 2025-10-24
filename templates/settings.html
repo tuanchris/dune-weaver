@@ -371,9 +371,9 @@ input:checked + .slider:before {
               class="mt-0.5 w-4 h-4 text-sky-600 focus:ring-sky-500"
             />
             <div class="flex-1">
-              <div class="text-sm font-medium text-slate-700">Sensor Homing ($H command)</div>
+              <div class="text-sm font-medium text-slate-700">Sensor Homing</div>
               <div class="text-xs text-slate-500 mt-1">
-                Homes both X and Y axes via FluidNC firmware, then zeroes positions with x0 y0
+                Homes both X and Y axes using sensors
               </div>
             </div>
           </label>
@@ -384,7 +384,7 @@ input:checked + .slider:before {
       <div id="compassOffsetContainer" class="space-y-2">
         <label for="angularOffsetInput" class="text-sm font-medium text-slate-700 flex items-center gap-2">
           <span class="material-icons text-slate-600 text-base">explore</span>
-          Compass Reference Point (degrees) <span class="text-xs text-slate-400">(Sensor mode only)</span>
+          Sensor offset (degrees) <span class="text-xs text-slate-400">(Sensor mode only)</span>
         </label>
         <input
           type="number"
@@ -397,7 +397,7 @@ input:checked + .slider:before {
           placeholder="0.0"
         />
         <p class="text-xs text-slate-500">
-          Set the angle (in degrees) where your angular sensor is physically mounted. After sensor homing, theta will be set to this value. 0° = East, increases clockwise (90° = South, 180° = West, 270° = North).
+          Set the angle (in degrees) where your radial arm to be offset by. You want to choose a value here so that the radial arm will point East.
         </p>
       </div>
 
