@@ -602,20 +602,25 @@ def home(timeout=90):
                     homing_complete.set()
                     return
 
-                # Send x0 y0 to zero both positions
+                # Send x0 y0 to zero both positions using send_grbl_coordinates
                 logger.info(f"Zeroing positions with x0 y0 f{homing_speed}")
-                state.conn.send(f"x0 y0 f{homing_speed}\n")
 
-                # Wait for idle state after zeroing
-                logger.info("Waiting for device to reach idle state after position zeroing...")
-                idle_reached = check_idle()
-
-                if not idle_reached:
-                    logger.error("Device did not reach idle state after position zeroing")
-                    homing_complete.set()
-                    return
+                # Run async function in new event loop
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    # Send G1 X0 Y0 F{homing_speed}
+                    result = loop.run_until_complete(send_grbl_coordinates(0, 0, homing_speed))
+                    if result == False:
+                        logger.error("Position zeroing failed - send_grbl_coordinates returned False")
+                        homing_complete.set()
+                        return
+                    logger.info("Position zeroing completed successfully")
+                finally:
+                    loop.close()
 
                 # Set current position based on compass reference point (sensor mode only)
+                # Only set AFTER x0 y0 is confirmed and device is idle
                 offset_radians = math.radians(state.angular_homing_offset_degrees)
                 state.current_theta = offset_radians
                 state.current_rho = 0
