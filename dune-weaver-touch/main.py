@@ -1,0 +1,151 @@
+import sys
+import os
+import asyncio
+import logging
+import time
+import signal
+from pathlib import Path
+from PySide6.QtCore import QUrl, QTimer, QObject, QEvent
+from PySide6.QtGui import QGuiApplication, QTouchEvent, QMouseEvent
+from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterType
+from qasync import QEventLoop
+
+from backend import Backend
+from models.pattern_model import PatternModel
+from models.playlist_model import PlaylistModel
+from png_cache_manager import ensure_png_cache_startup
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+class FirstTouchFilter(QObject):
+    """
+    Event filter that ignores the first touch event after inactivity.
+    Many capacitive touchscreens need the first touch to wake up or calibrate,
+    and this touch often has incorrect coordinates.
+    """
+    def __init__(self, idle_threshold_seconds=2.0):
+        super().__init__()
+        self.idle_threshold = idle_threshold_seconds
+        self.last_touch_time = 0
+        self.ignore_next_touch = False
+        logger.info(f"👆 First-touch filter initialized (idle threshold: {idle_threshold_seconds}s)")
+
+    def eventFilter(self, obj, event):
+        """Filter out the first touch after idle period"""
+        try:
+            event_type = event.type()
+
+            # Handle touch events
+            if event_type == QEvent.Type.TouchBegin:
+                current_time = time.time()
+                time_since_last_touch = current_time - self.last_touch_time
+
+                # If it's been more than threshold since last touch, ignore this one
+                if time_since_last_touch > self.idle_threshold:
+                    logger.debug(f"👆 Ignoring wake-up touch (idle for {time_since_last_touch:.1f}s)")
+                    self.last_touch_time = current_time
+                    return True  # Filter out (ignore) this event
+
+                self.last_touch_time = current_time
+
+            elif event_type in (QEvent.Type.TouchUpdate, QEvent.Type.TouchEnd):
+                # Update last touch time for any touch activity
+                self.last_touch_time = time.time()
+
+            # Pass through the event
+            return False
+        except KeyboardInterrupt:
+            # Re-raise KeyboardInterrupt to allow clean shutdown
+            raise
+        except Exception as e:
+            logger.error(f"Error in eventFilter: {e}")
+            return False
+
+async def startup_tasks():
+    """Run async startup tasks"""
+    logger.info("🚀 Starting dune-weaver-touch async initialization...")
+    
+    # Ensure PNG cache is available for all WebP previews
+    try:
+        logger.info("🎨 Checking PNG preview cache...")
+        png_cache_success = await ensure_png_cache_startup()
+        if png_cache_success:
+            logger.info("✅ PNG cache check completed successfully")
+        else:
+            logger.warning("⚠️ PNG cache check completed with warnings")
+    except Exception as e:
+        logger.error(f"❌ PNG cache check failed: {e}")
+    
+    logger.info("✨ dune-weaver-touch startup tasks completed")
+
+def main():
+    # Enable virtual keyboard
+    os.environ['QT_IM_MODULE'] = 'qtvirtualkeyboard'
+
+    app = QGuiApplication(sys.argv)
+
+    # Install first-touch filter to ignore wake-up touches
+    # Ignores the first touch after 2 seconds of inactivity
+    first_touch_filter = FirstTouchFilter(idle_threshold_seconds=2.0)
+    app.installEventFilter(first_touch_filter)
+    logger.info("✅ First-touch filter installed on application")
+
+    # Setup async event loop
+    loop = QEventLoop(app)
+    asyncio.set_event_loop(loop)
+    
+    # Register types
+    qmlRegisterType(Backend, "DuneWeaver", 1, 0, "Backend")
+    qmlRegisterType(PatternModel, "DuneWeaver", 1, 0, "PatternModel")
+    qmlRegisterType(PlaylistModel, "DuneWeaver", 1, 0, "PlaylistModel")
+    
+    # Load QML
+    engine = QQmlApplicationEngine()
+    qml_file = Path(__file__).parent / "qml" / "main.qml"
+    engine.load(QUrl.fromLocalFile(str(qml_file)))
+    
+    if not engine.rootObjects():
+        return -1
+    
+    # Schedule startup tasks after a brief delay to ensure event loop is running
+    def schedule_startup():
+        try:
+            # Check if we're in an event loop context
+            current_loop = asyncio.get_running_loop()
+            current_loop.create_task(startup_tasks())
+        except RuntimeError:
+            # No running loop, create task directly
+            asyncio.create_task(startup_tasks())
+    
+    # Use QTimer to delay startup tasks
+    startup_timer = QTimer()
+    startup_timer.timeout.connect(schedule_startup)
+    startup_timer.setSingleShot(True)
+    startup_timer.start(100)  # 100ms delay
+
+    # Setup signal handlers for clean shutdown
+    def signal_handler(signum, frame):
+        logger.info("🛑 Received shutdown signal, exiting...")
+        loop.stop()
+        app.quit()
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    try:
+        with loop:
+            loop.run_forever()
+    except KeyboardInterrupt:
+        logger.info("🛑 KeyboardInterrupt received, shutting down...")
+    finally:
+        loop.close()
+
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())

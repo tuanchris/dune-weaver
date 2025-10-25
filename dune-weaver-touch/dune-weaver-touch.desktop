@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Dune Weaver Touch
+Comment=Dune Weaver Touch Interface
+Exec=python3 /home/pi/dune-weaver-touch/main.py
+Path=/home/pi/dune-weaver-touch
+Terminal=false
+StartupNotify=true
+X-GNOME-Autostart-enabled=true

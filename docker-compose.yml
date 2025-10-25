@@ -19,6 +19,8 @@ services:
       - /sys:/sys
     devices:
       - "/dev/ttyACM0:/dev/ttyACM0"  # Serial device for stepper motors
+      - "/dev/ttyUSB0:/dev/ttyUSB0"  # Alternative serial device
+      - "/dev/ttyAMA0:/dev/ttyAMA0"  # Alternative serial device
       - "/dev/gpiomem:/dev/gpiomem"  # GPIO memory access for DW LEDs
       - "/dev/mem:/dev/mem"          # Direct memory access for PWM
     privileged: true  # Required for GPIO/PWM access

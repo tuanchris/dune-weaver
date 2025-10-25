@@ -1,0 +1,7 @@
+# Ensure shell scripts always use LF line endings
+*.sh text eol=lf
+install.sh text eol=lf
+setup-autostart.sh text eol=lf
+
+# Scripts should also use LF
+scripts/* text eol=lf
