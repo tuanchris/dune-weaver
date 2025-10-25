@@ -453,8 +453,9 @@ class MQTTHandler(BaseMQTTHandler):
             if not status.get("connected", False):
                 return
 
-            # Publish power state
-            power_state = "ON" if status.get("power", False) else "OFF"
+            # Publish power state (check both "power" for WLED compatibility and "power_on" for DW LEDs)
+            is_powered = status.get("power_on", status.get("power", False))
+            power_state = "ON" if is_powered else "OFF"
             self.client.publish(f"{self.device_id}/led/power/state", power_state, retain=True)
 
             # Publish brightness (convert from 0-1 to 0-100)

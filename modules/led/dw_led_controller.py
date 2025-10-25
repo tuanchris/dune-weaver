@@ -151,14 +151,6 @@ class DWLEDController:
         Returns:
             Dict with status
         """
-        # DEBUG: Log power state changes with caller info
-        import traceback
-        if state == 0:
-            stack_summary = ''.join(traceback.format_stack()[-4:-1])
-            logger.warning(f"LED POWER OFF called from:\n{stack_summary}")
-        elif state == 1:
-            logger.info("LED POWER ON called")
-
         if not self._initialize_hardware():
             return {
                 "connected": False,
