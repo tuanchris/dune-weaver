@@ -405,7 +405,7 @@ async function loadEffectSettings() {
 // Format effect settings for display
 function formatEffectSettings(settings) {
     if (!settings) {
-        return 'Not configured (LEDs will turn off)';
+        return 'Not configured (do nothing)';
     }
 
     const parts = [];
