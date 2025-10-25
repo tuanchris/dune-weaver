@@ -310,7 +310,15 @@ async function initializeDWLedsControls() {
     });
 
     // Update remaining time periodically
-    setInterval(updateIdleTimeoutRemaining, 60000); // Update every minute
+    let idleTimeoutInterval = setInterval(updateIdleTimeoutRemaining, 60000); // Update every minute
+
+    // Clean up interval when page unloads
+    window.addEventListener('beforeunload', () => {
+        if (idleTimeoutInterval) {
+            clearInterval(idleTimeoutInterval);
+            idleTimeoutInterval = null;
+        }
+    });
 
     // Initialize Coloris color picker for effect colors
     initializeColoris();

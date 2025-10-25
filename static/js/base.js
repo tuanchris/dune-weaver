@@ -884,6 +884,16 @@ function initializeWebSocket() {
     connectWebSocket();
 }
 
+// Clean up WebSocket when page unloads to prevent memory leaks
+window.addEventListener('beforeunload', () => {
+    if (ws) {
+        // Disable reconnection before closing
+        ws.onclose = null;
+        ws.close();
+        ws = null;
+    }
+});
+
 // Add resize handler for responsive canvas with debouncing
 let resizeTimeout;
 window.addEventListener('resize', () => {
