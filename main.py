@@ -1591,7 +1591,15 @@ async def dw_leds_power(request: dict):
         raise HTTPException(status_code=400, detail="State must be 0 (off), 1 (on), or 2 (toggle)")
 
     try:
-        return state.led_controller.set_power(state_value)
+        result = state.led_controller.set_power(state_value)
+
+        # Reset idle timeout when LEDs are manually powered on (only if idle timeout is enabled)
+        # This prevents idle timeout from immediately turning them back off
+        if state_value in [1, 2] and state.dw_led_idle_timeout_enabled:  # Power on or toggle
+            state.dw_led_last_activity_time = time.time()
+            logger.debug(f"LED activity time reset due to manual power on")
+
+        return result
     except Exception as e:
         logger.error(f"Failed to set DW LED power: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1620,7 +1628,7 @@ async def dw_leds_brightness(request: dict):
 
 @app.post("/api/dw_leds/color")
 async def dw_leds_color(request: dict):
-    """Set solid color"""
+    """Set solid color (manual UI control - always powers on LEDs)"""
     if not state.led_controller or state.led_provider != "dw_leds":
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
@@ -1639,6 +1647,11 @@ async def dw_leds_color(request: dict):
 
     try:
         controller = state.led_controller.get_controller()
+        # Power on LEDs when user manually sets color via UI
+        controller.set_power(1)
+        # Reset idle timeout for manual interaction (only if idle timeout is enabled)
+        if state.dw_led_idle_timeout_enabled:
+            state.dw_led_last_activity_time = time.time()
         return controller.set_color(r, g, b)
     except Exception as e:
         logger.error(f"Failed to set DW LED color: {str(e)}")
@@ -1646,7 +1659,7 @@ async def dw_leds_color(request: dict):
 
 @app.post("/api/dw_leds/colors")
 async def dw_leds_colors(request: dict):
-    """Set effect colors (color1, color2, color3)"""
+    """Set effect colors (color1, color2, color3) - manual UI control - always powers on LEDs"""
     if not state.led_controller or state.led_provider != "dw_leds":
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
@@ -1681,6 +1694,11 @@ async def dw_leds_colors(request: dict):
 
     try:
         controller = state.led_controller.get_controller()
+        # Power on LEDs when user manually sets colors via UI
+        controller.set_power(1)
+        # Reset idle timeout for manual interaction (only if idle timeout is enabled)
+        if state.dw_led_idle_timeout_enabled:
+            state.dw_led_last_activity_time = time.time()
         return controller.set_colors(color1=color1, color2=color2, color3=color3)
     except Exception as e:
         logger.error(f"Failed to set DW LED colors: {str(e)}")
@@ -1726,7 +1744,7 @@ async def dw_leds_palettes():
 
 @app.post("/api/dw_leds/effect")
 async def dw_leds_effect(request: dict):
-    """Set effect by ID"""
+    """Set effect by ID (manual UI control - always powers on LEDs)"""
     if not state.led_controller or state.led_provider != "dw_leds":
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
@@ -1736,6 +1754,11 @@ async def dw_leds_effect(request: dict):
 
     try:
         controller = state.led_controller.get_controller()
+        # Power on LEDs when user manually sets effect via UI
+        controller.set_power(1)
+        # Reset idle timeout for manual interaction (only if idle timeout is enabled)
+        if state.dw_led_idle_timeout_enabled:
+            state.dw_led_last_activity_time = time.time()
         return controller.set_effect(effect_id, speed=speed, intensity=intensity)
     except Exception as e:
         logger.error(f"Failed to set DW LED effect: {str(e)}")
@@ -1743,7 +1766,7 @@ async def dw_leds_effect(request: dict):
 
 @app.post("/api/dw_leds/palette")
 async def dw_leds_palette(request: dict):
-    """Set palette by ID"""
+    """Set palette by ID (manual UI control - always powers on LEDs)"""
     if not state.led_controller or state.led_provider != "dw_leds":
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
@@ -1751,6 +1774,11 @@ async def dw_leds_palette(request: dict):
 
     try:
         controller = state.led_controller.get_controller()
+        # Power on LEDs when user manually sets palette via UI
+        controller.set_power(1)
+        # Reset idle timeout for manual interaction (only if idle timeout is enabled)
+        if state.dw_led_idle_timeout_enabled:
+            state.dw_led_last_activity_time = time.time()
         return controller.set_palette(palette_id)
     except Exception as e:
         logger.error(f"Failed to set DW LED palette: {str(e)}")
@@ -1920,6 +1948,7 @@ def signal_handler(signum, frame):
     """Handle shutdown signals gracefully but forcefully."""
     logger.info("Received shutdown signal, cleaning up...")
     try:
+        # Turn off all LEDs on shutdown
         if state.led_controller:
             state.led_controller.set_power(0)
         # Run cleanup operations - need to handle async in sync context

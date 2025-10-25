@@ -644,6 +644,10 @@ class MQTTHandler(BaseMQTTHandler):
                 if state.led_controller and state.led_provider == "dw_leds":
                     power_state = 1 if payload == "ON" else 0
                     state.led_controller.set_power(power_state)
+                    # Reset idle timeout when LEDs are manually powered on via MQTT (only if idle timeout is enabled)
+                    if payload == "ON" and state.dw_led_idle_timeout_enabled:
+                        state.dw_led_last_activity_time = time.time()
+                        logger.debug("LED activity time reset due to MQTT power on")
                     self.client.publish(f"{self.device_id}/led/power/state", payload, retain=True)
             elif msg.topic == self.led_brightness_topic:
                 # Handle LED brightness command (DW LEDs only)
