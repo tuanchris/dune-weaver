@@ -5,6 +5,7 @@ import serial
 import serial.tools.list_ports
 import websocket
 import asyncio
+import os
 
 from modules.core import pattern_manager
 from modules.core.state import state
@@ -492,12 +493,12 @@ def get_machine_steps(timeout=10):
     if settings_complete:
         if y_steps_per_mm == 180:
             state.table_type = 'dune_weaver_mini'
-        elif y_steps_per_mm >= 320:
-            state.table_type = 'dune_weaver_pro'
         elif y_steps_per_mm == 287:
             state.table_type = 'dune_weaver'
         elif y_steps_per_mm == 164:
             state.table_type = 'dune_weaver_mini_pro'
+        elif y_steps_per_mm >= 320:
+            state.table_type = 'dune_weaver_pro'
         else:
             state.table_type = None
             logger.warning(f"Unknown table type with Y steps/mm: {y_steps_per_mm}")
@@ -508,7 +509,18 @@ def get_machine_steps(timeout=10):
         else:
             state.gear_ratio = 10
 
-        logger.info(f"Machine type detected: {state.table_type}, gear ratio: {state.gear_ratio} (hardcoded)")
+        # Check for environment variable override
+        gear_ratio_override = os.getenv('GEAR_RATIO')
+        if gear_ratio_override is not None:
+            try:
+                state.gear_ratio = float(gear_ratio_override)
+                logger.info(f"Machine type detected: {state.table_type}, gear ratio: {state.gear_ratio} (from GEAR_RATIO env var)")
+            except ValueError:
+                logger.error(f"Invalid GEAR_RATIO env var value: {gear_ratio_override}, using default: {state.gear_ratio}")
+                logger.info(f"Machine type detected: {state.table_type}, gear ratio: {state.gear_ratio} (hardcoded)")
+        else:
+            logger.info(f"Machine type detected: {state.table_type}, gear ratio: {state.gear_ratio} (hardcoded)")
+
         return True
     else:
         missing = []
