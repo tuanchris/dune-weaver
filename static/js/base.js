@@ -201,9 +201,13 @@ function connectWebSocket() {
                     if (newFile !== currentPreviewFile) {
                         currentPreviewFile = newFile;
 
-                        // Only preload if modal exists on this page (avoids waste on settings/LED pages)
+                        // Only preload if we're on the browse page (index.html)
+                        // Other pages (playlists, table_control, LED, settings) will load on-demand
                         const modal = document.getElementById('playerPreviewModal');
-                        if (modal) {
+                        const browsePage = document.getElementById('browseSortFieldSelect');
+
+                        if (modal && browsePage) {
+                            // We're on the browse page with the modal - preload coordinates
                             loadPlayerPreviewData(data.data.current_file);
                         }
                     }
@@ -296,25 +300,29 @@ async function openPlayerPreviewModal() {
         const ctx = canvas.getContext('2d');
         const toggleBtn = document.getElementById('toggle-preview-modal-btn');
 
-        // Set static title
-        title.textContent = 'Live Pattern Preview';
+        // Show modal immediately for instant feedback
+        modal.classList.remove('hidden');
 
-        // Load preview data on-demand if not already loaded (fallback for edge cases)
+        // Setup canvas (so it's ready to display loading state)
+        setupPlayerPreviewCanvas(ctx);
+
+        // Load preview data on-demand if not already loaded
         if (!playerPreviewData && currentPreviewFile) {
-            // Show loading indicator
+            // Show loading state
             title.textContent = 'Loading pattern...';
+            drawLoadingState(ctx);
+
+            // Load data in background
             await loadPlayerPreviewData(`./patterns/${currentPreviewFile}`);
+
+            // Update title when loaded
+            title.textContent = 'Live Pattern Preview';
+        } else {
+            // Data already loaded
             title.textContent = 'Live Pattern Preview';
         }
 
-        // Show modal and update toggle button
-        modal.classList.remove('hidden');
-
-
-        // Setup canvas
-        setupPlayerPreviewCanvas(ctx);
-
-        // Draw initial state
+        // Draw the pattern (either immediately if cached, or after loading)
         drawPlayerPreview(ctx, targetProgress);
 
     } catch (error) {
@@ -406,6 +414,50 @@ function getInterpolatedCoordinate(progress) {
     const interpolatedRho = rho1 + (rho2 - rho1) * fraction;
     
     return [interpolatedTheta, interpolatedRho];
+}
+
+// Draw loading state on canvas
+function drawLoadingState(ctx) {
+    if (!ctx) return;
+
+    const canvas = ctx.canvas;
+    const pixelRatio = (window.devicePixelRatio || 1) * 2;
+    const containerSize = canvas.width / pixelRatio;
+    const center = containerSize / 2;
+
+    ctx.save();
+
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Create circular clipping path
+    ctx.beginPath();
+    ctx.arc(canvas.width/2, canvas.height/2, canvas.width/2, 0, Math.PI * 2);
+    ctx.clip();
+
+    // Setup coordinate system
+    ctx.scale(pixelRatio, pixelRatio);
+
+    // Draw loading text
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Loading pattern...', center, center);
+
+    // Draw spinning circle
+    const time = Date.now() / 1000;
+    const radius = 30;
+
+    ctx.strokeStyle = '#0c7ff2';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+
+    ctx.beginPath();
+    ctx.arc(center, center - 40, radius, time * 2, time * 2 + Math.PI * 1.5);
+    ctx.stroke();
+
+    ctx.restore();
 }
 
 // Draw player preview for modal
