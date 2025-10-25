@@ -37,7 +37,7 @@ class DWLEDController:
 
         # State
         self._powered_on = False
-        self._current_effect_id = 0
+        self._current_effect_id = 8
         self._current_palette_id = 0
         self._speed = speed
         self._intensity = intensity
