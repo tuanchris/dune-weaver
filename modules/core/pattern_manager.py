@@ -140,10 +140,15 @@ def is_in_scheduled_pause_period():
 
 async def check_table_is_idle() -> bool:
     """
-    Check if the table is currently idle (not playing anything).
-    Returns True if idle, False if playing.
+    Check if the table is currently idle by querying actual machine status.
+    Returns True if idle, False if playing/moving.
+
+    This checks the real machine state rather than relying on state variables,
+    making it more reliable for detecting when table is truly idle.
     """
-    return not state.current_playing_file or state.pause_requested
+    # Use the connection_manager's is_machine_idle() function
+    # Run it in a thread since it's a synchronous function
+    return await asyncio.to_thread(connection_manager.is_machine_idle)
 
 
 def start_idle_led_timeout():
@@ -783,7 +788,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
             state.led_controller.effect_idle(state.dw_led_idle_effect)
             start_idle_led_timeout()
             logger.debug("LED effect set to idle after pattern completion")
-        
+
         # Only clear state if not part of a playlist
         if not is_playlist:
             state.current_playing_file = None

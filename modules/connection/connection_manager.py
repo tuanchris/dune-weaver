@@ -760,7 +760,33 @@ async def check_idle_async():
                 logger.error(f"Error updating machine position: {e}")
             return True
         await asyncio.sleep(1)
-        
+
+def is_machine_idle() -> bool:
+    """
+    Single check to see if the machine is currently idle.
+    Does not loop - returns immediately with current status.
+
+    Returns:
+        True if machine is idle, False otherwise
+    """
+    if not state.conn or not state.conn.is_connected():
+        logger.debug("No connection - machine not idle")
+        return False
+
+    try:
+        state.conn.send('?')
+        response = state.conn.readline()
+
+        if response and "Idle" in response:
+            logger.debug("Machine status: Idle")
+            return True
+        else:
+            logger.debug(f"Machine status: {response}")
+            return False
+    except Exception as e:
+        logger.error(f"Error checking machine idle status: {e}")
+        return False
+
 
 def get_machine_position(timeout=5):
     """
