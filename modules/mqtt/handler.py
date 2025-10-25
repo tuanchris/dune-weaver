@@ -453,18 +453,17 @@ class MQTTHandler(BaseMQTTHandler):
             if not status.get("connected", False):
                 return
 
-            # Publish power state (check both "power" for WLED compatibility and "power_on" for DW LEDs)
-            is_powered = status.get("power_on", status.get("power", False))
-            power_state = "ON" if is_powered else "OFF"
+            # Publish power state
+            power_state = "ON" if status.get("power_on", False) else "OFF"
             self.client.publish(f"{self.device_id}/led/power/state", power_state, retain=True)
 
-            # Publish brightness (convert from 0-1 to 0-100)
+            # Publish brightness (DW LEDs return 0-100)
             if "brightness" in status:
-                brightness = int(status["brightness"] * 100)
+                brightness = status["brightness"]
                 self.client.publish(f"{self.device_id}/led/brightness/state", brightness, retain=True)
 
             # Publish effect
-            if "effect_id" in status:
+            if "current_effect" in status:
                 effect_map = {
                     0: "Static", 1: "Blink", 2: "Breathe", 3: "Wipe", 4: "Fade",
                     5: "Scan", 6: "Dual Scan", 7: "Rainbow Cycle", 8: "Rainbow",
@@ -478,7 +477,7 @@ class MQTTHandler(BaseMQTTHandler):
                     38: "Sinelon", 39: "Candle", 40: "Aurora", 41: "Rain",
                     42: "Halloween", 43: "Noise", 44: "Funky Plank"
                 }
-                effect_name = effect_map.get(status["effect_id"], "Static")
+                effect_name = effect_map.get(status["current_effect"], "Static")
                 self.client.publish(f"{self.device_id}/led/effect/state", effect_name, retain=True)
 
             # Publish speed
