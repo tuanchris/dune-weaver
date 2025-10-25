@@ -561,8 +561,7 @@ def effect_idle(controller: DWLEDController, effect_settings: Optional[dict] = N
 
             return True
 
-        # Default or old format: turn off
-        controller.set_power(0)
+        # Default: do nothing (keep current LED state)
         return True
     except Exception as e:
         logger.error(f"Error setting idle effect: {e}")
@@ -624,8 +623,7 @@ def effect_playing(controller: DWLEDController, effect_settings: Optional[dict] 
 
             return True
 
-        # Default or old format: turn off
-        controller.set_power(0)
+        # Default: do nothing (keep current LED state)
         return True
     except Exception as e:
         logger.error(f"Error setting playing effect: {e}")
