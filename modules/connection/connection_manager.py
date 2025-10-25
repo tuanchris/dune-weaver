@@ -620,6 +620,15 @@ def home(timeout=90):
                 finally:
                     loop.close()
 
+                # Wait for device to reach idle state after zeroing movement
+                logger.info("Waiting for device to reach idle state after zeroing...")
+                idle_reached = check_idle()
+
+                if not idle_reached:
+                    logger.error("Device did not reach idle state after zeroing")
+                    homing_complete.set()
+                    return
+
                 # Set current position based on compass reference point (sensor mode only)
                 # Only set AFTER x0 y0 is confirmed and device is idle
                 offset_radians = math.radians(state.angular_homing_offset_degrees)
