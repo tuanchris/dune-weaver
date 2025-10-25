@@ -200,7 +200,12 @@ function connectWebSocket() {
                     const newFile = normalizeFilePath(data.data.current_file);
                     if (newFile !== currentPreviewFile) {
                         currentPreviewFile = newFile;
-                        loadPlayerPreviewData(data.data.current_file);
+
+                        // Only preload if modal exists on this page (avoids waste on settings/LED pages)
+                        const modal = document.getElementById('playerPreviewModal');
+                        if (modal) {
+                            loadPlayerPreviewData(data.data.current_file);
+                        }
                     }
                 } else {
                     currentPreviewFile = null;
@@ -290,20 +295,28 @@ async function openPlayerPreviewModal() {
         const canvas = document.getElementById('playerPreviewCanvas');
         const ctx = canvas.getContext('2d');
         const toggleBtn = document.getElementById('toggle-preview-modal-btn');
-        
+
         // Set static title
         title.textContent = 'Live Pattern Preview';
-        
+
+        // Load preview data on-demand if not already loaded (fallback for edge cases)
+        if (!playerPreviewData && currentPreviewFile) {
+            // Show loading indicator
+            title.textContent = 'Loading pattern...';
+            await loadPlayerPreviewData(`./patterns/${currentPreviewFile}`);
+            title.textContent = 'Live Pattern Preview';
+        }
+
         // Show modal and update toggle button
         modal.classList.remove('hidden');
 
-        
+
         // Setup canvas
         setupPlayerPreviewCanvas(ctx);
-        
+
         // Draw initial state
         drawPlayerPreview(ctx, targetProgress);
-        
+
     } catch (error) {
         console.error(`Error opening player preview modal: ${error.message}`);
         showStatusMessage('Failed to load pattern for animation', 'error');
