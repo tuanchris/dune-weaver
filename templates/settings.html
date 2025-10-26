@@ -653,8 +653,9 @@ input:checked + .slider:before {
           <div class="flex items-start gap-2">
             <span class="material-icons text-blue-600 text-base">info</span>
             <div class="text-xs text-blue-700">
-              <p class="font-medium text-blue-800">Supported LED Strips: WS281x Only</p>
-              <p class="mt-1">Compatible with WS2811, WS2812, WS2812B, WS2813, WS2815 (12V), and other WS281x RGB LED strips. RGBW strips (SK6812, SK6812W) are not supported.</p>
+              <p class="font-medium text-blue-800">Supported LED Strips</p>
+              <p class="mt-1"><strong>RGB (3-channel):</strong> WS2811, WS2812, WS2812B, WS2813, WS2815 and other WS281x strips.</p>
+              <p class="mt-1"><strong>RGBW (4-channel):</strong> SK6812, SK6812W and other RGBW strips with dedicated white channel.</p>
             </div>
           </div>
         </div>
@@ -690,20 +691,26 @@ input:checked + .slider:before {
           </p>
         </label>
         <label class="flex flex-col gap-1.5">
-          <span class="text-slate-700 text-sm font-medium leading-normal">Pixel Color Order (WS281x)</span>
+          <span class="text-slate-700 text-sm font-medium leading-normal">Pixel Color Order</span>
           <select
             id="dwLedPixelOrder"
             class="form-select flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 px-4 text-base font-normal leading-normal transition-colors"
           >
-            <option value="GRB" selected>GRB - WS2812/WS2812B (most common)</option>
-            <option value="RGB">RGB - WS2815/WS2811 and some variants</option>
-            <option value="BGR">BGR - Some WS2811 variants</option>
-            <option value="RBG">RBG - Rare variant</option>
-            <option value="GBR">GBR - Rare variant</option>
-            <option value="BRG">BRG - Rare variant</option>
+            <optgroup label="RGB Strips (3-channel)">
+              <option value="GRB" selected>GRB - WS2812/WS2812B (most common)</option>
+              <option value="RGB">RGB - WS2815/WS2811 and some variants</option>
+              <option value="BGR">BGR - Some WS2811 variants</option>
+              <option value="RBG">RBG - Rare variant</option>
+              <option value="GBR">GBR - Rare variant</option>
+              <option value="BRG">BRG - Rare variant</option>
+            </optgroup>
+            <optgroup label="RGBW Strips (4-channel)">
+              <option value="GRBW">GRBW - SK6812 RGBW (most common)</option>
+              <option value="RGBW">RGBW - SK6812 RGBW variant</option>
+            </optgroup>
           </select>
           <p class="text-xs text-slate-500">
-            Most WS2812B and WS2815 strips use GRB. WS2811 often uses RGB. If colors appear wrong, try different orders.
+            Most WS2812B strips use GRB. SK6812 RGBW strips typically use GRBW. If colors appear wrong, try different orders.
           </p>
         </label>
       </div>
