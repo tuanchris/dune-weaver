@@ -438,24 +438,12 @@ function drawLoadingState(ctx) {
     // Setup coordinate system
     ctx.scale(pixelRatio, pixelRatio);
 
-    // Draw loading text
+    // Draw loading text only
     ctx.fillStyle = '#9ca3af';
     ctx.font = '16px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('Loading pattern...', center, center);
-
-    // Draw spinning circle
-    const time = Date.now() / 1000;
-    const radius = 30;
-
-    ctx.strokeStyle = '#0c7ff2';
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-
-    ctx.beginPath();
-    ctx.arc(center, center - 40, radius, time * 2, time * 2 + Math.PI * 1.5);
-    ctx.stroke();
 
     ctx.restore();
 }

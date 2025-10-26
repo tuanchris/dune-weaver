@@ -17,6 +17,17 @@
   filter: invert(1);
 }
 
+/* Fix checkbox visibility in light mode */
+html:not(.dark) input[type="checkbox"]:checked {
+  background-color: #2563eb !important; /* Darker blue for better contrast */
+  border-color: #2563eb !important;
+}
+
+html:not(.dark) input[type="checkbox"] {
+  background-color: #ffffff !important;
+  border-color: #d1d5db !important;
+}
+
 /* Mobile responsive utilities */
 @media (max-width: 768px) {
   .mobile-hidden {

@@ -234,6 +234,23 @@ async function loadLedConfig() {
 document.addEventListener('DOMContentLoaded', async () => {
     // Initialize UI with default disconnected state
     updateConnectionUI({ connected: false });
+
+    // Handle scroll to section if hash is present in URL
+    if (window.location.hash) {
+        setTimeout(() => {
+            const targetSection = document.querySelector(window.location.hash);
+            if (targetSection) {
+                targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                // Add a subtle highlight animation
+                targetSection.style.transition = 'background-color 0.5s ease';
+                const originalBg = targetSection.style.backgroundColor;
+                targetSection.style.backgroundColor = 'rgba(14, 165, 233, 0.1)';
+                setTimeout(() => {
+                    targetSection.style.backgroundColor = originalBg;
+                }, 2000);
+            }
+        }, 300); // Delay to ensure page is fully loaded
+    }
     
     // Load all data asynchronously
     Promise.all([

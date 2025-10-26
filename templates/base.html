@@ -272,6 +272,16 @@
             </a>
           </div>
           <div class="flex items-center gap-2">
+            <!-- Update Available Indicator -->
+            <button
+              id="update-indicator"
+              class="hidden p-1.5 flex rounded-lg hover:bg-green-100 dark:hover:bg-green-900 focus:outline-none focus:ring-2 focus:ring-green-500"
+              aria-label="Update available"
+              title="Software update available - Click to view"
+            >
+              <span class="material-icons text-green-600 dark:text-green-400 animate-pulse">system_update</span>
+            </button>
+
             <button
               id="theme-toggle"
               class="p-1.5 flex rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -720,6 +730,41 @@
           } catch (error) {
             showStatusMessage('Failed to shutdown: ' + error.message, 'error');
           }
+        });
+      });
+
+      // Update indicator functionality
+      document.addEventListener('DOMContentLoaded', async function() {
+        const updateIndicator = document.getElementById('update-indicator');
+        if (!updateIndicator) return;
+
+        // Check for updates
+        async function checkForUpdates() {
+          try {
+            const response = await fetch('/api/version');
+            const data = await response.json();
+
+            // Show indicator if update is available
+            if (data.update_available) {
+              updateIndicator.classList.remove('hidden');
+            } else {
+              updateIndicator.classList.add('hidden');
+            }
+          } catch (error) {
+            console.error('Failed to check for updates:', error);
+          }
+        }
+
+        // Initial check
+        await checkForUpdates();
+
+        // Check every hour
+        setInterval(checkForUpdates, 3600000);
+
+        // Click handler - navigate to settings and scroll to update section
+        updateIndicator.addEventListener('click', () => {
+          // Navigate to settings page
+          window.location.href = '/settings#software-version-section';
         });
       });
     </script>
