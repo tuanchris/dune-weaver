@@ -1977,17 +1977,21 @@ def signal_handler(signum, frame):
         os._exit(0)  # Force exit regardless of other threads
 
 @app.get("/api/version")
-async def get_version_info():
-    """Get current and latest version information"""
+async def get_version_info(force_refresh: bool = False):
+    """Get current and latest version information
+
+    Args:
+        force_refresh: If true, bypass cache and fetch fresh data from GitHub
+    """
     try:
-        version_info = await version_manager.get_version_info()
+        version_info = await version_manager.get_version_info(force_refresh=force_refresh)
         return JSONResponse(content=version_info)
     except Exception as e:
         logger.error(f"Error getting version info: {e}")
         return JSONResponse(
             content={
-                "current": version_manager.get_current_version(),
-                "latest": version_manager.get_current_version(),
+                "current": await version_manager.get_current_version(),
+                "latest": await version_manager.get_current_version(),
                 "update_available": False,
                 "error": "Unable to check for updates"
             },
