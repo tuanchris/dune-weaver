@@ -725,6 +725,298 @@ input:checked + .slider:before {
       </button>
     </div>
   </section>
+
+  <!-- Ball Tracking LED Section -->
+  <section id="ballTrackingSection" class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <h2
+      class="text-slate-800 text-xl sm:text-2xl font-semibold leading-tight tracking-[-0.01em] px-6 py-4 border-b border-slate-200"
+    >
+      Ball Tracking LEDs
+    </h2>
+    <div class="px-6 py-5 space-y-6">
+      <!-- Info Box -->
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+        <div class="flex items-start gap-2">
+          <span class="material-icons text-blue-600 text-base">info</span>
+          <div class="text-xs text-blue-700">
+            <p class="font-medium text-blue-800">Track Ball Position with LEDs</p>
+            <p class="mt-1">Illuminate LEDs that follow the ball bearing's movement around the table in real-time. Requires DW LEDs (local GPIO) configuration.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Enable Ball Tracking -->
+      <div class="flex items-center justify-between">
+        <div class="flex-1">
+          <h3 class="text-slate-700 text-base font-medium leading-normal">Enable Ball Tracking</h3>
+          <p class="text-xs text-slate-500 mt-1">
+            Turn on LED tracking of ball bearing position
+          </p>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="ballTrackingEnabled">
+          <span class="slider round"></span>
+        </label>
+      </div>
+
+      <!-- Tracking Settings (shown when enabled) -->
+      <div id="ballTrackingSettings" class="space-y-4" style="display: none;">
+        <!-- Tracking Mode -->
+        <label class="flex flex-col gap-1.5">
+          <span class="text-slate-700 text-sm font-medium leading-normal">Tracking Mode</span>
+          <select
+            id="ballTrackingMode"
+            class="form-select resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 px-4 text-base font-medium leading-normal transition-colors"
+          >
+            <option value="disabled">Disabled</option>
+            <option value="playing_only">Only During Pattern Playback</option>
+            <option value="enabled">Always On</option>
+          </select>
+          <p class="text-xs text-slate-500 mt-1">
+            Control when ball tracking is active
+          </p>
+        </label>
+
+        <!-- Calibration Button -->
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <h4 class="text-slate-800 text-sm font-medium flex items-center gap-2">
+            <span class="material-icons text-amber-600 text-base">tune</span>
+            LED Alignment Calibration
+          </h4>
+          <p class="text-xs text-slate-600 mt-1 mb-3">
+            Calibrate which LED corresponds to the 0° position on your table
+          </p>
+          <button
+            id="openCalibrationWizard"
+            class="flex items-center justify-center gap-2 cursor-pointer rounded-lg h-10 px-4 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors"
+          >
+            <span class="material-icons text-lg">play_arrow</span>
+            <span class="truncate">Start Calibration Wizard</span>
+          </button>
+        </div>
+
+        <!-- Grid of Settings -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- LED Spread -->
+          <label class="flex flex-col gap-1.5">
+            <span class="text-slate-700 text-sm font-medium leading-normal">LED Spread</span>
+            <input
+              id="ballTrackingSpread"
+              type="range"
+              min="1"
+              max="10"
+              value="3"
+              class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+            />
+            <div class="flex justify-between text-xs text-slate-500">
+              <span>1 LED</span>
+              <span id="ballTrackingSpreadValue">3 LEDs</span>
+              <span>10 LEDs</span>
+            </div>
+            <p class="text-xs text-slate-500">
+              Number of adjacent LEDs to light up
+            </p>
+          </label>
+
+          <!-- Look-back Delay -->
+          <label class="flex flex-col gap-1.5">
+            <span class="text-slate-700 text-sm font-medium leading-normal">Look-back Delay</span>
+            <input
+              id="ballTrackingLookback"
+              type="range"
+              min="0"
+              max="15"
+              value="5"
+              class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+            />
+            <div class="flex justify-between text-xs text-slate-500">
+              <span>0</span>
+              <span id="ballTrackingLookbackValue">5 coords</span>
+              <span>15</span>
+            </div>
+            <p class="text-xs text-slate-500">
+              Compensate for motion lag by tracking past position
+            </p>
+          </label>
+
+          <!-- Brightness -->
+          <label class="flex flex-col gap-1.5">
+            <span class="text-slate-700 text-sm font-medium leading-normal">Brightness</span>
+            <input
+              id="ballTrackingBrightness"
+              type="range"
+              min="0"
+              max="100"
+              value="50"
+              class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+            />
+            <div class="flex justify-between text-xs text-slate-500">
+              <span>0%</span>
+              <span id="ballTrackingBrightnessValue">50%</span>
+              <span>100%</span>
+            </div>
+          </label>
+
+          <!-- Color Picker -->
+          <label class="flex flex-col gap-1.5">
+            <span class="text-slate-700 text-sm font-medium leading-normal">Tracking Color</span>
+            <input
+              id="ballTrackingColor"
+              type="color"
+              value="#ffffff"
+              class="w-full h-10 rounded-lg cursor-pointer border border-slate-300"
+            />
+            <p class="text-xs text-slate-500">
+              Color of tracking LEDs
+            </p>
+          </label>
+        </div>
+
+        <!-- Save Button -->
+        <div class="flex justify-end">
+          <button
+            id="saveBallTrackingConfig"
+            class="flex items-center justify-center gap-2 min-w-[140px] cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors"
+          >
+            <span class="material-icons text-lg">save</span>
+            <span class="truncate">Save Settings</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Calibration Wizard Modal -->
+  <div id="calibrationModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+        <h3 class="text-slate-900 text-xl font-semibold">Ball Tracking Calibration</h3>
+        <button id="closeCalibrationModal" class="text-slate-400 hover:text-slate-600">
+          <span class="material-icons">close</span>
+        </button>
+      </div>
+
+      <!-- Modal Content -->
+      <div class="px-6 py-6">
+        <!-- Step Indicator -->
+        <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center gap-2">
+            <div id="step1Indicator" class="flex items-center justify-center w-8 h-8 rounded-full bg-sky-600 text-white text-sm font-medium">1</div>
+            <div class="w-16 h-1 bg-slate-200" id="line1"></div>
+            <div id="step2Indicator" class="flex items-center justify-center w-8 h-8 rounded-full bg-slate-200 text-slate-500 text-sm font-medium">2</div>
+            <div class="w-16 h-1 bg-slate-200" id="line2"></div>
+            <div id="step3Indicator" class="flex items-center justify-center w-8 h-8 rounded-full bg-slate-200 text-slate-500 text-sm font-medium">3</div>
+          </div>
+        </div>
+
+        <!-- Step 1: Move to Reference -->
+        <div id="calibrationStep1" class="space-y-4">
+          <h4 class="text-lg font-medium text-slate-800">Step 1: Move to Reference Position</h4>
+          <p class="text-sm text-slate-600">
+            We'll reset theta and move the ball to the reference position (0°, perimeter). This will help us identify which LED corresponds to the 0° position.
+          </p>
+          <button
+            id="startCalibrationMove"
+            class="flex items-center justify-center gap-2 w-full cursor-pointer rounded-lg h-12 px-4 bg-sky-600 hover:bg-sky-700 text-white text-base font-medium transition-colors"
+          >
+            <span class="material-icons text-xl">navigation</span>
+            <span>Move Ball to Reference Position</span>
+          </button>
+          <div id="calibrationMoveStatus" class="hidden text-sm text-slate-600 text-center">
+            <span class="inline-block animate-spin material-icons text-sky-600">refresh</span>
+            Moving to reference position...
+          </div>
+        </div>
+
+        <!-- Step 2: Identify LED -->
+        <div id="calibrationStep2" class="space-y-4 hidden">
+          <h4 class="text-lg font-medium text-slate-800">Step 2: Identify LED Position</h4>
+          <p class="text-sm text-slate-600 mb-4">
+            The ball is now at the 0° reference position (perimeter). Click on the LED that is at this position in the circular diagram below.
+          </p>
+          <!-- LED Circle Visualization -->
+          <div class="flex justify-center my-6">
+            <svg id="ledCircle" viewBox="0 0 400 400" class="w-full max-w-md">
+              <!-- Circle representing LED strip -->
+              <circle cx="200" cy="200" r="150" fill="none" stroke="#e2e8f0" stroke-width="2"/>
+              <!-- 0° marker (East) -->
+              <line x1="350" y1="200" x2="370" y2="200" stroke="#0c7ff2" stroke-width="3"/>
+              <text x="380" y="205" fill="#0c7ff2" font-size="14" font-weight="bold">0°</text>
+              <!-- LEDs will be added here by JavaScript -->
+            </svg>
+          </div>
+          <p id="selectedLedInfo" class="text-sm text-center text-slate-600">
+            No LED selected
+          </p>
+        </div>
+
+        <!-- Step 3: Test Direction -->
+        <div id="calibrationStep3" class="space-y-4 hidden">
+          <h4 class="text-lg font-medium text-slate-800">Step 3: Test Direction</h4>
+          <p class="text-sm text-slate-600 mb-4">
+            We'll move the ball to 90° to test LED direction. Watch which way the LEDs move.
+          </p>
+          <button
+            id="testDirection"
+            class="flex items-center justify-center gap-2 w-full cursor-pointer rounded-lg h-12 px-4 bg-sky-600 hover:bg-sky-700 text-white text-base font-medium transition-colors"
+          >
+            <span class="material-icons text-xl">rotate_right</span>
+            <span>Move to 90° and Test</span>
+          </button>
+          <div id="directionTestStatus" class="hidden text-sm text-slate-600 text-center">
+            <span class="inline-block animate-spin material-icons text-sky-600">refresh</span>
+            Testing direction...
+          </div>
+          <div id="directionQuestion" class="hidden space-y-4 mt-4">
+            <p class="text-sm text-slate-700 font-medium text-center">Did the LED move clockwise?</p>
+            <div class="grid grid-cols-2 gap-4">
+              <button
+                id="directionClockwise"
+                class="flex items-center justify-center gap-2 cursor-pointer rounded-lg h-12 px-4 bg-green-600 hover:bg-green-700 text-white text-base font-medium transition-colors"
+              >
+                <span class="material-icons">check_circle</span>
+                <span>Yes, Clockwise</span>
+              </button>
+              <button
+                id="directionCounterClockwise"
+                class="flex items-center justify-center gap-2 cursor-pointer rounded-lg h-12 px-4 bg-orange-600 hover:bg-orange-700 text-white text-base font-medium transition-colors"
+              >
+                <span class="material-icons">sync</span>
+                <span>No, Reverse It</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Completion -->
+        <div id="calibrationComplete" class="space-y-4 hidden text-center">
+          <div class="flex justify-center">
+            <div class="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center">
+              <span class="material-icons text-green-600 text-5xl">check_circle</span>
+            </div>
+          </div>
+          <h4 class="text-lg font-medium text-slate-800">Calibration Complete!</h4>
+          <p class="text-sm text-slate-600">
+            LED alignment has been calibrated. Ball tracking is now ready to use.
+          </p>
+          <div class="bg-slate-50 rounded-lg p-4 text-left">
+            <p class="text-xs text-slate-600">
+              <strong>LED Offset:</strong> <span id="finalLedOffset"></span><br>
+              <strong>Direction:</strong> <span id="finalDirection"></span>
+            </p>
+          </div>
+          <button
+            id="closeCalibrationComplete"
+            class="flex items-center justify-center gap-2 w-full cursor-pointer rounded-lg h-12 px-4 bg-sky-600 hover:bg-sky-700 text-white text-base font-medium transition-colors"
+          >
+            <span>Done</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <section class="bg-white rounded-xl shadow-sm overflow-hidden">
     <h2
       class="text-slate-800 text-xl sm:text-2xl font-semibold leading-tight tracking-[-0.01em] px-6 py-4 border-b border-slate-200"

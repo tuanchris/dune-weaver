@@ -491,6 +491,60 @@ class DWLEDController:
 
         return status
 
+    def set_single_led(self, led_index: int, color: Tuple[int, int, int], brightness: float = 1.0) -> bool:
+        """
+        Set a single LED to a specific color (for ball tracking)
+
+        Args:
+            led_index: LED index (0 to num_leds-1)
+            color: RGB tuple (0-255 each)
+            brightness: Brightness multiplier (0.0-1.0)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._initialized:
+            if not self._initialize_hardware():
+                return False
+
+        if led_index < 0 or led_index >= self.num_leds:
+            logger.warning(f"LED index {led_index} out of range (0-{self.num_leds-1})")
+            return False
+
+        try:
+            with self._lock:
+                if self._pixels:
+                    # Apply brightness to color
+                    r = int(color[0] * brightness)
+                    g = int(color[1] * brightness)
+                    b = int(color[2] * brightness)
+                    self._pixels[led_index] = (r, g, b)
+                    return True
+        except Exception as e:
+            logger.error(f"Error setting LED {led_index}: {e}")
+            return False
+
+    def clear_all_leds(self) -> bool:
+        """
+        Clear all LEDs (set to black)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._initialized:
+            if not self._initialize_hardware():
+                return False
+
+        try:
+            with self._lock:
+                if self._pixels:
+                    self._pixels.fill((0, 0, 0))
+                    self._pixels.show()
+                    return True
+        except Exception as e:
+            logger.error(f"Error clearing LEDs: {e}")
+            return False
+
     def stop(self):
         """Stop the effect loop and cleanup"""
         self._stop_thread.set()

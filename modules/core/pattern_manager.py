@@ -321,6 +321,10 @@ class MotionControlThread:
         state.machine_x = new_x_abs
         state.machine_y = new_y_abs
 
+        # Update ball tracking if enabled
+        if state.ball_tracking_enabled and state.ball_tracking_manager:
+            state.ball_tracking_manager.update_position(theta, rho)
+
     def _send_grbl_coordinates_sync(self, x: float, y: float, speed: int = 600, timeout: int = 2, home: bool = False):
         """Synchronous version of send_grbl_coordinates for motion thread."""
         logger.debug(f"Motion thread sending G-code: X{x} Y{y} at F{speed}")
@@ -682,6 +686,11 @@ async def run_theta_rho_file(file_path, is_playlist=False):
             # Cancel idle timeout when playing starts
             idle_timeout_manager.cancel_timeout()
 
+        # Start ball tracking if mode is "playing_only"
+        if state.ball_tracking_mode == "playing_only" and state.ball_tracking_manager:
+            logger.info("Starting ball tracking (playing_only mode)")
+            state.ball_tracking_manager.start()
+
         with tqdm(
             total=total_coordinates,
             unit="coords",
@@ -697,6 +706,9 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                     if state.led_controller:
                         state.led_controller.effect_idle(state.dw_led_idle_effect)
                         start_idle_led_timeout()
+                    # Stop ball tracking on stop
+                    if state.ball_tracking_mode == "playing_only" and state.ball_tracking_manager:
+                        state.ball_tracking_manager.stop()
                     break
 
                 if state.skip_requested:
@@ -705,6 +717,9 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                     if state.led_controller:
                         state.led_controller.effect_idle(state.dw_led_idle_effect)
                         start_idle_led_timeout()
+                    # Stop ball tracking on skip
+                    if state.ball_tracking_mode == "playing_only" and state.ball_tracking_manager:
+                        state.ball_tracking_manager.stop()
                     break
 
                 # Wait for resume if paused (manual or scheduled)
@@ -788,6 +803,11 @@ async def run_theta_rho_file(file_path, is_playlist=False):
             state.led_controller.effect_idle(state.dw_led_idle_effect)
             start_idle_led_timeout()
             logger.debug("LED effect set to idle after pattern completion")
+
+        # Stop ball tracking if mode is "playing_only"
+        if state.ball_tracking_mode == "playing_only" and state.ball_tracking_manager:
+            logger.info("Stopping ball tracking (pattern completed)")
+            state.ball_tracking_manager.stop()
 
         # Only clear state if not part of a playlist
         if not is_playlist:

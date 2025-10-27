@@ -1631,3 +1631,368 @@ async function initializeHomingConfig() {
     homingModeSensor.addEventListener('change', updateHomingInfo);
     saveHomingConfigButton.addEventListener('click', saveHomingConfig);
 }
+
+// ==================== Ball Tracking Configuration ====================
+
+async function initBallTracking() {
+    // Elements
+    const ballTrackingEnabled = document.getElementById('ballTrackingEnabled');
+    const ballTrackingSettings = document.getElementById('ballTrackingSettings');
+    const ballTrackingMode = document.getElementById('ballTrackingMode');
+    const ballTrackingSpread = document.getElementById('ballTrackingSpread');
+    const ballTrackingSpreadValue = document.getElementById('ballTrackingSpreadValue');
+    const ballTrackingLookback = document.getElementById('ballTrackingLookback');
+    const ballTrackingLookbackValue = document.getElementById('ballTrackingLookbackValue');
+    const ballTrackingBrightness = document.getElementById('ballTrackingBrightness');
+    const ballTrackingBrightnessValue = document.getElementById('ballTrackingBrightnessValue');
+    const ballTrackingColor = document.getElementById('ballTrackingColor');
+    const saveBallTrackingConfig = document.getElementById('saveBallTrackingConfig');
+
+    // Load current settings
+    try {
+        const response = await fetch('/api/ball_tracking/status');
+        const data = await response.json();
+
+        if (data.success) {
+            ballTrackingEnabled.checked = data.enabled;
+            ballTrackingMode.value = data.mode;
+            ballTrackingSpread.value = data.config.spread;
+            ballTrackingSpreadValue.textContent = `${data.config.spread} LED${data.config.spread > 1 ? 's' : ''}`;
+            ballTrackingLookback.value = data.config.lookback;
+            ballTrackingLookbackValue.textContent = `${data.config.lookback} coord${data.config.lookback !== 1 ? 's' : ''}`;
+            ballTrackingBrightness.value = data.config.brightness;
+            ballTrackingBrightnessValue.textContent = `${data.config.brightness}%`;
+            ballTrackingColor.value = data.config.color;
+
+            // Show settings if enabled
+            if (data.enabled) {
+                ballTrackingSettings.style.display = 'block';
+            }
+        }
+    } catch (error) {
+        console.error('Failed to load ball tracking settings:', error);
+    }
+
+    // Enable/Disable toggle
+    ballTrackingEnabled.addEventListener('change', () => {
+        if (ballTrackingEnabled.checked) {
+            ballTrackingSettings.style.display = 'block';
+        } else {
+            ballTrackingSettings.style.display = 'none';
+        }
+    });
+
+    // Slider value updates
+    ballTrackingSpread.addEventListener('input', () => {
+        const value = parseInt(ballTrackingSpread.value);
+        ballTrackingSpreadValue.textContent = `${value} LED${value > 1 ? 's' : ''}`;
+    });
+
+    ballTrackingLookback.addEventListener('input', () => {
+        const value = parseInt(ballTrackingLookback.value);
+        ballTrackingLookbackValue.textContent = `${value} coord${value !== 1 ? 's' : ''}`;
+    });
+
+    ballTrackingBrightness.addEventListener('input', () => {
+        const value = parseInt(ballTrackingBrightness.value);
+        ballTrackingBrightnessValue.textContent = `${value}%`;
+    });
+
+    // Save configuration
+    saveBallTrackingConfig.addEventListener('click', async () => {
+        const originalHTML = saveBallTrackingConfig.innerHTML;
+        saveBallTrackingConfig.innerHTML = '<span class="material-icons animate-spin">refresh</span><span>Saving...</span>';
+        saveBallTrackingConfig.disabled = true;
+
+        try {
+            const config = {
+                enabled: ballTrackingEnabled.checked,
+                mode: ballTrackingMode.value,
+                spread: parseInt(ballTrackingSpread.value),
+                lookback: parseInt(ballTrackingLookback.value),
+                brightness: parseInt(ballTrackingBrightness.value),
+                color: ballTrackingColor.value
+            };
+
+            const response = await fetch('/api/ball_tracking/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(config)
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                showStatusMessage('Ball tracking configuration saved!', 'success');
+            } else {
+                throw new Error(data.message || 'Failed to save configuration');
+            }
+        } catch (error) {
+            console.error('Error saving ball tracking config:', error);
+            showStatusMessage(`Failed to save: ${error.message}`, 'error');
+        } finally {
+            saveBallTrackingConfig.innerHTML = originalHTML;
+            saveBallTrackingConfig.disabled = false;
+        }
+    });
+}
+
+// ==================== Calibration Wizard ====================
+
+function initCalibrationWizard() {
+    // Modal elements
+    const openWizardBtn = document.getElementById('openCalibrationWizard');
+    const calibrationModal = document.getElementById('calibrationModal');
+    const closeModalBtn = document.getElementById('closeCalibrationModal');
+    const closeCompleteBtn = document.getElementById('closeCalibrationComplete');
+
+    // Step elements
+    const step1 = document.getElementById('calibrationStep1');
+    const step2 = document.getElementById('calibrationStep2');
+    const step3 = document.getElementById('calibrationStep3');
+    const complete = document.getElementById('calibrationComplete');
+
+    // Step indicators
+    const step1Indicator = document.getElementById('step1Indicator');
+    const step2Indicator = document.getElementById('step2Indicator');
+    const step3Indicator = document.getElementById('step3Indicator');
+    const line1 = document.getElementById('line1');
+    const line2 = document.getElementById('line2');
+
+    // Action buttons
+    const startMoveBtn = document.getElementById('startCalibrationMove');
+    const moveStatus = document.getElementById('calibrationMoveStatus');
+    const testDirectionBtn = document.getElementById('testDirection');
+    const directionStatus = document.getElementById('directionTestStatus');
+    const directionQuestion = document.getElementById('directionQuestion');
+    const directionClockwise = document.getElementById('directionClockwise');
+    const directionCounterClockwise = document.getElementById('directionCounterClockwise');
+
+    // LED visualization
+    const ledCircle = document.getElementById('ledCircle');
+    const selectedLedInfo = document.getElementById('selectedLedInfo');
+
+    // State
+    let numLeds = 60;
+    let selectedLed = null;
+    let reversed = false;
+
+    // Open wizard
+    openWizardBtn.addEventListener('click', () => {
+        calibrationModal.classList.remove('hidden');
+        resetWizard();
+    });
+
+    // Close wizard
+    function closeWizard() {
+        calibrationModal.classList.add('hidden');
+        resetWizard();
+    }
+
+    closeModalBtn.addEventListener('click', closeWizard);
+    closeCompleteBtn.addEventListener('click', closeWizard);
+
+    // Reset wizard to step 1
+    function resetWizard() {
+        showStep(1);
+        selectedLed = null;
+        reversed = false;
+        moveStatus.classList.add('hidden');
+        directionStatus.classList.add('hidden');
+        directionQuestion.classList.add('hidden');
+    }
+
+    // Show specific step
+    function showStep(stepNum) {
+        // Hide all steps
+        step1.classList.add('hidden');
+        step2.classList.add('hidden');
+        step3.classList.add('hidden');
+        complete.classList.add('hidden');
+
+        // Reset indicators
+        [step1Indicator, step2Indicator, step3Indicator].forEach(ind => {
+            ind.classList.remove('bg-sky-600', 'text-white');
+            ind.classList.add('bg-slate-200', 'text-slate-500');
+        });
+        line1.classList.remove('bg-sky-600');
+        line2.classList.remove('bg-sky-600');
+
+        // Show active step
+        if (stepNum === 1) {
+            step1.classList.remove('hidden');
+            step1Indicator.classList.remove('bg-slate-200', 'text-slate-500');
+            step1Indicator.classList.add('bg-sky-600', 'text-white');
+        } else if (stepNum === 2) {
+            step2.classList.remove('hidden');
+            step1Indicator.classList.remove('bg-slate-200', 'text-slate-500');
+            step1Indicator.classList.add('bg-green-600', 'text-white');
+            step2Indicator.classList.remove('bg-slate-200', 'text-slate-500');
+            step2Indicator.classList.add('bg-sky-600', 'text-white');
+            line1.classList.add('bg-sky-600');
+        } else if (stepNum === 3) {
+            step3.classList.remove('hidden');
+            step1Indicator.classList.add('bg-green-600', 'text-white');
+            step2Indicator.classList.add('bg-green-600', 'text-white');
+            step3Indicator.classList.remove('bg-slate-200', 'text-slate-500');
+            step3Indicator.classList.add('bg-sky-600', 'text-white');
+            line1.classList.add('bg-sky-600');
+            line2.classList.add('bg-sky-600');
+        } else if (stepNum === 'complete') {
+            complete.classList.remove('hidden');
+            [step1Indicator, step2Indicator, step3Indicator].forEach(ind => {
+                ind.classList.add('bg-green-600', 'text-white');
+            });
+            line1.classList.add('bg-sky-600');
+            line2.classList.add('bg-sky-600');
+        }
+    }
+
+    // Step 1: Move to reference
+    startMoveBtn.addEventListener('click', async () => {
+        startMoveBtn.disabled = true;
+        moveStatus.classList.remove('hidden');
+
+        try {
+            const response = await fetch('/api/ball_tracking/calibrate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                numLeds = data.num_leds;
+                showStatusMessage('Ball moved to reference position!', 'success');
+                renderLEDCircle();
+                showStep(2);
+            } else {
+                throw new Error(data.detail || 'Calibration failed');
+            }
+        } catch (error) {
+            console.error('Calibration error:', error);
+            showStatusMessage(`Calibration failed: ${error.message}`, 'error');
+            startMoveBtn.disabled = false;
+            moveStatus.classList.add('hidden');
+        }
+    });
+
+    // Render LED circle
+    function renderLEDCircle() {
+        // Remove existing LEDs
+        const existingLeds = ledCircle.querySelectorAll('.led-dot');
+        existingLeds.forEach(led => led.remove());
+
+        const centerX = 200;
+        const centerY = 200;
+        const radius = 150;
+
+        for (let i = 0; i < numLeds; i++) {
+            const angle = (i / numLeds) * 2 * Math.PI - Math.PI / 2; // Start from top (270°)
+            const x = centerX + radius * Math.cos(angle);
+            const y = centerY + radius * Math.sin(angle);
+
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', x);
+            circle.setAttribute('cy', y);
+            circle.setAttribute('r', '6');
+            circle.setAttribute('fill', '#cbd5e1');
+            circle.setAttribute('stroke', '#64748b');
+            circle.setAttribute('stroke-width', '1');
+            circle.setAttribute('class', 'led-dot cursor-pointer hover:fill-sky-400 transition-colors');
+            circle.setAttribute('data-led-index', i);
+
+            circle.addEventListener('click', () => selectLED(i));
+            ledCircle.appendChild(circle);
+        }
+    }
+
+    // Select LED
+    function selectLED(index) {
+        selectedLed = index;
+
+        // Update visuals
+        const allDots = ledCircle.querySelectorAll('.led-dot');
+        allDots.forEach(dot => {
+            dot.setAttribute('fill', '#cbd5e1');
+        });
+        allDots[index].setAttribute('fill', '#0c7ff2');
+
+        selectedLedInfo.textContent = `Selected: LED ${index}`;
+
+        // Move to step 3 after selection
+        setTimeout(() => showStep(3), 500);
+    }
+
+    // Step 3: Test direction
+    testDirectionBtn.addEventListener('click', async () => {
+        testDirectionBtn.disabled = true;
+        directionStatus.classList.remove('hidden');
+
+        try {
+            // Move to 90° to test direction
+            const response = await fetch('/send_coordinate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({theta: 90, rho: 1.0})
+            });
+
+            if (response.ok) {
+                await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for movement
+                directionStatus.classList.add('hidden');
+                directionQuestion.classList.remove('hidden');
+            } else {
+                throw new Error('Failed to move ball');
+            }
+        } catch (error) {
+            console.error('Direction test error:', error);
+            showStatusMessage(`Direction test failed: ${error.message}`, 'error');
+            testDirectionBtn.disabled = false;
+            directionStatus.classList.add('hidden');
+        }
+    });
+
+    // Direction confirmation
+    directionClockwise.addEventListener('click', () => completeCalibration(false));
+    directionCounterClockwise.addEventListener('click', () => completeCalibration(true));
+
+    // Complete calibration
+    async function completeCalibration(reverseDirection) {
+        reversed = reverseDirection;
+
+        try {
+            // Save calibration settings
+            const config = {
+                led_offset: selectedLed,
+                reversed: reversed
+            };
+
+            const response = await fetch('/api/ball_tracking/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(config)
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Show completion
+                document.getElementById('finalLedOffset').textContent = selectedLed;
+                document.getElementById('finalDirection').textContent = reversed ? 'Reversed (Counter-Clockwise)' : 'Normal (Clockwise)';
+                showStep('complete');
+                showStatusMessage('Calibration complete!', 'success');
+            } else {
+                throw new Error(data.message || 'Failed to save calibration');
+            }
+        } catch (error) {
+            console.error('Failed to save calibration:', error);
+            showStatusMessage(`Failed to save: ${error.message}`, 'error');
+        }
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', () => {
+    initBallTracking();
+    initCalibrationWizard();
+});

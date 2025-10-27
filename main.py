@@ -132,6 +132,31 @@ async def lifespan(app: FastAPI):
                 intensity=state.dw_led_intensity
             )
             logger.info(f"LED controller initialized: DW LEDs ({state.dw_led_num_leds} LEDs on GPIO{state.dw_led_gpio_pin}, pixel order: {state.dw_led_pixel_order})")
+
+            # Initialize ball tracking manager for DW LEDs
+            try:
+                from modules.led.ball_tracking_manager import BallTrackingManager
+                controller = state.led_controller.get_controller()
+                config = {
+                    "led_offset": state.ball_tracking_led_offset,
+                    "reversed": state.ball_tracking_reversed,
+                    "spread": state.ball_tracking_spread,
+                    "lookback": state.ball_tracking_lookback,
+                    "brightness": state.ball_tracking_brightness,
+                    "color": state.ball_tracking_color,
+                    "trail_enabled": state.ball_tracking_trail_enabled,
+                    "trail_length": state.ball_tracking_trail_length
+                }
+                state.ball_tracking_manager = BallTrackingManager(controller, state.dw_led_num_leds, config)
+                logger.info("Ball tracking manager initialized")
+
+                # Start tracking if mode is "enabled"
+                if state.ball_tracking_mode == "enabled" and state.ball_tracking_enabled:
+                    state.ball_tracking_manager.start()
+                    logger.info("Ball tracking started (enabled mode)")
+            except Exception as e:
+                logger.warning(f"Failed to initialize ball tracking manager: {e}")
+                state.ball_tracking_manager = None
         else:
             state.led_controller = None
             logger.info("LED controller not configured")
@@ -1297,6 +1322,26 @@ async def set_led_config(request: LEDConfigRequest):
         restart_msg = " (restarted)" if hardware_changed else ""
         logger.info(f"DW LEDs configured{restart_msg}: {state.dw_led_num_leds} LEDs on GPIO{state.dw_led_gpio_pin}, pixel order: {state.dw_led_pixel_order}")
 
+        # Initialize ball tracking manager for DW LEDs
+        try:
+            from modules.led.ball_tracking_manager import BallTrackingManager
+            controller = state.led_controller.get_controller()
+            config = {
+                "led_offset": state.ball_tracking_led_offset,
+                "reversed": state.ball_tracking_reversed,
+                "spread": state.ball_tracking_spread,
+                "lookback": state.ball_tracking_lookback,
+                "brightness": state.ball_tracking_brightness,
+                "color": state.ball_tracking_color,
+                "trail_enabled": state.ball_tracking_trail_enabled,
+                "trail_length": state.ball_tracking_trail_length
+            }
+            state.ball_tracking_manager = BallTrackingManager(controller, state.dw_led_num_leds, config)
+            logger.info("Ball tracking manager initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize ball tracking manager: {e}")
+            state.ball_tracking_manager = None
+
         # Check if initialization succeeded by checking status
         status = state.led_controller.check_status()
         if not status.get("connected", False) and status.get("error"):
@@ -1922,6 +1967,152 @@ async def dw_leds_get_idle_timeout():
         "minutes": state.dw_led_idle_timeout_minutes,
         "remaining_minutes": remaining_minutes
     }
+
+# ==================== Ball Tracking LED Endpoints ====================
+
+@app.post("/api/ball_tracking/config")
+async def set_ball_tracking_config(request: dict):
+    """Update ball tracking configuration"""
+    try:
+        # Update state variables
+        if "enabled" in request:
+            state.ball_tracking_enabled = request["enabled"]
+        if "mode" in request:
+            state.ball_tracking_mode = request["mode"]
+        if "led_offset" in request:
+            state.ball_tracking_led_offset = request["led_offset"]
+        if "reversed" in request:
+            state.ball_tracking_reversed = request["reversed"]
+        if "spread" in request:
+            state.ball_tracking_spread = max(1, min(10, request["spread"]))
+        if "lookback" in request:
+            state.ball_tracking_lookback = max(0, min(15, request["lookback"]))
+        if "brightness" in request:
+            state.ball_tracking_brightness = max(0, min(100, request["brightness"]))
+        if "color" in request:
+            state.ball_tracking_color = request["color"]
+        if "trail_enabled" in request:
+            state.ball_tracking_trail_enabled = request["trail_enabled"]
+        if "trail_length" in request:
+            state.ball_tracking_trail_length = max(1, min(20, request["trail_length"]))
+
+        # Save to state.json
+        state.save()
+
+        # Update manager config if it exists
+        if state.ball_tracking_manager:
+            config = {
+                "led_offset": state.ball_tracking_led_offset,
+                "reversed": state.ball_tracking_reversed,
+                "spread": state.ball_tracking_spread,
+                "lookback": state.ball_tracking_lookback,
+                "brightness": state.ball_tracking_brightness,
+                "color": state.ball_tracking_color,
+                "trail_enabled": state.ball_tracking_trail_enabled,
+                "trail_length": state.ball_tracking_trail_length
+            }
+            state.ball_tracking_manager.update_config(config)
+
+        # Start/stop tracking based on mode if "enabled" mode changes
+        if "mode" in request or "enabled" in request:
+            if state.ball_tracking_mode == "enabled" and state.ball_tracking_enabled:
+                # Always-on mode
+                if state.ball_tracking_manager:
+                    state.ball_tracking_manager.start()
+            elif state.ball_tracking_mode == "disabled" or not state.ball_tracking_enabled:
+                # Disabled
+                if state.ball_tracking_manager:
+                    state.ball_tracking_manager.stop()
+
+        return {
+            "success": True,
+            "message": "Ball tracking configuration updated",
+            "config": {
+                "enabled": state.ball_tracking_enabled,
+                "mode": state.ball_tracking_mode,
+                "led_offset": state.ball_tracking_led_offset,
+                "reversed": state.ball_tracking_reversed,
+                "spread": state.ball_tracking_spread,
+                "lookback": state.ball_tracking_lookback,
+                "brightness": state.ball_tracking_brightness,
+                "color": state.ball_tracking_color,
+                "trail_enabled": state.ball_tracking_trail_enabled,
+                "trail_length": state.ball_tracking_trail_length
+            }
+        }
+    except Exception as e:
+        logger.error(f"Failed to update ball tracking config: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/ball_tracking/status")
+async def get_ball_tracking_status():
+    """Get ball tracking status"""
+    try:
+        manager_status = None
+        if state.ball_tracking_manager:
+            manager_status = state.ball_tracking_manager.get_status()
+
+        return {
+            "success": True,
+            "enabled": state.ball_tracking_enabled,
+            "mode": state.ball_tracking_mode,
+            "manager_active": manager_status["active"] if manager_status else False,
+            "manager_status": manager_status,
+            "config": {
+                "led_offset": state.ball_tracking_led_offset,
+                "reversed": state.ball_tracking_reversed,
+                "spread": state.ball_tracking_spread,
+                "lookback": state.ball_tracking_lookback,
+                "brightness": state.ball_tracking_brightness,
+                "color": state.ball_tracking_color,
+                "trail_enabled": state.ball_tracking_trail_enabled,
+                "trail_length": state.ball_tracking_trail_length
+            }
+        }
+    except Exception as e:
+        logger.error(f"Failed to get ball tracking status: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/ball_tracking/calibrate")
+async def calibrate_ball_tracking():
+    """
+    Calibration sequence: reset_theta() then move to (0°, rho=1.0)
+    Returns success when ball is at reference position
+    """
+    try:
+        from modules.core import pattern_manager
+
+        # Check if DW LEDs are active
+        if state.led_provider != "dw_leds" or not state.led_controller:
+            raise HTTPException(status_code=400, detail="DW LEDs must be configured for ball tracking")
+
+        # Check if connected
+        if not state.conn:
+            raise HTTPException(status_code=400, detail="Device not connected")
+
+        logger.info("Starting ball tracking calibration")
+
+        # Step 1: Reset theta
+        await pattern_manager.reset_theta()
+        logger.info("Theta reset complete")
+
+        # Step 2: Move to (0°, rho=1.0) at perimeter
+        await pattern_manager.move_polar(0.0, 1.0, state.speed)
+        logger.info("Moved to reference position (0°, 1.0)")
+
+        # Wait for movement to complete
+        await asyncio.sleep(0.5)
+
+        return {
+            "success": True,
+            "message": "Ball moved to reference position (0°, perimeter). Identify which LED is at this position.",
+            "current_theta": state.current_theta,
+            "current_rho": state.current_rho,
+            "num_leds": state.dw_led_num_leds
+        }
+    except Exception as e:
+        logger.error(f"Calibration failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/table_control")
 async def table_control(request: Request):

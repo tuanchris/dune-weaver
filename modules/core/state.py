@@ -71,6 +71,20 @@ class AppState:
         self.dw_led_idle_timeout_enabled = False  # Enable automatic LED turn off after idle period
         self.dw_led_idle_timeout_minutes = 30  # Idle timeout duration in minutes
         self.dw_led_last_activity_time = None  # Last activity timestamp (runtime only, not persisted)
+
+        # Ball tracking LED settings
+        self.ball_tracking_enabled = False  # Enable ball tracking
+        self.ball_tracking_mode = "disabled"  # "disabled", "enabled", "playing_only"
+        self.ball_tracking_led_offset = 0  # LED offset (0 to num_leds-1)
+        self.ball_tracking_reversed = False  # Reverse LED direction
+        self.ball_tracking_spread = 3  # Number of adjacent LEDs (1-10)
+        self.ball_tracking_lookback = 5  # Coordinates to look back (0-15)
+        self.ball_tracking_brightness = 50  # Brightness 0-100
+        self.ball_tracking_color = "#ffffff"  # Hex color for tracking
+        self.ball_tracking_trail_enabled = False  # Enable fade trail
+        self.ball_tracking_trail_length = 10  # Trail length in LEDs
+        self.ball_tracking_manager = None  # BallTrackingManager instance (runtime only, not persisted)
+
         self.skip_requested = False
         self.table_type = None
         self._playlist_mode = "loop"
