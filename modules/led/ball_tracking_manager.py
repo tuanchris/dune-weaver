@@ -126,12 +126,13 @@ class BallTrackingManager:
         Args:
             is_running: True if pattern is executing, False otherwise
         """
+        logger.info(f"set_pattern_running called: is_running={is_running}, active={self._active}")
         self._is_pattern_running = is_running
 
         if is_running and self._active:
             # Pattern started, begin polling
             self._start_polling()
-            logger.info("Pattern started - beginning position polling")
+            logger.info(f"Pattern started - beginning position polling (interval={self._poll_interval}s)")
         else:
             # Pattern stopped, stop polling
             self._stop_polling()
@@ -153,6 +154,7 @@ class BallTrackingManager:
     def _poll_position(self):
         """Poll current position from state and update LEDs if needed"""
         if not self._active or not self._is_pattern_running:
+            logger.debug(f"Polling stopped: active={self._active}, pattern_running={self._is_pattern_running}")
             self._poll_timer = None
             return
 
@@ -164,11 +166,13 @@ class BallTrackingManager:
             theta = state.current_theta
             rho = state.current_rho
 
+            logger.debug(f"Polling position: theta={theta:.1f}°, rho={rho:.2f}, last_led={self._last_led_index}")
+
             # Update position (this will skip if LED zone hasn't changed)
             self._update_leds_optimized(theta, rho)
 
         except Exception as e:
-            logger.error(f"Error polling position: {e}")
+            logger.error(f"Error polling position: {e}", exc_info=True)
 
         # Schedule next poll
         if self._active and self._is_pattern_running:
@@ -187,12 +191,14 @@ class BallTrackingManager:
             current_rho: Most recent rho value
         """
         if not self._active:
+            logger.debug("Update skipped: not active")
             return
 
         # If using lookback buffer, get the delayed position
         if self._use_buffer:
             position = self._get_tracked_position()
             if position is None:
+                logger.debug("Update skipped: no position in buffer")
                 return
             theta, rho, _ = position
         else:
@@ -208,9 +214,11 @@ class BallTrackingManager:
             if new_led_index == self._last_led_index:
                 # LED zone hasn't changed, skip update
                 self._skipped_updates += 1
+                logger.debug(f"LED zone unchanged: {new_led_index}")
                 return
 
             # LED zone changed, update it
+            logger.info(f"LED zone changed: {self._last_led_index} → {new_led_index} (theta={theta:.1f}°)")
             self._last_led_index = new_led_index
 
     def _update_leds(self):

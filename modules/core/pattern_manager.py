@@ -691,13 +691,14 @@ async def run_theta_rho_file(file_path, is_playlist=False):
             state.ball_tracking_manager._update_count = 0
             state.ball_tracking_manager._skipped_updates = 0
 
-        if state.ball_tracking_mode == "playing_only" and state.ball_tracking_manager:
-            logger.info("Starting ball tracking (playing_only mode)")
+        # Start ball tracking for both "playing_only" and "enabled" modes during pattern execution
+        if state.ball_tracking_mode in ["playing_only", "enabled"] and state.ball_tracking_manager:
+            logger.info(f"Starting ball tracking ({state.ball_tracking_mode} mode)")
             state.ball_tracking_manager.start()
             ball_tracking_active = True
 
-        # Notify ball tracking that pattern is starting (for both "playing_only" and "enabled" modes)
-        if state.ball_tracking_manager and (ball_tracking_active or state.ball_tracking_mode == "enabled"):
+        # Notify ball tracking that pattern is starting
+        if state.ball_tracking_manager and ball_tracking_active:
             state.ball_tracking_manager.set_pattern_running(True)
 
         # Set LED effect
