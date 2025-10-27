@@ -43,6 +43,7 @@ class BallTrackingManager:
         self._active = False
         self._update_task = None
         self._last_led_index = None
+        self._last_lit_leds = set()  # Track which LEDs were lit in previous frame
 
         logger.info(f"BallTrackingManager initialized with {num_leds} LEDs")
 
@@ -63,6 +64,7 @@ class BallTrackingManager:
         self._active = False
         self.position_buffer.clear()
         self._last_led_index = None
+        self._last_lit_leds.clear()
 
         # Clear all LEDs
         if self.led_controller and self.led_controller._initialized:
@@ -178,11 +180,20 @@ class BallTrackingManager:
             g = int(color_hex[2:4], 16)
             b = int(color_hex[4:6], 16)
 
-            # Clear previous LEDs first
-            self.led_controller.clear_all_leds()
-
-            # Render with spread
+            # Calculate which LEDs should be lit this frame
+            current_lit_leds = set()
             half_spread = spread // 2
+
+            for i in range(-half_spread, half_spread + 1):
+                led_index = (center_led + i) % self.num_leds
+                current_lit_leds.add(led_index)
+
+            # Turn off LEDs that were on but shouldn't be anymore
+            leds_to_turn_off = self._last_lit_leds - current_lit_leds
+            for led_index in leds_to_turn_off:
+                self.led_controller.set_single_led(led_index, (0, 0, 0), 1.0)
+
+            # Update LEDs that should be on
             for i in range(-half_spread, half_spread + 1):
                 led_index = (center_led + i) % self.num_leds
 
@@ -196,9 +207,12 @@ class BallTrackingManager:
                 led_brightness = brightness * intensity
                 self.led_controller.set_single_led(led_index, (r, g, b), led_brightness)
 
-            # Show updates
+            # Show all updates at once
             if self.led_controller._pixels:
                 self.led_controller._pixels.show()
+
+            # Remember which LEDs are lit for next frame
+            self._last_lit_leds = current_lit_leds
 
         except Exception as e:
             logger.error(f"Error rendering LEDs: {e}")

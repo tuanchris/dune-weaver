@@ -321,8 +321,8 @@ class MotionControlThread:
         state.machine_x = new_x_abs
         state.machine_y = new_y_abs
 
-        # Update ball tracking if enabled
-        if state.ball_tracking_enabled and state.ball_tracking_manager:
+        # Update ball tracking (manager checks if it's active internally)
+        if state.ball_tracking_manager:
             state.ball_tracking_manager.update_position(theta, rho)
 
     def _send_grbl_coordinates_sync(self, x: float, y: float, speed: int = 600, timeout: int = 2, home: bool = False):
