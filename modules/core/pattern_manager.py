@@ -315,21 +315,11 @@ class MotionControlThread:
         # Call sync version of send_grbl_coordinates in this thread
         self._send_grbl_coordinates_sync(round(new_x_abs, 3), round(new_y_abs, 3), actual_speed)
 
-        # Update state
+        # Update state (ball tracking polls this periodically)
         state.current_theta = theta
         state.current_rho = rho
         state.machine_x = new_x_abs
         state.machine_y = new_y_abs
-
-        # Update ball tracking (manager checks if it's active internally)
-        if state.ball_tracking_manager:
-            state.ball_tracking_manager.update_position(theta, rho)
-            # Debug: Log occasionally to verify updates are being sent
-            if not hasattr(self, '_ball_tracking_log_counter'):
-                self._ball_tracking_log_counter = 0
-            self._ball_tracking_log_counter += 1
-            if self._ball_tracking_log_counter % 100 == 0:
-                logger.info(f"Sent position to ball tracking: theta={theta:.1f}°, rho={rho:.2f}")
 
     def _send_grbl_coordinates_sync(self, x: float, y: float, speed: int = 600, timeout: int = 2, home: bool = False):
         """Synchronous version of send_grbl_coordinates for motion thread."""
@@ -706,6 +696,10 @@ async def run_theta_rho_file(file_path, is_playlist=False):
             state.ball_tracking_manager.start()
             ball_tracking_active = True
 
+        # Notify ball tracking that pattern is starting (for both "playing_only" and "enabled" modes)
+        if state.ball_tracking_manager and (ball_tracking_active or state.ball_tracking_mode == "enabled"):
+            state.ball_tracking_manager.set_pattern_running(True)
+
         # Set LED effect
         if state.led_controller:
             if ball_tracking_active:
@@ -737,9 +731,11 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                     if state.led_controller:
                         state.led_controller.effect_idle(state.dw_led_idle_effect)
                         start_idle_led_timeout()
-                    # Stop ball tracking on stop
-                    if state.ball_tracking_mode == "playing_only" and state.ball_tracking_manager:
-                        state.ball_tracking_manager.stop()
+                    # Stop ball tracking polling (and manager if mode is "playing_only")
+                    if state.ball_tracking_manager:
+                        state.ball_tracking_manager.set_pattern_running(False)
+                        if state.ball_tracking_mode == "playing_only":
+                            state.ball_tracking_manager.stop()
                     break
 
                 if state.skip_requested:
@@ -748,9 +744,11 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                     if state.led_controller:
                         state.led_controller.effect_idle(state.dw_led_idle_effect)
                         start_idle_led_timeout()
-                    # Stop ball tracking on skip
-                    if state.ball_tracking_mode == "playing_only" and state.ball_tracking_manager:
-                        state.ball_tracking_manager.stop()
+                    # Stop ball tracking polling (and manager if mode is "playing_only")
+                    if state.ball_tracking_manager:
+                        state.ball_tracking_manager.set_pattern_running(False)
+                        if state.ball_tracking_mode == "playing_only":
+                            state.ball_tracking_manager.stop()
                     break
 
                 # Wait for resume if paused (manual or scheduled)
@@ -835,10 +833,12 @@ async def run_theta_rho_file(file_path, is_playlist=False):
             start_idle_led_timeout()
             logger.debug("LED effect set to idle after pattern completion")
 
-        # Stop ball tracking if mode is "playing_only"
-        if state.ball_tracking_mode == "playing_only" and state.ball_tracking_manager:
-            logger.info("Stopping ball tracking (pattern completed)")
-            state.ball_tracking_manager.stop()
+        # Stop ball tracking polling (and manager if mode is "playing_only")
+        if state.ball_tracking_manager:
+            state.ball_tracking_manager.set_pattern_running(False)
+            if state.ball_tracking_mode == "playing_only":
+                logger.info("Stopping ball tracking (pattern completed)")
+                state.ball_tracking_manager.stop()
 
         # Only clear state if not part of a playlist
         if not is_playlist:

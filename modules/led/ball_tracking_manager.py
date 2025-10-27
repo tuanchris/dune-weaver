@@ -59,6 +59,11 @@ class BallTrackingManager:
         self._update_count = 0  # Counter for debug logging
         self._skipped_updates = 0  # Track how many updates were skipped
 
+        # Polling timer for position updates
+        self._poll_timer = None
+        self._poll_interval = 0.5  # Check position every 0.5 seconds
+        self._is_pattern_running = False  # Flag to track if pattern is executing
+
         logger.info(f"BallTrackingManager initialized with {num_leds} LEDs")
 
     def start(self):
@@ -76,6 +81,8 @@ class BallTrackingManager:
             return
 
         self._active = False
+        self._stop_polling()
+
         if self._use_buffer and self.position_buffer:
             self.position_buffer.clear()
         else:
@@ -111,6 +118,65 @@ class BallTrackingManager:
 
         # Trigger LED update (with optimization)
         self._update_leds_optimized(theta, rho)
+
+    def set_pattern_running(self, is_running: bool):
+        """
+        Notify manager that pattern execution started/stopped
+
+        Args:
+            is_running: True if pattern is executing, False otherwise
+        """
+        self._is_pattern_running = is_running
+
+        if is_running and self._active:
+            # Pattern started, begin polling
+            self._start_polling()
+            logger.info("Pattern started - beginning position polling")
+        else:
+            # Pattern stopped, stop polling
+            self._stop_polling()
+            logger.info("Pattern stopped - stopping position polling")
+
+    def _start_polling(self):
+        """Start the position polling timer"""
+        if self._poll_timer is not None:
+            return  # Already polling
+
+        self._poll_position()  # Do first poll immediately
+
+    def _stop_polling(self):
+        """Stop the position polling timer"""
+        if self._poll_timer is not None:
+            self._poll_timer.cancel()
+            self._poll_timer = None
+
+    def _poll_position(self):
+        """Poll current position from state and update LEDs if needed"""
+        if not self._active or not self._is_pattern_running:
+            self._poll_timer = None
+            return
+
+        try:
+            # Import here to avoid circular dependency
+            from modules.core.state import state
+
+            # Get current position from global state
+            theta = state.current_theta
+            rho = state.current_rho
+
+            # Update position (this will skip if LED zone hasn't changed)
+            self._update_leds_optimized(theta, rho)
+
+        except Exception as e:
+            logger.error(f"Error polling position: {e}")
+
+        # Schedule next poll
+        if self._active and self._is_pattern_running:
+            self._poll_timer = threading.Timer(self._poll_interval, self._poll_position)
+            self._poll_timer.daemon = True
+            self._poll_timer.start()
+        else:
+            self._poll_timer = None
 
     def _update_leds_optimized(self, current_theta: float, current_rho: float):
         """
