@@ -143,14 +143,20 @@ class BallTrackingManager:
 
         # Calculate LED index (0° = LED 0 before offset)
         led_index = int((theta / 360.0) * self.num_leds)
+        original_index = led_index
 
         # Apply user-defined offset
         offset = self.config.get("led_offset", 0)
         led_index = (led_index + offset) % self.num_leds
 
         # Reverse direction if needed
-        if self.config.get("reversed", False):
+        is_reversed = self.config.get("reversed", False)
+        if is_reversed:
+            led_index_before_reverse = led_index
             led_index = (self.num_leds - led_index) % self.num_leds
+            logger.debug(f"Theta={theta:.1f}° -> LED {original_index} + offset {offset} = {led_index_before_reverse} -> REVERSED to {led_index}")
+        else:
+            logger.debug(f"Theta={theta:.1f}° -> LED {original_index} + offset {offset} = {led_index}")
 
         return led_index
 
@@ -201,6 +207,7 @@ class BallTrackingManager:
         """Update configuration at runtime"""
         self.config.update(config)
         logger.info(f"Ball tracking config updated: {config}")
+        logger.info(f"Current reversed setting: {self.config.get('reversed', False)}")
 
     def get_status(self) -> Dict:
         """Get current tracking status"""

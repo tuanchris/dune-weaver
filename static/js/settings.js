@@ -1906,6 +1906,31 @@ function initCalibrationWizard() {
     // Reverse direction toggle
     reverseDirectionToggle.addEventListener('change', () => {
         reversed = reverseDirectionToggle.checked;
+        console.log('Toggle changed! Reversed:', reversed);
+
+        // Visual feedback - find the <p> element more robustly
+        const container = reverseDirectionToggle.closest('.flex');
+        console.log('Found container:', container);
+
+        if (container) {
+            const directionLabel = container.querySelector('p');
+            console.log('Found label:', directionLabel);
+
+            if (directionLabel) {
+                if (reversed) {
+                    directionLabel.textContent = 'LED strip runs counter-clockwise (REVERSED)';
+                    directionLabel.classList.add('font-semibold', 'text-orange-600');
+                } else {
+                    directionLabel.textContent = 'Enable if your LED strip runs counter-clockwise';
+                    directionLabel.classList.remove('font-semibold', 'text-orange-600');
+                }
+                console.log('Label updated successfully');
+            } else {
+                console.error('Could not find label element');
+            }
+        } else {
+            console.error('Could not find container element');
+        }
     });
 
     // Confirm calibration
@@ -1922,6 +1947,12 @@ function initCalibrationWizard() {
                 reversed: reversed
             };
 
+            console.log('=== CALIBRATION COMPLETION ===');
+            console.log('Current LED:', currentLed);
+            console.log('Reversed flag:', reversed);
+            console.log('Toggle checked state:', reverseDirectionToggle.checked);
+            console.log('Sending config:', JSON.stringify(config));
+
             const response = await fetch('/api/ball_tracking/config', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -1929,6 +1960,8 @@ function initCalibrationWizard() {
             });
 
             const data = await response.json();
+            console.log('Backend response:', data);
+            console.log('=== END CALIBRATION ===');
 
             if (data.success) {
                 // Show completion

@@ -1974,15 +1974,22 @@ async def dw_leds_get_idle_timeout():
 async def set_ball_tracking_config(request: dict):
     """Update ball tracking configuration"""
     try:
+        logger.info(f"=== Ball Tracking Config Update ===")
+        logger.info(f"Received request: {request}")
+
         # Update state variables
         if "enabled" in request:
             state.ball_tracking_enabled = request["enabled"]
+            logger.info(f"Set enabled: {request['enabled']}")
         if "mode" in request:
             state.ball_tracking_mode = request["mode"]
+            logger.info(f"Set mode: {request['mode']}")
         if "led_offset" in request:
             state.ball_tracking_led_offset = request["led_offset"]
+            logger.info(f"Set led_offset: {request['led_offset']}")
         if "reversed" in request:
             state.ball_tracking_reversed = request["reversed"]
+            logger.info(f"Set reversed: {request['reversed']}")
         if "spread" in request:
             state.ball_tracking_spread = max(1, min(10, request["spread"]))
         if "lookback" in request:
@@ -1998,6 +2005,7 @@ async def set_ball_tracking_config(request: dict):
 
         # Save to state.json
         state.save()
+        logger.info(f"Saved to state.json - reversed is now: {state.ball_tracking_reversed}")
 
         # Update manager config if it exists
         if state.ball_tracking_manager:
@@ -2090,10 +2098,15 @@ async def test_led_for_calibration(request: dict):
 
         controller = state.led_controller.get_controller()
 
-        # Clear all LEDs
-        controller.clear_all_leds()
+        # Ensure power is off so effect loop doesn't interfere
+        # (calling set_power(0) is safe even if already off)
+        controller.set_power(0)
 
-        # Light up only the selected LED in white
+        # Brief pause to ensure effect loop has stopped
+        await asyncio.sleep(0.05)
+
+        # Clear all LEDs and light only the selected one
+        controller.clear_all_leds()
         controller.set_single_led(led_index, (255, 255, 255), 0.5)
 
         if controller._pixels:
@@ -2130,12 +2143,20 @@ async def calibrate_ball_tracking():
         # Turn off all LEDs except LED 0 to show reference
         try:
             controller = state.led_controller.get_controller()
+
+            # First, power off to stop the effect loop from overwriting our manual commands
+            controller.set_power(0)
+
+            # Wait a moment for effect loop to stop
+            await asyncio.sleep(0.1)
+
+            # Now set LED 0 manually (power is off so effect loop won't interfere)
             controller.clear_all_leds()
-            # Light up only LED 0 in white
             controller.set_single_led(0, (255, 255, 255), 0.5)
             if controller._pixels:
                 controller._pixels.show()
-            logger.info("LED 0 illuminated as reference")
+
+            logger.info("LED 0 illuminated as reference (effect loop paused)")
         except Exception as e:
             logger.warning(f"Failed to set reference LED: {e}")
 
