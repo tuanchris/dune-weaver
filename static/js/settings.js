@@ -1897,11 +1897,23 @@ function initCalibrationWizard() {
         }
     }
 
-    // LED navigation button handlers
-    ledPrev1.addEventListener('click', () => navigateToLED(currentLed - 1));
-    ledNext1.addEventListener('click', () => navigateToLED(currentLed + 1));
-    ledPrev5.addEventListener('click', () => navigateToLED(currentLed - 5));
-    ledNext5.addEventListener('click', () => navigateToLED(currentLed + 5));
+    // LED navigation button handlers (direction reverses when toggle is on)
+    ledPrev1.addEventListener('click', () => {
+        const direction = reversed ? 1 : -1;  // Reverse button direction if toggle is on
+        navigateToLED(currentLed + direction);
+    });
+    ledNext1.addEventListener('click', () => {
+        const direction = reversed ? -1 : 1;  // Reverse button direction if toggle is on
+        navigateToLED(currentLed + direction);
+    });
+    ledPrev5.addEventListener('click', () => {
+        const direction = reversed ? 5 : -5;  // Reverse button direction if toggle is on
+        navigateToLED(currentLed + direction);
+    });
+    ledNext5.addEventListener('click', () => {
+        const direction = reversed ? -5 : 5;  // Reverse button direction if toggle is on
+        navigateToLED(currentLed + direction);
+    });
 
     // Reverse direction toggle
     reverseDirectionToggle.addEventListener('change', () => {
