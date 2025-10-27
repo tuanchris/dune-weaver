@@ -20,7 +20,7 @@ class BallTrackingManager:
         Initialize ball tracking manager
 
         Args:
-            led_controller: DWLEDController instance
+            led_controller: DWLEDController instance (kept for compatibility, not used for rendering)
             num_leds: Number of LEDs in the strip
             config: Configuration dict with keys:
                 - led_offset: LED index offset (0 to num_leds-1)
@@ -32,7 +32,7 @@ class BallTrackingManager:
                 - trail_enabled: Enable fade trail (bool)
                 - trail_length: Trail length in LEDs (1-20)
         """
-        self.led_controller = led_controller
+        self.led_controller = led_controller  # Kept for backward compatibility
         self.num_leds = num_leds
         self.config = config
 
@@ -43,7 +43,6 @@ class BallTrackingManager:
         self._active = False
         self._update_task = None
         self._last_led_index = None
-        self._last_lit_leds = set()  # Track which LEDs were lit in previous frame
 
         logger.info(f"BallTrackingManager initialized with {num_leds} LEDs")
 
@@ -57,21 +56,13 @@ class BallTrackingManager:
         logger.info("Ball tracking started")
 
     def stop(self):
-        """Stop ball tracking and clear LEDs"""
+        """Stop ball tracking"""
         if not self._active:
             return
 
         self._active = False
         self.position_buffer.clear()
         self._last_led_index = None
-        self._last_lit_leds.clear()
-
-        # Clear all LEDs
-        if self.led_controller and self.led_controller._initialized:
-            try:
-                self.led_controller.clear_all_leds()
-            except Exception as e:
-                logger.error(f"Error clearing LEDs: {e}")
 
         logger.info("Ball tracking stopped")
 
@@ -93,8 +84,8 @@ class BallTrackingManager:
         self._update_leds()
 
     def _update_leds(self):
-        """Update LED strip based on current position"""
-        if not self._active or not self.led_controller or not self.led_controller._initialized:
+        """Update LED tracking state (rendering is done by effect loop)"""
+        if not self._active:
             return
 
         # Get position to track (with lookback)
@@ -107,9 +98,7 @@ class BallTrackingManager:
         # Calculate LED index
         led_index = self._theta_to_led(theta)
 
-        # Render LEDs
-        self._render_leds(led_index)
-
+        # Store the LED index (effect will read this)
         self._last_led_index = led_index
 
     def _get_tracked_position(self) -> Optional[Tuple[float, float, float]]:
@@ -162,60 +151,34 @@ class BallTrackingManager:
 
         return led_index
 
-    def _render_leds(self, center_led: int):
+    def get_tracking_data(self) -> Optional[Dict]:
         """
-        Render LEDs with spread and optional trail
+        Get current tracking data for effect rendering
 
-        Args:
-            center_led: Center LED index to light up
+        Returns:
+            Dictionary with led_index, spread, brightness, color
+            or None if no tracking data available
         """
-        try:
-            spread = self.config.get("spread", 3)
-            brightness = self.config.get("brightness", 50) / 100.0
-            color_hex = self.config.get("color", "#ffffff")
+        if self._last_led_index is None:
+            return None
 
-            # Convert hex color to RGB
-            color_hex = color_hex.lstrip('#')
-            r = int(color_hex[0:2], 16)
-            g = int(color_hex[2:4], 16)
-            b = int(color_hex[4:6], 16)
+        # Get configuration
+        spread = self.config.get("spread", 3)
+        brightness = self.config.get("brightness", 50) / 100.0
+        color_hex = self.config.get("color", "#ffffff")
 
-            # Calculate which LEDs should be lit this frame
-            current_lit_leds = set()
-            half_spread = spread // 2
+        # Convert hex color to RGB tuple
+        color_hex = color_hex.lstrip('#')
+        r = int(color_hex[0:2], 16)
+        g = int(color_hex[2:4], 16)
+        b = int(color_hex[4:6], 16)
 
-            for i in range(-half_spread, half_spread + 1):
-                led_index = (center_led + i) % self.num_leds
-                current_lit_leds.add(led_index)
-
-            # Turn off LEDs that were on but shouldn't be anymore
-            leds_to_turn_off = self._last_lit_leds - current_lit_leds
-            for led_index in leds_to_turn_off:
-                self.led_controller.set_single_led(led_index, (0, 0, 0), 1.0)
-
-            # Update LEDs that should be on
-            for i in range(-half_spread, half_spread + 1):
-                led_index = (center_led + i) % self.num_leds
-
-                # Calculate intensity fade from center
-                if spread > 1:
-                    distance = abs(i)
-                    intensity = 1.0 - (distance / (spread / 2.0)) * 0.5  # 50-100%
-                else:
-                    intensity = 1.0
-
-                led_brightness = brightness * intensity
-                self.led_controller.set_single_led(led_index, (r, g, b), led_brightness)
-
-            # Show all updates at once
-            if self.led_controller._pixels:
-                self.led_controller._pixels.show()
-
-            # Remember which LEDs are lit for next frame
-            self._last_lit_leds = current_lit_leds
-
-        except Exception as e:
-            logger.error(f"Error rendering LEDs: {e}")
+        return {
+            'led_index': self._last_led_index,
+            'spread': spread,
+            'brightness': brightness,
+            'color': (r, g, b)
+        }
 
     def update_config(self, config: Dict):
         """Update configuration at runtime"""

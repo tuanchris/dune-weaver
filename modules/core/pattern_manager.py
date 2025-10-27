@@ -680,16 +680,29 @@ async def run_theta_rho_file(file_path, is_playlist=False):
         await reset_theta()
         
         start_time = time.time()
-        if state.led_controller:
-            logger.info(f"Setting LED to playing effect: {state.dw_led_playing_effect}")
-            state.led_controller.effect_playing(state.dw_led_playing_effect)
-            # Cancel idle timeout when playing starts
-            idle_timeout_manager.cancel_timeout()
 
         # Start ball tracking if mode is "playing_only"
+        ball_tracking_active = False
         if state.ball_tracking_mode == "playing_only" and state.ball_tracking_manager:
             logger.info("Starting ball tracking (playing_only mode)")
             state.ball_tracking_manager.start()
+            ball_tracking_active = True
+
+        # Set LED effect
+        if state.led_controller:
+            if ball_tracking_active:
+                # Use ball tracking effect (ID 45)
+                logger.info("Setting LED to ball tracking effect")
+                controller = state.led_controller.get_controller()
+                if controller:
+                    controller.set_power(1)
+                    controller.set_effect(45)  # Ball tracking effect
+            else:
+                # Use configured playing effect
+                logger.info(f"Setting LED to playing effect: {state.dw_led_playing_effect}")
+                state.led_controller.effect_playing(state.dw_led_playing_effect)
+            # Cancel idle timeout when playing starts
+            idle_timeout_manager.cancel_timeout()
 
         with tqdm(
             total=total_coordinates,

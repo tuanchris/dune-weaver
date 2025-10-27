@@ -1066,6 +1066,84 @@ def mode_funky_plank(seg: Segment) -> int:
 
     return FRAMETIME
 
+def mode_ball_tracking(seg: Segment) -> int:
+    """
+    Ball tracking effect - follows the ball bearing's position in real-time
+    Reads position data from state.ball_tracking_manager
+    """
+    # Import state here to avoid circular dependency
+    from modules.core.state import state
+
+    # Get ball tracking manager
+    manager = state.ball_tracking_manager
+    if not manager or not manager._active:
+        # No active tracking, show static color or turn off
+        seg.fill(0x000000)
+        return FRAMETIME
+
+    # Get tracking data from manager
+    tracking_data = manager.get_tracking_data()
+    if not tracking_data:
+        # No position data yet
+        seg.fill(0x000000)
+        return FRAMETIME
+
+    center_led = tracking_data['led_index']
+    spread = tracking_data['spread']
+    brightness = tracking_data['brightness']
+    color_rgb = tracking_data['color']
+
+    # Convert RGB tuple to 32-bit color
+    r, g, b = color_rgb
+    color_32bit = (r << 16) | (g << 8) | b
+
+    # Initialize tracking: store last lit LEDs in seg.data
+    if seg.call == 0:
+        seg.data = []
+
+    # Calculate which LEDs should be lit this frame
+    current_lit_leds = set()
+    half_spread = spread // 2
+
+    for i in range(-half_spread, half_spread + 1):
+        led_index = (center_led + i) % seg.length
+        current_lit_leds.add(led_index)
+
+    # Convert last frame's lit LEDs from list to set
+    last_lit_leds = set(seg.data) if seg.data else set()
+
+    # Turn off LEDs that were on but shouldn't be anymore
+    leds_to_turn_off = last_lit_leds - current_lit_leds
+    for led_idx in leds_to_turn_off:
+        seg.set_pixel_color(led_idx, 0x000000)
+
+    # Update LEDs that should be on with brightness fade
+    for i in range(-half_spread, half_spread + 1):
+        led_index = (center_led + i) % seg.length
+
+        # Calculate intensity fade from center
+        if spread > 1:
+            distance = abs(i)
+            intensity = 1.0 - (distance / (spread / 2.0)) * 0.5  # 50-100%
+        else:
+            intensity = 1.0
+
+        # Apply brightness
+        final_brightness = int(brightness * intensity * 255)
+
+        # Scale color by brightness
+        final_r = (r * final_brightness) // 255
+        final_g = (g * final_brightness) // 255
+        final_b = (b * final_brightness) // 255
+        final_color = (final_r << 16) | (final_g << 8) | final_b
+
+        seg.set_pixel_color(led_index, final_color)
+
+    # Remember which LEDs are lit for next frame
+    seg.data = list(current_lit_leds)
+
+    return FRAMETIME
+
 # Effect registry
 EFFECTS = {
     0: ("Static", mode_static),
@@ -1113,6 +1191,7 @@ EFFECTS = {
     42: ("Halloween", mode_halloween),
     43: ("Noise", mode_noise),
     44: ("Funky Plank", mode_funky_plank),
+    45: ("Ball Tracking", mode_ball_tracking),
 }
 
 def get_effect(effect_id: int):

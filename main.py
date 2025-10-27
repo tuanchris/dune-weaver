@@ -153,7 +153,10 @@ async def lifespan(app: FastAPI):
                 # Start tracking if mode is "enabled"
                 if state.ball_tracking_mode == "enabled" and state.ball_tracking_enabled:
                     state.ball_tracking_manager.start()
-                    logger.info("Ball tracking started (enabled mode)")
+                    # Set LED to ball tracking effect
+                    controller.set_power(1)
+                    controller.set_effect(45)  # Ball tracking effect
+                    logger.info("Ball tracking started (enabled mode) with effect ID 45")
             except Exception as e:
                 logger.warning(f"Failed to initialize ball tracking manager: {e}")
                 state.ball_tracking_manager = None
@@ -2027,10 +2030,21 @@ async def set_ball_tracking_config(request: dict):
                 # Always-on mode
                 if state.ball_tracking_manager:
                     state.ball_tracking_manager.start()
+                    # Switch to ball tracking effect
+                    if state.led_controller:
+                        controller = state.led_controller.get_controller()
+                        if controller:
+                            controller.set_power(1)
+                            controller.set_effect(45)  # Ball tracking effect
+                            logger.info("Switched to ball tracking effect (enabled mode)")
             elif state.ball_tracking_mode == "disabled" or not state.ball_tracking_enabled:
                 # Disabled
                 if state.ball_tracking_manager:
                     state.ball_tracking_manager.stop()
+                # Switch back to idle effect
+                if state.led_controller:
+                    state.led_controller.effect_idle(state.dw_led_idle_effect)
+                    logger.info("Switched back to idle effect (ball tracking disabled)")
 
         return {
             "success": True,
