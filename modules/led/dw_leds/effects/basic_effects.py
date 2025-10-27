@@ -1096,7 +1096,8 @@ def mode_ball_tracking(seg: Segment) -> int:
 
     # Log tracking data occasionally
     if seg.call % 100 == 0:
-        logger.info(f"Ball tracking effect: LED index={tracking_data['led_index']}, spread={tracking_data['spread']}, buffer_size={len(manager.position_buffer)}")
+        buffer_info = f"buffer_size={len(manager.position_buffer)}" if manager._use_buffer and manager.position_buffer else "direct"
+        logger.info(f"Ball tracking effect: LED index={tracking_data['led_index']}, spread={tracking_data['spread']}, {buffer_info}")
 
     center_led = tracking_data['led_index']
     spread = tracking_data['spread']

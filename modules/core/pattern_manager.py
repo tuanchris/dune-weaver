@@ -691,6 +691,16 @@ async def run_theta_rho_file(file_path, is_playlist=False):
         ball_tracking_active = False
         logger.info(f"Ball tracking mode: {state.ball_tracking_mode}, manager exists: {state.ball_tracking_manager is not None}")
 
+        # Clear ball tracking position data for fresh start (if manager exists and is active or will be active)
+        if state.ball_tracking_manager and (state.ball_tracking_manager._active or state.ball_tracking_mode == "playing_only"):
+            logger.info("Clearing ball tracking position data for new pattern")
+            if state.ball_tracking_manager._use_buffer and state.ball_tracking_manager.position_buffer:
+                state.ball_tracking_manager.position_buffer.clear()
+            else:
+                state.ball_tracking_manager._current_position = None
+            state.ball_tracking_manager._update_count = 0
+            state.ball_tracking_manager._skipped_updates = 0
+
         if state.ball_tracking_mode == "playing_only" and state.ball_tracking_manager:
             logger.info("Starting ball tracking (playing_only mode)")
             state.ball_tracking_manager.start()

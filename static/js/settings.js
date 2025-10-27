@@ -1641,8 +1641,6 @@ async function initBallTracking() {
     const ballTrackingMode = document.getElementById('ballTrackingMode');
     const ballTrackingSpread = document.getElementById('ballTrackingSpread');
     const ballTrackingSpreadValue = document.getElementById('ballTrackingSpreadValue');
-    const ballTrackingLookback = document.getElementById('ballTrackingLookback');
-    const ballTrackingLookbackValue = document.getElementById('ballTrackingLookbackValue');
     const ballTrackingBrightness = document.getElementById('ballTrackingBrightness');
     const ballTrackingBrightnessValue = document.getElementById('ballTrackingBrightnessValue');
     const ballTrackingColor = document.getElementById('ballTrackingColor');
@@ -1658,8 +1656,6 @@ async function initBallTracking() {
             ballTrackingMode.value = data.mode;
             ballTrackingSpread.value = data.config.spread;
             ballTrackingSpreadValue.textContent = `${data.config.spread} LED${data.config.spread > 1 ? 's' : ''}`;
-            ballTrackingLookback.value = data.config.lookback;
-            ballTrackingLookbackValue.textContent = `${data.config.lookback} coord${data.config.lookback !== 1 ? 's' : ''}`;
             ballTrackingBrightness.value = data.config.brightness;
             ballTrackingBrightnessValue.textContent = `${data.config.brightness}%`;
             ballTrackingColor.value = data.config.color;
@@ -1688,11 +1684,6 @@ async function initBallTracking() {
         ballTrackingSpreadValue.textContent = `${value} LED${value > 1 ? 's' : ''}`;
     });
 
-    ballTrackingLookback.addEventListener('input', () => {
-        const value = parseInt(ballTrackingLookback.value);
-        ballTrackingLookbackValue.textContent = `${value} coord${value !== 1 ? 's' : ''}`;
-    });
-
     ballTrackingBrightness.addEventListener('input', () => {
         const value = parseInt(ballTrackingBrightness.value);
         ballTrackingBrightnessValue.textContent = `${value}%`;
@@ -1709,7 +1700,7 @@ async function initBallTracking() {
                 enabled: ballTrackingEnabled.checked,
                 mode: ballTrackingMode.value,
                 spread: parseInt(ballTrackingSpread.value),
-                lookback: parseInt(ballTrackingLookback.value),
+                lookback: 0,  // Lookback disabled - always use instant tracking
                 brightness: parseInt(ballTrackingBrightness.value),
                 color: ballTrackingColor.value
             };

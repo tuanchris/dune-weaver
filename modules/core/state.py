@@ -78,7 +78,7 @@ class AppState:
         self.ball_tracking_led_offset = 0  # LED offset (0 to num_leds-1)
         self.ball_tracking_reversed = False  # Reverse LED direction
         self.ball_tracking_spread = 3  # Number of adjacent LEDs (1-10)
-        self.ball_tracking_lookback = 5  # Coordinates to look back (0-15)
+        self.ball_tracking_lookback = 0  # Coordinates to look back (0-15) - 0 for instant tracking
         self.ball_tracking_brightness = 50  # Brightness 0-100
         self.ball_tracking_color = "#ffffff"  # Hex color for tracking
         self.ball_tracking_trail_enabled = False  # Enable fade trail
@@ -342,7 +342,7 @@ class AppState:
         self.ball_tracking_led_offset = data.get("ball_tracking_led_offset", 0)
         self.ball_tracking_reversed = data.get("ball_tracking_reversed", False)
         self.ball_tracking_spread = data.get("ball_tracking_spread", 3)
-        self.ball_tracking_lookback = data.get("ball_tracking_lookback", 5)
+        self.ball_tracking_lookback = data.get("ball_tracking_lookback", 0)  # Default to 0 for instant response
         self.ball_tracking_brightness = data.get("ball_tracking_brightness", 50)
         self.ball_tracking_color = data.get("ball_tracking_color", "#ffffff")
         self.ball_tracking_trail_enabled = data.get("ball_tracking_trail_enabled", False)
