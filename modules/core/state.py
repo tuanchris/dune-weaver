@@ -256,6 +256,16 @@ class AppState:
             "scheduled_pause_enabled": self.scheduled_pause_enabled,
             "scheduled_pause_time_slots": self.scheduled_pause_time_slots,
             "scheduled_pause_control_wled": self.scheduled_pause_control_wled,
+            "ball_tracking_enabled": self.ball_tracking_enabled,
+            "ball_tracking_mode": self.ball_tracking_mode,
+            "ball_tracking_led_offset": self.ball_tracking_led_offset,
+            "ball_tracking_reversed": self.ball_tracking_reversed,
+            "ball_tracking_spread": self.ball_tracking_spread,
+            "ball_tracking_lookback": self.ball_tracking_lookback,
+            "ball_tracking_brightness": self.ball_tracking_brightness,
+            "ball_tracking_color": self.ball_tracking_color,
+            "ball_tracking_trail_enabled": self.ball_tracking_trail_enabled,
+            "ball_tracking_trail_length": self.ball_tracking_trail_length,
         }
 
     def from_dict(self, data):
@@ -325,6 +335,18 @@ class AppState:
         self.scheduled_pause_enabled = data.get("scheduled_pause_enabled", False)
         self.scheduled_pause_time_slots = data.get("scheduled_pause_time_slots", [])
         self.scheduled_pause_control_wled = data.get("scheduled_pause_control_wled", False)
+
+        # Load ball tracking settings
+        self.ball_tracking_enabled = data.get("ball_tracking_enabled", False)
+        self.ball_tracking_mode = data.get("ball_tracking_mode", "disabled")
+        self.ball_tracking_led_offset = data.get("ball_tracking_led_offset", 0)
+        self.ball_tracking_reversed = data.get("ball_tracking_reversed", False)
+        self.ball_tracking_spread = data.get("ball_tracking_spread", 3)
+        self.ball_tracking_lookback = data.get("ball_tracking_lookback", 5)
+        self.ball_tracking_brightness = data.get("ball_tracking_brightness", 50)
+        self.ball_tracking_color = data.get("ball_tracking_color", "#ffffff")
+        self.ball_tracking_trail_enabled = data.get("ball_tracking_trail_enabled", False)
+        self.ball_tracking_trail_length = data.get("ball_tracking_trail_length", 10)
 
     def save(self):
         """Save the current state to a JSON file."""

@@ -5,6 +5,7 @@ Tracks the ball bearing's position and updates LEDs in real-time to follow its m
 import asyncio
 import time
 import logging
+import threading
 from collections import deque
 from typing import Optional, Tuple, Dict
 from .dw_led_controller import DWLEDController
@@ -43,6 +44,7 @@ class BallTrackingManager:
         self._active = False
         self._update_task = None
         self._last_led_index = None
+        self._lock = threading.Lock()  # Thread safety for LED index updates
 
         logger.info(f"BallTrackingManager initialized with {num_leds} LEDs")
 
@@ -98,8 +100,9 @@ class BallTrackingManager:
         # Calculate LED index
         led_index = self._theta_to_led(theta)
 
-        # Store the LED index (effect will read this)
-        self._last_led_index = led_index
+        # Store the LED index (effect will read this) - thread-safe update
+        with self._lock:
+            self._last_led_index = led_index
 
     def _get_tracked_position(self) -> Optional[Tuple[float, float, float]]:
         """Get position to track (accounting for lookback delay)"""
@@ -159,7 +162,11 @@ class BallTrackingManager:
             Dictionary with led_index, spread, brightness, color
             or None if no tracking data available
         """
-        if self._last_led_index is None:
+        # Thread-safe read of LED index
+        with self._lock:
+            led_index = self._last_led_index
+
+        if led_index is None:
             return None
 
         # Get configuration
@@ -174,7 +181,7 @@ class BallTrackingManager:
         b = int(color_hex[4:6], 16)
 
         return {
-            'led_index': self._last_led_index,
+            'led_index': led_index,
             'spread': spread,
             'brightness': brightness,
             'color': (r, g, b)

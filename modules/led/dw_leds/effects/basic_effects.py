@@ -1073,11 +1073,15 @@ def mode_ball_tracking(seg: Segment) -> int:
     """
     # Import state here to avoid circular dependency
     from modules.core.state import state
+    import logging
+    logger = logging.getLogger(__name__)
 
     # Get ball tracking manager
     manager = state.ball_tracking_manager
     if not manager or not manager._active:
         # No active tracking, show static color or turn off
+        if seg.call % 100 == 0:  # Log occasionally
+            logger.debug(f"Ball tracking effect: manager active={manager._active if manager else 'N/A'}")
         seg.fill(0x000000)
         return FRAMETIME
 
@@ -1085,8 +1089,14 @@ def mode_ball_tracking(seg: Segment) -> int:
     tracking_data = manager.get_tracking_data()
     if not tracking_data:
         # No position data yet
+        if seg.call % 100 == 0:  # Log occasionally
+            logger.debug("Ball tracking effect: No tracking data available yet")
         seg.fill(0x000000)
         return FRAMETIME
+
+    # Log tracking data occasionally
+    if seg.call % 100 == 0:
+        logger.info(f"Ball tracking effect: LED index={tracking_data['led_index']}, spread={tracking_data['spread']}, buffer_size={len(manager.position_buffer)}")
 
     center_led = tracking_data['led_index']
     spread = tracking_data['spread']
