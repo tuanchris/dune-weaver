@@ -324,6 +324,12 @@ class MotionControlThread:
         # Update ball tracking (manager checks if it's active internally)
         if state.ball_tracking_manager:
             state.ball_tracking_manager.update_position(theta, rho)
+            # Debug: Log occasionally to verify updates are being sent
+            if not hasattr(self, '_ball_tracking_log_counter'):
+                self._ball_tracking_log_counter = 0
+            self._ball_tracking_log_counter += 1
+            if self._ball_tracking_log_counter % 100 == 0:
+                logger.info(f"Sent position to ball tracking: theta={theta:.1f}°, rho={rho:.2f}")
 
     def _send_grbl_coordinates_sync(self, x: float, y: float, speed: int = 600, timeout: int = 2, home: bool = False):
         """Synchronous version of send_grbl_coordinates for motion thread."""

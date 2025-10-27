@@ -45,6 +45,7 @@ class BallTrackingManager:
         self._update_task = None
         self._last_led_index = None
         self._lock = threading.Lock()  # Thread safety for LED index updates
+        self._update_count = 0  # Counter for debug logging
 
         logger.info(f"BallTrackingManager initialized with {num_leds} LEDs")
 
@@ -81,6 +82,11 @@ class BallTrackingManager:
 
         # Add to buffer
         self.position_buffer.append((theta, rho, time.time()))
+        self._update_count += 1
+
+        # Debug logging (every 50th update)
+        if self._update_count % 50 == 0:
+            logger.info(f"Position update #{self._update_count}: theta={theta:.1f}°, rho={rho:.2f}, buffer_size={len(self.position_buffer)}")
 
         # Trigger LED update
         self._update_leds()
@@ -99,6 +105,11 @@ class BallTrackingManager:
 
         # Calculate LED index
         led_index = self._theta_to_led(theta)
+
+        # Debug logging (every 50th update)
+        if self._update_count % 50 == 0:
+            lookback = self.config.get("lookback", 0)
+            logger.info(f"LED update #{self._update_count}: lookback={lookback}, tracked_theta={theta:.1f}°, led_index={led_index}")
 
         # Store the LED index (effect will read this) - thread-safe update
         with self._lock:
