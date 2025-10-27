@@ -61,7 +61,7 @@ class BallTrackingManager:
 
         # Polling timer for position updates
         self._poll_timer = None
-        self._poll_interval = 0.5  # Check position every 0.5 seconds
+        self._poll_interval = 0.2  # Check position every 0.2 seconds (5 Hz)
         self._is_pattern_running = False  # Flag to track if pattern is executing
 
         logger.info(f"BallTrackingManager initialized with {num_leds} LEDs")
