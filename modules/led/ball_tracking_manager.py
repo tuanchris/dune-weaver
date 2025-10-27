@@ -126,7 +126,8 @@ class BallTrackingManager:
         Args:
             is_running: True if pattern is executing, False otherwise
         """
-        logger.info(f"set_pattern_running called: is_running={is_running}, active={self._active}")
+        reversed_status = self.config.get("reversed", False)
+        logger.info(f"set_pattern_running called: is_running={is_running}, active={self._active}, reversed={reversed_status}")
         self._is_pattern_running = is_running
 
         if is_running and self._active:
@@ -166,7 +167,7 @@ class BallTrackingManager:
             theta = state.current_theta
             rho = state.current_rho
 
-            logger.debug(f"Polling position: theta={theta:.1f}°, rho={rho:.2f}, last_led={self._last_led_index}")
+            logger.info(f"Polling position: theta={theta:.1f}°, rho={rho:.2f}, last_led={self._last_led_index}")
 
             # Update position (this will skip if LED zone hasn't changed)
             self._update_leds_optimized(theta, rho)
@@ -271,18 +272,21 @@ class BallTrackingManager:
         Convert theta angle to LED index
 
         Args:
-            theta: Angle in degrees (0-360)
+            theta: Angle in radians (0 to 2π for one revolution)
 
         Returns:
             LED index (0 to num_leds-1)
         """
-        # Normalize theta to 0-360
-        theta = theta % 360
-        if theta < 0:
-            theta += 360
+        import math
 
-        # Calculate LED index (0° = LED 0 before offset)
-        led_index = int((theta / 360.0) * self.num_leds)
+        # Normalize theta to 0-2π
+        TWO_PI = 2 * math.pi
+        theta = theta % TWO_PI
+        if theta < 0:
+            theta += TWO_PI
+
+        # Calculate LED index (0 rad = LED 0 before offset)
+        led_index = int((theta / TWO_PI) * self.num_leds)
         original_index = led_index
 
         # Apply user-defined offset
@@ -294,9 +298,9 @@ class BallTrackingManager:
         if is_reversed:
             led_index_before_reverse = led_index
             led_index = (self.num_leds - led_index) % self.num_leds
-            logger.debug(f"Theta={theta:.1f}° -> LED {original_index} + offset {offset} = {led_index_before_reverse} -> REVERSED to {led_index}")
+            logger.debug(f"Theta={theta:.3f} rad ({math.degrees(theta):.1f}°) -> LED {original_index} + offset {offset} = {led_index_before_reverse} -> REVERSED to {led_index}")
         else:
-            logger.debug(f"Theta={theta:.1f}° -> LED {original_index} + offset {offset} = {led_index}")
+            logger.debug(f"Theta={theta:.3f} rad ({math.degrees(theta):.1f}°) -> LED {original_index} + offset {offset} = {led_index}")
 
         return led_index
 
