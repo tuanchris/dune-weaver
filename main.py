@@ -2073,6 +2073,40 @@ async def get_ball_tracking_status():
         logger.error(f"Failed to get ball tracking status: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/ball_tracking/test_led")
+async def test_led_for_calibration(request: dict):
+    """
+    Light up a specific LED for calibration testing
+    Turn off all other LEDs
+    """
+    try:
+        led_index = request.get("led_index")
+        if led_index is None:
+            raise HTTPException(status_code=400, detail="led_index is required")
+
+        # Check if DW LEDs are active
+        if state.led_provider != "dw_leds" or not state.led_controller:
+            raise HTTPException(status_code=400, detail="DW LEDs must be configured")
+
+        controller = state.led_controller.get_controller()
+
+        # Clear all LEDs
+        controller.clear_all_leds()
+
+        # Light up only the selected LED in white
+        controller.set_single_led(led_index, (255, 255, 255), 0.5)
+
+        if controller._pixels:
+            controller._pixels.show()
+
+        return {
+            "success": True,
+            "message": f"LED {led_index} illuminated"
+        }
+    except Exception as e:
+        logger.error(f"Failed to test LED: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/ball_tracking/calibrate")
 async def calibrate_ball_tracking():
     """
@@ -2081,6 +2115,7 @@ async def calibrate_ball_tracking():
     """
     try:
         from modules.core import pattern_manager
+        from modules.connection import connection_manager
 
         # Check if DW LEDs are active
         if state.led_provider != "dw_leds" or not state.led_controller:
@@ -2092,16 +2127,29 @@ async def calibrate_ball_tracking():
 
         logger.info("Starting ball tracking calibration")
 
+        # Turn off all LEDs except LED 0 to show reference
+        try:
+            controller = state.led_controller.get_controller()
+            controller.clear_all_leds()
+            # Light up only LED 0 in white
+            controller.set_single_led(0, (255, 255, 255), 0.5)
+            if controller._pixels:
+                controller._pixels.show()
+            logger.info("LED 0 illuminated as reference")
+        except Exception as e:
+            logger.warning(f"Failed to set reference LED: {e}")
+
         # Step 1: Reset theta
         await pattern_manager.reset_theta()
         logger.info("Theta reset complete")
 
-        # Step 2: Move to (0°, rho=1.0) at perimeter
-        await pattern_manager.move_polar(0.0, 1.0, state.speed)
-        logger.info("Moved to reference position (0°, 1.0)")
+        # Step 2: Move to (0°, rho=1.0) at perimeter with 400 speed
+        await pattern_manager.move_polar(0.0, 1.0, 400)
+        logger.info("Moved to reference position (0°, 1.0) at 400 speed")
 
-        # Wait for movement to complete
-        await asyncio.sleep(0.5)
+        # Step 3: Wait for idle to ensure movement is complete
+        await connection_manager.check_idle_async()
+        logger.info("Movement complete, machine is idle")
 
         return {
             "success": True,

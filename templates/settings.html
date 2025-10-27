@@ -888,7 +888,7 @@ input:checked + .slider:before {
 
   <!-- Calibration Wizard Modal -->
   <div id="calibrationModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div class="bg-white dark:bg-neutral-800 rounded-xl shadow-2xl w-full max-w-xl max-h-[85vh] overflow-y-auto">
       <!-- Modal Header -->
       <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
         <h3 class="text-slate-900 text-xl font-semibold">Ball Tracking Calibration</h3>
@@ -903,10 +903,8 @@ input:checked + .slider:before {
         <div class="flex items-center justify-between mb-6">
           <div class="flex items-center gap-2">
             <div id="step1Indicator" class="flex items-center justify-center w-8 h-8 rounded-full bg-sky-600 text-white text-sm font-medium">1</div>
-            <div class="w-16 h-1 bg-slate-200" id="line1"></div>
+            <div class="w-24 h-1 bg-slate-200" id="line1"></div>
             <div id="step2Indicator" class="flex items-center justify-center w-8 h-8 rounded-full bg-slate-200 text-slate-500 text-sm font-medium">2</div>
-            <div class="w-16 h-1 bg-slate-200" id="line2"></div>
-            <div id="step3Indicator" class="flex items-center justify-center w-8 h-8 rounded-full bg-slate-200 text-slate-500 text-sm font-medium">3</div>
           </div>
         </div>
 
@@ -929,64 +927,79 @@ input:checked + .slider:before {
           </div>
         </div>
 
-        <!-- Step 2: Identify LED -->
+        <!-- Step 2: Identify LED & Configure -->
         <div id="calibrationStep2" class="space-y-4 hidden">
           <h4 class="text-lg font-medium text-slate-800">Step 2: Identify LED Position</h4>
-          <p class="text-sm text-slate-600 mb-4">
-            The ball is now at the 0° reference position (perimeter). Click on the LED that is at this position in the circular diagram below.
+          <p class="text-sm text-slate-600">
+            The ball is at the 0° reference position. Use the buttons below to navigate through your LEDs until the <strong>lit LED matches the ball's position</strong>.
           </p>
-          <!-- LED Circle Visualization -->
-          <div class="flex justify-center my-6">
-            <svg id="ledCircle" viewBox="0 0 400 400" class="w-full max-w-md">
-              <!-- Circle representing LED strip -->
-              <circle cx="200" cy="200" r="150" fill="none" stroke="#e2e8f0" stroke-width="2"/>
-              <!-- 0° marker (East) -->
-              <line x1="350" y1="200" x2="370" y2="200" stroke="#0c7ff2" stroke-width="3"/>
-              <text x="380" y="205" fill="#0c7ff2" font-size="14" font-weight="bold">0°</text>
-              <!-- LEDs will be added here by JavaScript -->
-            </svg>
-          </div>
-          <p id="selectedLedInfo" class="text-sm text-center text-slate-600">
-            No LED selected
-          </p>
-        </div>
 
-        <!-- Step 3: Test Direction -->
-        <div id="calibrationStep3" class="space-y-4 hidden">
-          <h4 class="text-lg font-medium text-slate-800">Step 3: Test Direction</h4>
-          <p class="text-sm text-slate-600 mb-4">
-            We'll move the ball to 90° to test LED direction. Watch which way the LEDs move.
-          </p>
-          <button
-            id="testDirection"
-            class="flex items-center justify-center gap-2 w-full cursor-pointer rounded-lg h-12 px-4 bg-sky-600 hover:bg-sky-700 text-white text-base font-medium transition-colors"
-          >
-            <span class="material-icons text-xl">rotate_right</span>
-            <span>Move to 90° and Test</span>
-          </button>
-          <div id="directionTestStatus" class="hidden text-sm text-slate-600 text-center">
-            <span class="inline-block animate-spin material-icons text-sky-600">refresh</span>
-            Testing direction...
+          <!-- Current LED Display -->
+          <div class="bg-slate-100 dark:bg-slate-700 rounded-lg p-4 text-center">
+            <p class="text-xs text-slate-600 dark:text-slate-400 mb-1">Currently Selected LED</p>
+            <p class="text-4xl font-bold text-sky-600" id="currentLedNumber">0</p>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-2" id="ledStatusText">This LED is now lit on your strip</p>
           </div>
-          <div id="directionQuestion" class="hidden space-y-4 mt-4">
-            <p class="text-sm text-slate-700 font-medium text-center">Did the LED move clockwise?</p>
-            <div class="grid grid-cols-2 gap-4">
+
+          <!-- Navigation Controls -->
+          <div class="space-y-3">
+            <p class="text-xs font-medium text-slate-700 dark:text-slate-300 text-center">Navigate LEDs</p>
+            <div class="grid grid-cols-2 gap-3">
               <button
-                id="directionClockwise"
-                class="flex items-center justify-center gap-2 cursor-pointer rounded-lg h-12 px-4 bg-green-600 hover:bg-green-700 text-white text-base font-medium transition-colors"
+                id="ledPrev1"
+                class="flex items-center justify-center gap-2 h-12 px-4 rounded-lg border-2 border-slate-300 hover:border-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900 text-slate-700 dark:text-slate-300 font-medium transition-all"
               >
-                <span class="material-icons">check_circle</span>
-                <span>Yes, Clockwise</span>
+                <span class="material-icons">chevron_left</span>
+                <span>← 1 LED</span>
               </button>
               <button
-                id="directionCounterClockwise"
-                class="flex items-center justify-center gap-2 cursor-pointer rounded-lg h-12 px-4 bg-orange-600 hover:bg-orange-700 text-white text-base font-medium transition-colors"
+                id="ledNext1"
+                class="flex items-center justify-center gap-2 h-12 px-4 rounded-lg border-2 border-slate-300 hover:border-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900 text-slate-700 dark:text-slate-300 font-medium transition-all"
               >
-                <span class="material-icons">sync</span>
-                <span>No, Reverse It</span>
+                <span>1 LED →</span>
+                <span class="material-icons">chevron_right</span>
+              </button>
+              <button
+                id="ledPrev5"
+                class="flex items-center justify-center gap-2 h-12 px-4 rounded-lg border-2 border-slate-300 hover:border-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900 text-slate-700 dark:text-slate-300 font-medium transition-all"
+              >
+                <span class="material-icons">fast_rewind</span>
+                <span>← 5 LEDs</span>
+              </button>
+              <button
+                id="ledNext5"
+                class="flex items-center justify-center gap-2 h-12 px-4 rounded-lg border-2 border-slate-300 hover:border-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900 text-slate-700 dark:text-slate-300 font-medium transition-all"
+              >
+                <span>5 LEDs →</span>
+                <span class="material-icons">fast_forward</span>
               </button>
             </div>
           </div>
+
+          <!-- Direction Reversal -->
+          <div class="border-t border-slate-200 pt-4 mt-4">
+            <div class="flex items-center justify-between p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div class="flex-1">
+                <h5 class="text-sm font-medium text-slate-800">Reverse LED Direction</h5>
+                <p class="text-xs text-slate-600 mt-1">
+                  Enable if your LED strip runs counter-clockwise
+                </p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="reverseDirectionToggle">
+                <span class="slider round"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Confirm Button -->
+          <button
+            id="confirmCalibration"
+            class="flex items-center justify-center gap-2 w-full h-12 px-4 rounded-lg bg-green-600 hover:bg-green-700 text-white text-base font-medium transition-colors mt-4"
+          >
+            <span class="material-icons">check_circle</span>
+            <span>Confirm Calibration</span>
+          </button>
         </div>
 
         <!-- Completion -->

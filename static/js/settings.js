@@ -1749,32 +1749,30 @@ function initCalibrationWizard() {
     // Step elements
     const step1 = document.getElementById('calibrationStep1');
     const step2 = document.getElementById('calibrationStep2');
-    const step3 = document.getElementById('calibrationStep3');
     const complete = document.getElementById('calibrationComplete');
 
     // Step indicators
     const step1Indicator = document.getElementById('step1Indicator');
     const step2Indicator = document.getElementById('step2Indicator');
-    const step3Indicator = document.getElementById('step3Indicator');
     const line1 = document.getElementById('line1');
-    const line2 = document.getElementById('line2');
 
     // Action buttons
     const startMoveBtn = document.getElementById('startCalibrationMove');
     const moveStatus = document.getElementById('calibrationMoveStatus');
-    const testDirectionBtn = document.getElementById('testDirection');
-    const directionStatus = document.getElementById('directionTestStatus');
-    const directionQuestion = document.getElementById('directionQuestion');
-    const directionClockwise = document.getElementById('directionClockwise');
-    const directionCounterClockwise = document.getElementById('directionCounterClockwise');
+    const confirmCalibrationBtn = document.getElementById('confirmCalibration');
 
-    // LED visualization
-    const ledCircle = document.getElementById('ledCircle');
-    const selectedLedInfo = document.getElementById('selectedLedInfo');
+    // LED navigation buttons
+    const ledPrev1 = document.getElementById('ledPrev1');
+    const ledNext1 = document.getElementById('ledNext1');
+    const ledPrev5 = document.getElementById('ledPrev5');
+    const ledNext5 = document.getElementById('ledNext5');
+    const currentLedNumber = document.getElementById('currentLedNumber');
+    const ledStatusText = document.getElementById('ledStatusText');
+    const reverseDirectionToggle = document.getElementById('reverseDirectionToggle');
 
     // State
     let numLeds = 60;
-    let selectedLed = null;
+    let currentLed = 0;
     let reversed = false;
 
     // Open wizard
@@ -1795,11 +1793,10 @@ function initCalibrationWizard() {
     // Reset wizard to step 1
     function resetWizard() {
         showStep(1);
-        selectedLed = null;
+        currentLed = 0;
         reversed = false;
         moveStatus.classList.add('hidden');
-        directionStatus.classList.add('hidden');
-        directionQuestion.classList.add('hidden');
+        reverseDirectionToggle.checked = false;
     }
 
     // Show specific step
@@ -1807,16 +1804,14 @@ function initCalibrationWizard() {
         // Hide all steps
         step1.classList.add('hidden');
         step2.classList.add('hidden');
-        step3.classList.add('hidden');
         complete.classList.add('hidden');
 
         // Reset indicators
-        [step1Indicator, step2Indicator, step3Indicator].forEach(ind => {
-            ind.classList.remove('bg-sky-600', 'text-white');
+        [step1Indicator, step2Indicator].forEach(ind => {
+            ind.classList.remove('bg-sky-600', 'text-white', 'bg-green-600');
             ind.classList.add('bg-slate-200', 'text-slate-500');
         });
         line1.classList.remove('bg-sky-600');
-        line2.classList.remove('bg-sky-600');
 
         // Show active step
         if (stepNum === 1) {
@@ -1830,21 +1825,13 @@ function initCalibrationWizard() {
             step2Indicator.classList.remove('bg-slate-200', 'text-slate-500');
             step2Indicator.classList.add('bg-sky-600', 'text-white');
             line1.classList.add('bg-sky-600');
-        } else if (stepNum === 3) {
-            step3.classList.remove('hidden');
-            step1Indicator.classList.add('bg-green-600', 'text-white');
-            step2Indicator.classList.add('bg-green-600', 'text-white');
-            step3Indicator.classList.remove('bg-slate-200', 'text-slate-500');
-            step3Indicator.classList.add('bg-sky-600', 'text-white');
-            line1.classList.add('bg-sky-600');
-            line2.classList.add('bg-sky-600');
         } else if (stepNum === 'complete') {
             complete.classList.remove('hidden');
-            [step1Indicator, step2Indicator, step3Indicator].forEach(ind => {
+            [step1Indicator, step2Indicator].forEach(ind => {
+                ind.classList.remove('bg-slate-200', 'text-slate-500');
                 ind.classList.add('bg-green-600', 'text-white');
             });
             line1.classList.add('bg-sky-600');
-            line2.classList.add('bg-sky-600');
         }
     }
 
@@ -1863,8 +1850,9 @@ function initCalibrationWizard() {
 
             if (data.success) {
                 numLeds = data.num_leds;
+                currentLed = 0;
                 showStatusMessage('Ball moved to reference position!', 'success');
-                renderLEDCircle();
+                updateLEDDisplay();
                 showStep(2);
             } else {
                 throw new Error(data.detail || 'Calibration failed');
@@ -1877,93 +1865,60 @@ function initCalibrationWizard() {
         }
     });
 
-    // Render LED circle
-    function renderLEDCircle() {
-        // Remove existing LEDs
-        const existingLeds = ledCircle.querySelectorAll('.led-dot');
-        existingLeds.forEach(led => led.remove());
-
-        const centerX = 200;
-        const centerY = 200;
-        const radius = 150;
-
-        for (let i = 0; i < numLeds; i++) {
-            const angle = (i / numLeds) * 2 * Math.PI - Math.PI / 2; // Start from top (270°)
-            const x = centerX + radius * Math.cos(angle);
-            const y = centerY + radius * Math.sin(angle);
-
-            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            circle.setAttribute('cx', x);
-            circle.setAttribute('cy', y);
-            circle.setAttribute('r', '6');
-            circle.setAttribute('fill', '#cbd5e1');
-            circle.setAttribute('stroke', '#64748b');
-            circle.setAttribute('stroke-width', '1');
-            circle.setAttribute('class', 'led-dot cursor-pointer hover:fill-sky-400 transition-colors');
-            circle.setAttribute('data-led-index', i);
-
-            circle.addEventListener('click', () => selectLED(i));
-            ledCircle.appendChild(circle);
-        }
+    // Update LED display
+    function updateLEDDisplay() {
+        currentLedNumber.textContent = currentLed;
+        ledStatusText.textContent = 'This LED is now lit on your strip';
     }
 
-    // Select LED
-    function selectLED(index) {
-        selectedLed = index;
+    // Navigate to specific LED and light it
+    async function navigateToLED(newLedIndex) {
+        // Wrap around LED count
+        currentLed = ((newLedIndex % numLeds) + numLeds) % numLeds;
 
-        // Update visuals
-        const allDots = ledCircle.querySelectorAll('.led-dot');
-        allDots.forEach(dot => {
-            dot.setAttribute('fill', '#cbd5e1');
-        });
-        allDots[index].setAttribute('fill', '#0c7ff2');
+        // Update UI
+        updateLEDDisplay();
 
-        selectedLedInfo.textContent = `Selected: LED ${index}`;
-
-        // Move to step 3 after selection
-        setTimeout(() => showStep(3), 500);
-    }
-
-    // Step 3: Test direction
-    testDirectionBtn.addEventListener('click', async () => {
-        testDirectionBtn.disabled = true;
-        directionStatus.classList.remove('hidden');
-
+        // Light up the physical LED
         try {
-            // Move to 90° to test direction
-            const response = await fetch('/send_coordinate', {
+            const response = await fetch('/api/ball_tracking/test_led', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({theta: 90, rho: 1.0})
+                body: JSON.stringify({ led_index: currentLed })
             });
 
-            if (response.ok) {
-                await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for movement
-                directionStatus.classList.add('hidden');
-                directionQuestion.classList.remove('hidden');
-            } else {
-                throw new Error('Failed to move ball');
+            const data = await response.json();
+            if (!data.success) {
+                ledStatusText.textContent = 'Failed to light LED';
             }
         } catch (error) {
-            console.error('Direction test error:', error);
-            showStatusMessage(`Direction test failed: ${error.message}`, 'error');
-            testDirectionBtn.disabled = false;
-            directionStatus.classList.add('hidden');
+            console.error('Failed to light LED:', error);
+            ledStatusText.textContent = 'Error lighting LED';
         }
+    }
+
+    // LED navigation button handlers
+    ledPrev1.addEventListener('click', () => navigateToLED(currentLed - 1));
+    ledNext1.addEventListener('click', () => navigateToLED(currentLed + 1));
+    ledPrev5.addEventListener('click', () => navigateToLED(currentLed - 5));
+    ledNext5.addEventListener('click', () => navigateToLED(currentLed + 5));
+
+    // Reverse direction toggle
+    reverseDirectionToggle.addEventListener('change', () => {
+        reversed = reverseDirectionToggle.checked;
     });
 
-    // Direction confirmation
-    directionClockwise.addEventListener('click', () => completeCalibration(false));
-    directionCounterClockwise.addEventListener('click', () => completeCalibration(true));
+    // Confirm calibration
+    confirmCalibrationBtn.addEventListener('click', async () => {
+        await completeCalibration();
+    });
 
     // Complete calibration
-    async function completeCalibration(reverseDirection) {
-        reversed = reverseDirection;
-
+    async function completeCalibration() {
         try {
             // Save calibration settings
             const config = {
-                led_offset: selectedLed,
+                led_offset: currentLed,
                 reversed: reversed
             };
 
@@ -1977,7 +1932,7 @@ function initCalibrationWizard() {
 
             if (data.success) {
                 // Show completion
-                document.getElementById('finalLedOffset').textContent = selectedLed;
+                document.getElementById('finalLedOffset').textContent = currentLed;
                 document.getElementById('finalDirection').textContent = reversed ? 'Reversed (Counter-Clockwise)' : 'Normal (Clockwise)';
                 showStep('complete');
                 showStatusMessage('Calibration complete!', 'success');
