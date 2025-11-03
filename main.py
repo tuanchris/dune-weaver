@@ -496,30 +496,41 @@ async def set_scheduled_pause(request: ScheduledPauseRequest):
 
 @app.get("/api/homing-config")
 async def get_homing_config():
-    """Get homing configuration (mode and compass offset)."""
+    """Get homing configuration (mode, compass offset, and auto-homing settings)."""
     return {
         "homing_mode": state.homing,
-        "angular_homing_offset_degrees": state.angular_homing_offset_degrees
+        "angular_homing_offset_degrees": state.angular_homing_offset_degrees,
+        "auto_home_enabled": state.auto_home_enabled,
+        "auto_home_interval": state.auto_home_interval
     }
 
 class HomingConfigRequest(BaseModel):
     homing_mode: int = 0  # 0 = crash, 1 = sensor
     angular_homing_offset_degrees: float = 0.0
+    auto_home_enabled: bool = False
+    auto_home_interval: int = 10
 
 @app.post("/api/homing-config")
 async def set_homing_config(request: HomingConfigRequest):
-    """Set homing configuration (mode and compass offset)."""
+    """Set homing configuration (mode, compass offset, and auto-homing settings)."""
     try:
         # Validate homing mode
         if request.homing_mode not in [0, 1]:
             raise HTTPException(status_code=400, detail="Homing mode must be 0 (crash) or 1 (sensor)")
 
+        # Validate auto-homing interval
+        if request.auto_home_interval < 1 or request.auto_home_interval > 100:
+            raise HTTPException(status_code=400, detail="Auto-home interval must be between 1 and 100")
+
         state.homing = request.homing_mode
         state.angular_homing_offset_degrees = request.angular_homing_offset_degrees
+        state.auto_home_enabled = request.auto_home_enabled
+        state.auto_home_interval = request.auto_home_interval
         state.save()
 
         mode_name = "crash" if request.homing_mode == 0 else "sensor"
-        logger.info(f"Homing mode set to {mode_name}, compass offset set to {request.angular_homing_offset_degrees}°")
+        auto_home_status = f", auto-home: {'enabled' if request.auto_home_enabled else 'disabled'} (every {request.auto_home_interval} patterns)" if request.homing_mode == 1 else ""
+        logger.info(f"Homing mode set to {mode_name}, compass offset set to {request.angular_homing_offset_degrees}°{auto_home_status}")
         return {"success": True, "message": "Homing configuration updated"}
     except HTTPException:
         raise

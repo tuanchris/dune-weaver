@@ -1517,6 +1517,10 @@ async function initializeHomingConfig() {
     const homingModeSensor = document.getElementById('homingModeSensor');
     const angularOffsetInput = document.getElementById('angularOffsetInput');
     const compassOffsetContainer = document.getElementById('compassOffsetContainer');
+    const autoHomingContainer = document.getElementById('autoHomingContainer');
+    const autoHomeEnabled = document.getElementById('autoHomeEnabled');
+    const autoHomeIntervalContainer = document.getElementById('autoHomeIntervalContainer');
+    const autoHomeInterval = document.getElementById('autoHomeInterval');
     const saveHomingConfigButton = document.getElementById('saveHomingConfig');
     const homingInfoContent = document.getElementById('homingInfoContent');
 
@@ -1537,9 +1541,10 @@ async function initializeHomingConfig() {
     function updateHomingInfo() {
         const mode = getSelectedMode();
 
-        // Show/hide compass offset based on mode
+        // Show/hide compass offset and auto-homing based on mode
         if (mode === 0) {
             compassOffsetContainer.style.display = 'none';
+            if (autoHomingContainer) autoHomingContainer.style.display = 'none';
             homingInfoContent.innerHTML = `
                 <p class="font-medium text-blue-800">Crash Homing Mode:</p>
                 <ul class="mt-1 space-y-1 text-blue-700">
@@ -1551,6 +1556,7 @@ async function initializeHomingConfig() {
             `;
         } else {
             compassOffsetContainer.style.display = 'block';
+            if (autoHomingContainer) autoHomingContainer.style.display = 'block';
             homingInfoContent.innerHTML = `
                 <p class="font-medium text-blue-800">Sensor Homing Mode:</p>
                 <ul class="mt-1 space-y-1 text-blue-700">
@@ -1558,6 +1564,13 @@ async function initializeHomingConfig() {
                     <li>• Requires additional configuration</li>
                 </ul>
             `;
+        }
+    }
+
+    // Function to update auto-homing interval visibility based on checkbox
+    function updateAutoHomeIntervalVisibility() {
+        if (autoHomeIntervalContainer) {
+            autoHomeIntervalContainer.style.display = autoHomeEnabled.checked ? 'block' : 'none';
         }
     }
 
@@ -1574,15 +1587,28 @@ async function initializeHomingConfig() {
         }
 
         angularOffsetInput.value = data.angular_homing_offset_degrees || 0;
-        updateHomingInfo();
 
-        logMessage(`Loaded homing config: mode=${data.homing_mode}, offset=${data.angular_homing_offset_degrees}°`, LOG_TYPE.INFO);
+        // Set auto-homing settings
+        if (autoHomeEnabled) {
+            autoHomeEnabled.checked = data.auto_home_enabled || false;
+        }
+        if (autoHomeInterval) {
+            autoHomeInterval.value = data.auto_home_interval || 10;
+        }
+
+        updateHomingInfo();
+        updateAutoHomeIntervalVisibility();
+
+        logMessage(`Loaded homing config: mode=${data.homing_mode}, offset=${data.angular_homing_offset_degrees}°, auto-home=${data.auto_home_enabled}`, LOG_TYPE.INFO);
     } catch (error) {
         logMessage(`Error loading homing configuration: ${error.message}`, LOG_TYPE.ERROR);
         // Initialize with defaults if load fails
         homingModeCrash.checked = true;
         angularOffsetInput.value = 0;
+        if (autoHomeEnabled) autoHomeEnabled.checked = false;
+        if (autoHomeInterval) autoHomeInterval.value = 10;
         updateHomingInfo();
+        updateAutoHomeIntervalVisibility();
     }
 
     // Function to save homing configuration
@@ -1593,13 +1619,21 @@ async function initializeHomingConfig() {
         saveHomingConfigButton.innerHTML = '<span class="material-icons text-lg animate-spin">refresh</span><span class="truncate">Saving...</span>';
 
         try {
+            const payload = {
+                homing_mode: getSelectedMode(),
+                angular_homing_offset_degrees: parseFloat(angularOffsetInput.value) || 0
+            };
+
+            // Add auto-homing settings if elements exist
+            if (autoHomeEnabled && autoHomeInterval) {
+                payload.auto_home_enabled = autoHomeEnabled.checked;
+                payload.auto_home_interval = parseInt(autoHomeInterval.value) || 10;
+            }
+
             const response = await fetch('/api/homing-config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    homing_mode: getSelectedMode(),
-                    angular_homing_offset_degrees: parseFloat(angularOffsetInput.value) || 0
-                })
+                body: JSON.stringify(payload)
             });
 
             if (!response.ok) {
@@ -1629,5 +1663,8 @@ async function initializeHomingConfig() {
     // Event listeners
     homingModeCrash.addEventListener('change', updateHomingInfo);
     homingModeSensor.addEventListener('change', updateHomingInfo);
+    if (autoHomeEnabled) {
+        autoHomeEnabled.addEventListener('change', updateAutoHomeIntervalVisibility);
+    }
     saveHomingConfigButton.addEventListener('click', saveHomingConfig);
 }

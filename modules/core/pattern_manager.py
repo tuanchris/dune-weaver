@@ -794,6 +794,31 @@ async def run_theta_rho_file(file_path, is_playlist=False):
             start_idle_led_timeout()
             logger.debug("LED effect set to idle after pattern completion")
 
+        # Increment pattern count for auto-homing (only for non-clear patterns)
+        # This happens after pattern completes successfully (not stopped or skipped)
+        if not state.stop_requested and not state.skip_requested and not is_clear_file:
+            state.auto_home_pattern_count += 1
+            logger.info(f"Pattern completed. Auto-home count: {state.auto_home_pattern_count}/{state.auto_home_interval}")
+
+            # Check if we should auto-home
+            if (state.auto_home_enabled and
+                state.homing == 1 and  # Only for sensor homing mode
+                state.auto_home_interval > 0 and
+                state.auto_home_pattern_count >= state.auto_home_interval):
+
+                logger.info(f"Auto-homing triggered after {state.auto_home_pattern_count} patterns")
+                state.auto_home_pattern_count = 0  # Reset counter
+
+                # Perform homing
+                try:
+                    homing_success = await asyncio.to_thread(connection_manager.home)
+                    if homing_success:
+                        logger.info("Auto-homing completed successfully")
+                    else:
+                        logger.warning("Auto-homing failed")
+                except Exception as e:
+                    logger.error(f"Error during auto-homing: {e}")
+
         # Only clear state if not part of a playlist
         if not is_playlist:
             state.current_playing_file = None

@@ -45,6 +45,11 @@ class AppState:
         # After homing, theta will be set to this value
         self.angular_homing_offset_degrees = 0.0
 
+        # Auto-homing after X patterns (only for sensor homing mode)
+        self.auto_home_enabled = False  # Enable/disable auto-homing
+        self.auto_home_interval = 10  # Home after this many pattern runs
+        self.auto_home_pattern_count = 0  # Current count (runtime only, not persisted)
+
         self.STATE_FILE = "state.json"
         self.mqtt_handler = None  # Will be set by the MQTT handler
         self.conn = None
@@ -210,6 +215,8 @@ class AppState:
             "gear_ratio": self.gear_ratio,
             "homing": self.homing,
             "angular_homing_offset_degrees": self.angular_homing_offset_degrees,
+            "auto_home_enabled": self.auto_home_enabled,
+            "auto_home_interval": self.auto_home_interval,
             "current_playlist": self._current_playlist,
             "current_playlist_name": self._current_playlist_name,
             "current_playlist_index": self.current_playlist_index,
@@ -261,6 +268,9 @@ class AppState:
         self.gear_ratio = data.get('gear_ratio', 10)
         self.homing = data.get('homing', 0)
         self.angular_homing_offset_degrees = data.get('angular_homing_offset_degrees', 0.0)
+        self.auto_home_enabled = data.get('auto_home_enabled', False)
+        self.auto_home_interval = data.get('auto_home_interval', 10)
+        # Note: auto_home_pattern_count is not loaded - it's runtime only
         self._current_playlist = data.get("current_playlist", None)
         self._current_playlist_name = data.get("current_playlist_name", None)
         self.current_playlist_index = data.get("current_playlist_index", None)
