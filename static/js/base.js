@@ -871,7 +871,22 @@ function syncModalControls(status) {
             modalNextPattern.textContent = 'None';
         }
     }
-    
+
+    // Pause countdown timer
+    const modalPauseCountdown = document.getElementById('modal-pause-countdown');
+    const modalPauseTime = document.getElementById('modal-pause-time');
+    if (modalPauseCountdown && modalPauseTime) {
+        // Show countdown if we're pausing between patterns (pause_time_remaining > 0)
+        if (status.pause_time_remaining && status.pause_time_remaining > 0) {
+            const minutes = Math.floor(status.pause_time_remaining / 60);
+            const seconds = Math.floor(status.pause_time_remaining % 60);
+            modalPauseTime.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            modalPauseCountdown.classList.remove('hidden');
+        } else {
+            modalPauseCountdown.classList.add('hidden');
+        }
+    }
+
     // Pause button
     const modalPauseBtn = document.getElementById('modal-pause-button');
     if (modalPauseBtn) {

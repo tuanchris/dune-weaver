@@ -453,8 +453,14 @@
                     </div>
                     <div class="flex items-center justify-between">
                         <div class="text-base text-gray-500">
-                            Next:
-                            <span class="text-gray-700 font-medium" id="modal-next-pattern">None</span>
+                            <div id="modal-pause-countdown" class="hidden mb-1">
+                                <span class="material-icons text-sm align-middle mr-1">schedule</span>
+                                Pause: <span class="text-blue-600 dark:text-blue-400 font-semibold" id="modal-pause-time">--</span>
+                            </div>
+                            <div id="modal-next-container">
+                                Next:
+                                <span class="text-gray-700 font-medium" id="modal-next-pattern">None</span>
+                            </div>
                         </div>
                         <div class="flex items-center gap-3 text-sm">
                             <span class="text-gray-500">Speed:</span>
