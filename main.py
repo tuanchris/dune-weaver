@@ -1878,6 +1878,118 @@ async def dw_leds_get_effect_settings():
         "playing_effect": state.dw_led_playing_effect
     }
 
+# Per-pattern LED effect endpoints
+@app.get("/api/patterns/{pattern_path:path}/led_effect")
+async def get_pattern_led_effect(pattern_path: str, effect_type: str = "playing"):
+    """
+    Get LED effect settings for a specific pattern.
+
+    Args:
+        pattern_path: Pattern filename (relative path)
+        effect_type: 'playing' or 'idle' (default: 'playing')
+
+    Returns:
+        LED effect settings or None if not configured
+    """
+    from modules.core.cache_manager import get_pattern_led_effect
+
+    if effect_type not in ["playing", "idle"]:
+        raise HTTPException(status_code=400, detail="effect_type must be 'playing' or 'idle'")
+
+    try:
+        effect_settings = get_pattern_led_effect(pattern_path, effect_type)
+        return {
+            "pattern": pattern_path,
+            "effect_type": effect_type,
+            "settings": effect_settings
+        }
+    except Exception as e:
+        logger.error(f"Failed to get pattern LED effect: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/patterns/{pattern_path:path}/led_effect")
+async def set_pattern_led_effect(pattern_path: str, request: dict):
+    """
+    Set LED effect settings for a specific pattern.
+
+    Request body:
+    {
+        "effect_type": "playing" or "idle",
+        "effect_id": int,
+        "palette_id": int,
+        "speed": int,
+        "intensity": int,
+        "color1": "#RRGGBB",
+        "color2": "#RRGGBB",
+        "color3": "#RRGGBB"
+    }
+    """
+    from modules.core.cache_manager import set_pattern_led_effect
+
+    effect_type = request.get("effect_type", "playing")
+    if effect_type not in ["playing", "idle"]:
+        raise HTTPException(status_code=400, detail="effect_type must be 'playing' or 'idle'")
+
+    # Extract effect settings from request
+    effect_settings = {
+        "effect_id": request.get("effect_id"),
+        "palette_id": request.get("palette_id"),
+        "speed": request.get("speed"),
+        "intensity": request.get("intensity"),
+        "color1": request.get("color1"),
+        "color2": request.get("color2"),
+        "color3": request.get("color3")
+    }
+
+    # Validate required fields
+    if effect_settings["effect_id"] is None:
+        raise HTTPException(status_code=400, detail="effect_id is required")
+
+    try:
+        success = set_pattern_led_effect(pattern_path, effect_type, effect_settings)
+        if success:
+            logger.info(f"Saved {effect_type} LED effect for pattern: {pattern_path}")
+            return {
+                "success": True,
+                "pattern": pattern_path,
+                "effect_type": effect_type,
+                "settings": effect_settings
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to save LED effect settings")
+    except Exception as e:
+        logger.error(f"Failed to set pattern LED effect: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/patterns/{pattern_path:path}/led_effect")
+async def clear_pattern_led_effect(pattern_path: str, effect_type: str = None):
+    """
+    Clear LED effect settings for a specific pattern.
+
+    Args:
+        pattern_path: Pattern filename (relative path)
+        effect_type: 'playing', 'idle', or None to clear all (default: None)
+    """
+    from modules.core.cache_manager import clear_pattern_led_effect
+
+    if effect_type and effect_type not in ["playing", "idle"]:
+        raise HTTPException(status_code=400, detail="effect_type must be 'playing', 'idle', or omitted")
+
+    try:
+        success = clear_pattern_led_effect(pattern_path, effect_type)
+        if success:
+            logger.info(f"Cleared LED effect for pattern: {pattern_path} (type: {effect_type or 'all'})")
+            return {
+                "success": True,
+                "pattern": pattern_path,
+                "effect_type": effect_type or "all"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to clear LED effect settings")
+    except Exception as e:
+        logger.error(f"Failed to clear pattern LED effect: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/dw_leds/idle_timeout")
 async def dw_leds_set_idle_timeout(request: dict):
     """Configure LED idle timeout settings"""

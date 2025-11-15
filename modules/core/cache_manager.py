@@ -814,7 +814,166 @@ async def list_theta_rho_files_async():
                 relative_path = relative_path.replace(os.sep, '/')
                 files.append(relative_path)
         return files
-    
+
     files = await asyncio.to_thread(_walk_files)
     logger.debug(f"Found {len(files)} theta-rho files")
     return files  # Already filtered for .thr
+
+# LED Effect Management for Patterns
+
+def get_pattern_led_effect(pattern_file, effect_type='playing'):
+    """
+    Get LED effect settings for a specific pattern.
+
+    Args:
+        pattern_file: Pattern filename (relative path)
+        effect_type: 'playing' or 'idle' (default: 'playing')
+
+    Returns:
+        dict with LED effect settings, or None if not configured
+        Format: {
+            'effect_id': int,
+            'palette_id': int,
+            'speed': int,
+            'intensity': int,
+            'color1': str (hex),
+            'color2': str (hex),
+            'color3': str (hex)
+        }
+    """
+    try:
+        cache_data = load_metadata_cache()
+        data_section = cache_data.get('data', {})
+
+        if pattern_file not in data_section:
+            return None
+
+        metadata = data_section[pattern_file].get('metadata', {})
+        led_effect = metadata.get('led_effect', {})
+
+        return led_effect.get(effect_type)
+    except Exception as e:
+        logger.warning(f"Failed to get LED effect for {pattern_file}: {str(e)}")
+        return None
+
+async def get_pattern_led_effect_async(pattern_file, effect_type='playing'):
+    """Async version: Get LED effect settings for a specific pattern."""
+    try:
+        cache_data = await load_metadata_cache_async()
+        data_section = cache_data.get('data', {})
+
+        if pattern_file not in data_section:
+            return None
+
+        metadata = data_section[pattern_file].get('metadata', {})
+        led_effect = metadata.get('led_effect', {})
+
+        return led_effect.get(effect_type)
+    except Exception as e:
+        logger.warning(f"Failed to get LED effect for {pattern_file}: {str(e)}")
+        return None
+
+def set_pattern_led_effect(pattern_file, effect_type, effect_settings):
+    """
+    Set LED effect settings for a specific pattern.
+
+    Args:
+        pattern_file: Pattern filename (relative path)
+        effect_type: 'playing' or 'idle'
+        effect_settings: dict with LED effect configuration
+            {
+                'effect_id': int,
+                'palette_id': int,
+                'speed': int,
+                'intensity': int,
+                'color1': str (hex),
+                'color2': str (hex),
+                'color3': str (hex)
+            }
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        cache_data = load_metadata_cache()
+        data_section = cache_data.get('data', {})
+
+        if pattern_file not in data_section:
+            # Initialize metadata entry if it doesn't exist
+            pattern_path = os.path.join(THETA_RHO_DIR, pattern_file)
+            if not os.path.exists(pattern_path):
+                logger.error(f"Pattern file not found: {pattern_path}")
+                return False
+
+            # Create minimal metadata entry
+            file_mtime = os.path.getmtime(pattern_path)
+            data_section[pattern_file] = {
+                'mtime': file_mtime,
+                'metadata': {}
+            }
+
+        # Get or create led_effect section
+        metadata = data_section[pattern_file].get('metadata', {})
+        if 'led_effect' not in metadata:
+            metadata['led_effect'] = {}
+
+        # Set the effect settings
+        metadata['led_effect'][effect_type] = effect_settings
+        data_section[pattern_file]['metadata'] = metadata
+
+        # Save updated cache
+        cache_data['data'] = data_section
+        save_metadata_cache(cache_data)
+
+        logger.info(f"Saved {effect_type} LED effect for pattern: {pattern_file}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to set LED effect for {pattern_file}: {str(e)}")
+        return False
+
+def clear_pattern_led_effect(pattern_file, effect_type=None):
+    """
+    Clear LED effect settings for a specific pattern.
+
+    Args:
+        pattern_file: Pattern filename (relative path)
+        effect_type: 'playing', 'idle', or None to clear all (default: None)
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        cache_data = load_metadata_cache()
+        data_section = cache_data.get('data', {})
+
+        if pattern_file not in data_section:
+            return True  # Nothing to clear
+
+        metadata = data_section[pattern_file].get('metadata', {})
+
+        if 'led_effect' not in metadata:
+            return True  # Nothing to clear
+
+        if effect_type is None:
+            # Clear all LED effects
+            del metadata['led_effect']
+            logger.info(f"Cleared all LED effects for pattern: {pattern_file}")
+        else:
+            # Clear specific effect type
+            if effect_type in metadata['led_effect']:
+                del metadata['led_effect'][effect_type]
+                logger.info(f"Cleared {effect_type} LED effect for pattern: {pattern_file}")
+
+            # Remove led_effect section if empty
+            if not metadata['led_effect']:
+                del metadata['led_effect']
+
+        # Save updated cache
+        data_section[pattern_file]['metadata'] = metadata
+        cache_data['data'] = data_section
+        save_metadata_cache(cache_data)
+
+        return True
+    except Exception as e:
+        logger.error(f"Failed to clear LED effect for {pattern_file}: {str(e)}")
+        return False
