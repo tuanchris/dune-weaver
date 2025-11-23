@@ -773,7 +773,7 @@ Page {
                                                     font.bold: true
                                                     color: pauseGrid.currentSelection === "1 hour" ? "white" : Components.ThemeManager.textPrimary
                                                 }
-                                                
+
                                                 MouseArea {
                                                     anchors.fill: parent
                                                     onClicked: {
@@ -785,7 +785,187 @@ Page {
                                                     }
                                                 }
                                             }
-                                            
+                                        }
+
+                                        // Second row for longer hour options
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 8
+
+                                            // 2h button
+                                            Rectangle {
+                                                Layout.preferredWidth: 60
+                                                Layout.preferredHeight: 40
+                                                color: pauseGrid.currentSelection === "2 hour" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
+                                                border.color: pauseGrid.currentSelection === "2 hour" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
+                                                border.width: 2
+                                                radius: 8
+
+                                                Label {
+                                                    anchors.centerIn: parent
+                                                    text: "2h"
+                                                    font.pixelSize: 12
+                                                    font.bold: true
+                                                    color: pauseGrid.currentSelection === "2 hour" ? "white" : Components.ThemeManager.textPrimary
+                                                }
+
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    onClicked: {
+                                                        if (backend) {
+                                                            backend.setPauseByOption("2 hour")
+                                                            pauseGrid.currentSelection = "2 hour"
+                                                            pauseTime = 7200
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // 3h button
+                                            Rectangle {
+                                                Layout.preferredWidth: 60
+                                                Layout.preferredHeight: 40
+                                                color: pauseGrid.currentSelection === "3 hour" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
+                                                border.color: pauseGrid.currentSelection === "3 hour" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
+                                                border.width: 2
+                                                radius: 8
+
+                                                Label {
+                                                    anchors.centerIn: parent
+                                                    text: "3h"
+                                                    font.pixelSize: 12
+                                                    font.bold: true
+                                                    color: pauseGrid.currentSelection === "3 hour" ? "white" : Components.ThemeManager.textPrimary
+                                                }
+
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    onClicked: {
+                                                        if (backend) {
+                                                            backend.setPauseByOption("3 hour")
+                                                            pauseGrid.currentSelection = "3 hour"
+                                                            pauseTime = 10800
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // 4h button
+                                            Rectangle {
+                                                Layout.preferredWidth: 60
+                                                Layout.preferredHeight: 40
+                                                color: pauseGrid.currentSelection === "4 hour" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
+                                                border.color: pauseGrid.currentSelection === "4 hour" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
+                                                border.width: 2
+                                                radius: 8
+
+                                                Label {
+                                                    anchors.centerIn: parent
+                                                    text: "4h"
+                                                    font.pixelSize: 12
+                                                    font.bold: true
+                                                    color: pauseGrid.currentSelection === "4 hour" ? "white" : Components.ThemeManager.textPrimary
+                                                }
+
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    onClicked: {
+                                                        if (backend) {
+                                                            backend.setPauseByOption("4 hour")
+                                                            pauseGrid.currentSelection = "4 hour"
+                                                            pauseTime = 14400
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // 5h button
+                                            Rectangle {
+                                                Layout.preferredWidth: 60
+                                                Layout.preferredHeight: 40
+                                                color: pauseGrid.currentSelection === "5 hour" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
+                                                border.color: pauseGrid.currentSelection === "5 hour" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
+                                                border.width: 2
+                                                radius: 8
+
+                                                Label {
+                                                    anchors.centerIn: parent
+                                                    text: "5h"
+                                                    font.pixelSize: 12
+                                                    font.bold: true
+                                                    color: pauseGrid.currentSelection === "5 hour" ? "white" : Components.ThemeManager.textPrimary
+                                                }
+
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    onClicked: {
+                                                        if (backend) {
+                                                            backend.setPauseByOption("5 hour")
+                                                            pauseGrid.currentSelection = "5 hour"
+                                                            pauseTime = 18000
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // 6h button
+                                            Rectangle {
+                                                Layout.preferredWidth: 60
+                                                Layout.preferredHeight: 40
+                                                color: pauseGrid.currentSelection === "6 hour" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
+                                                border.color: pauseGrid.currentSelection === "6 hour" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
+                                                border.width: 2
+                                                radius: 8
+
+                                                Label {
+                                                    anchors.centerIn: parent
+                                                    text: "6h"
+                                                    font.pixelSize: 12
+                                                    font.bold: true
+                                                    color: pauseGrid.currentSelection === "6 hour" ? "white" : Components.ThemeManager.textPrimary
+                                                }
+
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    onClicked: {
+                                                        if (backend) {
+                                                            backend.setPauseByOption("6 hour")
+                                                            pauseGrid.currentSelection = "6 hour"
+                                                            pauseTime = 21600
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // 12h button
+                                            Rectangle {
+                                                Layout.preferredWidth: 60
+                                                Layout.preferredHeight: 40
+                                                color: pauseGrid.currentSelection === "12 hour" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
+                                                border.color: pauseGrid.currentSelection === "12 hour" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
+                                                border.width: 2
+                                                radius: 8
+
+                                                Label {
+                                                    anchors.centerIn: parent
+                                                    text: "12h"
+                                                    font.pixelSize: 12
+                                                    font.bold: true
+                                                    color: pauseGrid.currentSelection === "12 hour" ? "white" : Components.ThemeManager.textPrimary
+                                                }
+
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    onClicked: {
+                                                        if (backend) {
+                                                            backend.setPauseByOption("12 hour")
+                                                            pauseGrid.currentSelection = "12 hour"
+                                                            pauseTime = 43200
+                                                        }
+                                                    }
+                                                }
+                                            }
+
                                             // Update selection when backend changes
                                             Connections {
                                                 target: backend

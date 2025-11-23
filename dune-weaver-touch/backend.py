@@ -44,10 +44,16 @@ class Backend(QObject):
     PAUSE_OPTIONS = {
         "0s": 0,        # No pause
         "1 min": 60,    # 1 minute
-        "5 min": 300,   # 5 minutes  
+        "5 min": 300,   # 5 minutes
         "15 min": 900,  # 15 minutes
         "30 min": 1800, # 30 minutes
-        "1 hour": 3600  # 1 hour
+        "1 hour": 3600, # 1 hour
+        "2 hour": 7200, # 2 hours
+        "3 hour": 10800, # 3 hours
+        "4 hour": 14400, # 4 hours
+        "5 hour": 18000, # 5 hours
+        "6 hour": 21600, # 6 hours
+        "12 hour": 43200 # 12 hours
     }
     
     # Signals
@@ -65,14 +71,20 @@ class Backend(QObject):
     screenStateChanged = Signal(bool)  # True = on, False = off
     screenTimeoutChanged = Signal(int)  # New signal for timeout changes
     pauseBetweenPatternsChanged = Signal(int)  # New signal for pause changes
-    
+
     # Backend connection status signals
     backendConnectionChanged = Signal(bool)  # True = backend reachable, False = unreachable
     reconnectStatusChanged = Signal(str)  # Current reconnection status message
+
+    # LED control signals
+    ledStatusChanged = Signal()
+    ledEffectsLoaded = Signal(list)  # List of available effects
+    ledPalettesLoaded = Signal(list)  # List of available palettes
     
     def __init__(self):
         super().__init__()
-        self.base_url = "http://localhost:8080"
+        # Load base URL from environment variable, default to localhost
+        self.base_url = os.environ.get("DUNE_WEAVER_URL", "http://localhost:8080")
         
         # Initialize all status properties first
         self._current_file = ""
@@ -89,6 +101,17 @@ class Backend(QObject):
         # Backend connection status
         self._backend_connected = False
         self._reconnect_status = "Connecting to backend..."
+
+        # LED control state
+        self._led_provider = "none"  # "none", "wled", or "dw_leds"
+        self._led_connected = False
+        self._led_power_on = False
+        self._led_brightness = 100
+        self._led_effects = []
+        self._led_palettes = []
+        self._led_current_effect = 0
+        self._led_current_palette = 0
+        self._led_color = "#ffffff"
         
         # WebSocket for status with reconnection
         self.ws = QWebSocket()
@@ -209,9 +232,11 @@ class Backend(QObject):
         self.connectionChanged.emit()
         self.backendConnectionChanged.emit(True)
         self.reconnectStatusChanged.emit("Connected to backend")
-        
+
         # Load initial settings when we connect
         self.loadControlSettings()
+        # Also load LED config automatically
+        self.loadLedConfig()
     
     @Slot()
     def _on_ws_disconnected(self):
@@ -263,8 +288,9 @@ class Backend(QObject):
         if self.ws.state() != QAbstractSocket.SocketState.UnconnectedState:
             self.ws.close()
         
-        # Attempt new connection
-        self.ws.open("ws://localhost:8080/ws/status")
+        # Attempt new connection - derive WebSocket URL from base URL
+        ws_url = self.base_url.replace("http://", "ws://").replace("https://", "wss://") + "/ws/status"
+        self.ws.open(ws_url)
     
     @Slot()
     def retryConnection(self):
@@ -1235,5 +1261,312 @@ class Backend(QObject):
                 
         except Exception as e:
             print(f"❌ Error monitoring touch input: {e}")
-        
+
         print("👆 Touch monitoring stopped")
+
+    # ==================== LED Control Methods ====================
+
+    # LED Properties
+    @Property(str, notify=ledStatusChanged)
+    def ledProvider(self):
+        return self._led_provider
+
+    @Property(bool, notify=ledStatusChanged)
+    def ledConnected(self):
+        return self._led_connected
+
+    @Property(bool, notify=ledStatusChanged)
+    def ledPowerOn(self):
+        return self._led_power_on
+
+    @Property(int, notify=ledStatusChanged)
+    def ledBrightness(self):
+        return self._led_brightness
+
+    @Property(list, notify=ledEffectsLoaded)
+    def ledEffects(self):
+        return self._led_effects
+
+    @Property(list, notify=ledPalettesLoaded)
+    def ledPalettes(self):
+        return self._led_palettes
+
+    @Property(int, notify=ledStatusChanged)
+    def ledCurrentEffect(self):
+        return self._led_current_effect
+
+    @Property(int, notify=ledStatusChanged)
+    def ledCurrentPalette(self):
+        return self._led_current_palette
+
+    @Property(str, notify=ledStatusChanged)
+    def ledColor(self):
+        return self._led_color
+
+    @Slot()
+    def loadLedConfig(self):
+        """Load LED configuration from the server"""
+        print("💡 Loading LED configuration...")
+        asyncio.create_task(self._load_led_config())
+
+    async def _load_led_config(self):
+        if not self.session:
+            print("⚠️ Session not ready for LED config")
+            return
+
+        try:
+            timeout = aiohttp.ClientTimeout(total=5)
+            async with self.session.get(f"{self.base_url}/get_led_config", timeout=timeout) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    self._led_provider = data.get("provider", "none")
+                    print(f"💡 LED provider: {self._led_provider}")
+
+                    if self._led_provider == "dw_leds":
+                        # Load DW LEDs status
+                        await self._load_led_status()
+                        await self._load_led_effects()
+                        await self._load_led_palettes()
+
+                    self.ledStatusChanged.emit()
+                else:
+                    print(f"❌ Failed to get LED config: {resp.status}")
+        except Exception as e:
+            print(f"💥 Exception loading LED config: {e}")
+
+    async def _load_led_status(self):
+        """Load current LED status"""
+        if not self.session:
+            return
+
+        try:
+            timeout = aiohttp.ClientTimeout(total=5)
+            async with self.session.get(f"{self.base_url}/api/dw_leds/status", timeout=timeout) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    self._led_connected = data.get("connected", False)
+                    self._led_power_on = data.get("power_on", False)
+                    self._led_brightness = data.get("brightness", 100)
+                    self._led_current_effect = data.get("current_effect", 0)
+                    self._led_current_palette = data.get("current_palette", 0)
+                    print(f"💡 LED status: connected={self._led_connected}, power={self._led_power_on}, brightness={self._led_brightness}")
+                    self.ledStatusChanged.emit()
+        except Exception as e:
+            print(f"💥 Exception loading LED status: {e}")
+
+    async def _load_led_effects(self):
+        """Load available LED effects"""
+        if not self.session:
+            return
+
+        try:
+            timeout = aiohttp.ClientTimeout(total=5)
+            async with self.session.get(f"{self.base_url}/api/dw_leds/effects", timeout=timeout) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    # API returns effects as [[id, name], ...] arrays
+                    raw_effects = data.get("effects", [])
+                    # Convert to list of dicts for easier use in QML
+                    self._led_effects = [{"id": e[0], "name": e[1]} for e in raw_effects if len(e) >= 2]
+                    print(f"💡 Loaded {len(self._led_effects)} LED effects")
+                    self.ledEffectsLoaded.emit(self._led_effects)
+        except Exception as e:
+            print(f"💥 Exception loading LED effects: {e}")
+
+    async def _load_led_palettes(self):
+        """Load available LED palettes"""
+        if not self.session:
+            return
+
+        try:
+            timeout = aiohttp.ClientTimeout(total=5)
+            async with self.session.get(f"{self.base_url}/api/dw_leds/palettes", timeout=timeout) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    # API returns palettes as [[id, name], ...] arrays
+                    raw_palettes = data.get("palettes", [])
+                    # Convert to list of dicts for easier use in QML
+                    self._led_palettes = [{"id": p[0], "name": p[1]} for p in raw_palettes if len(p) >= 2]
+                    print(f"💡 Loaded {len(self._led_palettes)} LED palettes")
+                    self.ledPalettesLoaded.emit(self._led_palettes)
+        except Exception as e:
+            print(f"💥 Exception loading LED palettes: {e}")
+
+    @Slot()
+    def refreshLedStatus(self):
+        """Refresh LED status from server"""
+        print("💡 Refreshing LED status...")
+        asyncio.create_task(self._load_led_status())
+
+    @Slot()
+    def toggleLedPower(self):
+        """Toggle LED power on/off"""
+        print("💡 Toggling LED power...")
+        asyncio.create_task(self._toggle_led_power())
+
+    async def _toggle_led_power(self):
+        if not self.session:
+            self.errorOccurred.emit("Backend not ready")
+            return
+
+        try:
+            async with self.session.post(
+                f"{self.base_url}/api/dw_leds/power",
+                json={"state": 2}  # Toggle
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    self._led_power_on = data.get("power_on", False)
+                    self._led_connected = data.get("connected", False)
+                    print(f"💡 LED power toggled: {self._led_power_on}")
+                    self.ledStatusChanged.emit()
+                else:
+                    self.errorOccurred.emit(f"Failed to toggle LED power: {resp.status}")
+        except Exception as e:
+            print(f"💥 Exception toggling LED power: {e}")
+            self.errorOccurred.emit(str(e))
+
+    @Slot(bool)
+    def setLedPower(self, on):
+        """Set LED power state (True=on, False=off)"""
+        print(f"💡 Setting LED power: {on}")
+        asyncio.create_task(self._set_led_power(on))
+
+    async def _set_led_power(self, on):
+        if not self.session:
+            self.errorOccurred.emit("Backend not ready")
+            return
+
+        try:
+            async with self.session.post(
+                f"{self.base_url}/api/dw_leds/power",
+                json={"state": 1 if on else 0}
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    self._led_power_on = data.get("power_on", False)
+                    self._led_connected = data.get("connected", False)
+                    print(f"💡 LED power set: {self._led_power_on}")
+                    self.ledStatusChanged.emit()
+                else:
+                    self.errorOccurred.emit(f"Failed to set LED power: {resp.status}")
+        except Exception as e:
+            print(f"💥 Exception setting LED power: {e}")
+            self.errorOccurred.emit(str(e))
+
+    @Slot(int)
+    def setLedBrightness(self, value):
+        """Set LED brightness (0-100)"""
+        print(f"💡 Setting LED brightness: {value}")
+        asyncio.create_task(self._set_led_brightness(value))
+
+    async def _set_led_brightness(self, value):
+        if not self.session:
+            self.errorOccurred.emit("Backend not ready")
+            return
+
+        try:
+            async with self.session.post(
+                f"{self.base_url}/api/dw_leds/brightness",
+                json={"value": value}
+            ) as resp:
+                if resp.status == 200:
+                    self._led_brightness = value
+                    print(f"💡 LED brightness set: {value}")
+                    self.ledStatusChanged.emit()
+                else:
+                    self.errorOccurred.emit(f"Failed to set brightness: {resp.status}")
+        except Exception as e:
+            print(f"💥 Exception setting LED brightness: {e}")
+            self.errorOccurred.emit(str(e))
+
+    @Slot(int, int, int)
+    def setLedColor(self, r, g, b):
+        """Set LED color using RGB values"""
+        print(f"💡 Setting LED color: RGB({r}, {g}, {b})")
+        asyncio.create_task(self._set_led_color(r, g, b))
+
+    async def _set_led_color(self, r, g, b):
+        if not self.session:
+            self.errorOccurred.emit("Backend not ready")
+            return
+
+        try:
+            async with self.session.post(
+                f"{self.base_url}/api/dw_leds/color",
+                json={"color": [r, g, b]}
+            ) as resp:
+                if resp.status == 200:
+                    self._led_color = f"#{r:02x}{g:02x}{b:02x}"
+                    print(f"💡 LED color set: {self._led_color}")
+                    self.ledStatusChanged.emit()
+                else:
+                    self.errorOccurred.emit(f"Failed to set color: {resp.status}")
+        except Exception as e:
+            print(f"💥 Exception setting LED color: {e}")
+            self.errorOccurred.emit(str(e))
+
+    @Slot(str)
+    def setLedColorHex(self, hexColor):
+        """Set LED color using hex string (e.g., '#ff0000')"""
+        # Parse hex color
+        hexColor = hexColor.lstrip('#')
+        if len(hexColor) == 6:
+            r = int(hexColor[0:2], 16)
+            g = int(hexColor[2:4], 16)
+            b = int(hexColor[4:6], 16)
+            self.setLedColor(r, g, b)
+        else:
+            print(f"⚠️ Invalid hex color: {hexColor}")
+
+    @Slot(int)
+    def setLedEffect(self, effectId):
+        """Set LED effect by ID"""
+        print(f"💡 Setting LED effect: {effectId}")
+        asyncio.create_task(self._set_led_effect(effectId))
+
+    async def _set_led_effect(self, effectId):
+        if not self.session:
+            self.errorOccurred.emit("Backend not ready")
+            return
+
+        try:
+            async with self.session.post(
+                f"{self.base_url}/api/dw_leds/effect",
+                json={"effect_id": effectId}
+            ) as resp:
+                if resp.status == 200:
+                    self._led_current_effect = effectId
+                    print(f"💡 LED effect set: {effectId}")
+                    self.ledStatusChanged.emit()
+                else:
+                    self.errorOccurred.emit(f"Failed to set effect: {resp.status}")
+        except Exception as e:
+            print(f"💥 Exception setting LED effect: {e}")
+            self.errorOccurred.emit(str(e))
+
+    @Slot(int)
+    def setLedPalette(self, paletteId):
+        """Set LED palette by ID"""
+        print(f"💡 Setting LED palette: {paletteId}")
+        asyncio.create_task(self._set_led_palette(paletteId))
+
+    async def _set_led_palette(self, paletteId):
+        if not self.session:
+            self.errorOccurred.emit("Backend not ready")
+            return
+
+        try:
+            async with self.session.post(
+                f"{self.base_url}/api/dw_leds/palette",
+                json={"palette_id": paletteId}
+            ) as resp:
+                if resp.status == 200:
+                    self._led_current_palette = paletteId
+                    print(f"💡 LED palette set: {paletteId}")
+                    self.ledStatusChanged.emit()
+                else:
+                    self.errorOccurred.emit(f"Failed to set palette: {resp.status}")
+        except Exception as e:
+            print(f"💥 Exception setting LED palette: {e}")
+            self.errorOccurred.emit(str(e))

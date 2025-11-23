@@ -53,15 +53,25 @@ Rectangle {
             active: bottomNav.currentIndex === 2
             onClicked: bottomNav.tabClicked(2)
         }
-        
-        // Execution Tab
+
+        // LED Control Tab (index 3)
+        BottomNavTab {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            icon: "lightbulb"
+            text: "LED"
+            active: bottomNav.currentIndex === 3
+            onClicked: bottomNav.tabClicked(3)
+        }
+
+        // Execution Tab (index 4)
         BottomNavTab {
             Layout.fillWidth: true
             Layout.fillHeight: true
             icon: "play_arrow"
             text: "Execution"
-            active: bottomNav.currentIndex === 3
-            onClicked: bottomNav.tabClicked(3)
+            active: bottomNav.currentIndex === 4
+            onClicked: bottomNav.tabClicked(4)
         }
     }
 }

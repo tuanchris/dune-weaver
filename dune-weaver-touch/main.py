@@ -10,6 +10,10 @@ from PySide6.QtGui import QGuiApplication, QTouchEvent, QMouseEvent
 from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterType
 from qasync import QEventLoop
 
+# Load environment variables from .env file if it exists
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent / ".env")
+
 from backend import Backend
 from models.pattern_model import PatternModel
 from models.playlist_model import PlaylistModel

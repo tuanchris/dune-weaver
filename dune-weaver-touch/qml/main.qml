@@ -28,16 +28,16 @@ ApplicationWindow {
         if (shouldNavigateToExecution) {
             console.log("🎯 Navigating to execution page")
             console.log("🎯 Current stack depth:", stackView.depth)
-            
+
             // If we're in a sub-page (like PatternDetailPage), pop back to main view first
             if (stackView.depth > 1) {
                 console.log("🎯 Popping back to main view first")
                 stackView.pop()
             }
-            
-            // Then navigate to ExecutionPage tab
-            console.log("🎯 Setting currentPageIndex to 3")
-            currentPageIndex = 3
+
+            // Then navigate to ExecutionPage tab (index 4)
+            console.log("🎯 Setting currentPageIndex to 4")
+            currentPageIndex = 4
             shouldNavigateToExecution = false
         }
     }
@@ -167,8 +167,16 @@ ApplicationWindow {
                             item.backend = backend
                         }
                     }
-                    
-                    // Execution Page
+
+                    // LED Control Page (index 3)
+                    Loader {
+                        source: "pages/LedControlPage.qml"
+                        onLoaded: {
+                            item.backend = backend
+                        }
+                    }
+
+                    // Execution Page (index 4)
                     Loader {
                         source: "pages/ExecutionPage.qml"
                         onLoaded: {

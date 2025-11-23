@@ -40,6 +40,7 @@ Rectangle {
                     case "list_alt": return "☰"    // U+2630 - Hamburger menu, widely supported
                     case "table_chart": return "⚙"  // U+2699 - Gear without variant selector
                     case "play_arrow": return "▶"   // U+25B6 - Play without variant selector
+                    case "lightbulb": return "☀"   // U+2600 - Sun symbol for LED
                     default: {
                         console.log("Unknown icon:", iconValue, "- using default")
                         return "□"  // U+25A1 - Simple box, universally supported
