@@ -877,11 +877,11 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                     logger.info("Execution stopped")
                     return
 
-                # Check if we need to auto-home before this pattern
-                # Auto-home happens right after the clear pattern, before the actual pattern
                 current_is_clear = is_clear_pattern(file_path)
 
-                if not current_is_clear and state.auto_home_enabled:
+                # Check if we need to auto-home before this clear pattern
+                # Auto-home happens after pause, before the clear pattern runs
+                if current_is_clear and state.auto_home_enabled:
                     # Check if we've reached the pattern threshold
                     if state.patterns_since_last_home >= state.auto_home_after_patterns:
                         logger.info(f"Auto-homing triggered after {state.patterns_since_last_home} patterns")
