@@ -45,6 +45,12 @@ class AppState:
         # After homing, theta will be set to this value
         self.angular_homing_offset_degrees = 0.0
 
+        # Auto-homing settings for playlists
+        # When enabled, performs homing after X patterns during playlist execution
+        self.auto_home_enabled = False
+        self.auto_home_after_patterns = 5  # Number of patterns after which to auto-home
+        self.patterns_since_last_home = 0  # Counter for patterns played since last home
+
         self.STATE_FILE = "state.json"
         self.mqtt_handler = None  # Will be set by the MQTT handler
         self.conn = None
@@ -210,6 +216,8 @@ class AppState:
             "gear_ratio": self.gear_ratio,
             "homing": self.homing,
             "angular_homing_offset_degrees": self.angular_homing_offset_degrees,
+            "auto_home_enabled": self.auto_home_enabled,
+            "auto_home_after_patterns": self.auto_home_after_patterns,
             "current_playlist": self._current_playlist,
             "current_playlist_name": self._current_playlist_name,
             "current_playlist_index": self.current_playlist_index,
@@ -261,6 +269,8 @@ class AppState:
         self.gear_ratio = data.get('gear_ratio', 10)
         self.homing = data.get('homing', 0)
         self.angular_homing_offset_degrees = data.get('angular_homing_offset_degrees', 0.0)
+        self.auto_home_enabled = data.get('auto_home_enabled', False)
+        self.auto_home_after_patterns = data.get('auto_home_after_patterns', 5)
         self._current_playlist = data.get("current_playlist", None)
         self._current_playlist_name = data.get("current_playlist_name", None)
         self.current_playlist_index = data.get("current_playlist_index", None)
