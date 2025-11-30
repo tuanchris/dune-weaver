@@ -688,7 +688,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
         start_time = time.time()
         if state.led_controller:
             logger.info(f"Setting LED to playing effect: {state.dw_led_playing_effect}")
-            state.led_controller.effect_playing(state.dw_led_playing_effect)
+            await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
             # Cancel idle timeout when playing starts
             idle_timeout_manager.cancel_timeout()
 
@@ -705,7 +705,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                 if state.stop_requested:
                     logger.info("Execution stopped by user")
                     if state.led_controller:
-                        state.led_controller.effect_idle(state.dw_led_idle_effect)
+                        await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
                         start_idle_led_timeout()
                     break
 
@@ -713,7 +713,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                     logger.info("Skipping pattern...")
                     await connection_manager.check_idle_async()
                     if state.led_controller:
-                        state.led_controller.effect_idle(state.dw_led_idle_effect)
+                        await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
                         start_idle_led_timeout()
                     break
 
@@ -732,12 +732,12 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                         # Turn off LED controller if scheduled pause and control_wled is enabled
                         if state.scheduled_pause_control_wled and state.led_controller:
                             logger.info("Turning off LED lights during Still Sands period")
-                            state.led_controller.set_power(0)
+                            await state.led_controller.set_power_async(0)
 
                     # Only show idle effect if NOT in scheduled pause with LED control
                     # (manual pause always shows idle effect)
                     if state.led_controller and not (scheduled_pause and state.scheduled_pause_control_wled):
-                        state.led_controller.effect_idle(state.dw_led_idle_effect)
+                        await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
                         start_idle_led_timeout()
 
                     # Remember if we turned off LED controller for scheduled pause
@@ -755,11 +755,11 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                         # Turn LED controller back on if it was turned off for scheduled pause
                         if wled_was_off_for_scheduled:
                             logger.info("Turning LED lights back on as Still Sands period ended")
-                            state.led_controller.set_power(1)
+                            await state.led_controller.set_power_async(1)
                             # CRITICAL: Give LED controller time to fully power on before sending more commands
                             # Without this delay, rapid-fire requests can crash controllers on resource-constrained Pis
                             await asyncio.sleep(0.5)
-                        state.led_controller.effect_playing(state.dw_led_playing_effect)
+                        await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
                         # Cancel idle timeout when resuming from pause
                         idle_timeout_manager.cancel_timeout()
 
@@ -796,7 +796,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
         # Set LED back to idle when pattern completes normally (not stopped early)
         if state.led_controller and not state.stop_requested:
             logger.info(f"Setting LED to idle effect: {state.dw_led_idle_effect}")
-            state.led_controller.effect_idle(state.dw_led_idle_effect)
+            await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
             start_idle_led_timeout()
             logger.debug("LED effect set to idle after pattern completion")
 
@@ -921,10 +921,10 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                     wled_was_off_for_scheduled = False
                     if state.scheduled_pause_control_wled and state.led_controller:
                         logger.info("Turning off LED lights during Still Sands period")
-                        state.led_controller.set_power(0)
+                        await state.led_controller.set_power_async(0)
                         wled_was_off_for_scheduled = True
                     elif state.led_controller:
-                        state.led_controller.effect_idle(state.dw_led_idle_effect)
+                        await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
                         start_idle_led_timeout()
 
                     # Wait until we're outside the scheduled pause period
@@ -936,9 +936,9 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                         if state.led_controller:
                             if wled_was_off_for_scheduled:
                                 logger.info("Turning LED lights back on as Still Sands period ended")
-                                state.led_controller.set_power(1)
+                                await state.led_controller.set_power_async(1)
                                 await asyncio.sleep(0.5)  # Critical delay for LED controller
-                            state.led_controller.effect_playing(state.dw_led_playing_effect)
+                            await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
                             idle_timeout_manager.cancel_timeout()
 
                 # Handle pause between patterns
@@ -995,7 +995,7 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
         state.playlist_mode = None
 
         if state.led_controller:
-            state.led_controller.effect_idle(state.dw_led_idle_effect)
+            await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
             start_idle_led_timeout()
 
         logger.info("All requested patterns completed (or stopped) and state cleared")

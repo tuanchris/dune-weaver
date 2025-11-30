@@ -502,22 +502,29 @@ async function processPendingBatch() {
 }
 
 // Trigger preview loading for currently visible patterns
-function triggerPreviewLoadingForVisible() {
+async function triggerPreviewLoadingForVisible() {
     // Get all pattern cards currently in the DOM
     const patternCards = document.querySelectorAll('.pattern-card');
-    
+
+    // Collect all patterns that need checking
+    const patternsToCheck = [];
     patternCards.forEach(card => {
         const pattern = card.dataset.pattern;
         const previewContainer = card.querySelector('.pattern-preview');
-        
-        // Check if this pattern needs preview loading
+
+        // Check if this pattern needs preview loading (only check in-memory cache here)
         if (pattern && !previewCache.has(pattern) && !pendingPatterns.has(pattern)) {
-            // Add to batch for immediate loading
-            addPatternToBatch(pattern, previewContainer);
+            patternsToCheck.push({ pattern, previewContainer });
         }
     });
-    
-    // Process any pending previews immediately
+
+    // Wait for all IndexedDB cache checks to complete before processing batch
+    // This prevents unnecessary API calls for patterns that are already cached in IndexedDB
+    await Promise.all(patternsToCheck.map(({ pattern, previewContainer }) =>
+        addPatternToBatch(pattern, previewContainer)
+    ));
+
+    // Process any pending previews that weren't found in cache
     if (pendingPatterns.size > 0) {
         processPendingBatch();
     }

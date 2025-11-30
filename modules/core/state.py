@@ -6,6 +6,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Debounce timer for state saves (reduces SD card wear on Pi)
+_save_timer = None
+_save_lock = threading.Lock()
+
 class AppState:
     def __init__(self):
         # Private variables for properties
@@ -367,6 +371,32 @@ class AppState:
                 json.dump(self.to_dict(), f)
         except Exception as e:
             print(f"Error saving state to {self.STATE_FILE}: {e}")
+
+    def save_debounced(self, delay: float = 2.0):
+        """
+        Schedule a state save after a delay, coalescing multiple rapid saves.
+        This reduces SD card writes on Raspberry Pi.
+
+        Args:
+            delay: Seconds to wait before saving (default 2.0)
+        """
+        global _save_timer
+        with _save_lock:
+            # Cancel any pending save
+            if _save_timer is not None:
+                _save_timer.cancel()
+            # Schedule new save
+            _save_timer = threading.Timer(delay, self._do_debounced_save)
+            _save_timer.daemon = True  # Don't block shutdown
+            _save_timer.start()
+
+    def _do_debounced_save(self):
+        """Internal method called by debounce timer."""
+        global _save_timer
+        with _save_lock:
+            _save_timer = None
+        self.save()
+        logger.debug("Debounced state save completed")
 
     def load(self):
         """Load state from a JSON file. If the file doesn't exist, create it with default values."""
