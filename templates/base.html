@@ -116,6 +116,9 @@
       .dark #shutdown-button:hover {
         background-color: #404040;
       }
+      .dark #restart-button:hover {
+        background-color: #404040;
+      }
       .dark #theme-toggle:hover {
         background-color: #404040;
       }
@@ -288,6 +291,14 @@
               aria-label="Toggle dark mode"
             >
               <span class="material-icons" id="theme-toggle-icon">dark_mode</span>
+            </button>
+            <button
+              id="restart-button"
+              class="p-1.5 flex rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              aria-label="Restart system"
+              title="Restart Docker Containers"
+            >
+              <span class="material-icons text-amber-600">restart_alt</span>
             </button>
             <button
               id="shutdown-button"
@@ -731,6 +742,62 @@
             showStatusMessage('Failed to shutdown: ' + error.message, 'error');
           }
         });
+      });
+
+      // Restart button functionality
+      document.addEventListener('DOMContentLoaded', function() {
+        const restartButton = document.getElementById('restart-button');
+
+        // Restart button click handler
+        restartButton.addEventListener('click', async () => {
+          const confirmed = confirm('Are you sure you want to restart the application?\n\nThis will restart the Docker containers.\nThe page will reload automatically when the service is back online.');
+
+          if (!confirmed) return;
+
+          try {
+            showStatusMessage('Initiating restart...', 'warning');
+
+            const response = await fetch('/api/system/restart', { method: 'POST' });
+            const data = await response.json();
+
+            if (data.success) {
+              showStatusMessage('System is restarting... Page will reload when ready.', 'success');
+
+              // Start checking if the server is back online
+              setTimeout(() => {
+                checkServerAndReload();
+              }, 3000);
+            } else {
+              showStatusMessage('Restart failed: ' + data.message, 'error');
+            }
+          } catch (error) {
+            showStatusMessage('Failed to restart: ' + error.message, 'error');
+          }
+        });
+
+        // Function to check if server is back online and reload
+        function checkServerAndReload() {
+          const checkInterval = setInterval(async () => {
+            try {
+              const response = await fetch('/api/version', { method: 'GET' });
+              if (response.ok) {
+                clearInterval(checkInterval);
+                showStatusMessage('Server is back online. Reloading...', 'success');
+                setTimeout(() => {
+                  window.location.reload();
+                }, 1000);
+              }
+            } catch (error) {
+              // Server not ready yet, keep checking
+              console.log('Server not ready yet, retrying...');
+            }
+          }, 2000);
+
+          // Stop checking after 60 seconds
+          setTimeout(() => {
+            clearInterval(checkInterval);
+          }, 60000);
+        }
       });
 
       // Update indicator functionality

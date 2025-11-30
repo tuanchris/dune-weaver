@@ -2100,6 +2100,36 @@ async def shutdown_system():
             status_code=500
         )
 
+@app.post("/api/system/restart")
+async def restart_system():
+    """Restart the Docker containers using docker compose"""
+    try:
+        logger.warning("Restart initiated via API")
+
+        # Schedule restart command after a short delay to allow response to be sent
+        def delayed_restart():
+            time.sleep(2)  # Give time for response to be sent
+            try:
+                # Use docker compose restart to restart the containers
+                subprocess.run(["docker", "compose", "restart"], check=True)
+                logger.info("Docker compose restart command executed successfully")
+            except FileNotFoundError:
+                logger.error("docker command not found")
+            except Exception as e:
+                logger.error(f"Error executing docker compose restart: {e}")
+
+        import threading
+        restart_thread = threading.Thread(target=delayed_restart)
+        restart_thread.start()
+
+        return {"success": True, "message": "System restart initiated"}
+    except Exception as e:
+        logger.error(f"Error initiating restart: {e}")
+        return JSONResponse(
+            content={"success": False, "message": str(e)},
+            status_code=500
+        )
+
 def entrypoint():
     import uvicorn
     logger.info("Starting FastAPI server on port 8080...")

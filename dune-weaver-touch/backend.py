@@ -671,7 +671,28 @@ class Backend(QObject):
     @Slot()
     def sendHome(self):
         print("🏠 Sending home command...")
-        asyncio.create_task(self._api_call("/send_home"))
+        asyncio.create_task(self._send_home())
+
+    async def _send_home(self):
+        """Send home command without timeout - homing can take up to 90 seconds."""
+        if not self.session:
+            self.errorOccurred.emit("Backend not ready")
+            return
+
+        try:
+            print("🏠 Calling /send_home (no timeout - homing can take up to 90s)...")
+            async with self.session.post(f"{self.base_url}/send_home") as resp:
+                print(f"🏠 Home command response status: {resp.status}")
+                if resp.status == 200:
+                    response_data = await resp.json()
+                    print(f"✅ Home command successful: {response_data}")
+                else:
+                    print(f"❌ Home command failed with status: {resp.status}")
+                    response_text = await resp.text()
+                    self.errorOccurred.emit(f"Home failed: {resp.status} - {response_text}")
+        except Exception as e:
+            print(f"💥 Exception in home command: {e}")
+            self.errorOccurred.emit(str(e))
     
     @Slot()
     def moveToCenter(self):
