@@ -330,6 +330,37 @@ input:checked + .slider:before {
           </p>
         </label>
       </div>
+      <!-- Preferred Port Configuration -->
+      <div class="px-6 py-5 border-t border-slate-100">
+        <label class="flex flex-col gap-1.5">
+          <span class="text-slate-700 text-sm font-medium leading-normal flex items-center gap-2">
+            <span class="material-icons text-slate-600 text-base">star</span>
+            Preferred Port for Auto-Connect
+          </span>
+          <div class="flex gap-3 items-center">
+            <select
+              id="preferredPortSelect"
+              class="form-select flex-1 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-medium leading-normal transition-colors"
+            >
+              <option value="">No preference (auto-detect)</option>
+            </select>
+            <button
+              id="savePreferredPort"
+              class="flex items-center justify-center gap-2 min-w-[100px] cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors flex-shrink-0"
+            >
+              <span class="material-icons text-lg">save</span>
+              <span class="truncate">Save</span>
+            </button>
+          </div>
+          <p class="text-xs text-slate-500 mt-2">
+            When multiple ports are available, this port will be used automatically on startup. If set to "No preference", the system will try the last connected port or the first available port.
+          </p>
+          <p id="currentPreferredPort" class="text-xs text-sky-600 mt-1 hidden">
+            <span class="material-icons text-xs align-middle">check_circle</span>
+            <span id="preferredPortDisplay"></span>
+          </p>
+        </label>
+      </div>
     </div>
   </section>
   <!-- Homing Configuration Section -->

@@ -1082,7 +1082,34 @@ async def serial_status():
     logger.debug(f"Serial status check - connected: {connected}, port: {port}")
     return {
         "connected": connected,
-        "port": port
+        "port": port,
+        "preferred_port": state.preferred_port
+    }
+
+@app.get("/api/preferred-port")
+async def get_preferred_port():
+    """Get the currently configured preferred port for auto-connect."""
+    return {
+        "preferred_port": state.preferred_port
+    }
+
+@app.post("/api/preferred-port")
+async def set_preferred_port(request: Request):
+    """Set the preferred port for auto-connect."""
+    data = await request.json()
+    preferred_port = data.get("preferred_port")
+
+    # Allow setting to None to clear the preference
+    if preferred_port == "" or preferred_port == "none":
+        preferred_port = None
+
+    state.preferred_port = preferred_port
+    state.save()
+
+    logger.info(f"Preferred port set to: {preferred_port}")
+    return {
+        "success": True,
+        "preferred_port": state.preferred_port
     }
 
 @app.post("/pause_execution")

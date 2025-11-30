@@ -112,17 +112,18 @@ async function updateSerialPorts() {
             const ports = await response.json();
             const portsElement = document.getElementById('availablePorts');
             const portSelect = document.getElementById('portSelect');
-            
+            const preferredPortSelect = document.getElementById('preferredPortSelect');
+
             if (portsElement) {
                 portsElement.textContent = ports.length > 0 ? ports.join(', ') : 'No ports available';
             }
-            
+
             if (portSelect) {
                 // Clear existing options except the first one
                 while (portSelect.options.length > 1) {
                     portSelect.remove(1);
                 }
-                
+
                 // Add new options
                 ports.forEach(port => {
                     const option = document.createElement('option');
@@ -141,9 +142,113 @@ async function updateSerialPorts() {
                     }
                 }
             }
+
+            // Also update the preferred port select dropdown
+            if (preferredPortSelect) {
+                // Store current selection
+                const currentPreferred = preferredPortSelect.value;
+
+                // Clear existing options except the first one (no preference)
+                while (preferredPortSelect.options.length > 1) {
+                    preferredPortSelect.remove(1);
+                }
+
+                // Add all available ports
+                ports.forEach(port => {
+                    const option = document.createElement('option');
+                    option.value = port;
+                    option.textContent = port;
+                    preferredPortSelect.appendChild(option);
+                });
+
+                // Restore selection if it's still available
+                if (currentPreferred && ports.includes(currentPreferred)) {
+                    preferredPortSelect.value = currentPreferred;
+                }
+            }
         }
     } catch (error) {
         logMessage(`Error fetching serial ports: ${error.message}`, LOG_TYPE.ERROR);
+    }
+}
+
+// Function to load and display preferred port setting
+async function loadPreferredPort() {
+    try {
+        const response = await fetch('/api/preferred-port');
+        if (response.ok) {
+            const data = await response.json();
+            const preferredPortSelect = document.getElementById('preferredPortSelect');
+            const currentPreferredPort = document.getElementById('currentPreferredPort');
+            const preferredPortDisplay = document.getElementById('preferredPortDisplay');
+
+            if (preferredPortSelect && data.preferred_port) {
+                // Check if the preferred port is in the options
+                const optionExists = Array.from(preferredPortSelect.options).some(
+                    opt => opt.value === data.preferred_port
+                );
+
+                if (optionExists) {
+                    preferredPortSelect.value = data.preferred_port;
+                } else {
+                    // Add the preferred port as an option (it might not be currently available)
+                    const option = document.createElement('option');
+                    option.value = data.preferred_port;
+                    option.textContent = `${data.preferred_port} (not currently available)`;
+                    preferredPortSelect.appendChild(option);
+                    preferredPortSelect.value = data.preferred_port;
+                }
+            }
+
+            // Show current preferred port indicator
+            if (currentPreferredPort && preferredPortDisplay && data.preferred_port) {
+                preferredPortDisplay.textContent = `Currently set to: ${data.preferred_port}`;
+                currentPreferredPort.classList.remove('hidden');
+            } else if (currentPreferredPort) {
+                currentPreferredPort.classList.add('hidden');
+            }
+        }
+    } catch (error) {
+        logMessage(`Error loading preferred port: ${error.message}`, LOG_TYPE.ERROR);
+    }
+}
+
+// Function to save preferred port setting
+async function savePreferredPort() {
+    const preferredPortSelect = document.getElementById('preferredPortSelect');
+    if (!preferredPortSelect) return;
+
+    const preferredPort = preferredPortSelect.value || null;
+
+    try {
+        const response = await fetch('/api/preferred-port', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ preferred_port: preferredPort })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            const currentPreferredPort = document.getElementById('currentPreferredPort');
+            const preferredPortDisplay = document.getElementById('preferredPortDisplay');
+
+            if (data.preferred_port) {
+                showStatusMessage(`Preferred port set to: ${data.preferred_port}`, 'success');
+                if (currentPreferredPort && preferredPortDisplay) {
+                    preferredPortDisplay.textContent = `Currently set to: ${data.preferred_port}`;
+                    currentPreferredPort.classList.remove('hidden');
+                }
+            } else {
+                showStatusMessage('Preferred port cleared - will auto-detect on startup', 'success');
+                if (currentPreferredPort) {
+                    currentPreferredPort.classList.add('hidden');
+                }
+            }
+        } else {
+            throw new Error('Failed to save preferred port');
+        }
+    } catch (error) {
+        showStatusMessage(`Failed to save preferred port: ${error.message}`, 'error');
     }
 }
 
@@ -259,28 +364,31 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Load LED configuration (replaces old WLED-only loading)
         fetch('/get_led_config').then(response => response.json()).catch(() => ({ provider: 'none', wled_ip: null })),
-        
+
         // Load current version and check for updates
         fetch('/api/version').then(response => response.json()).catch(() => ({ current: '1.0.0', latest: '1.0.0', update_available: false })),
-        
+
         // Load available serial ports
         fetch('/list_serial_ports').then(response => response.json()).catch(() => []),
-        
+
         // Load available pattern files for clear pattern selection
         getCachedPatternFiles().catch(() => []),
-        
+
         // Load current custom clear patterns
         fetch('/api/custom_clear_patterns').then(response => response.json()).catch(() => ({ custom_clear_from_in: null, custom_clear_from_out: null })),
-        
+
         // Load current clear pattern speed
         fetch('/api/clear_pattern_speed').then(response => response.json()).catch(() => ({ clear_pattern_speed: 200 })),
-        
+
         // Load current app name
         fetch('/api/app-name').then(response => response.json()).catch(() => ({ app_name: 'Dune Weaver' })),
 
         // Load Still Sands settings
-        fetch('/api/scheduled-pause').then(response => response.json()).catch(() => ({ enabled: false, time_slots: [] }))
-    ]).then(([statusData, ledConfigData, updateData, ports, patterns, clearPatterns, clearSpeedData, appNameData, scheduledPauseData]) => {
+        fetch('/api/scheduled-pause').then(response => response.json()).catch(() => ({ enabled: false, time_slots: [] })),
+
+        // Load preferred port setting
+        fetch('/api/preferred-port').then(response => response.json()).catch(() => ({ preferred_port: null }))
+    ]).then(([statusData, ledConfigData, updateData, ports, patterns, clearPatterns, clearSpeedData, appNameData, scheduledPauseData, preferredPortData]) => {
         // Update connection status
         setCachedConnectionStatus(statusData);
         updateConnectionUI(statusData);
@@ -357,7 +465,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             while (portSelect.options.length > 1) {
                 portSelect.remove(1);
             }
-            
+
             // Add new options
             ports.forEach(port => {
                 const option = document.createElement('option');
@@ -371,7 +479,50 @@ document.addEventListener('DOMContentLoaded', async () => {
                 portSelect.value = ports[0];
             }
         }
-        
+
+        // Update preferred port selection
+        const preferredPortSelect = document.getElementById('preferredPortSelect');
+        const currentPreferredPort = document.getElementById('currentPreferredPort');
+        const preferredPortDisplay = document.getElementById('preferredPortDisplay');
+
+        if (preferredPortSelect) {
+            // Clear existing options except the first one (no preference)
+            while (preferredPortSelect.options.length > 1) {
+                preferredPortSelect.remove(1);
+            }
+
+            // Add all available ports
+            ports.forEach(port => {
+                const option = document.createElement('option');
+                option.value = port;
+                option.textContent = port;
+                preferredPortSelect.appendChild(option);
+            });
+
+            // Set the current preferred port value
+            if (preferredPortData && preferredPortData.preferred_port) {
+                // Check if the preferred port is in the available ports
+                const isAvailable = ports.includes(preferredPortData.preferred_port);
+
+                if (isAvailable) {
+                    preferredPortSelect.value = preferredPortData.preferred_port;
+                } else {
+                    // Add the preferred port as an option (it might not be currently available)
+                    const option = document.createElement('option');
+                    option.value = preferredPortData.preferred_port;
+                    option.textContent = `${preferredPortData.preferred_port} (not currently available)`;
+                    preferredPortSelect.appendChild(option);
+                    preferredPortSelect.value = preferredPortData.preferred_port;
+                }
+
+                // Show the current preferred port indicator
+                if (currentPreferredPort && preferredPortDisplay) {
+                    preferredPortDisplay.textContent = `Currently set to: ${preferredPortData.preferred_port}`;
+                    currentPreferredPort.classList.remove('hidden');
+                }
+            }
+        }
+
         // Initialize autocomplete for clear patterns
         const clearFromInInput = document.getElementById('customClearFromInInput');
         const clearFromOutInput = document.getElementById('customClearFromOutInput');
@@ -630,7 +781,13 @@ function setupEventListeners() {
             }
         });
     }
-    
+
+    // Save preferred port button
+    const savePreferredPortButton = document.getElementById('savePreferredPort');
+    if (savePreferredPortButton) {
+        savePreferredPortButton.addEventListener('click', savePreferredPort);
+    }
+
     // Save custom clear patterns button
     const saveClearPatterns = document.getElementById('saveClearPatterns');
     if (saveClearPatterns) {
