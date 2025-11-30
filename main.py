@@ -309,6 +309,10 @@ class LEDConfigRequest(BaseModel):
 class DeletePlaylistRequest(BaseModel):
     playlist_name: str
 
+class RenamePlaylistRequest(BaseModel):
+    old_name: str
+    new_name: str
+
 class ThetaRhoRequest(BaseModel):
     file_name: str
     pre_execution: Optional[str] = "none"
@@ -1169,6 +1173,22 @@ async def delete_playlist(request: DeletePlaylistRequest):
     return {
         "success": True,
         "message": f"Playlist '{request.playlist_name}' deleted"
+    }
+
+@app.post("/rename_playlist")
+async def rename_playlist(request: RenamePlaylistRequest):
+    """Rename an existing playlist."""
+    success, message = playlist_manager.rename_playlist(request.old_name, request.new_name)
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail=message
+        )
+
+    return {
+        "success": True,
+        "message": message,
+        "new_name": request.new_name
     }
 
 class AddToPlaylistRequest(BaseModel):
