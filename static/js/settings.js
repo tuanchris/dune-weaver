@@ -1692,6 +1692,9 @@ async function initializeHomingConfig() {
     const compassOffsetContainer = document.getElementById('compassOffsetContainer');
     const saveHomingConfigButton = document.getElementById('saveHomingConfig');
     const homingInfoContent = document.getElementById('homingInfoContent');
+    const autoHomeEnabledToggle = document.getElementById('autoHomeEnabledToggle');
+    const autoHomeSettings = document.getElementById('autoHomeSettings');
+    const autoHomeAfterPatternsInput = document.getElementById('autoHomeAfterPatternsInput');
 
     // Check if elements exist
     if (!homingModeCrash || !homingModeSensor || !angularOffsetInput || !saveHomingConfigButton || !homingInfoContent || !compassOffsetContainer) {
@@ -1747,14 +1750,28 @@ async function initializeHomingConfig() {
         }
 
         angularOffsetInput.value = data.angular_homing_offset_degrees || 0;
+
+        // Load auto-home settings
+        if (autoHomeEnabledToggle) {
+            autoHomeEnabledToggle.checked = data.auto_home_enabled || false;
+            if (autoHomeSettings) {
+                autoHomeSettings.style.display = data.auto_home_enabled ? 'block' : 'none';
+            }
+        }
+        if (autoHomeAfterPatternsInput) {
+            autoHomeAfterPatternsInput.value = data.auto_home_after_patterns || 5;
+        }
+
         updateHomingInfo();
 
-        logMessage(`Loaded homing config: mode=${data.homing_mode}, offset=${data.angular_homing_offset_degrees}°`, LOG_TYPE.INFO);
+        logMessage(`Loaded homing config: mode=${data.homing_mode}, offset=${data.angular_homing_offset_degrees}°, auto_home=${data.auto_home_enabled}, after=${data.auto_home_after_patterns}`, LOG_TYPE.INFO);
     } catch (error) {
         logMessage(`Error loading homing configuration: ${error.message}`, LOG_TYPE.ERROR);
         // Initialize with defaults if load fails
         homingModeCrash.checked = true;
         angularOffsetInput.value = 0;
+        if (autoHomeEnabledToggle) autoHomeEnabledToggle.checked = false;
+        if (autoHomeAfterPatternsInput) autoHomeAfterPatternsInput.value = 5;
         updateHomingInfo();
     }
 
@@ -1766,13 +1783,26 @@ async function initializeHomingConfig() {
         saveHomingConfigButton.innerHTML = '<span class="material-icons text-lg animate-spin">refresh</span><span class="truncate">Saving...</span>';
 
         try {
+            const requestBody = {
+                homing_mode: getSelectedMode(),
+                angular_homing_offset_degrees: parseFloat(angularOffsetInput.value) || 0
+            };
+
+            // Include auto-home settings if elements exist
+            if (autoHomeEnabledToggle) {
+                requestBody.auto_home_enabled = autoHomeEnabledToggle.checked;
+            }
+            if (autoHomeAfterPatternsInput) {
+                const afterPatterns = parseInt(autoHomeAfterPatternsInput.value);
+                if (!isNaN(afterPatterns) && afterPatterns >= 1) {
+                    requestBody.auto_home_after_patterns = afterPatterns;
+                }
+            }
+
             const response = await fetch('/api/homing-config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    homing_mode: getSelectedMode(),
-                    angular_homing_offset_degrees: parseFloat(angularOffsetInput.value) || 0
-                })
+                body: JSON.stringify(requestBody)
             });
 
             if (!response.ok) {
@@ -1803,6 +1833,13 @@ async function initializeHomingConfig() {
     homingModeCrash.addEventListener('change', updateHomingInfo);
     homingModeSensor.addEventListener('change', updateHomingInfo);
     saveHomingConfigButton.addEventListener('click', saveHomingConfig);
+
+    // Auto-home toggle event listener
+    if (autoHomeEnabledToggle && autoHomeSettings) {
+        autoHomeEnabledToggle.addEventListener('change', () => {
+            autoHomeSettings.style.display = autoHomeEnabledToggle.checked ? 'block' : 'none';
+        });
+    }
 }
 
 // Toggle password visibility helper

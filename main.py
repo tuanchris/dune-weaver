@@ -504,19 +504,23 @@ async def set_scheduled_pause(request: ScheduledPauseRequest):
 
 @app.get("/api/homing-config")
 async def get_homing_config():
-    """Get homing configuration (mode and compass offset)."""
+    """Get homing configuration (mode, compass offset, and auto-home settings)."""
     return {
         "homing_mode": state.homing,
-        "angular_homing_offset_degrees": state.angular_homing_offset_degrees
+        "angular_homing_offset_degrees": state.angular_homing_offset_degrees,
+        "auto_home_enabled": state.auto_home_enabled,
+        "auto_home_after_patterns": state.auto_home_after_patterns
     }
 
 class HomingConfigRequest(BaseModel):
     homing_mode: int = 0  # 0 = crash, 1 = sensor
     angular_homing_offset_degrees: float = 0.0
+    auto_home_enabled: Optional[bool] = None
+    auto_home_after_patterns: Optional[int] = None
 
 @app.post("/api/homing-config")
 async def set_homing_config(request: HomingConfigRequest):
-    """Set homing configuration (mode and compass offset)."""
+    """Set homing configuration (mode, compass offset, and auto-home settings)."""
     try:
         # Validate homing mode
         if request.homing_mode not in [0, 1]:
@@ -524,10 +528,21 @@ async def set_homing_config(request: HomingConfigRequest):
 
         state.homing = request.homing_mode
         state.angular_homing_offset_degrees = request.angular_homing_offset_degrees
+
+        # Update auto-home settings if provided
+        if request.auto_home_enabled is not None:
+            state.auto_home_enabled = request.auto_home_enabled
+        if request.auto_home_after_patterns is not None:
+            if request.auto_home_after_patterns < 1:
+                raise HTTPException(status_code=400, detail="Auto-home after patterns must be at least 1")
+            state.auto_home_after_patterns = request.auto_home_after_patterns
+
         state.save()
 
         mode_name = "crash" if request.homing_mode == 0 else "sensor"
         logger.info(f"Homing mode set to {mode_name}, compass offset set to {request.angular_homing_offset_degrees}°")
+        if request.auto_home_enabled is not None:
+            logger.info(f"Auto-home enabled: {state.auto_home_enabled}, after {state.auto_home_after_patterns} patterns")
         return {"success": True, "message": "Homing configuration updated"}
     except HTTPException:
         raise

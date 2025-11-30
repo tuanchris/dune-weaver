@@ -867,6 +867,10 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
 
             # Set the playlist to the first pattern
             state.current_playlist = pattern_sequence
+
+            # Reset pattern counter at the start of the playlist
+            state.patterns_since_last_home = 0
+
             # Execute the pattern sequence
             for idx, file_path in enumerate(pattern_sequence):
                 state.current_playlist_index = idx
@@ -874,11 +878,35 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                     logger.info("Execution stopped")
                     return
 
+                current_is_clear = is_clear_pattern(file_path)
+
+                # Check if we need to auto-home before this clear pattern
+                # Auto-home happens after pause, before the clear pattern runs
+                if current_is_clear and state.auto_home_enabled:
+                    # Check if we've reached the pattern threshold
+                    if state.patterns_since_last_home >= state.auto_home_after_patterns:
+                        logger.info(f"Auto-homing triggered after {state.patterns_since_last_home} patterns")
+                        try:
+                            # Perform homing using connection_manager
+                            success = await asyncio.to_thread(connection_manager.home)
+                            if success:
+                                logger.info("Auto-homing completed successfully")
+                                state.patterns_since_last_home = 0
+                            else:
+                                logger.warning("Auto-homing failed, continuing with playlist")
+                        except Exception as e:
+                            logger.error(f"Error during auto-homing: {e}")
+
                 # Update state for main patterns only
                 logger.info(f"Running pattern {file_path}")
-                
+
                 # Execute the pattern
                 await run_theta_rho_file(file_path, is_playlist=True)
+
+                # Increment pattern counter only for non-clear patterns
+                if not current_is_clear:
+                    state.patterns_since_last_home += 1
+                    logger.debug(f"Patterns since last home: {state.patterns_since_last_home}")
 
                 # Check for scheduled pause after pattern completes (when "finish pattern first" is enabled)
                 if state.scheduled_pause_finish_pattern and is_in_scheduled_pause_period() and not state.stop_requested:
@@ -911,7 +939,7 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                 # Handle pause between patterns
                 if idx < len(pattern_sequence) - 1 and not state.stop_requested and pause_time > 0 and not state.skip_requested:
                     # Check if current pattern is a clear pattern
-                    if is_clear_pattern(file_path):
+                    if current_is_clear:
                         logger.info("Skipping pause after clear pattern")
                     else:
                         logger.info(f"Pausing for {pause_time} seconds")
@@ -924,7 +952,7 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                                 break
                             await asyncio.sleep(1)
                         state.pause_time_remaining = 0
-                    
+
                 state.skip_requested = False
 
             if run_mode == "indefinite":
