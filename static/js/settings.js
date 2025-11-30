@@ -1788,3 +1788,309 @@ async function initializeHomingConfig() {
     homingModeSensor.addEventListener('change', updateHomingInfo);
     saveHomingConfigButton.addEventListener('click', saveHomingConfig);
 }
+
+// Toggle password visibility helper
+function togglePasswordVisibility(inputId, button) {
+    const input = document.getElementById(inputId);
+    if (!input || !button) return;
+
+    const icon = button.querySelector('.material-icons');
+    if (input.type === 'password') {
+        input.type = 'text';
+        if (icon) icon.textContent = 'visibility';
+    } else {
+        input.type = 'password';
+        if (icon) icon.textContent = 'visibility_off';
+    }
+}
+
+// MQTT Configuration
+async function initializeMqttConfig() {
+    logMessage('Initializing MQTT configuration', LOG_TYPE.INFO);
+
+    const mqttEnableToggle = document.getElementById('mqttEnableToggle');
+    const mqttSettings = document.getElementById('mqttSettings');
+    const mqttStatusBanner = document.getElementById('mqttStatusBanner');
+    const mqttConnectedBanner = document.getElementById('mqttConnectedBanner');
+    const mqttDisconnectedBanner = document.getElementById('mqttDisconnectedBanner');
+    const mqttBrokerInput = document.getElementById('mqttBrokerInput');
+    const mqttPortInput = document.getElementById('mqttPortInput');
+    const mqttUsernameInput = document.getElementById('mqttUsernameInput');
+    const mqttPasswordInput = document.getElementById('mqttPasswordInput');
+    const mqttDeviceNameInput = document.getElementById('mqttDeviceNameInput');
+    const mqttDeviceIdInput = document.getElementById('mqttDeviceIdInput');
+    const mqttClientIdInput = document.getElementById('mqttClientIdInput');
+    const mqttDiscoveryPrefixInput = document.getElementById('mqttDiscoveryPrefixInput');
+    const testMqttButton = document.getElementById('testMqttConnection');
+    const mqttTestResult = document.getElementById('mqttTestResult');
+    const saveMqttButton = document.getElementById('saveMqttConfig');
+    const mqttRestartNotice = document.getElementById('mqttRestartNotice');
+
+    // Check if elements exist
+    if (!mqttEnableToggle || !mqttSettings || !saveMqttButton) {
+        logMessage('MQTT configuration elements not found, skipping initialization', LOG_TYPE.WARNING);
+        return;
+    }
+
+    logMessage('MQTT configuration elements found successfully', LOG_TYPE.INFO);
+
+    // Track if settings have changed (to show restart notice)
+    let originalConfig = null;
+    let configChanged = false;
+
+    // Function to update UI based on enabled state
+    function updateMqttSettingsVisibility() {
+        mqttSettings.style.display = mqttEnableToggle.checked ? 'block' : 'none';
+        if (mqttStatusBanner) {
+            mqttStatusBanner.classList.toggle('hidden', !mqttEnableToggle.checked);
+        }
+    }
+
+    // Function to update connection status banners
+    function updateConnectionStatus(connected) {
+        if (mqttConnectedBanner && mqttDisconnectedBanner) {
+            if (connected) {
+                mqttConnectedBanner.classList.remove('hidden');
+                mqttDisconnectedBanner.classList.add('hidden');
+            } else {
+                mqttConnectedBanner.classList.add('hidden');
+                mqttDisconnectedBanner.classList.remove('hidden');
+            }
+        }
+    }
+
+    // Function to check if config has changed
+    function checkConfigChanged() {
+        if (!originalConfig) return false;
+
+        const currentConfig = {
+            enabled: mqttEnableToggle.checked,
+            broker: mqttBrokerInput.value,
+            port: parseInt(mqttPortInput.value) || 1883,
+            username: mqttUsernameInput.value,
+            password: mqttPasswordInput.value,
+            device_name: mqttDeviceNameInput.value,
+            device_id: mqttDeviceIdInput.value,
+            client_id: mqttClientIdInput.value,
+            discovery_prefix: mqttDiscoveryPrefixInput.value
+        };
+
+        return JSON.stringify(currentConfig) !== JSON.stringify(originalConfig);
+    }
+
+    // Function to show/hide restart notice
+    function updateRestartNotice() {
+        configChanged = checkConfigChanged();
+        if (mqttRestartNotice) {
+            mqttRestartNotice.classList.toggle('hidden', !configChanged);
+        }
+    }
+
+    // Load current MQTT configuration
+    try {
+        const response = await fetch('/api/mqtt-config');
+        const data = await response.json();
+
+        mqttEnableToggle.checked = data.enabled || false;
+        mqttBrokerInput.value = data.broker || '';
+        mqttPortInput.value = data.port || 1883;
+        mqttUsernameInput.value = data.username || '';
+        // Note: Password is not returned from API for security
+        mqttDeviceNameInput.value = data.device_name || 'Dune Weaver';
+        mqttDeviceIdInput.value = data.device_id || 'dune_weaver';
+        mqttClientIdInput.value = data.client_id || 'dune_weaver';
+        mqttDiscoveryPrefixInput.value = data.discovery_prefix || 'homeassistant';
+
+        // Store original config for change detection
+        originalConfig = {
+            enabled: data.enabled || false,
+            broker: data.broker || '',
+            port: data.port || 1883,
+            username: data.username || '',
+            password: '', // We don't have the original password
+            device_name: data.device_name || 'Dune Weaver',
+            device_id: data.device_id || 'dune_weaver',
+            client_id: data.client_id || 'dune_weaver',
+            discovery_prefix: data.discovery_prefix || 'homeassistant'
+        };
+
+        updateMqttSettingsVisibility();
+
+        // Update connection status if MQTT is enabled
+        if (data.enabled) {
+            updateConnectionStatus(data.connected || false);
+        }
+
+        logMessage(`Loaded MQTT config: enabled=${data.enabled}, broker=${data.broker}`, LOG_TYPE.INFO);
+    } catch (error) {
+        logMessage(`Error loading MQTT configuration: ${error.message}`, LOG_TYPE.ERROR);
+        // Initialize with defaults if load fails
+        mqttEnableToggle.checked = false;
+        updateMqttSettingsVisibility();
+    }
+
+    // Function to save MQTT configuration
+    async function saveMqttConfig() {
+        // Validate required fields if MQTT is enabled
+        if (mqttEnableToggle.checked && !mqttBrokerInput.value.trim()) {
+            showStatusMessage('MQTT broker address is required when MQTT is enabled', 'error');
+            mqttBrokerInput.focus();
+            return;
+        }
+
+        // Update button UI to show loading state
+        const originalButtonHTML = saveMqttButton.innerHTML;
+        saveMqttButton.disabled = true;
+        saveMqttButton.innerHTML = '<span class="material-icons text-lg animate-spin">refresh</span><span class="truncate">Saving...</span>';
+
+        try {
+            const requestBody = {
+                enabled: mqttEnableToggle.checked,
+                broker: mqttBrokerInput.value.trim(),
+                port: parseInt(mqttPortInput.value) || 1883,
+                username: mqttUsernameInput.value.trim() || null,
+                device_name: mqttDeviceNameInput.value.trim() || 'Dune Weaver',
+                device_id: mqttDeviceIdInput.value.trim() || 'dune_weaver',
+                client_id: mqttClientIdInput.value.trim() || 'dune_weaver',
+                discovery_prefix: mqttDiscoveryPrefixInput.value.trim() || 'homeassistant'
+            };
+
+            // Only include password if it was changed (not empty)
+            if (mqttPasswordInput.value) {
+                requestBody.password = mqttPasswordInput.value;
+            }
+
+            const response = await fetch('/api/mqtt-config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Failed to save MQTT configuration');
+            }
+
+            const data = await response.json();
+
+            // Update original config for change detection
+            originalConfig = {
+                enabled: requestBody.enabled,
+                broker: requestBody.broker,
+                port: requestBody.port,
+                username: requestBody.username || '',
+                password: '', // Reset password tracking
+                device_name: requestBody.device_name,
+                device_id: requestBody.device_id,
+                client_id: requestBody.client_id,
+                discovery_prefix: requestBody.discovery_prefix
+            };
+
+            // Clear password field after save
+            mqttPasswordInput.value = '';
+
+            // Show success state temporarily
+            saveMqttButton.innerHTML = '<span class="material-icons text-lg">check</span><span class="truncate">Saved!</span>';
+            showStatusMessage('MQTT configuration saved successfully. Restart the application to apply changes.', 'success');
+
+            // Show restart notice
+            if (mqttRestartNotice) {
+                mqttRestartNotice.classList.remove('hidden');
+            }
+
+            // Restore button after 2 seconds
+            setTimeout(() => {
+                saveMqttButton.innerHTML = originalButtonHTML;
+                saveMqttButton.disabled = false;
+            }, 2000);
+        } catch (error) {
+            logMessage(`Error saving MQTT configuration: ${error.message}`, LOG_TYPE.ERROR);
+            showStatusMessage(`Failed to save MQTT configuration: ${error.message}`, 'error');
+
+            // Restore button immediately on error
+            saveMqttButton.innerHTML = originalButtonHTML;
+            saveMqttButton.disabled = false;
+        }
+    }
+
+    // Function to test MQTT connection
+    async function testMqttConnection() {
+        // Validate broker address
+        if (!mqttBrokerInput.value.trim()) {
+            showStatusMessage('Please enter a broker address to test', 'error');
+            mqttBrokerInput.focus();
+            return;
+        }
+
+        // Update button UI to show loading state
+        const originalButtonHTML = testMqttButton.innerHTML;
+        testMqttButton.disabled = true;
+        testMqttButton.innerHTML = '<span class="material-icons text-lg animate-spin">refresh</span><span class="truncate">Testing...</span>';
+
+        // Clear previous result
+        if (mqttTestResult) {
+            mqttTestResult.innerHTML = '';
+        }
+
+        try {
+            const requestBody = {
+                broker: mqttBrokerInput.value.trim(),
+                port: parseInt(mqttPortInput.value) || 1883,
+                username: mqttUsernameInput.value.trim() || null,
+                password: mqttPasswordInput.value || null
+            };
+
+            const response = await fetch('/api/mqtt-test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                if (mqttTestResult) {
+                    mqttTestResult.innerHTML = '<span class="material-icons text-green-600 mr-1">check_circle</span><span class="text-green-600">Connection successful!</span>';
+                }
+                showStatusMessage('MQTT connection test successful', 'success');
+            } else {
+                if (mqttTestResult) {
+                    mqttTestResult.innerHTML = `<span class="material-icons text-red-600 mr-1">error</span><span class="text-red-600">${data.error || 'Connection failed'}</span>`;
+                }
+                showStatusMessage(`MQTT test failed: ${data.error || 'Connection failed'}`, 'error');
+            }
+        } catch (error) {
+            logMessage(`Error testing MQTT connection: ${error.message}`, LOG_TYPE.ERROR);
+            if (mqttTestResult) {
+                mqttTestResult.innerHTML = `<span class="material-icons text-red-600 mr-1">error</span><span class="text-red-600">Test failed: ${error.message}</span>`;
+            }
+            showStatusMessage(`MQTT test failed: ${error.message}`, 'error');
+        } finally {
+            // Restore button
+            testMqttButton.innerHTML = originalButtonHTML;
+            testMqttButton.disabled = false;
+        }
+    }
+
+    // Event listeners
+    mqttEnableToggle.addEventListener('change', () => {
+        updateMqttSettingsVisibility();
+        updateRestartNotice();
+    });
+
+    // Track changes to show restart notice
+    [mqttBrokerInput, mqttPortInput, mqttUsernameInput, mqttPasswordInput,
+     mqttDeviceNameInput, mqttDeviceIdInput, mqttClientIdInput, mqttDiscoveryPrefixInput].forEach(input => {
+        if (input) {
+            input.addEventListener('input', updateRestartNotice);
+        }
+    });
+
+    testMqttButton.addEventListener('click', testMqttConnection);
+    saveMqttButton.addEventListener('click', saveMqttConfig);
+}
+
+// Initialize MQTT config when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    initializeMqttConfig();
+});

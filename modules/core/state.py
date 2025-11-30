@@ -96,7 +96,18 @@ class AppState:
         self.scheduled_pause_enabled = False
         self.scheduled_pause_time_slots = []  # List of time slot dictionaries
         self.scheduled_pause_control_wled = False  # Turn off WLED during pause periods
-        
+
+        # MQTT settings (UI-configurable, overrides .env if set)
+        self.mqtt_enabled = False  # Master enable/disable for MQTT
+        self.mqtt_broker = ""  # MQTT broker IP/hostname
+        self.mqtt_port = 1883  # MQTT broker port
+        self.mqtt_username = ""  # MQTT authentication username
+        self.mqtt_password = ""  # MQTT authentication password
+        self.mqtt_client_id = "dune_weaver"  # MQTT client ID
+        self.mqtt_discovery_prefix = "homeassistant"  # Home Assistant discovery prefix
+        self.mqtt_device_id = "dune_weaver"  # Device ID for Home Assistant
+        self.mqtt_device_name = "Dune Weaver"  # Device display name
+
         self.load()
 
     @property
@@ -244,6 +255,15 @@ class AppState:
             "scheduled_pause_enabled": self.scheduled_pause_enabled,
             "scheduled_pause_time_slots": self.scheduled_pause_time_slots,
             "scheduled_pause_control_wled": self.scheduled_pause_control_wled,
+            "mqtt_enabled": self.mqtt_enabled,
+            "mqtt_broker": self.mqtt_broker,
+            "mqtt_port": self.mqtt_port,
+            "mqtt_username": self.mqtt_username,
+            "mqtt_password": self.mqtt_password,
+            "mqtt_client_id": self.mqtt_client_id,
+            "mqtt_discovery_prefix": self.mqtt_discovery_prefix,
+            "mqtt_device_id": self.mqtt_device_id,
+            "mqtt_device_name": self.mqtt_device_name,
         }
 
     def from_dict(self, data):
@@ -314,6 +334,15 @@ class AppState:
         self.scheduled_pause_enabled = data.get("scheduled_pause_enabled", False)
         self.scheduled_pause_time_slots = data.get("scheduled_pause_time_slots", [])
         self.scheduled_pause_control_wled = data.get("scheduled_pause_control_wled", False)
+        self.mqtt_enabled = data.get("mqtt_enabled", False)
+        self.mqtt_broker = data.get("mqtt_broker", "")
+        self.mqtt_port = data.get("mqtt_port", 1883)
+        self.mqtt_username = data.get("mqtt_username", "")
+        self.mqtt_password = data.get("mqtt_password", "")
+        self.mqtt_client_id = data.get("mqtt_client_id", "dune_weaver")
+        self.mqtt_discovery_prefix = data.get("mqtt_discovery_prefix", "homeassistant")
+        self.mqtt_device_id = data.get("mqtt_device_id", "dune_weaver")
+        self.mqtt_device_name = data.get("mqtt_device_name", "Dune Weaver")
 
     def save(self):
         """Save the current state to a JSON file."""

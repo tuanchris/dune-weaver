@@ -36,4 +36,10 @@ class BaseMQTTHandler(ABC):
     @abstractmethod
     def is_enabled(self) -> bool:
         """Return whether MQTT functionality is enabled."""
-        pass 
+        pass
+
+    @property
+    @abstractmethod
+    def is_connected(self) -> bool:
+        """Return whether MQTT client is connected to the broker."""
+        pass

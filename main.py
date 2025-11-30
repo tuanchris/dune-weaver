@@ -1514,12 +1514,155 @@ async def set_app_name(request: dict):
     app_name = request.get("app_name", "").strip()
     if not app_name:
         app_name = "Dune Weaver"  # Reset to default if empty
-    
+
     state.app_name = app_name
     state.save()
-    
+
     logger.info(f"Application name updated to: {app_name}")
     return {"success": True, "app_name": app_name}
+
+@app.get("/api/mqtt-config")
+async def get_mqtt_config():
+    """Get current MQTT configuration.
+
+    Note: Password is not returned for security reasons.
+    """
+    from modules.mqtt import get_mqtt_handler
+    handler = get_mqtt_handler()
+
+    return {
+        "enabled": state.mqtt_enabled,
+        "broker": state.mqtt_broker,
+        "port": state.mqtt_port,
+        "username": state.mqtt_username,
+        # Password is intentionally omitted for security
+        "has_password": bool(state.mqtt_password),
+        "client_id": state.mqtt_client_id,
+        "discovery_prefix": state.mqtt_discovery_prefix,
+        "device_id": state.mqtt_device_id,
+        "device_name": state.mqtt_device_name,
+        "connected": handler.is_connected if hasattr(handler, 'is_connected') else False,
+        "is_mock": handler.__class__.__name__ == 'MockMQTTHandler'
+    }
+
+@app.post("/api/mqtt-config")
+async def set_mqtt_config(request: dict):
+    """Update MQTT configuration. Requires restart to take effect."""
+    try:
+        # Update state with new values
+        state.mqtt_enabled = request.get("enabled", False)
+        state.mqtt_broker = request.get("broker", "").strip()
+        state.mqtt_port = int(request.get("port", 1883))
+        state.mqtt_username = request.get("username", "").strip()
+        state.mqtt_password = request.get("password", "").strip()
+        state.mqtt_client_id = request.get("client_id", "dune_weaver").strip()
+        state.mqtt_discovery_prefix = request.get("discovery_prefix", "homeassistant").strip()
+        state.mqtt_device_id = request.get("device_id", "dune_weaver").strip()
+        state.mqtt_device_name = request.get("device_name", "Dune Weaver").strip()
+
+        # Validate required fields when enabled
+        if state.mqtt_enabled and not state.mqtt_broker:
+            return JSONResponse(
+                content={"success": False, "message": "Broker address is required when MQTT is enabled"},
+                status_code=400
+            )
+
+        state.save()
+        logger.info(f"MQTT configuration updated. Enabled: {state.mqtt_enabled}, Broker: {state.mqtt_broker}")
+
+        return {
+            "success": True,
+            "message": "MQTT configuration saved. Restart the application for changes to take effect.",
+            "requires_restart": True
+        }
+    except ValueError as e:
+        return JSONResponse(
+            content={"success": False, "message": f"Invalid value: {str(e)}"},
+            status_code=400
+        )
+    except Exception as e:
+        logger.error(f"Failed to update MQTT config: {str(e)}")
+        return JSONResponse(
+            content={"success": False, "message": str(e)},
+            status_code=500
+        )
+
+@app.post("/api/mqtt-test")
+async def test_mqtt_connection(request: dict):
+    """Test MQTT connection with provided settings."""
+    import paho.mqtt.client as mqtt_client
+
+    broker = request.get("broker", "").strip()
+    port = int(request.get("port", 1883))
+    username = request.get("username", "").strip()
+    password = request.get("password", "").strip()
+    client_id = request.get("client_id", "dune_weaver_test").strip()
+
+    if not broker:
+        return JSONResponse(
+            content={"success": False, "message": "Broker address is required"},
+            status_code=400
+        )
+
+    try:
+        # Create a test client
+        client = mqtt_client.Client(client_id=client_id + "_test")
+
+        if username:
+            client.username_pw_set(username, password)
+
+        # Connection result
+        connection_result = {"connected": False, "error": None}
+
+        def on_connect(client, userdata, flags, rc):
+            if rc == 0:
+                connection_result["connected"] = True
+            else:
+                error_messages = {
+                    1: "Incorrect protocol version",
+                    2: "Invalid client identifier",
+                    3: "Server unavailable",
+                    4: "Bad username or password",
+                    5: "Not authorized"
+                }
+                connection_result["error"] = error_messages.get(rc, f"Connection failed with code {rc}")
+
+        client.on_connect = on_connect
+
+        # Try to connect with timeout
+        client.connect_async(broker, port, keepalive=10)
+        client.loop_start()
+
+        # Wait for connection result (max 5 seconds)
+        import time
+        start_time = time.time()
+        while time.time() - start_time < 5:
+            if connection_result["connected"] or connection_result["error"]:
+                break
+            await asyncio.sleep(0.1)
+
+        client.loop_stop()
+        client.disconnect()
+
+        if connection_result["connected"]:
+            return {"success": True, "message": "Successfully connected to MQTT broker"}
+        elif connection_result["error"]:
+            return JSONResponse(
+                content={"success": False, "message": connection_result["error"]},
+                status_code=400
+            )
+        else:
+            return JSONResponse(
+                content={"success": False, "message": "Connection timed out. Check broker address and port."},
+                status_code=400
+            )
+
+    except Exception as e:
+        logger.error(f"MQTT test connection failed: {str(e)}")
+        return JSONResponse(
+            content={"success": False, "message": str(e)},
+            status_code=500
+        )
 
 @app.post("/preview_thr_batch")
 async def preview_thr_batch(request: dict):

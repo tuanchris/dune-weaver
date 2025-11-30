@@ -24,7 +24,12 @@ class MockMQTTHandler(BaseMQTTHandler):
     def is_enabled(self) -> bool:
         """Always returns False since this is a mock."""
         return False
-        
+
+    @property
+    def is_connected(self) -> bool:
+        """Always returns False since this is a mock."""
+        return False
+
     def publish_status(self) -> None:
         """Mock status publisher."""
         pass
