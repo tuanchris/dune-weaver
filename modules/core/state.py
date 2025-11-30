@@ -93,6 +93,10 @@ class AppState:
         
         # Application name setting
         self.app_name = "Dune Weaver"  # Default app name
+
+        # Custom branding settings (filenames only, files stored in static/custom/)
+        # Favicon is auto-generated from logo as logo-favicon.ico
+        self.custom_logo = None  # Custom logo filename (e.g., "logo-abc123.png")
         
         # auto_play mode settings
         self.auto_play_enabled = False
@@ -260,6 +264,7 @@ class AppState:
             "dw_led_idle_timeout_enabled": self.dw_led_idle_timeout_enabled,
             "dw_led_idle_timeout_minutes": self.dw_led_idle_timeout_minutes,
             "app_name": self.app_name,
+            "custom_logo": self.custom_logo,
             "auto_play_enabled": self.auto_play_enabled,
             "auto_play_playlist": self.auto_play_playlist,
             "auto_play_run_mode": self.auto_play_run_mode,
@@ -343,6 +348,7 @@ class AppState:
         self.dw_led_idle_timeout_minutes = data.get('dw_led_idle_timeout_minutes', 30)
 
         self.app_name = data.get("app_name", "Dune Weaver")
+        self.custom_logo = data.get("custom_logo", None)
         self.auto_play_enabled = data.get("auto_play_enabled", False)
         self.auto_play_playlist = data.get("auto_play_playlist", None)
         self.auto_play_run_mode = data.get("auto_play_run_mode", "loop")

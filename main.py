@@ -328,6 +328,7 @@ class GetCoordinatesRequest(BaseModel):
 
 class AppSettingsUpdate(BaseModel):
     name: Optional[str] = None
+    custom_logo: Optional[str] = None  # Filename or empty string to clear (favicon auto-generated)
 
 class ConnectionSettingsUpdate(BaseModel):
     preferred_port: Optional[str] = None
@@ -474,11 +475,11 @@ async def websocket_cache_progress_endpoint(websocket: WebSocket):
 # FastAPI routes
 @app.get("/")
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "app_name": state.app_name})
+    return templates.TemplateResponse("index.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
 
 @app.get("/settings")
 async def settings(request: Request):
-    return templates.TemplateResponse("settings.html", {"request": request, "app_name": state.app_name})
+    return templates.TemplateResponse("settings.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
 
 # ============================================================================
 # Unified Settings API
@@ -494,7 +495,8 @@ async def get_all_settings():
     """
     return {
         "app": {
-            "name": state.app_name
+            "name": state.app_name,
+            "custom_logo": state.custom_logo
         },
         "connection": {
             "preferred_port": state.preferred_port
@@ -573,6 +575,8 @@ async def update_settings(settings_update: SettingsUpdate):
     if settings_update.app:
         if settings_update.app.name is not None:
             state.app_name = settings_update.app.name or "Dune Weaver"
+        if settings_update.app.custom_logo is not None:
+            state.custom_logo = settings_update.app.custom_logo or None
         updated_categories.append("app")
 
     # Connection settings
@@ -1864,6 +1868,163 @@ async def set_app_name(request: dict):
     logger.info(f"Application name updated to: {app_name}")
     return {"success": True, "app_name": app_name}
 
+# ============================================================================
+# Custom Branding Upload Endpoints
+# ============================================================================
+
+CUSTOM_BRANDING_DIR = os.path.join("static", "custom")
+ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
+MAX_LOGO_SIZE = 5 * 1024 * 1024  # 5MB
+
+def generate_favicon_from_logo(logo_path: str, favicon_path: str) -> bool:
+    """Generate a circular-cropped favicon from the uploaded logo using PIL.
+
+    Creates a multi-size ICO file (16x16, 32x32, 48x48) with circular crop.
+    Returns True on success, False on failure.
+    """
+    try:
+        from PIL import Image, ImageDraw
+
+        def create_circular_image(img, size):
+            """Create a circular-cropped image at the specified size."""
+            # Resize to target size
+            resized = img.resize((size, size), Image.Resampling.LANCZOS)
+
+            # Create circular mask
+            mask = Image.new('L', (size, size), 0)
+            draw = ImageDraw.Draw(mask)
+            draw.ellipse((0, 0, size - 1, size - 1), fill=255)
+
+            # Apply circular mask - create transparent background
+            output = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+            output.paste(resized, (0, 0), mask)
+            return output
+
+        with Image.open(logo_path) as img:
+            # Convert to RGBA if needed
+            if img.mode != 'RGBA':
+                img = img.convert('RGBA')
+
+            # Crop to square (center crop)
+            width, height = img.size
+            min_dim = min(width, height)
+            left = (width - min_dim) // 2
+            top = (height - min_dim) // 2
+            img = img.crop((left, top, left + min_dim, top + min_dim))
+
+            # Create circular images at each favicon size
+            sizes = [48, 32, 16]
+            circular_images = [create_circular_image(img, size) for size in sizes]
+
+            # Save as ICO - first image is the main one, rest are appended
+            circular_images[0].save(
+                favicon_path,
+                format='ICO',
+                append_images=circular_images[1:],
+                sizes=[(s, s) for s in sizes]
+            )
+
+        return True
+    except Exception as e:
+        logger.error(f"Failed to generate favicon: {str(e)}")
+        return False
+
+@app.post("/api/upload-logo", tags=["settings"])
+async def upload_logo(file: UploadFile = File(...)):
+    """Upload a custom logo image.
+
+    Supported formats: PNG, JPG, JPEG, GIF, WebP, SVG
+    Maximum size: 5MB
+
+    The uploaded file will be stored and used as the application logo.
+    A favicon will be automatically generated from the logo.
+    """
+    try:
+        # Validate file extension
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in ALLOWED_IMAGE_EXTENSIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_IMAGE_EXTENSIONS)}"
+            )
+
+        # Read and validate file size
+        content = await file.read()
+        if len(content) > MAX_LOGO_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large. Maximum size: {MAX_LOGO_SIZE // (1024*1024)}MB"
+            )
+
+        # Ensure custom branding directory exists
+        os.makedirs(CUSTOM_BRANDING_DIR, exist_ok=True)
+
+        # Delete old logo and favicon if they exist
+        if state.custom_logo:
+            old_logo_path = os.path.join(CUSTOM_BRANDING_DIR, state.custom_logo)
+            if os.path.exists(old_logo_path):
+                os.remove(old_logo_path)
+            # Also remove old favicon
+            old_favicon_path = os.path.join(CUSTOM_BRANDING_DIR, "favicon.ico")
+            if os.path.exists(old_favicon_path):
+                os.remove(old_favicon_path)
+
+        # Generate a unique filename to prevent caching issues
+        import uuid
+        filename = f"logo-{uuid.uuid4().hex[:8]}{file_ext}"
+        file_path = os.path.join(CUSTOM_BRANDING_DIR, filename)
+
+        # Save the logo file
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        # Generate favicon from logo (for non-SVG files)
+        favicon_generated = False
+        if file_ext != ".svg":
+            favicon_path = os.path.join(CUSTOM_BRANDING_DIR, "favicon.ico")
+            favicon_generated = generate_favicon_from_logo(file_path, favicon_path)
+
+        # Update state
+        state.custom_logo = filename
+        state.save()
+
+        logger.info(f"Custom logo uploaded: {filename}, favicon generated: {favicon_generated}")
+        return {
+            "success": True,
+            "filename": filename,
+            "url": f"/static/custom/{filename}",
+            "favicon_generated": favicon_generated
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading logo: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/custom-logo", tags=["settings"])
+async def delete_custom_logo():
+    """Remove custom logo and favicon, reverting to defaults."""
+    try:
+        if state.custom_logo:
+            # Remove logo
+            logo_path = os.path.join(CUSTOM_BRANDING_DIR, state.custom_logo)
+            if os.path.exists(logo_path):
+                os.remove(logo_path)
+
+            # Remove generated favicon
+            favicon_path = os.path.join(CUSTOM_BRANDING_DIR, "favicon.ico")
+            if os.path.exists(favicon_path):
+                os.remove(favicon_path)
+
+            state.custom_logo = None
+            state.save()
+            logger.info("Custom logo and favicon removed")
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"Error removing logo: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/mqtt-config", deprecated=True, tags=["settings-deprecated"])
 async def get_mqtt_config():
     """DEPRECATED: Use GET /api/settings instead. Get current MQTT configuration.
@@ -2090,15 +2251,15 @@ async def preview_thr_batch(request: dict):
 @app.get("/playlists")
 async def playlists(request: Request):
     logger.debug("Rendering playlists page")
-    return templates.TemplateResponse("playlists.html", {"request": request, "app_name": state.app_name})
+    return templates.TemplateResponse("playlists.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
 
 @app.get("/image2sand")
 async def image2sand(request: Request):
-    return templates.TemplateResponse("image2sand.html", {"request": request, "app_name": state.app_name})
+    return templates.TemplateResponse("image2sand.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
 
 @app.get("/led")
 async def led_control_page(request: Request):
-    return templates.TemplateResponse("led.html", {"request": request, "app_name": state.app_name})
+    return templates.TemplateResponse("led.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
 
 # DW LED control endpoints
 @app.get("/api/dw_leds/status")
@@ -2458,7 +2619,7 @@ async def dw_leds_get_idle_timeout():
 
 @app.get("/table_control")
 async def table_control(request: Request):
-    return templates.TemplateResponse("table_control.html", {"request": request, "app_name": state.app_name})
+    return templates.TemplateResponse("table_control.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
 
 @app.get("/cache-progress")
 async def get_cache_progress_endpoint():

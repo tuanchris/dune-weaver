@@ -572,6 +572,43 @@ input:checked + .slider:before {
           This name will appear in the browser tab and at the top of every page.
         </p>
       </label>
+
+      <!-- Custom Logo Section -->
+      <div class="border-t border-slate-200 pt-6">
+        <label class="flex flex-col gap-1.5">
+          <span class="text-slate-700 text-sm font-medium leading-normal">Custom Logo & Favicon</span>
+          <p class="text-xs text-slate-500 mb-2">
+            Upload a custom logo to replace the default. The favicon (browser tab icon) will be automatically generated from your logo. Recommended size: 180x180 pixels. Supported formats: PNG, JPG, GIF, WebP, SVG.
+          </p>
+          <div class="flex gap-4 items-start">
+            <!-- Logo Preview -->
+            <div class="flex-shrink-0">
+              <div id="logoPreviewContainer" class="w-16 h-16 rounded-full shadow border border-slate-200 overflow-hidden bg-slate-100 flex items-center justify-center">
+                <img id="logoPreview" src="{% if custom_logo %}/static/custom/{{ custom_logo }}{% else %}/static/apple-touch-icon.png{% endif %}" alt="Logo Preview" class="w-full h-full object-cover"/>
+              </div>
+            </div>
+            <!-- Upload Controls -->
+            <div class="flex-1 space-y-2">
+              <div class="flex gap-2 flex-wrap">
+                <label class="flex items-center justify-center gap-2 cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors">
+                  <span class="material-icons text-lg">upload</span>
+                  <span>Upload Logo</span>
+                  <input type="file" id="logoFileInput" accept=".png,.jpg,.jpeg,.gif,.webp,.svg" class="hidden" />
+                </label>
+                <button
+                  type="button"
+                  id="resetLogoBtn"
+                  class="flex items-center justify-center gap-2 cursor-pointer rounded-lg h-10 px-4 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium leading-normal transition-colors {% if not custom_logo %}hidden{% endif %}"
+                >
+                  <span class="material-icons text-lg">restart_alt</span>
+                  <span>Reset to Default</span>
+                </button>
+              </div>
+              <p id="logoUploadStatus" class="text-xs text-slate-500"></p>
+            </div>
+          </div>
+        </label>
+      </div>
     </div>
   </section>
   <section class="bg-white rounded-xl shadow-sm overflow-hidden">
