@@ -6,9 +6,6 @@ services:
     # ports:
     #   - "8080:8080" # Map port 8080 of the container to 8080 of the host (access via http://localhost:8080)
     network_mode: "host" # Use host network for device access
-    environment:
-      # Pass host project directory for Docker commands from inside container
-      - HOST_PROJECT_DIR=${PWD}
     volumes:
       - .:/app
       # Mount Docker socket to allow container to restart itself

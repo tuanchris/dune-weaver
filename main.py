@@ -2757,22 +2757,14 @@ async def restart_system():
         def delayed_restart():
             time.sleep(2)  # Give time for response to be sent
             try:
-                # Get host project directory for docker compose commands
-                # When running inside a container, we need to use the host path
-                host_project_dir = os.environ.get("HOST_PROJECT_DIR")
-                if host_project_dir:
-                    compose_cmd = ["docker", "compose", "-f", f"{host_project_dir}/docker-compose.yml", "restart"]
-                    logger.info(f"Using host project directory: {host_project_dir}")
-                else:
-                    compose_cmd = ["docker", "compose", "restart"]
-                    logger.warning("HOST_PROJECT_DIR not set, using default docker compose")
-
-                subprocess.run(compose_cmd, check=True)
-                logger.info("Docker compose restart command executed successfully")
+                # Use docker restart directly with container name
+                # This is simpler and doesn't require the compose file path
+                subprocess.run(["docker", "restart", "dune-weaver"], check=True)
+                logger.info("Docker restart command executed successfully")
             except FileNotFoundError:
                 logger.error("docker command not found")
             except Exception as e:
-                logger.error(f"Error executing docker compose restart: {e}")
+                logger.error(f"Error executing docker restart: {e}")
 
         import threading
         restart_thread = threading.Thread(target=delayed_restart)
