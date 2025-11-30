@@ -103,6 +103,7 @@ class AppState:
         self.scheduled_pause_time_slots = []  # List of time slot dictionaries
         self.scheduled_pause_control_wled = False  # Turn off WLED during pause periods
         self.scheduled_pause_finish_pattern = False  # Finish current pattern before pausing
+        self.scheduled_pause_timezone = None  # User-selected timezone (None = use system timezone)
 
         # MQTT settings (UI-configurable, overrides .env if set)
         self.mqtt_enabled = False  # Master enable/disable for MQTT
@@ -265,6 +266,7 @@ class AppState:
             "scheduled_pause_time_slots": self.scheduled_pause_time_slots,
             "scheduled_pause_control_wled": self.scheduled_pause_control_wled,
             "scheduled_pause_finish_pattern": self.scheduled_pause_finish_pattern,
+            "scheduled_pause_timezone": self.scheduled_pause_timezone,
             "mqtt_enabled": self.mqtt_enabled,
             "mqtt_broker": self.mqtt_broker,
             "mqtt_port": self.mqtt_port,
@@ -347,6 +349,7 @@ class AppState:
         self.scheduled_pause_time_slots = data.get("scheduled_pause_time_slots", [])
         self.scheduled_pause_control_wled = data.get("scheduled_pause_control_wled", False)
         self.scheduled_pause_finish_pattern = data.get("scheduled_pause_finish_pattern", False)
+        self.scheduled_pause_timezone = data.get("scheduled_pause_timezone", None)
         self.mqtt_enabled = data.get("mqtt_enabled", False)
         self.mqtt_broker = data.get("mqtt_broker", "")
         self.mqtt_port = data.get("mqtt_port", 1883)

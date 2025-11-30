@@ -33,7 +33,7 @@ endblock %}
   border-color: #404040;
 }
 .dark .divide-slate-100 {
-  border-color: #404040;
+  border-color: #333333;
 }
 .dark .bg-slate-50 {
   background-color: #262626;
@@ -258,6 +258,36 @@ input:checked + .slider:before {
 .dark .text-amber-600 {
   color: #f1f5f9;
 }
+
+/* Sky box dark mode - grey theme (Still Sands options) */
+.dark .bg-sky-50 {
+  background-color: #1f1f1f;
+}
+
+.dark .border-sky-200 {
+  border-color: #404040;
+}
+
+/* Select dropdown dark mode */
+.dark select {
+  background-color: #1f1f1f;
+  border-color: #404040;
+  color: #e5e5e5;
+}
+
+.dark select:focus {
+  border-color: #0c7ff2;
+}
+
+.dark select option {
+  background-color: #1f1f1f;
+  color: #e5e5e5;
+}
+
+.dark select optgroup {
+  background-color: #262626;
+  color: #9ca3af;
+}
 {% endblock %}
 
 {% block content %}
@@ -277,7 +307,7 @@ input:checked + .slider:before {
     >
       Device Connection
     </h2>
-    <div class="divide-y divide-slate-100">
+    <div>
       <div
         class="flex items-center gap-4 px-6 py-5 hover:bg-slate-50 transition-colors"
       >
@@ -331,7 +361,7 @@ input:checked + .slider:before {
         </label>
       </div>
       <!-- Preferred Port Configuration -->
-      <div class="px-6 py-5 border-t border-slate-100">
+      <div class="px-6 py-5">
         <label class="flex flex-col gap-1.5">
           <span class="text-slate-700 text-sm font-medium leading-normal flex items-center gap-2">
             <span class="material-icons text-slate-600 text-base">star</span>
@@ -1090,6 +1120,16 @@ input:checked + .slider:before {
             </label>
           </div>
         </div>
+
+        <div class="flex justify-end">
+          <button
+            id="saveAutoPlaySettings"
+            class="flex items-center justify-center gap-2 min-w-[140px] cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors"
+          >
+            <span class="material-icons text-lg">save</span>
+            <span class="truncate">Save Auto-play</span>
+          </button>
+        </div>
       </div>
     </div>
   </section>
@@ -1152,6 +1192,96 @@ input:checked + .slider:before {
           </div>
         </div>
 
+        <!-- Timezone Selection -->
+        <div class="bg-sky-50 rounded-lg p-4 border border-sky-200">
+          <div class="flex items-center justify-between">
+            <div class="flex-1">
+              <h4 class="text-slate-800 text-sm font-medium flex items-center gap-2">
+                <span class="material-icons text-slate-800 dark:text-slate-200 text-base">schedule</span>
+                Timezone
+              </h4>
+              <p class="text-xs text-slate-600 mt-1">
+                Select a timezone for still periods (defaults to system timezone)
+              </p>
+            </div>
+            <select id="stillSandsTimezone" class="h-10 px-3 rounded-lg border border-slate-300 bg-white text-slate-800 text-sm min-w-[200px]">
+              <option value="">System Default</option>
+              <optgroup label="Americas">
+                <option value="America/New_York">Eastern Time (New York)</option>
+                <option value="America/Chicago">Central Time (Chicago)</option>
+                <option value="America/Denver">Mountain Time (Denver)</option>
+                <option value="America/Los_Angeles">Pacific Time (Los Angeles)</option>
+                <option value="America/Anchorage">Alaska (Anchorage)</option>
+                <option value="Pacific/Honolulu">Hawaii (Honolulu)</option>
+                <option value="America/Toronto">Toronto</option>
+                <option value="America/Vancouver">Vancouver</option>
+                <option value="America/Mexico_City">Mexico City</option>
+                <option value="America/Sao_Paulo">São Paulo</option>
+                <option value="America/Buenos_Aires">Buenos Aires</option>
+              </optgroup>
+              <optgroup label="Europe">
+                <option value="Europe/London">London</option>
+                <option value="Europe/Paris">Paris</option>
+                <option value="Europe/Berlin">Berlin</option>
+                <option value="Europe/Amsterdam">Amsterdam</option>
+                <option value="Europe/Rome">Rome</option>
+                <option value="Europe/Madrid">Madrid</option>
+                <option value="Europe/Zurich">Zurich</option>
+                <option value="Europe/Stockholm">Stockholm</option>
+                <option value="Europe/Moscow">Moscow</option>
+              </optgroup>
+              <optgroup label="Asia & Pacific">
+                <option value="Asia/Tokyo">Tokyo</option>
+                <option value="Asia/Shanghai">Shanghai</option>
+                <option value="Asia/Hong_Kong">Hong Kong</option>
+                <option value="Asia/Singapore">Singapore</option>
+                <option value="Asia/Seoul">Seoul</option>
+                <option value="Asia/Dubai">Dubai</option>
+                <option value="Asia/Kolkata">India (Kolkata)</option>
+                <option value="Asia/Bangkok">Bangkok</option>
+                <option value="Australia/Sydney">Sydney</option>
+                <option value="Australia/Melbourne">Melbourne</option>
+                <option value="Australia/Perth">Perth</option>
+                <option value="Pacific/Auckland">Auckland</option>
+              </optgroup>
+              <optgroup label="Africa">
+                <option value="Africa/Cairo">Cairo</option>
+                <option value="Africa/Johannesburg">Johannesburg</option>
+                <option value="Africa/Lagos">Lagos</option>
+              </optgroup>
+              <optgroup label="GMT Offsets">
+                <option value="Etc/GMT+12">GMT-12</option>
+                <option value="Etc/GMT+11">GMT-11</option>
+                <option value="Etc/GMT+10">GMT-10</option>
+                <option value="Etc/GMT+9">GMT-9</option>
+                <option value="Etc/GMT+8">GMT-8</option>
+                <option value="Etc/GMT+7">GMT-7</option>
+                <option value="Etc/GMT+6">GMT-6</option>
+                <option value="Etc/GMT+5">GMT-5</option>
+                <option value="Etc/GMT+4">GMT-4</option>
+                <option value="Etc/GMT+3">GMT-3</option>
+                <option value="Etc/GMT+2">GMT-2</option>
+                <option value="Etc/GMT+1">GMT-1</option>
+                <option value="Etc/GMT">GMT / UTC</option>
+                <option value="Etc/GMT-1">GMT+1</option>
+                <option value="Etc/GMT-2">GMT+2</option>
+                <option value="Etc/GMT-3">GMT+3</option>
+                <option value="Etc/GMT-4">GMT+4</option>
+                <option value="Etc/GMT-5">GMT+5</option>
+                <option value="Etc/GMT-6">GMT+6</option>
+                <option value="Etc/GMT-7">GMT+7</option>
+                <option value="Etc/GMT-8">GMT+8</option>
+                <option value="Etc/GMT-9">GMT+9</option>
+                <option value="Etc/GMT-10">GMT+10</option>
+                <option value="Etc/GMT-11">GMT+11</option>
+                <option value="Etc/GMT-12">GMT+12</option>
+                <option value="Etc/GMT-13">GMT+13</option>
+                <option value="Etc/GMT-14">GMT+14</option>
+              </optgroup>
+            </select>
+          </div>
+        </div>
+
         <div class="bg-slate-50 rounded-lg p-4 space-y-4">
           <div class="flex items-center justify-between">
             <h4 class="text-slate-800 text-base font-semibold">Still Periods</h4>
@@ -1177,7 +1307,7 @@ input:checked + .slider:before {
               <div>
                 <p class="font-medium text-blue-800">Important Notes:</p>
                 <ul class="mt-1 space-y-1 text-blue-700">
-                  <li>• Times are based on your system's local time zone</li>
+                  <li>• Times are based on the selected timezone (or system default if not set)</li>
                   <li>• By default, patterns pause immediately when entering a still period</li>
                   <li>• Enable "Finish Current Pattern" to let patterns complete first</li>
                   <li>• Patterns will resume automatically when exiting a still period</li>
@@ -1206,7 +1336,7 @@ input:checked + .slider:before {
     >
       Software Version
     </h2>
-    <div class="divide-y divide-slate-100">
+    <div>
       <div class="flex items-center gap-4 px-6 py-5">
         <div
           class="text-slate-600 flex items-center justify-center rounded-lg bg-slate-100 shrink-0 size-12"

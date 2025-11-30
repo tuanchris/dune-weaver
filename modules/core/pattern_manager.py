@@ -35,12 +35,12 @@ pattern_lock = asyncio.Lock()
 # Progress update task
 progress_update_task = None
 
-# Cache timezone at module level - read once per session
+# Cache timezone at module level - read once per session (cleared when user changes timezone)
 _cached_timezone = None
 _cached_zoneinfo = None
 
-def _get_system_timezone():
-    """Get and cache the system timezone. Called once per session."""
+def _get_timezone():
+    """Get and cache the timezone for Still Sands. Uses user-selected timezone if set, otherwise system timezone."""
     global _cached_timezone, _cached_zoneinfo
 
     if _cached_timezone is not None:
@@ -48,25 +48,30 @@ def _get_system_timezone():
 
     user_tz = 'UTC'  # Default fallback
 
-    # Try to read timezone from /etc/host-timezone (mounted from host)
-    try:
-        if os.path.exists('/etc/host-timezone'):
-            with open('/etc/host-timezone', 'r') as f:
-                user_tz = f.read().strip()
-                logger.info(f"Still Sands using timezone: {user_tz} (from host system)")
-        # Fallback to /etc/timezone if host-timezone doesn't exist
-        elif os.path.exists('/etc/timezone'):
-            with open('/etc/timezone', 'r') as f:
-                user_tz = f.read().strip()
-                logger.info(f"Still Sands using timezone: {user_tz} (from container)")
-        # Fallback to TZ environment variable
-        elif os.environ.get('TZ'):
-            user_tz = os.environ.get('TZ')
-            logger.info(f"Still Sands using timezone: {user_tz} (from environment)")
-        else:
-            logger.info("Still Sands using timezone: UTC (default)")
-    except Exception as e:
-        logger.debug(f"Could not read timezone: {e}")
+    # First, check if user has selected a specific timezone in settings
+    if state.scheduled_pause_timezone:
+        user_tz = state.scheduled_pause_timezone
+        logger.info(f"Still Sands using timezone: {user_tz} (user-selected)")
+    else:
+        # Fall back to system timezone detection
+        try:
+            if os.path.exists('/etc/host-timezone'):
+                with open('/etc/host-timezone', 'r') as f:
+                    user_tz = f.read().strip()
+                    logger.info(f"Still Sands using timezone: {user_tz} (from host system)")
+            # Fallback to /etc/timezone if host-timezone doesn't exist
+            elif os.path.exists('/etc/timezone'):
+                with open('/etc/timezone', 'r') as f:
+                    user_tz = f.read().strip()
+                    logger.info(f"Still Sands using timezone: {user_tz} (from container)")
+            # Fallback to TZ environment variable
+            elif os.environ.get('TZ'):
+                user_tz = os.environ.get('TZ')
+                logger.info(f"Still Sands using timezone: {user_tz} (from environment)")
+            else:
+                logger.info("Still Sands using timezone: UTC (system default)")
+        except Exception as e:
+            logger.debug(f"Could not read timezone: {e}")
 
     # Cache the timezone
     _cached_timezone = user_tz
@@ -83,8 +88,8 @@ def is_in_scheduled_pause_period():
     if not state.scheduled_pause_enabled or not state.scheduled_pause_time_slots:
         return False
 
-    # Get cached timezone
-    tz_info = _get_system_timezone()
+    # Get cached timezone (user-selected or system default)
+    tz_info = _get_timezone()
 
     try:
         # Get current time in user's timezone

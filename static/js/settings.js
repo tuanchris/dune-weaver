@@ -1286,8 +1286,18 @@ async function initializeauto_playMode() {
         logMessage(`Error loading auto_play settings: ${error.message}`, LOG_TYPE.ERROR);
     }
     
+    // Get save button
+    const saveAutoPlayButton = document.getElementById('saveAutoPlaySettings');
+
     // Function to save settings
-    async function saveSettings() {
+    async function saveSettings(showFeedback = false) {
+        const originalButtonHTML = saveAutoPlayButton ? saveAutoPlayButton.innerHTML : '';
+
+        if (showFeedback && saveAutoPlayButton) {
+            saveAutoPlayButton.disabled = true;
+            saveAutoPlayButton.innerHTML = '<span class="material-icons text-lg animate-spin">refresh</span><span class="truncate">Saving...</span>';
+        }
+
         try {
             const response = await fetch('/api/auto_play-mode', {
                 method: 'POST',
@@ -1301,28 +1311,42 @@ async function initializeauto_playMode() {
                     shuffle: auto_playShuffleToggle.checked
                 })
             });
-            
+
             if (!response.ok) {
                 throw new Error('Failed to save settings');
             }
+
+            if (showFeedback && saveAutoPlayButton) {
+                saveAutoPlayButton.innerHTML = '<span class="material-icons text-lg">check</span><span class="truncate">Saved!</span>';
+                showStatusMessage('Auto-play settings saved successfully', 'success');
+
+                setTimeout(() => {
+                    saveAutoPlayButton.innerHTML = originalButtonHTML;
+                    saveAutoPlayButton.disabled = false;
+                }, 2000);
+            }
         } catch (error) {
             logMessage(`Error saving auto_play settings: ${error.message}`, LOG_TYPE.ERROR);
+            if (showFeedback && saveAutoPlayButton) {
+                showStatusMessage(`Failed to save settings: ${error.message}`, 'error');
+                saveAutoPlayButton.innerHTML = originalButtonHTML;
+                saveAutoPlayButton.disabled = false;
+            }
         }
     }
-    
+
     // Toggle auto_play settings visibility and save
     auto_playToggle.addEventListener('change', async () => {
         auto_playSettings.style.display = auto_playToggle.checked ? 'block' : 'none';
-        await saveSettings();
+        await saveSettings(false); // Auto-save toggle state without full feedback
+        const statusText = auto_playToggle.checked ? 'enabled' : 'disabled';
+        showStatusMessage(`Auto-play ${statusText}`, 'success');
     });
-    
-    // Save when any setting changes
-    auto_playPlaylistSelect.addEventListener('change', saveSettings);
-    auto_playRunModeSelect.addEventListener('change', saveSettings);
-    auto_playPauseTimeInput.addEventListener('change', saveSettings);
-    auto_playPauseTimeInput.addEventListener('input', saveSettings); // Save as user types
-    auto_playClearPatternSelect.addEventListener('change', saveSettings);
-    auto_playShuffleToggle.addEventListener('change', saveSettings);
+
+    // Save button click handler
+    if (saveAutoPlayButton) {
+        saveAutoPlayButton.addEventListener('click', () => saveSettings(true));
+    }
 }
 
 // Initialize auto_play mode when DOM is ready
@@ -1343,6 +1367,7 @@ async function initializeStillSandsMode() {
     const timeSlotsContainer = document.getElementById('timeSlotsContainer');
     const wledControlToggle = document.getElementById('stillSandsWledControl');
     const finishPatternToggle = document.getElementById('stillSandsFinishPattern');
+    const timezoneSelect = document.getElementById('stillSandsTimezone');
 
     // Check if elements exist
     if (!stillSandsToggle || !stillSandsSettings || !addTimeSlotButton || !saveStillSandsButton || !timeSlotsContainer) {
@@ -1384,6 +1409,11 @@ async function initializeStillSandsMode() {
         // Load finish pattern setting
         if (finishPatternToggle) {
             finishPatternToggle.checked = data.finish_pattern || false;
+        }
+
+        // Load timezone setting
+        if (timezoneSelect) {
+            timezoneSelect.value = data.timezone || '';
         }
 
         // Load existing time slots
@@ -1611,6 +1641,7 @@ async function initializeStillSandsMode() {
                     enabled: stillSandsToggle.checked,
                     control_wled: wledControlToggle ? wledControlToggle.checked : false,
                     finish_pattern: finishPatternToggle ? finishPatternToggle.checked : false,
+                    timezone: timezoneSelect ? (timezoneSelect.value || null) : null,
                     time_slots: timeSlots.map(slot => ({
                         start_time: slot.start_time,
                         end_time: slot.end_time,
@@ -1680,6 +1711,15 @@ async function initializeStillSandsMode() {
         finishPatternToggle.addEventListener('change', async () => {
             logMessage(`Finish pattern toggle changed: ${finishPatternToggle.checked}`, LOG_TYPE.INFO);
             // Auto-save when finish pattern setting changes
+            await saveStillSandsSettings();
+        });
+    }
+
+    // Add listener for timezone select
+    if (timezoneSelect) {
+        timezoneSelect.addEventListener('change', async () => {
+            logMessage(`Timezone changed: ${timezoneSelect.value || 'System Default'}`, LOG_TYPE.INFO);
+            // Auto-save when timezone changes
             await saveStillSandsSettings();
         });
     }

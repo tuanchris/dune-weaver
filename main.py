@@ -269,6 +269,7 @@ class ScheduledPauseRequest(BaseModel):
     enabled: bool
     control_wled: Optional[bool] = False
     finish_pattern: Optional[bool] = False  # Finish current pattern before pausing
+    timezone: Optional[str] = None  # IANA timezone or None for system default
     time_slots: List[TimeSlot] = []
 
 class CoordinateRequest(BaseModel):
@@ -348,6 +349,7 @@ class ScheduledPauseSettingsUpdate(BaseModel):
     enabled: Optional[bool] = None
     control_wled: Optional[bool] = None
     finish_pattern: Optional[bool] = None
+    timezone: Optional[str] = None  # IANA timezone (e.g., "America/New_York") or None for system default
     time_slots: Optional[List[TimeSlot]] = None
 
 class HomingSettingsUpdate(BaseModel):
@@ -514,6 +516,7 @@ async def get_all_settings():
             "enabled": state.scheduled_pause_enabled,
             "control_wled": state.scheduled_pause_control_wled,
             "finish_pattern": state.scheduled_pause_finish_pattern,
+            "timezone": state.scheduled_pause_timezone,
             "time_slots": state.scheduled_pause_time_slots
         },
         "homing": {
@@ -616,6 +619,13 @@ async def update_settings(settings_update: SettingsUpdate):
             state.scheduled_pause_control_wled = sp.control_wled
         if sp.finish_pattern is not None:
             state.scheduled_pause_finish_pattern = sp.finish_pattern
+        if sp.timezone is not None:
+            # Empty string means use system default (store as None)
+            state.scheduled_pause_timezone = sp.timezone if sp.timezone else None
+            # Clear cached timezone in pattern_manager so it picks up the new setting
+            from modules.core import pattern_manager
+            pattern_manager._cached_timezone = None
+            pattern_manager._cached_zoneinfo = None
         if sp.time_slots is not None:
             state.scheduled_pause_time_slots = [slot.model_dump() for slot in sp.time_slots]
         updated_categories.append("scheduled_pause")
@@ -748,6 +758,7 @@ async def get_scheduled_pause():
         "enabled": state.scheduled_pause_enabled,
         "control_wled": state.scheduled_pause_control_wled,
         "finish_pattern": state.scheduled_pause_finish_pattern,
+        "timezone": state.scheduled_pause_timezone,
         "time_slots": state.scheduled_pause_time_slots
     }
 
@@ -794,12 +805,19 @@ async def set_scheduled_pause(request: ScheduledPauseRequest):
         state.scheduled_pause_enabled = request.enabled
         state.scheduled_pause_control_wled = request.control_wled
         state.scheduled_pause_finish_pattern = request.finish_pattern
+        state.scheduled_pause_timezone = request.timezone if request.timezone else None
         state.scheduled_pause_time_slots = [slot.model_dump() for slot in request.time_slots]
         state.save()
 
+        # Clear cached timezone so it picks up the new setting
+        from modules.core import pattern_manager
+        pattern_manager._cached_timezone = None
+        pattern_manager._cached_zoneinfo = None
+
         wled_msg = " (with WLED control)" if request.control_wled else ""
         finish_msg = " (finish pattern first)" if request.finish_pattern else ""
-        logger.info(f"Still Sands {'enabled' if request.enabled else 'disabled'} with {len(request.time_slots)} time slots{wled_msg}{finish_msg}")
+        tz_msg = f" (timezone: {request.timezone})" if request.timezone else ""
+        logger.info(f"Still Sands {'enabled' if request.enabled else 'disabled'} with {len(request.time_slots)} time slots{wled_msg}{finish_msg}{tz_msg}")
         return {"success": True, "message": "Still Sands settings updated"}
 
     except HTTPException:
