@@ -268,6 +268,8 @@ class TimeSlot(BaseModel):
 class ScheduledPauseRequest(BaseModel):
     enabled: bool
     control_wled: Optional[bool] = False
+    finish_pattern: Optional[bool] = False  # Finish current pattern before pausing
+    timezone: Optional[str] = None  # IANA timezone or None for system default
     time_slots: List[TimeSlot] = []
 
 class CoordinateRequest(BaseModel):
@@ -309,12 +311,92 @@ class LEDConfigRequest(BaseModel):
 class DeletePlaylistRequest(BaseModel):
     playlist_name: str
 
+class RenamePlaylistRequest(BaseModel):
+    old_name: str
+    new_name: str
+
 class ThetaRhoRequest(BaseModel):
     file_name: str
     pre_execution: Optional[str] = "none"
 
 class GetCoordinatesRequest(BaseModel):
     file_name: str
+
+# ============================================================================
+# Unified Settings Models
+# ============================================================================
+
+class AppSettingsUpdate(BaseModel):
+    name: Optional[str] = None
+    custom_logo: Optional[str] = None  # Filename or empty string to clear (favicon auto-generated)
+
+class ConnectionSettingsUpdate(BaseModel):
+    preferred_port: Optional[str] = None
+
+class PatternSettingsUpdate(BaseModel):
+    clear_pattern_speed: Optional[int] = None
+    custom_clear_from_in: Optional[str] = None
+    custom_clear_from_out: Optional[str] = None
+
+class AutoPlaySettingsUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    playlist: Optional[str] = None
+    run_mode: Optional[str] = None
+    pause_time: Optional[float] = None
+    clear_pattern: Optional[str] = None
+    shuffle: Optional[bool] = None
+
+class ScheduledPauseSettingsUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    control_wled: Optional[bool] = None
+    finish_pattern: Optional[bool] = None
+    timezone: Optional[str] = None  # IANA timezone (e.g., "America/New_York") or None for system default
+    time_slots: Optional[List[TimeSlot]] = None
+
+class HomingSettingsUpdate(BaseModel):
+    mode: Optional[int] = None
+    angular_offset_degrees: Optional[float] = None
+    auto_home_enabled: Optional[bool] = None
+    auto_home_after_patterns: Optional[int] = None
+
+class DwLedSettingsUpdate(BaseModel):
+    num_leds: Optional[int] = None
+    gpio_pin: Optional[int] = None
+    pixel_order: Optional[str] = None
+    brightness: Optional[int] = None
+    speed: Optional[int] = None
+    intensity: Optional[int] = None
+    idle_effect: Optional[dict] = None
+    playing_effect: Optional[dict] = None
+    idle_timeout_enabled: Optional[bool] = None
+    idle_timeout_minutes: Optional[int] = None
+
+class LedSettingsUpdate(BaseModel):
+    provider: Optional[str] = None  # "none", "wled", "dw_leds"
+    wled_ip: Optional[str] = None
+    dw_led: Optional[DwLedSettingsUpdate] = None
+
+class MqttSettingsUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    broker: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None  # Write-only, never returned in GET
+    client_id: Optional[str] = None
+    discovery_prefix: Optional[str] = None
+    device_id: Optional[str] = None
+    device_name: Optional[str] = None
+
+class SettingsUpdate(BaseModel):
+    """Request model for PATCH /api/settings - all fields optional for partial updates"""
+    app: Optional[AppSettingsUpdate] = None
+    connection: Optional[ConnectionSettingsUpdate] = None
+    patterns: Optional[PatternSettingsUpdate] = None
+    auto_play: Optional[AutoPlaySettingsUpdate] = None
+    scheduled_pause: Optional[ScheduledPauseSettingsUpdate] = None
+    homing: Optional[HomingSettingsUpdate] = None
+    led: Optional[LedSettingsUpdate] = None
+    mqtt: Optional[MqttSettingsUpdate] = None
 
 # Store active WebSocket connections
 active_status_connections = set()
@@ -393,15 +475,258 @@ async def websocket_cache_progress_endpoint(websocket: WebSocket):
 # FastAPI routes
 @app.get("/")
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "app_name": state.app_name})
+    return templates.TemplateResponse("index.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
 
 @app.get("/settings")
 async def settings(request: Request):
-    return templates.TemplateResponse("settings.html", {"request": request, "app_name": state.app_name})
+    return templates.TemplateResponse("settings.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
 
-@app.get("/api/auto_play-mode")
+# ============================================================================
+# Unified Settings API
+# ============================================================================
+
+@app.get("/api/settings", tags=["settings"])
+async def get_all_settings():
+    """
+    Get all application settings in a unified structure.
+
+    This endpoint consolidates multiple settings endpoints into a single response.
+    Individual settings endpoints are deprecated but still functional.
+    """
+    return {
+        "app": {
+            "name": state.app_name,
+            "custom_logo": state.custom_logo
+        },
+        "connection": {
+            "preferred_port": state.preferred_port
+        },
+        "patterns": {
+            "clear_pattern_speed": state.clear_pattern_speed,
+            "custom_clear_from_in": state.custom_clear_from_in,
+            "custom_clear_from_out": state.custom_clear_from_out
+        },
+        "auto_play": {
+            "enabled": state.auto_play_enabled,
+            "playlist": state.auto_play_playlist,
+            "run_mode": state.auto_play_run_mode,
+            "pause_time": state.auto_play_pause_time,
+            "clear_pattern": state.auto_play_clear_pattern,
+            "shuffle": state.auto_play_shuffle
+        },
+        "scheduled_pause": {
+            "enabled": state.scheduled_pause_enabled,
+            "control_wled": state.scheduled_pause_control_wled,
+            "finish_pattern": state.scheduled_pause_finish_pattern,
+            "timezone": state.scheduled_pause_timezone,
+            "time_slots": state.scheduled_pause_time_slots
+        },
+        "homing": {
+            "mode": state.homing,
+            "angular_offset_degrees": state.angular_homing_offset_degrees,
+            "auto_home_enabled": state.auto_home_enabled,
+            "auto_home_after_patterns": state.auto_home_after_patterns
+        },
+        "led": {
+            "provider": state.led_provider,
+            "wled_ip": state.wled_ip,
+            "dw_led": {
+                "num_leds": state.dw_led_num_leds,
+                "gpio_pin": state.dw_led_gpio_pin,
+                "pixel_order": state.dw_led_pixel_order,
+                "brightness": state.dw_led_brightness,
+                "speed": state.dw_led_speed,
+                "intensity": state.dw_led_intensity,
+                "idle_effect": state.dw_led_idle_effect,
+                "playing_effect": state.dw_led_playing_effect,
+                "idle_timeout_enabled": state.dw_led_idle_timeout_enabled,
+                "idle_timeout_minutes": state.dw_led_idle_timeout_minutes
+            }
+        },
+        "mqtt": {
+            "enabled": state.mqtt_enabled,
+            "broker": state.mqtt_broker,
+            "port": state.mqtt_port,
+            "username": state.mqtt_username,
+            "has_password": bool(state.mqtt_password),
+            "client_id": state.mqtt_client_id,
+            "discovery_prefix": state.mqtt_discovery_prefix,
+            "device_id": state.mqtt_device_id,
+            "device_name": state.mqtt_device_name
+        }
+    }
+
+@app.patch("/api/settings", tags=["settings"])
+async def update_settings(settings_update: SettingsUpdate):
+    """
+    Partially update application settings.
+
+    Only include the categories and fields you want to update.
+    All fields are optional - only provided values will be updated.
+
+    Example: {"app": {"name": "My Sand Table"}, "auto_play": {"enabled": true}}
+    """
+    updated_categories = []
+    requires_restart = False
+    led_reinit_needed = False
+    old_led_provider = state.led_provider
+
+    # App settings
+    if settings_update.app:
+        if settings_update.app.name is not None:
+            state.app_name = settings_update.app.name or "Dune Weaver"
+        if settings_update.app.custom_logo is not None:
+            state.custom_logo = settings_update.app.custom_logo or None
+        updated_categories.append("app")
+
+    # Connection settings
+    if settings_update.connection:
+        if settings_update.connection.preferred_port is not None:
+            port = settings_update.connection.preferred_port
+            state.preferred_port = None if port in ("", "none") else port
+        updated_categories.append("connection")
+
+    # Pattern settings
+    if settings_update.patterns:
+        p = settings_update.patterns
+        if p.clear_pattern_speed is not None:
+            state.clear_pattern_speed = p.clear_pattern_speed if p.clear_pattern_speed > 0 else None
+        if p.custom_clear_from_in is not None:
+            state.custom_clear_from_in = p.custom_clear_from_in or None
+        if p.custom_clear_from_out is not None:
+            state.custom_clear_from_out = p.custom_clear_from_out or None
+        updated_categories.append("patterns")
+
+    # Auto-play settings
+    if settings_update.auto_play:
+        ap = settings_update.auto_play
+        if ap.enabled is not None:
+            state.auto_play_enabled = ap.enabled
+        if ap.playlist is not None:
+            state.auto_play_playlist = ap.playlist or None
+        if ap.run_mode is not None:
+            state.auto_play_run_mode = ap.run_mode
+        if ap.pause_time is not None:
+            state.auto_play_pause_time = ap.pause_time
+        if ap.clear_pattern is not None:
+            state.auto_play_clear_pattern = ap.clear_pattern
+        if ap.shuffle is not None:
+            state.auto_play_shuffle = ap.shuffle
+        updated_categories.append("auto_play")
+
+    # Scheduled pause (Still Sands) settings
+    if settings_update.scheduled_pause:
+        sp = settings_update.scheduled_pause
+        if sp.enabled is not None:
+            state.scheduled_pause_enabled = sp.enabled
+        if sp.control_wled is not None:
+            state.scheduled_pause_control_wled = sp.control_wled
+        if sp.finish_pattern is not None:
+            state.scheduled_pause_finish_pattern = sp.finish_pattern
+        if sp.timezone is not None:
+            # Empty string means use system default (store as None)
+            state.scheduled_pause_timezone = sp.timezone if sp.timezone else None
+            # Clear cached timezone in pattern_manager so it picks up the new setting
+            from modules.core import pattern_manager
+            pattern_manager._cached_timezone = None
+            pattern_manager._cached_zoneinfo = None
+        if sp.time_slots is not None:
+            state.scheduled_pause_time_slots = [slot.model_dump() for slot in sp.time_slots]
+        updated_categories.append("scheduled_pause")
+
+    # Homing settings
+    if settings_update.homing:
+        h = settings_update.homing
+        if h.mode is not None:
+            state.homing = h.mode
+        if h.angular_offset_degrees is not None:
+            state.angular_homing_offset_degrees = h.angular_offset_degrees
+        if h.auto_home_enabled is not None:
+            state.auto_home_enabled = h.auto_home_enabled
+        if h.auto_home_after_patterns is not None:
+            state.auto_home_after_patterns = h.auto_home_after_patterns
+        updated_categories.append("homing")
+
+    # LED settings
+    if settings_update.led:
+        led = settings_update.led
+        if led.provider is not None:
+            state.led_provider = led.provider
+            if led.provider != old_led_provider:
+                led_reinit_needed = True
+        if led.wled_ip is not None:
+            state.wled_ip = led.wled_ip or None
+        if led.dw_led:
+            dw = led.dw_led
+            if dw.num_leds is not None:
+                state.dw_led_num_leds = dw.num_leds
+            if dw.gpio_pin is not None:
+                state.dw_led_gpio_pin = dw.gpio_pin
+            if dw.pixel_order is not None:
+                state.dw_led_pixel_order = dw.pixel_order
+            if dw.brightness is not None:
+                state.dw_led_brightness = dw.brightness
+            if dw.speed is not None:
+                state.dw_led_speed = dw.speed
+            if dw.intensity is not None:
+                state.dw_led_intensity = dw.intensity
+            if dw.idle_effect is not None:
+                state.dw_led_idle_effect = dw.idle_effect
+            if dw.playing_effect is not None:
+                state.dw_led_playing_effect = dw.playing_effect
+            if dw.idle_timeout_enabled is not None:
+                state.dw_led_idle_timeout_enabled = dw.idle_timeout_enabled
+            if dw.idle_timeout_minutes is not None:
+                state.dw_led_idle_timeout_minutes = dw.idle_timeout_minutes
+        updated_categories.append("led")
+
+    # MQTT settings
+    if settings_update.mqtt:
+        m = settings_update.mqtt
+        if m.enabled is not None:
+            state.mqtt_enabled = m.enabled
+        if m.broker is not None:
+            state.mqtt_broker = m.broker
+        if m.port is not None:
+            state.mqtt_port = m.port
+        if m.username is not None:
+            state.mqtt_username = m.username
+        if m.password is not None:
+            state.mqtt_password = m.password
+        if m.client_id is not None:
+            state.mqtt_client_id = m.client_id
+        if m.discovery_prefix is not None:
+            state.mqtt_discovery_prefix = m.discovery_prefix
+        if m.device_id is not None:
+            state.mqtt_device_id = m.device_id
+        if m.device_name is not None:
+            state.mqtt_device_name = m.device_name
+        updated_categories.append("mqtt")
+        requires_restart = True
+
+    # Save state
+    state.save()
+
+    # Handle LED reinitialization if provider changed
+    if led_reinit_needed:
+        logger.info(f"LED provider changed from {old_led_provider} to {state.led_provider}, reinitialization may be needed")
+
+    logger.info(f"Settings updated: {', '.join(updated_categories)}")
+
+    return {
+        "success": True,
+        "updated_categories": updated_categories,
+        "requires_restart": requires_restart,
+        "led_reinit_needed": led_reinit_needed
+    }
+
+# ============================================================================
+# Individual Settings Endpoints (Deprecated - use /api/settings instead)
+# ============================================================================
+
+@app.get("/api/auto_play-mode", deprecated=True, tags=["settings-deprecated"])
 async def get_auto_play_mode():
-    """Get current auto_play mode settings."""
+    """DEPRECATED: Use GET /api/settings instead. Get current auto_play mode settings."""
     return {
         "enabled": state.auto_play_enabled,
         "playlist": state.auto_play_playlist,
@@ -411,9 +736,9 @@ async def get_auto_play_mode():
         "shuffle": state.auto_play_shuffle
     }
 
-@app.post("/api/auto_play-mode")
+@app.post("/api/auto_play-mode", deprecated=True, tags=["settings-deprecated"])
 async def set_auto_play_mode(request: auto_playModeRequest):
-    """Update auto_play mode settings."""
+    """DEPRECATED: Use PATCH /api/settings instead. Update auto_play mode settings."""
     state.auto_play_enabled = request.enabled
     if request.playlist is not None:
         state.auto_play_playlist = request.playlist
@@ -430,16 +755,18 @@ async def set_auto_play_mode(request: auto_playModeRequest):
     logger.info(f"auto_play mode {'enabled' if request.enabled else 'disabled'}, playlist: {request.playlist}")
     return {"success": True, "message": "auto_play mode settings updated"}
 
-@app.get("/api/scheduled-pause")
+@app.get("/api/scheduled-pause", deprecated=True, tags=["settings-deprecated"])
 async def get_scheduled_pause():
-    """Get current Still Sands settings."""
+    """DEPRECATED: Use GET /api/settings instead. Get current Still Sands settings."""
     return {
         "enabled": state.scheduled_pause_enabled,
         "control_wled": state.scheduled_pause_control_wled,
+        "finish_pattern": state.scheduled_pause_finish_pattern,
+        "timezone": state.scheduled_pause_timezone,
         "time_slots": state.scheduled_pause_time_slots
     }
 
-@app.post("/api/scheduled-pause")
+@app.post("/api/scheduled-pause", deprecated=True, tags=["settings-deprecated"])
 async def set_scheduled_pause(request: ScheduledPauseRequest):
     """Update Still Sands settings."""
     try:
@@ -481,11 +808,20 @@ async def set_scheduled_pause(request: ScheduledPauseRequest):
         # Update state
         state.scheduled_pause_enabled = request.enabled
         state.scheduled_pause_control_wled = request.control_wled
+        state.scheduled_pause_finish_pattern = request.finish_pattern
+        state.scheduled_pause_timezone = request.timezone if request.timezone else None
         state.scheduled_pause_time_slots = [slot.model_dump() for slot in request.time_slots]
         state.save()
 
+        # Clear cached timezone so it picks up the new setting
+        from modules.core import pattern_manager
+        pattern_manager._cached_timezone = None
+        pattern_manager._cached_zoneinfo = None
+
         wled_msg = " (with WLED control)" if request.control_wled else ""
-        logger.info(f"Still Sands {'enabled' if request.enabled else 'disabled'} with {len(request.time_slots)} time slots{wled_msg}")
+        finish_msg = " (finish pattern first)" if request.finish_pattern else ""
+        tz_msg = f" (timezone: {request.timezone})" if request.timezone else ""
+        logger.info(f"Still Sands {'enabled' if request.enabled else 'disabled'} with {len(request.time_slots)} time slots{wled_msg}{finish_msg}{tz_msg}")
         return {"success": True, "message": "Still Sands settings updated"}
 
     except HTTPException:
@@ -494,21 +830,25 @@ async def set_scheduled_pause(request: ScheduledPauseRequest):
         logger.error(f"Error updating Still Sands settings: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to update Still Sands settings: {str(e)}")
 
-@app.get("/api/homing-config")
+@app.get("/api/homing-config", deprecated=True, tags=["settings-deprecated"])
 async def get_homing_config():
-    """Get homing configuration (mode and compass offset)."""
+    """Get homing configuration (mode, compass offset, and auto-home settings)."""
     return {
         "homing_mode": state.homing,
-        "angular_homing_offset_degrees": state.angular_homing_offset_degrees
+        "angular_homing_offset_degrees": state.angular_homing_offset_degrees,
+        "auto_home_enabled": state.auto_home_enabled,
+        "auto_home_after_patterns": state.auto_home_after_patterns
     }
 
 class HomingConfigRequest(BaseModel):
     homing_mode: int = 0  # 0 = crash, 1 = sensor
     angular_homing_offset_degrees: float = 0.0
+    auto_home_enabled: Optional[bool] = None
+    auto_home_after_patterns: Optional[int] = None
 
-@app.post("/api/homing-config")
+@app.post("/api/homing-config", deprecated=True, tags=["settings-deprecated"])
 async def set_homing_config(request: HomingConfigRequest):
-    """Set homing configuration (mode and compass offset)."""
+    """Set homing configuration (mode, compass offset, and auto-home settings)."""
     try:
         # Validate homing mode
         if request.homing_mode not in [0, 1]:
@@ -516,10 +856,21 @@ async def set_homing_config(request: HomingConfigRequest):
 
         state.homing = request.homing_mode
         state.angular_homing_offset_degrees = request.angular_homing_offset_degrees
+
+        # Update auto-home settings if provided
+        if request.auto_home_enabled is not None:
+            state.auto_home_enabled = request.auto_home_enabled
+        if request.auto_home_after_patterns is not None:
+            if request.auto_home_after_patterns < 1:
+                raise HTTPException(status_code=400, detail="Auto-home after patterns must be at least 1")
+            state.auto_home_after_patterns = request.auto_home_after_patterns
+
         state.save()
 
         mode_name = "crash" if request.homing_mode == 0 else "sensor"
         logger.info(f"Homing mode set to {mode_name}, compass offset set to {request.angular_homing_offset_degrees}°")
+        if request.auto_home_enabled is not None:
+            logger.info(f"Auto-home enabled: {state.auto_home_enabled}, after {state.auto_home_after_patterns} patterns")
         return {"success": True, "message": "Homing configuration updated"}
     except HTTPException:
         raise
@@ -1082,7 +1433,34 @@ async def serial_status():
     logger.debug(f"Serial status check - connected: {connected}, port: {port}")
     return {
         "connected": connected,
-        "port": port
+        "port": port,
+        "preferred_port": state.preferred_port
+    }
+
+@app.get("/api/preferred-port", deprecated=True, tags=["settings-deprecated"])
+async def get_preferred_port():
+    """Get the currently configured preferred port for auto-connect."""
+    return {
+        "preferred_port": state.preferred_port
+    }
+
+@app.post("/api/preferred-port", deprecated=True, tags=["settings-deprecated"])
+async def set_preferred_port(request: Request):
+    """Set the preferred port for auto-connect."""
+    data = await request.json()
+    preferred_port = data.get("preferred_port")
+
+    # Allow setting to None to clear the preference
+    if preferred_port == "" or preferred_port == "none":
+        preferred_port = None
+
+    state.preferred_port = preferred_port
+    state.save()
+
+    logger.info(f"Preferred port set to: {preferred_port}")
+    return {
+        "success": True,
+        "preferred_port": state.preferred_port
     }
 
 @app.post("/pause_execution")
@@ -1142,6 +1520,22 @@ async def delete_playlist(request: DeletePlaylistRequest):
     return {
         "success": True,
         "message": f"Playlist '{request.playlist_name}' deleted"
+    }
+
+@app.post("/rename_playlist")
+async def rename_playlist(request: RenamePlaylistRequest):
+    """Rename an existing playlist."""
+    success, message = playlist_manager.rename_playlist(request.old_name, request.new_name)
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail=message
+        )
+
+    return {
+        "success": True,
+        "message": message,
+        "new_name": request.new_name
     }
 
 class AddToPlaylistRequest(BaseModel):
@@ -1242,9 +1636,9 @@ async def get_wled_ip():
         raise HTTPException(status_code=404, detail="No WLED IP set")
     return {"success": True, "wled_ip": state.wled_ip}
 
-@app.post("/set_led_config")
+@app.post("/set_led_config", deprecated=True, tags=["settings-deprecated"])
 async def set_led_config(request: LEDConfigRequest):
-    """Configure LED provider (WLED, DW LEDs, or none)"""
+    """DEPRECATED: Use PATCH /api/settings instead. Configure LED provider (WLED, DW LEDs, or none)"""
     if request.provider not in ["wled", "dw_leds", "none"]:
         raise HTTPException(status_code=400, detail="Invalid provider. Must be 'wled', 'dw_leds', or 'none'")
 
@@ -1342,9 +1736,9 @@ async def set_led_config(request: LEDConfigRequest):
         "dw_led_brightness": state.dw_led_brightness
     }
 
-@app.get("/get_led_config")
+@app.get("/get_led_config", deprecated=True, tags=["settings-deprecated"])
 async def get_led_config():
-    """Get current LED provider configuration"""
+    """DEPRECATED: Use GET /api/settings instead. Get current LED provider configuration"""
     # Auto-detect provider for backward compatibility with existing installations
     provider = state.led_provider
     if not provider or provider == "none":
@@ -1376,7 +1770,7 @@ async def skip_pattern():
     state.skip_requested = True
     return {"success": True}
 
-@app.get("/api/custom_clear_patterns")
+@app.get("/api/custom_clear_patterns", deprecated=True, tags=["settings-deprecated"])
 async def get_custom_clear_patterns():
     """Get the currently configured custom clear patterns."""
     return {
@@ -1385,7 +1779,7 @@ async def get_custom_clear_patterns():
         "custom_clear_from_out": state.custom_clear_from_out
     }
 
-@app.post("/api/custom_clear_patterns")
+@app.post("/api/custom_clear_patterns", deprecated=True, tags=["settings-deprecated"])
 async def set_custom_clear_patterns(request: dict):
     """Set custom clear patterns for clear_from_in and clear_from_out."""
     try:
@@ -1417,7 +1811,7 @@ async def set_custom_clear_patterns(request: dict):
         logger.error(f"Failed to set custom clear patterns: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/clear_pattern_speed")
+@app.get("/api/clear_pattern_speed", deprecated=True, tags=["settings-deprecated"])
 async def get_clear_pattern_speed():
     """Get the current clearing pattern speed setting."""
     return {
@@ -1426,9 +1820,9 @@ async def get_clear_pattern_speed():
         "effective_speed": state.clear_pattern_speed if state.clear_pattern_speed is not None else state.speed
     }
 
-@app.post("/api/clear_pattern_speed")
+@app.post("/api/clear_pattern_speed", deprecated=True, tags=["settings-deprecated"])
 async def set_clear_pattern_speed(request: dict):
-    """Set the clearing pattern speed."""
+    """DEPRECATED: Use PATCH /api/settings instead. Set the clearing pattern speed."""
     try:
         # If speed is None or "none", use default behavior (state.speed)
         speed_value = request.get("clear_pattern_speed")
@@ -1456,23 +1850,323 @@ async def set_clear_pattern_speed(request: dict):
         logger.error(f"Failed to set clear pattern speed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/app-name")
+@app.get("/api/app-name", deprecated=True, tags=["settings-deprecated"])
 async def get_app_name():
-    """Get current application name."""
+    """DEPRECATED: Use GET /api/settings instead. Get current application name."""
     return {"app_name": state.app_name}
 
-@app.post("/api/app-name")
+@app.post("/api/app-name", deprecated=True, tags=["settings-deprecated"])
 async def set_app_name(request: dict):
-    """Update application name."""
+    """DEPRECATED: Use PATCH /api/settings instead. Update application name."""
     app_name = request.get("app_name", "").strip()
     if not app_name:
         app_name = "Dune Weaver"  # Reset to default if empty
-    
+
     state.app_name = app_name
     state.save()
-    
+
     logger.info(f"Application name updated to: {app_name}")
     return {"success": True, "app_name": app_name}
+
+# ============================================================================
+# Custom Branding Upload Endpoints
+# ============================================================================
+
+CUSTOM_BRANDING_DIR = os.path.join("static", "custom")
+ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
+MAX_LOGO_SIZE = 5 * 1024 * 1024  # 5MB
+
+def generate_favicon_from_logo(logo_path: str, favicon_path: str) -> bool:
+    """Generate a circular-cropped favicon from the uploaded logo using PIL.
+
+    Creates a multi-size ICO file (16x16, 32x32, 48x48) with circular crop.
+    Returns True on success, False on failure.
+    """
+    try:
+        from PIL import Image, ImageDraw
+
+        def create_circular_image(img, size):
+            """Create a circular-cropped image at the specified size."""
+            # Resize to target size
+            resized = img.resize((size, size), Image.Resampling.LANCZOS)
+
+            # Create circular mask
+            mask = Image.new('L', (size, size), 0)
+            draw = ImageDraw.Draw(mask)
+            draw.ellipse((0, 0, size - 1, size - 1), fill=255)
+
+            # Apply circular mask - create transparent background
+            output = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+            output.paste(resized, (0, 0), mask)
+            return output
+
+        with Image.open(logo_path) as img:
+            # Convert to RGBA if needed
+            if img.mode != 'RGBA':
+                img = img.convert('RGBA')
+
+            # Crop to square (center crop)
+            width, height = img.size
+            min_dim = min(width, height)
+            left = (width - min_dim) // 2
+            top = (height - min_dim) // 2
+            img = img.crop((left, top, left + min_dim, top + min_dim))
+
+            # Create circular images at each favicon size
+            sizes = [48, 32, 16]
+            circular_images = [create_circular_image(img, size) for size in sizes]
+
+            # Save as ICO - first image is the main one, rest are appended
+            circular_images[0].save(
+                favicon_path,
+                format='ICO',
+                append_images=circular_images[1:],
+                sizes=[(s, s) for s in sizes]
+            )
+
+        return True
+    except Exception as e:
+        logger.error(f"Failed to generate favicon: {str(e)}")
+        return False
+
+@app.post("/api/upload-logo", tags=["settings"])
+async def upload_logo(file: UploadFile = File(...)):
+    """Upload a custom logo image.
+
+    Supported formats: PNG, JPG, JPEG, GIF, WebP, SVG
+    Maximum size: 5MB
+
+    The uploaded file will be stored and used as the application logo.
+    A favicon will be automatically generated from the logo.
+    """
+    try:
+        # Validate file extension
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in ALLOWED_IMAGE_EXTENSIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_IMAGE_EXTENSIONS)}"
+            )
+
+        # Read and validate file size
+        content = await file.read()
+        if len(content) > MAX_LOGO_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large. Maximum size: {MAX_LOGO_SIZE // (1024*1024)}MB"
+            )
+
+        # Ensure custom branding directory exists
+        os.makedirs(CUSTOM_BRANDING_DIR, exist_ok=True)
+
+        # Delete old logo and favicon if they exist
+        if state.custom_logo:
+            old_logo_path = os.path.join(CUSTOM_BRANDING_DIR, state.custom_logo)
+            if os.path.exists(old_logo_path):
+                os.remove(old_logo_path)
+            # Also remove old favicon
+            old_favicon_path = os.path.join(CUSTOM_BRANDING_DIR, "favicon.ico")
+            if os.path.exists(old_favicon_path):
+                os.remove(old_favicon_path)
+
+        # Generate a unique filename to prevent caching issues
+        import uuid
+        filename = f"logo-{uuid.uuid4().hex[:8]}{file_ext}"
+        file_path = os.path.join(CUSTOM_BRANDING_DIR, filename)
+
+        # Save the logo file
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        # Generate favicon from logo (for non-SVG files)
+        favicon_generated = False
+        if file_ext != ".svg":
+            favicon_path = os.path.join(CUSTOM_BRANDING_DIR, "favicon.ico")
+            favicon_generated = generate_favicon_from_logo(file_path, favicon_path)
+
+        # Update state
+        state.custom_logo = filename
+        state.save()
+
+        logger.info(f"Custom logo uploaded: {filename}, favicon generated: {favicon_generated}")
+        return {
+            "success": True,
+            "filename": filename,
+            "url": f"/static/custom/{filename}",
+            "favicon_generated": favicon_generated
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading logo: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/custom-logo", tags=["settings"])
+async def delete_custom_logo():
+    """Remove custom logo and favicon, reverting to defaults."""
+    try:
+        if state.custom_logo:
+            # Remove logo
+            logo_path = os.path.join(CUSTOM_BRANDING_DIR, state.custom_logo)
+            if os.path.exists(logo_path):
+                os.remove(logo_path)
+
+            # Remove generated favicon
+            favicon_path = os.path.join(CUSTOM_BRANDING_DIR, "favicon.ico")
+            if os.path.exists(favicon_path):
+                os.remove(favicon_path)
+
+            state.custom_logo = None
+            state.save()
+            logger.info("Custom logo and favicon removed")
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"Error removing logo: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/mqtt-config", deprecated=True, tags=["settings-deprecated"])
+async def get_mqtt_config():
+    """DEPRECATED: Use GET /api/settings instead. Get current MQTT configuration.
+
+    Note: Password is not returned for security reasons.
+    """
+    from modules.mqtt import get_mqtt_handler
+    handler = get_mqtt_handler()
+
+    return {
+        "enabled": state.mqtt_enabled,
+        "broker": state.mqtt_broker,
+        "port": state.mqtt_port,
+        "username": state.mqtt_username,
+        # Password is intentionally omitted for security
+        "has_password": bool(state.mqtt_password),
+        "client_id": state.mqtt_client_id,
+        "discovery_prefix": state.mqtt_discovery_prefix,
+        "device_id": state.mqtt_device_id,
+        "device_name": state.mqtt_device_name,
+        "connected": handler.is_connected if hasattr(handler, 'is_connected') else False,
+        "is_mock": handler.__class__.__name__ == 'MockMQTTHandler'
+    }
+
+@app.post("/api/mqtt-config", deprecated=True, tags=["settings-deprecated"])
+async def set_mqtt_config(request: dict):
+    """DEPRECATED: Use PATCH /api/settings instead. Update MQTT configuration. Requires restart to take effect."""
+    try:
+        # Update state with new values
+        state.mqtt_enabled = request.get("enabled", False)
+        state.mqtt_broker = request.get("broker", "").strip()
+        state.mqtt_port = int(request.get("port", 1883))
+        state.mqtt_username = request.get("username", "").strip()
+        state.mqtt_password = request.get("password", "").strip()
+        state.mqtt_client_id = request.get("client_id", "dune_weaver").strip()
+        state.mqtt_discovery_prefix = request.get("discovery_prefix", "homeassistant").strip()
+        state.mqtt_device_id = request.get("device_id", "dune_weaver").strip()
+        state.mqtt_device_name = request.get("device_name", "Dune Weaver").strip()
+
+        # Validate required fields when enabled
+        if state.mqtt_enabled and not state.mqtt_broker:
+            return JSONResponse(
+                content={"success": False, "message": "Broker address is required when MQTT is enabled"},
+                status_code=400
+            )
+
+        state.save()
+        logger.info(f"MQTT configuration updated. Enabled: {state.mqtt_enabled}, Broker: {state.mqtt_broker}")
+
+        return {
+            "success": True,
+            "message": "MQTT configuration saved. Restart the application for changes to take effect.",
+            "requires_restart": True
+        }
+    except ValueError as e:
+        return JSONResponse(
+            content={"success": False, "message": f"Invalid value: {str(e)}"},
+            status_code=400
+        )
+    except Exception as e:
+        logger.error(f"Failed to update MQTT config: {str(e)}")
+        return JSONResponse(
+            content={"success": False, "message": str(e)},
+            status_code=500
+        )
+
+@app.post("/api/mqtt-test")
+async def test_mqtt_connection(request: dict):
+    """Test MQTT connection with provided settings."""
+    import paho.mqtt.client as mqtt_client
+
+    broker = request.get("broker", "").strip()
+    port = int(request.get("port", 1883))
+    username = request.get("username", "").strip()
+    password = request.get("password", "").strip()
+    client_id = request.get("client_id", "dune_weaver_test").strip()
+
+    if not broker:
+        return JSONResponse(
+            content={"success": False, "message": "Broker address is required"},
+            status_code=400
+        )
+
+    try:
+        # Create a test client
+        client = mqtt_client.Client(client_id=client_id + "_test")
+
+        if username:
+            client.username_pw_set(username, password)
+
+        # Connection result
+        connection_result = {"connected": False, "error": None}
+
+        def on_connect(client, userdata, flags, rc):
+            if rc == 0:
+                connection_result["connected"] = True
+            else:
+                error_messages = {
+                    1: "Incorrect protocol version",
+                    2: "Invalid client identifier",
+                    3: "Server unavailable",
+                    4: "Bad username or password",
+                    5: "Not authorized"
+                }
+                connection_result["error"] = error_messages.get(rc, f"Connection failed with code {rc}")
+
+        client.on_connect = on_connect
+
+        # Try to connect with timeout
+        client.connect_async(broker, port, keepalive=10)
+        client.loop_start()
+
+        # Wait for connection result (max 5 seconds)
+        import time
+        start_time = time.time()
+        while time.time() - start_time < 5:
+            if connection_result["connected"] or connection_result["error"]:
+                break
+            await asyncio.sleep(0.1)
+
+        client.loop_stop()
+        client.disconnect()
+
+        if connection_result["connected"]:
+            return {"success": True, "message": "Successfully connected to MQTT broker"}
+        elif connection_result["error"]:
+            return JSONResponse(
+                content={"success": False, "message": connection_result["error"]},
+                status_code=400
+            )
+        else:
+            return JSONResponse(
+                content={"success": False, "message": "Connection timed out. Check broker address and port."},
+                status_code=400
+            )
+
+    except Exception as e:
+        logger.error(f"MQTT test connection failed: {str(e)}")
+        return JSONResponse(
+            content={"success": False, "message": str(e)},
+            status_code=500
+        )
 
 @app.post("/preview_thr_batch")
 async def preview_thr_batch(request: dict):
@@ -1557,15 +2251,15 @@ async def preview_thr_batch(request: dict):
 @app.get("/playlists")
 async def playlists(request: Request):
     logger.debug("Rendering playlists page")
-    return templates.TemplateResponse("playlists.html", {"request": request, "app_name": state.app_name})
+    return templates.TemplateResponse("playlists.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
 
 @app.get("/image2sand")
 async def image2sand(request: Request):
-    return templates.TemplateResponse("image2sand.html", {"request": request, "app_name": state.app_name})
+    return templates.TemplateResponse("image2sand.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
 
 @app.get("/led")
 async def led_control_page(request: Request):
-    return templates.TemplateResponse("led.html", {"request": request, "app_name": state.app_name})
+    return templates.TemplateResponse("led.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
 
 # DW LED control endpoints
 @app.get("/api/dw_leds/status")
@@ -1925,7 +2619,7 @@ async def dw_leds_get_idle_timeout():
 
 @app.get("/table_control")
 async def table_control(request: Request):
-    return templates.TemplateResponse("table_control.html", {"request": request, "app_name": state.app_name})
+    return templates.TemplateResponse("table_control.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
 
 @app.get("/cache-progress")
 async def get_cache_progress_endpoint():
@@ -1945,28 +2639,26 @@ async def rebuild_cache_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 def signal_handler(signum, frame):
-    """Handle shutdown signals gracefully but forcefully."""
+    """Handle shutdown signals gracefully."""
     logger.info("Received shutdown signal, cleaning up...")
     try:
         # Turn off all LEDs on shutdown
         if state.led_controller:
             state.led_controller.set_power(0)
-        # Run cleanup operations - need to handle async in sync context
-        try:
-            # Try to run in existing loop if available
-            import asyncio
-            loop = asyncio.get_running_loop()
-            # If we're in an event loop, schedule the coroutine
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(asyncio.run, pattern_manager.stop_actions())
-                future.result(timeout=5.0)  # Wait up to 5 seconds
-        except RuntimeError:
-            # No running loop, create a new one
-            import asyncio
-            asyncio.run(pattern_manager.stop_actions())
-        except Exception as cleanup_err:
-            logger.error(f"Error in async cleanup: {cleanup_err}")
+
+        # Shutdown process pool to prevent semaphore leaks
+        global process_pool
+        if process_pool:
+            logger.info("Shutting down process pool...")
+            process_pool.shutdown(wait=False, cancel_futures=True)
+            process_pool = None
+
+        # Stop pattern manager motion controller
+        pattern_manager.motion_controller.stop()
+
+        # Set stop flags to halt any running patterns
+        state.stop_requested = True
+        state.pause_requested = False
 
         state.save()
         logger.info("Cleanup completed")
@@ -1974,7 +2666,9 @@ def signal_handler(signum, frame):
         logger.error(f"Error during cleanup: {str(e)}")
     finally:
         logger.info("Exiting application...")
-        os._exit(0)  # Force exit regardless of other threads
+        # Use os._exit after cleanup is complete to avoid async stack tracebacks
+        # This is safe because we've already: shut down process pool, stopped motion controller, saved state
+        os._exit(0)
 
 @app.get("/api/version")
 async def get_version_info(force_refresh: bool = False):
@@ -2048,6 +2742,36 @@ async def shutdown_system():
         return {"success": True, "message": "System shutdown initiated"}
     except Exception as e:
         logger.error(f"Error initiating shutdown: {e}")
+        return JSONResponse(
+            content={"success": False, "message": str(e)},
+            status_code=500
+        )
+
+@app.post("/api/system/restart")
+async def restart_system():
+    """Restart the Docker containers using docker compose"""
+    try:
+        logger.warning("Restart initiated via API")
+
+        # Schedule restart command after a short delay to allow response to be sent
+        def delayed_restart():
+            time.sleep(2)  # Give time for response to be sent
+            try:
+                # Use docker compose restart to restart the containers
+                subprocess.run(["docker", "compose", "restart"], check=True)
+                logger.info("Docker compose restart command executed successfully")
+            except FileNotFoundError:
+                logger.error("docker command not found")
+            except Exception as e:
+                logger.error(f"Error executing docker compose restart: {e}")
+
+        import threading
+        restart_thread = threading.Thread(target=delayed_restart)
+        restart_thread.start()
+
+        return {"success": True, "message": "System restart initiated"}
+    except Exception as e:
+        logger.error(f"Error initiating restart: {e}")
         return JSONResponse(
             content={"success": False, "message": str(e)},
             status_code=500

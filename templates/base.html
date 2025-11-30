@@ -22,10 +22,16 @@
     <link rel="preload" href="/static/fonts/material-icons/MaterialIcons-Regular.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/material-icons/MaterialIconsOutlined-Regular.woff2" as="font" type="font/woff2" crossorigin>
     <title>{% block title %}{{ app_name or 'Dune Weaver' }}{% endblock %}</title>
+    {% if custom_logo %}
+    {# Favicon is auto-generated from logo as favicon.ico #}
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/custom/{{ custom_logo }}">
+    <link rel="icon" type="image/x-icon" href="/static/custom/favicon.ico">
+    {% else %}
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    {% endif %}
     <link rel="manifest" href="/static/site.webmanifest?v=2">
     <link rel="stylesheet" href="/static/css/tailwind.css">
     <link rel="stylesheet" href="/static/css/material-icons.css">
@@ -114,6 +120,9 @@
         background-color: #262626;
       }
       .dark #shutdown-button:hover {
+        background-color: #404040;
+      }
+      .dark #restart-button:hover {
         background-color: #404040;
       }
       .dark #theme-toggle:hover {
@@ -257,8 +266,8 @@
         >
           <div class="flex items-center gap-3 text-gray-800">
             <a href="/" class="flex items-center gap-3 text-gray-800 hover:opacity-80 transition-opacity">
-            <div class="text-blue-600 w-9 h-9 rounded-full shadow">
-              <img src="/static/apple-touch-icon.png" alt="Dune Weaver Logo"/>
+            <div class="text-blue-600 w-9 h-9 rounded-full shadow overflow-hidden">
+              <img src="{% if custom_logo %}/static/custom/{{ custom_logo }}{% else %}/static/apple-touch-icon.png{% endif %}" alt="{{ app_name or 'Dune Weaver' }} Logo" class="w-full h-full object-cover"/>
             </div>
             <h1
               class="text-gray-800 text-xl font-bold leading-tight tracking-tight flex items-center gap-2"
@@ -288,6 +297,14 @@
               aria-label="Toggle dark mode"
             >
               <span class="material-icons" id="theme-toggle-icon">dark_mode</span>
+            </button>
+            <button
+              id="restart-button"
+              class="p-1.5 flex rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              aria-label="Restart system"
+              title="Restart Docker Containers"
+            >
+              <span class="material-icons text-amber-600">restart_alt</span>
             </button>
             <button
               id="shutdown-button"
@@ -731,6 +748,62 @@
             showStatusMessage('Failed to shutdown: ' + error.message, 'error');
           }
         });
+      });
+
+      // Restart button functionality
+      document.addEventListener('DOMContentLoaded', function() {
+        const restartButton = document.getElementById('restart-button');
+
+        // Restart button click handler
+        restartButton.addEventListener('click', async () => {
+          const confirmed = confirm('Are you sure you want to restart the application?\n\nThis will restart the Docker containers.\nThe page will reload automatically when the service is back online.');
+
+          if (!confirmed) return;
+
+          try {
+            showStatusMessage('Initiating restart...', 'warning');
+
+            const response = await fetch('/api/system/restart', { method: 'POST' });
+            const data = await response.json();
+
+            if (data.success) {
+              showStatusMessage('System is restarting... Page will reload when ready.', 'success');
+
+              // Start checking if the server is back online
+              setTimeout(() => {
+                checkServerAndReload();
+              }, 3000);
+            } else {
+              showStatusMessage('Restart failed: ' + data.message, 'error');
+            }
+          } catch (error) {
+            showStatusMessage('Failed to restart: ' + error.message, 'error');
+          }
+        });
+
+        // Function to check if server is back online and reload
+        function checkServerAndReload() {
+          const checkInterval = setInterval(async () => {
+            try {
+              const response = await fetch('/api/version', { method: 'GET' });
+              if (response.ok) {
+                clearInterval(checkInterval);
+                showStatusMessage('Server is back online. Reloading...', 'success');
+                setTimeout(() => {
+                  window.location.reload();
+                }, 1000);
+              }
+            } catch (error) {
+              // Server not ready yet, keep checking
+              console.log('Server not ready yet, retrying...');
+            }
+          }, 2000);
+
+          // Stop checking after 60 seconds
+          setTimeout(() => {
+            clearInterval(checkInterval);
+          }, 60000);
+        }
       });
 
       // Update indicator functionality

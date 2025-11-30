@@ -220,12 +220,21 @@ def connect_device(homing=True):
 
     ports = list_serial_ports()
 
-    if state.port and state.port in ports:
+    # Priority for auto-connect:
+    # 1. Preferred port (user's explicit choice) if available
+    # 2. Last used port if available
+    # 3. First available port as fallback
+    if state.preferred_port and state.preferred_port in ports:
+        logger.info(f"Connecting to preferred port: {state.preferred_port}")
+        state.conn = SerialConnection(state.preferred_port)
+    elif state.port and state.port in ports:
+        logger.info(f"Connecting to last used port: {state.port}")
         state.conn = SerialConnection(state.port)
     elif ports:
+        logger.info(f"Connecting to first available port: {ports[0]}")
         state.conn = SerialConnection(ports[0])
     else:
-        logger.error("Auto connect failed.")
+        logger.error("Auto connect failed: No serial ports available")
         # state.conn = WebSocketConnection('ws://fluidnc.local:81')
 
     if (state.conn.is_connected() if state.conn else False):

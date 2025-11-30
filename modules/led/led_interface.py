@@ -2,6 +2,7 @@
 Unified LED interface for different LED control systems
 Provides a common abstraction layer for pattern manager integration.
 """
+import asyncio
 from typing import Optional, Literal
 from modules.led.led_controller import LEDController, effect_loading as wled_loading, effect_idle as wled_idle, effect_connected as wled_connected, effect_playing as wled_playing
 
@@ -147,3 +148,30 @@ class LEDInterface:
     def get_controller(self):
         """Get the underlying controller instance (for advanced usage)"""
         return self._controller
+
+    # Async versions of methods for non-blocking calls from async context
+    # These use asyncio.to_thread() to avoid blocking the event loop
+
+    async def effect_loading_async(self) -> bool:
+        """Show loading effect (non-blocking)"""
+        return await asyncio.to_thread(self.effect_loading)
+
+    async def effect_idle_async(self, effect_name: Optional[str] = None) -> bool:
+        """Show idle effect (non-blocking)"""
+        return await asyncio.to_thread(self.effect_idle, effect_name)
+
+    async def effect_connected_async(self) -> bool:
+        """Show connected effect (non-blocking)"""
+        return await asyncio.to_thread(self.effect_connected)
+
+    async def effect_playing_async(self, effect_name: Optional[str] = None) -> bool:
+        """Show playing effect (non-blocking)"""
+        return await asyncio.to_thread(self.effect_playing, effect_name)
+
+    async def set_power_async(self, state: int) -> dict:
+        """Set power state (non-blocking)"""
+        return await asyncio.to_thread(self.set_power, state)
+
+    async def check_status_async(self) -> dict:
+        """Check controller status (non-blocking)"""
+        return await asyncio.to_thread(self.check_status)

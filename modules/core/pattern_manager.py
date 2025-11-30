@@ -35,12 +35,12 @@ pattern_lock = asyncio.Lock()
 # Progress update task
 progress_update_task = None
 
-# Cache timezone at module level - read once per session
+# Cache timezone at module level - read once per session (cleared when user changes timezone)
 _cached_timezone = None
 _cached_zoneinfo = None
 
-def _get_system_timezone():
-    """Get and cache the system timezone. Called once per session."""
+def _get_timezone():
+    """Get and cache the timezone for Still Sands. Uses user-selected timezone if set, otherwise system timezone."""
     global _cached_timezone, _cached_zoneinfo
 
     if _cached_timezone is not None:
@@ -48,25 +48,30 @@ def _get_system_timezone():
 
     user_tz = 'UTC'  # Default fallback
 
-    # Try to read timezone from /etc/host-timezone (mounted from host)
-    try:
-        if os.path.exists('/etc/host-timezone'):
-            with open('/etc/host-timezone', 'r') as f:
-                user_tz = f.read().strip()
-                logger.info(f"Still Sands using timezone: {user_tz} (from host system)")
-        # Fallback to /etc/timezone if host-timezone doesn't exist
-        elif os.path.exists('/etc/timezone'):
-            with open('/etc/timezone', 'r') as f:
-                user_tz = f.read().strip()
-                logger.info(f"Still Sands using timezone: {user_tz} (from container)")
-        # Fallback to TZ environment variable
-        elif os.environ.get('TZ'):
-            user_tz = os.environ.get('TZ')
-            logger.info(f"Still Sands using timezone: {user_tz} (from environment)")
-        else:
-            logger.info("Still Sands using timezone: UTC (default)")
-    except Exception as e:
-        logger.debug(f"Could not read timezone: {e}")
+    # First, check if user has selected a specific timezone in settings
+    if state.scheduled_pause_timezone:
+        user_tz = state.scheduled_pause_timezone
+        logger.info(f"Still Sands using timezone: {user_tz} (user-selected)")
+    else:
+        # Fall back to system timezone detection
+        try:
+            if os.path.exists('/etc/host-timezone'):
+                with open('/etc/host-timezone', 'r') as f:
+                    user_tz = f.read().strip()
+                    logger.info(f"Still Sands using timezone: {user_tz} (from host system)")
+            # Fallback to /etc/timezone if host-timezone doesn't exist
+            elif os.path.exists('/etc/timezone'):
+                with open('/etc/timezone', 'r') as f:
+                    user_tz = f.read().strip()
+                    logger.info(f"Still Sands using timezone: {user_tz} (from container)")
+            # Fallback to TZ environment variable
+            elif os.environ.get('TZ'):
+                user_tz = os.environ.get('TZ')
+                logger.info(f"Still Sands using timezone: {user_tz} (from environment)")
+            else:
+                logger.info("Still Sands using timezone: UTC (system default)")
+        except Exception as e:
+            logger.debug(f"Could not read timezone: {e}")
 
     # Cache the timezone
     _cached_timezone = user_tz
@@ -83,8 +88,8 @@ def is_in_scheduled_pause_period():
     if not state.scheduled_pause_enabled or not state.scheduled_pause_time_slots:
         return False
 
-    # Get cached timezone
-    tz_info = _get_system_timezone()
+    # Get cached timezone (user-selected or system default)
+    tz_info = _get_timezone()
 
     try:
         # Get current time in user's timezone
@@ -683,7 +688,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
         start_time = time.time()
         if state.led_controller:
             logger.info(f"Setting LED to playing effect: {state.dw_led_playing_effect}")
-            state.led_controller.effect_playing(state.dw_led_playing_effect)
+            await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
             # Cancel idle timeout when playing starts
             idle_timeout_manager.cancel_timeout()
 
@@ -700,7 +705,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                 if state.stop_requested:
                     logger.info("Execution stopped by user")
                     if state.led_controller:
-                        state.led_controller.effect_idle(state.dw_led_idle_effect)
+                        await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
                         start_idle_led_timeout()
                     break
 
@@ -708,13 +713,14 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                     logger.info("Skipping pattern...")
                     await connection_manager.check_idle_async()
                     if state.led_controller:
-                        state.led_controller.effect_idle(state.dw_led_idle_effect)
+                        await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
                         start_idle_led_timeout()
                     break
 
                 # Wait for resume if paused (manual or scheduled)
                 manual_pause = state.pause_requested
-                scheduled_pause = is_in_scheduled_pause_period()
+                # Only check scheduled pause during pattern if "finish pattern first" is NOT enabled
+                scheduled_pause = is_in_scheduled_pause_period() if not state.scheduled_pause_finish_pattern else False
 
                 if manual_pause or scheduled_pause:
                     if manual_pause and scheduled_pause:
@@ -726,12 +732,12 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                         # Turn off LED controller if scheduled pause and control_wled is enabled
                         if state.scheduled_pause_control_wled and state.led_controller:
                             logger.info("Turning off LED lights during Still Sands period")
-                            state.led_controller.set_power(0)
+                            await state.led_controller.set_power_async(0)
 
                     # Only show idle effect if NOT in scheduled pause with LED control
                     # (manual pause always shows idle effect)
                     if state.led_controller and not (scheduled_pause and state.scheduled_pause_control_wled):
-                        state.led_controller.effect_idle(state.dw_led_idle_effect)
+                        await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
                         start_idle_led_timeout()
 
                     # Remember if we turned off LED controller for scheduled pause
@@ -749,11 +755,11 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                         # Turn LED controller back on if it was turned off for scheduled pause
                         if wled_was_off_for_scheduled:
                             logger.info("Turning LED lights back on as Still Sands period ended")
-                            state.led_controller.set_power(1)
+                            await state.led_controller.set_power_async(1)
                             # CRITICAL: Give LED controller time to fully power on before sending more commands
                             # Without this delay, rapid-fire requests can crash controllers on resource-constrained Pis
                             await asyncio.sleep(0.5)
-                        state.led_controller.effect_playing(state.dw_led_playing_effect)
+                        await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
                         # Cancel idle timeout when resuming from pause
                         idle_timeout_manager.cancel_timeout()
 
@@ -790,7 +796,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
         # Set LED back to idle when pattern completes normally (not stopped early)
         if state.led_controller and not state.stop_requested:
             logger.info(f"Setting LED to idle effect: {state.dw_led_idle_effect}")
-            state.led_controller.effect_idle(state.dw_led_idle_effect)
+            await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
             start_idle_led_timeout()
             logger.debug("LED effect set to idle after pattern completion")
 
@@ -866,6 +872,10 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
 
             # Set the playlist to the first pattern
             state.current_playlist = pattern_sequence
+
+            # Reset pattern counter at the start of the playlist
+            state.patterns_since_last_home = 0
+
             # Execute the pattern sequence
             for idx, file_path in enumerate(pattern_sequence):
                 state.current_playlist_index = idx
@@ -873,16 +883,68 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                     logger.info("Execution stopped")
                     return
 
+                current_is_clear = is_clear_pattern(file_path)
+
+                # Check if we need to auto-home before this clear pattern
+                # Auto-home happens after pause, before the clear pattern runs
+                if current_is_clear and state.auto_home_enabled:
+                    # Check if we've reached the pattern threshold
+                    if state.patterns_since_last_home >= state.auto_home_after_patterns:
+                        logger.info(f"Auto-homing triggered after {state.patterns_since_last_home} patterns")
+                        try:
+                            # Perform homing using connection_manager
+                            success = await asyncio.to_thread(connection_manager.home)
+                            if success:
+                                logger.info("Auto-homing completed successfully")
+                                state.patterns_since_last_home = 0
+                            else:
+                                logger.warning("Auto-homing failed, continuing with playlist")
+                        except Exception as e:
+                            logger.error(f"Error during auto-homing: {e}")
+
                 # Update state for main patterns only
                 logger.info(f"Running pattern {file_path}")
-                
+
                 # Execute the pattern
                 await run_theta_rho_file(file_path, is_playlist=True)
+
+                # Increment pattern counter only for non-clear patterns
+                if not current_is_clear:
+                    state.patterns_since_last_home += 1
+                    logger.debug(f"Patterns since last home: {state.patterns_since_last_home}")
+
+                # Check for scheduled pause after pattern completes (when "finish pattern first" is enabled)
+                if state.scheduled_pause_finish_pattern and is_in_scheduled_pause_period() and not state.stop_requested:
+                    logger.info("Pattern completed. Entering Still Sands period (finish pattern first mode)...")
+
+                    # Turn off LED controller if control_wled is enabled
+                    wled_was_off_for_scheduled = False
+                    if state.scheduled_pause_control_wled and state.led_controller:
+                        logger.info("Turning off LED lights during Still Sands period")
+                        await state.led_controller.set_power_async(0)
+                        wled_was_off_for_scheduled = True
+                    elif state.led_controller:
+                        await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
+                        start_idle_led_timeout()
+
+                    # Wait until we're outside the scheduled pause period
+                    while is_in_scheduled_pause_period() and not state.stop_requested:
+                        await asyncio.sleep(1)
+
+                    if not state.stop_requested:
+                        logger.info("Still Sands period ended. Resuming playlist...")
+                        if state.led_controller:
+                            if wled_was_off_for_scheduled:
+                                logger.info("Turning LED lights back on as Still Sands period ended")
+                                await state.led_controller.set_power_async(1)
+                                await asyncio.sleep(0.5)  # Critical delay for LED controller
+                            await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
+                            idle_timeout_manager.cancel_timeout()
 
                 # Handle pause between patterns
                 if idx < len(pattern_sequence) - 1 and not state.stop_requested and pause_time > 0 and not state.skip_requested:
                     # Check if current pattern is a clear pattern
-                    if is_clear_pattern(file_path):
+                    if current_is_clear:
                         logger.info("Skipping pause after clear pattern")
                     else:
                         logger.info(f"Pausing for {pause_time} seconds")
@@ -895,7 +957,7 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                                 break
                             await asyncio.sleep(1)
                         state.pause_time_remaining = 0
-                    
+
                 state.skip_requested = False
 
             if run_mode == "indefinite":
@@ -933,7 +995,7 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
         state.playlist_mode = None
 
         if state.led_controller:
-            state.led_controller.effect_idle(state.dw_led_idle_effect)
+            await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
             start_idle_led_timeout()
 
         logger.info("All requested patterns completed (or stopped) and state cleared")

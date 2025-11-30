@@ -539,12 +539,12 @@ async function loadPlaylists() {
         if (response.ok) {
             allPlaylists = await response.json();
             displayPlaylists();
-            // Auto-select last selected
+            // Auto-select last selected using data attribute
             const last = getLastSelectedPlaylist();
             if (last && allPlaylists.includes(last)) {
                 setTimeout(() => {
                     const nav = document.getElementById('playlistsNav');
-                    const el = Array.from(nav.querySelectorAll('a')).find(a => a.textContent.trim() === last);
+                    const el = nav.querySelector(`a[data-playlist-name="${last}"]`);
                     if (el) el.click();
                 }, 0);
             }
@@ -574,12 +574,13 @@ function displayPlaylists() {
     allPlaylists.forEach(playlist => {
         const playlistItem = document.createElement('a');
         playlistItem.className = 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100 transition-colors duration-150 cursor-pointer';
+        playlistItem.dataset.playlistName = playlist; // Add data attribute for easy lookup
         playlistItem.innerHTML = `
             <span class="material-icons text-lg text-gray-500 dark:text-gray-400">queue_music</span>
             <span class="text-sm font-medium flex-1 truncate">${playlist}</span>
             <span class="material-icons text-lg text-gray-400 dark:text-gray-500">chevron_right</span>
         `;
-        
+
         playlistItem.addEventListener('click', () => selectPlaylist(playlist, playlistItem));
         playlistsNav.appendChild(playlistItem);
     });
@@ -600,16 +601,22 @@ async function selectPlaylist(playlistName, element) {
     // Update current playlist
     currentPlaylist = playlistName;
     
-    // Update header with playlist name and delete button
+    // Update header with playlist name, rename and delete buttons
     const header = document.getElementById('currentPlaylistTitle');
     header.innerHTML = `
         <h1 class="text-gray-900 dark:text-gray-100 text-2xl font-semibold leading-tight truncate">${playlistName}</h1>
-        <button id="deletePlaylistBtn" class="p-1 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/20 text-gray-500 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-all duration-150 flex-shrink-0" title="Delete playlist">
-            <span class="material-icons text-lg">delete</span>
-        </button>
+        <div class="flex items-center gap-1 flex-shrink-0">
+            <button id="renamePlaylistBtn" class="p-1 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/20 text-gray-500 dark:text-gray-500 hover:text-blue-500 dark:hover:text-blue-400 transition-all duration-150" title="Rename playlist">
+                <span class="material-icons text-lg">edit</span>
+            </button>
+            <button id="deletePlaylistBtn" class="p-1 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/20 text-gray-500 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-all duration-150" title="Delete playlist">
+                <span class="material-icons text-lg">delete</span>
+            </button>
+        </div>
     `;
-    
-    // Add delete button event listener
+
+    // Add button event listeners
+    document.getElementById('renamePlaylistBtn').addEventListener('click', () => openRenameModal(playlistName));
     document.getElementById('deletePlaylistBtn').addEventListener('click', () => deletePlaylist(playlistName));
 
     // Enable buttons
@@ -648,7 +655,7 @@ async function loadPlaylistPatterns(playlistName) {
 // Display patterns in the current playlist
 async function displayPlaylistPatterns(patterns) {
     const patternsGrid = document.getElementById('patternsGrid');
-    
+
     if (patterns.length === 0) {
         patternsGrid.innerHTML = `
             <div class="flex items-center justify-center col-span-full py-12 text-gray-500 dark:text-gray-400">
@@ -660,16 +667,16 @@ async function displayPlaylistPatterns(patterns) {
 
     // Clear grid and add all pattern cards
     patternsGrid.innerHTML = '';
-    
+
     patterns.forEach(pattern => {
         const patternCard = createPatternCard(pattern, true);
         patternsGrid.appendChild(patternCard);
         patternCard.dataset.pattern = pattern;
-        
+
         // Set up lazy loading for patterns outside viewport
         intersectionObserver.observe(patternCard);
     });
-    
+
     // After DOM is updated, immediately load previews for visible patterns
     // Use requestAnimationFrame to ensure DOM layout is complete
     requestAnimationFrame(() => {
@@ -719,10 +726,10 @@ async function loadVisiblePlaylistPreviews() {
 function createPatternCard(pattern, showRemove = false) {
     const card = document.createElement('div');
     card.className = 'flex flex-col gap-3 group cursor-pointer relative';
-    
+
     const previewContainer = document.createElement('div');
     previewContainer.className = 'w-full aspect-square bg-cover rounded-full shadow-sm group-hover:shadow-md transition-shadow duration-150 border border-gray-200 dark:border-gray-700 pattern-preview relative';
-    
+
     // Check in-memory cache first
     const previewData = previewCache.get(pattern);
     if (previewData && !previewData.error && previewData.image_data) {
@@ -1515,6 +1522,97 @@ async function deletePlaylist(playlistName) {
     }
 }
 
+// Open rename modal
+function openRenameModal(playlistName) {
+    const modal = document.getElementById('renamePlaylistModal');
+    const input = document.getElementById('renamePlaylistInput');
+
+    // Set the current name
+    input.value = playlistName;
+    input.dataset.oldName = playlistName;
+
+    // Show modal
+    modal.classList.remove('hidden');
+
+    // Focus and select input
+    const focusInput = () => {
+        input.focus();
+        input.select();
+    };
+
+    focusInput();
+    requestAnimationFrame(focusInput);
+    setTimeout(focusInput, 50);
+}
+
+// Close rename modal
+function closeRenameModal() {
+    const modal = document.getElementById('renamePlaylistModal');
+    const input = document.getElementById('renamePlaylistInput');
+
+    modal.classList.add('hidden');
+    input.value = '';
+    delete input.dataset.oldName;
+}
+
+// Rename playlist
+async function renamePlaylist() {
+    const input = document.getElementById('renamePlaylistInput');
+    const oldName = input.dataset.oldName;
+    const newName = input.value.trim();
+
+    if (!newName) {
+        showStatusMessage('Please enter a playlist name', 'warning');
+        return;
+    }
+
+    if (newName === oldName) {
+        closeRenameModal();
+        return;
+    }
+
+    try {
+        const response = await fetch('/rename_playlist', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                old_name: oldName,
+                new_name: newName
+            })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            showStatusMessage(`Playlist renamed to "${newName}"`, 'success');
+            closeRenameModal();
+
+            // Update current playlist reference
+            if (currentPlaylist === oldName) {
+                currentPlaylist = newName;
+
+                // Update last selected playlist
+                saveLastSelectedPlaylist(newName);
+            }
+
+            // Reload playlists and reselect
+            await loadPlaylists();
+
+            // Find and click the renamed playlist using data attribute
+            setTimeout(() => {
+                const nav = document.getElementById('playlistsNav');
+                const el = nav.querySelector(`a[data-playlist-name="${newName}"]`);
+                if (el) el.click();
+            }, 100);
+        } else {
+            const data = await response.json();
+            throw new Error(data.detail || 'Failed to rename playlist');
+        }
+    } catch (error) {
+        logMessage(`Error renaming playlist: ${error.message}`, LOG_TYPE.ERROR);
+        showStatusMessage(error.message || 'Failed to rename playlist', 'error');
+    }
+}
+
 // Setup event listeners
 function setupEventListeners() {
     // Mobile back button event listeners
@@ -1638,6 +1736,15 @@ function setupEventListeners() {
         }
     });
 
+    // Rename modal event listeners
+    document.getElementById('cancelRenameBtn').addEventListener('click', closeRenameModal);
+    document.getElementById('confirmRenameBtn').addEventListener('click', renamePlaylist);
+    document.getElementById('renamePlaylistInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            renamePlaylist();
+        }
+    });
+
     // Close modals when clicking outside
     document.getElementById('addPlaylistModal').addEventListener('click', (e) => {
         if (e.target.id === 'addPlaylistModal') {
@@ -1650,6 +1757,12 @@ function setupEventListeners() {
             selectedPatterns.clear();
             clearSearch();
             document.getElementById('addPatternsModal').classList.add('hidden');
+        }
+    });
+
+    document.getElementById('renamePlaylistModal').addEventListener('click', (e) => {
+        if (e.target.id === 'renamePlaylistModal') {
+            closeRenameModal();
         }
     });
 }

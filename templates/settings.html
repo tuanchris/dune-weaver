@@ -33,7 +33,7 @@ endblock %}
   border-color: #404040;
 }
 .dark .divide-slate-100 {
-  border-color: #404040;
+  border-color: #333333;
 }
 .dark .bg-slate-50 {
   background-color: #262626;
@@ -258,6 +258,36 @@ input:checked + .slider:before {
 .dark .text-amber-600 {
   color: #f1f5f9;
 }
+
+/* Sky box dark mode - grey theme (Still Sands options) */
+.dark .bg-sky-50 {
+  background-color: #1f1f1f;
+}
+
+.dark .border-sky-200 {
+  border-color: #404040;
+}
+
+/* Select dropdown dark mode */
+.dark select {
+  background-color: #1f1f1f;
+  border-color: #404040;
+  color: #e5e5e5;
+}
+
+.dark select:focus {
+  border-color: #0c7ff2;
+}
+
+.dark select option {
+  background-color: #1f1f1f;
+  color: #e5e5e5;
+}
+
+.dark select optgroup {
+  background-color: #262626;
+  color: #9ca3af;
+}
 {% endblock %}
 
 {% block content %}
@@ -277,7 +307,7 @@ input:checked + .slider:before {
     >
       Device Connection
     </h2>
-    <div class="divide-y divide-slate-100">
+    <div>
       <div
         class="flex items-center gap-4 px-6 py-5 hover:bg-slate-50 transition-colors"
       >
@@ -299,7 +329,7 @@ input:checked + .slider:before {
         </div>
         <button
           id="disconnectButton"
-          class="text-xs font-medium text-slate-600 bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-md transition-colors"
+          class="text-xs font-medium bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900 dark:hover:bg-red-800 dark:text-red-200 px-3 py-1.5 rounded-md transition-colors"
           hidden
         >
           Disconnect
@@ -327,6 +357,37 @@ input:checked + .slider:before {
           </div>
           <p class="text-xs text-slate-500 mt-2">
             Select a port and click 'Connect' to establish a connection.
+          </p>
+        </label>
+      </div>
+      <!-- Preferred Port Configuration -->
+      <div class="px-6 py-5">
+        <label class="flex flex-col gap-1.5">
+          <span class="text-slate-700 text-sm font-medium leading-normal flex items-center gap-2">
+            <span class="material-icons text-slate-600 text-base">star</span>
+            Preferred Port for Auto-Connect
+          </span>
+          <div class="flex gap-3 items-center">
+            <select
+              id="preferredPortSelect"
+              class="form-select flex-1 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-medium leading-normal transition-colors"
+            >
+              <option value="">No preference (auto-detect)</option>
+            </select>
+            <button
+              id="savePreferredPort"
+              class="flex items-center justify-center gap-2 min-w-[100px] cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors flex-shrink-0"
+            >
+              <span class="material-icons text-lg">save</span>
+              <span class="truncate">Save</span>
+            </button>
+          </div>
+          <p class="text-xs text-slate-500 mt-2">
+            When multiple ports are available, this port will be used automatically on startup. If set to "No preference", the system will try the last connected port or the first available port.
+          </p>
+          <p id="currentPreferredPort" class="text-xs text-sky-600 mt-1 hidden">
+            <span class="material-icons text-xs align-middle">check_circle</span>
+            <span id="preferredPortDisplay"></span>
           </p>
         </label>
       </div>
@@ -421,6 +482,44 @@ input:checked + .slider:before {
         </div>
       </div>
 
+      <!-- Auto-Home During Playlists -->
+      <div class="bg-slate-50 rounded-lg p-4 space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="flex-1">
+            <h3 class="text-slate-800 text-base font-semibold flex items-center gap-2">
+              <span class="material-icons text-slate-600 text-base">autorenew</span>
+              Auto-Home During Playlists
+            </h3>
+            <p class="text-xs text-slate-500 mt-1">
+              Automatically perform homing after a certain number of patterns during playlist playback to maintain accuracy.
+            </p>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="autoHomeEnabledToggle">
+            <span class="slider round"></span>
+          </label>
+        </div>
+
+        <div id="autoHomeSettings" style="display: none;">
+          <label class="flex flex-col gap-1.5">
+            <span class="text-slate-700 text-sm font-medium leading-normal">Home after every X patterns</span>
+            <input
+              type="number"
+              id="autoHomeAfterPatternsInput"
+              min="1"
+              max="100"
+              step="1"
+              value="5"
+              class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-sm"
+              placeholder="5"
+            />
+            <p class="text-xs text-slate-500">
+              Homing will occur right after the clear pattern completes, before the next actual pattern begins.
+            </p>
+          </label>
+        </div>
+      </div>
+
       <div class="flex justify-end">
         <button
           id="saveHomingConfig"
@@ -473,6 +572,43 @@ input:checked + .slider:before {
           This name will appear in the browser tab and at the top of every page.
         </p>
       </label>
+
+      <!-- Custom Logo Section -->
+      <div class="border-t border-slate-200 pt-6">
+        <label class="flex flex-col gap-1.5">
+          <span class="text-slate-700 text-sm font-medium leading-normal">Custom Logo & Favicon</span>
+          <p class="text-xs text-slate-500 mb-2">
+            Upload a custom logo to replace the default. The favicon (browser tab icon) will be automatically generated from your logo. Recommended size: 180x180 pixels. Supported formats: PNG, JPG, GIF, WebP, SVG.
+          </p>
+          <div class="flex gap-4 items-start">
+            <!-- Logo Preview -->
+            <div class="flex-shrink-0">
+              <div id="logoPreviewContainer" class="w-16 h-16 rounded-full shadow border border-slate-200 overflow-hidden bg-slate-100 flex items-center justify-center">
+                <img id="logoPreview" src="{% if custom_logo %}/static/custom/{{ custom_logo }}{% else %}/static/apple-touch-icon.png{% endif %}" alt="Logo Preview" class="w-full h-full object-cover"/>
+              </div>
+            </div>
+            <!-- Upload Controls -->
+            <div class="flex-1 space-y-2">
+              <div class="flex gap-2 flex-wrap">
+                <label class="flex items-center justify-center gap-2 cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors">
+                  <span class="material-icons text-lg">upload</span>
+                  <span>Upload Logo</span>
+                  <input type="file" id="logoFileInput" accept=".png,.jpg,.jpeg,.gif,.webp,.svg" class="hidden" />
+                </label>
+                <button
+                  type="button"
+                  id="resetLogoBtn"
+                  class="flex items-center justify-center gap-2 cursor-pointer rounded-lg h-10 px-4 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium leading-normal transition-colors {% if not custom_logo %}hidden{% endif %}"
+                >
+                  <span class="material-icons text-lg">restart_alt</span>
+                  <span>Reset to Default</span>
+                </button>
+              </div>
+              <p id="logoUploadStatus" class="text-xs text-slate-500"></p>
+            </div>
+          </div>
+        </label>
+      </div>
     </div>
   </section>
   <section class="bg-white rounded-xl shadow-sm overflow-hidden">
@@ -725,6 +861,205 @@ input:checked + .slider:before {
       </button>
     </div>
   </section>
+
+  <!-- MQTT Configuration Section -->
+  <section class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <h2
+      class="text-slate-800 text-xl sm:text-2xl font-semibold leading-tight tracking-[-0.01em] px-6 py-4 border-b border-slate-200"
+    >
+      Home Assistant Integration
+    </h2>
+    <div class="px-6 py-5 space-y-6">
+      <!-- MQTT Enable Toggle -->
+      <div class="flex items-center justify-between">
+        <div class="flex-1">
+          <h3 class="text-slate-700 text-base font-medium leading-normal">Enable MQTT</h3>
+          <p class="text-xs text-slate-500 mt-1">
+            Connect to an MQTT broker for Home Assistant integration and remote control.
+          </p>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="mqttEnableToggle">
+          <span class="slider round"></span>
+        </label>
+      </div>
+
+      <!-- Connection Status -->
+      <div id="mqttStatusBanner" class="hidden">
+        <div id="mqttConnectedBanner" class="bg-green-50 border border-green-200 rounded-lg p-3 hidden">
+          <div class="flex items-center gap-2">
+            <span class="material-icons text-green-600 text-base">check_circle</span>
+            <span class="text-sm text-green-700 font-medium">Connected to MQTT broker</span>
+          </div>
+        </div>
+        <div id="mqttDisconnectedBanner" class="bg-amber-50 border border-amber-200 rounded-lg p-3 hidden">
+          <div class="flex items-center gap-2">
+            <span class="material-icons text-amber-600 text-base">warning</span>
+            <span class="text-sm text-amber-700 font-medium">MQTT is enabled but not connected. Check your settings or restart the application.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- MQTT Settings (shown when enabled) -->
+      <div id="mqttSettings" class="space-y-4" style="display: none;">
+        <!-- Broker Settings -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label class="flex flex-col gap-1.5">
+            <span class="text-slate-700 text-sm font-medium leading-normal">Broker Address <span class="text-red-500">*</span></span>
+            <input
+              id="mqttBrokerInput"
+              type="text"
+              class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-normal leading-normal transition-colors"
+              placeholder="e.g., 192.168.1.100 or mqtt.local"
+            />
+            <p class="text-xs text-slate-500">IP address or hostname of your MQTT broker</p>
+          </label>
+
+          <label class="flex flex-col gap-1.5">
+            <span class="text-slate-700 text-sm font-medium leading-normal">Port</span>
+            <input
+              id="mqttPortInput"
+              type="number"
+              class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-normal leading-normal transition-colors"
+              placeholder="1883"
+              value="1883"
+            />
+            <p class="text-xs text-slate-500">Default: 1883 (or 8883 for TLS)</p>
+          </label>
+        </div>
+
+        <!-- Authentication -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label class="flex flex-col gap-1.5">
+            <span class="text-slate-700 text-sm font-medium leading-normal">Username</span>
+            <input
+              id="mqttUsernameInput"
+              type="text"
+              class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-normal leading-normal transition-colors"
+              placeholder="Optional"
+            />
+            <p class="text-xs text-slate-500">Leave empty if no authentication required</p>
+          </label>
+
+          <label class="flex flex-col gap-1.5">
+            <span class="text-slate-700 text-sm font-medium leading-normal">Password</span>
+            <div class="relative">
+              <input
+                id="mqttPasswordInput"
+                type="password"
+                class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 pr-10 text-base font-normal leading-normal transition-colors"
+                placeholder="Optional"
+              />
+              <button
+                type="button"
+                onclick="togglePasswordVisibility('mqttPasswordInput', this)"
+                class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                aria-label="Toggle password visibility"
+              >
+                <span class="material-icons text-xl">visibility_off</span>
+              </button>
+            </div>
+            <p class="text-xs text-slate-500">Leave empty if no authentication required</p>
+          </label>
+        </div>
+
+        <!-- Home Assistant Discovery Settings -->
+        <div class="border-t border-slate-200 pt-4">
+          <h4 class="text-slate-700 text-sm font-medium mb-3">Home Assistant Discovery</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label class="flex flex-col gap-1.5">
+              <span class="text-slate-700 text-sm font-medium leading-normal">Device Name</span>
+              <input
+                id="mqttDeviceNameInput"
+                type="text"
+                class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-normal leading-normal transition-colors"
+                placeholder="Dune Weaver"
+                value="Dune Weaver"
+              />
+              <p class="text-xs text-slate-500">Display name in Home Assistant</p>
+            </label>
+
+            <label class="flex flex-col gap-1.5">
+              <span class="text-slate-700 text-sm font-medium leading-normal">Device ID</span>
+              <input
+                id="mqttDeviceIdInput"
+                type="text"
+                class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-normal leading-normal transition-colors"
+                placeholder="dune_weaver"
+                value="dune_weaver"
+              />
+              <p class="text-xs text-slate-500">Unique identifier (no spaces)</p>
+            </label>
+          </div>
+        </div>
+
+        <!-- Advanced Settings (Collapsible) -->
+        <details class="border-t border-slate-200 pt-4">
+          <summary class="text-slate-700 text-sm font-medium cursor-pointer hover:text-slate-900">
+            Advanced Settings
+          </summary>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <label class="flex flex-col gap-1.5">
+              <span class="text-slate-700 text-sm font-medium leading-normal">Client ID</span>
+              <input
+                id="mqttClientIdInput"
+                type="text"
+                class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-normal leading-normal transition-colors"
+                placeholder="dune_weaver"
+                value="dune_weaver"
+              />
+              <p class="text-xs text-slate-500">MQTT client identifier</p>
+            </label>
+
+            <label class="flex flex-col gap-1.5">
+              <span class="text-slate-700 text-sm font-medium leading-normal">Discovery Prefix</span>
+              <input
+                id="mqttDiscoveryPrefixInput"
+                type="text"
+                class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-normal leading-normal transition-colors"
+                placeholder="homeassistant"
+                value="homeassistant"
+              />
+              <p class="text-xs text-slate-500">Home Assistant discovery topic prefix</p>
+            </label>
+          </div>
+        </details>
+
+        <!-- Test Connection Button -->
+        <div class="flex flex-wrap gap-3 pt-2">
+          <button
+            id="testMqttConnection"
+            class="flex items-center justify-center gap-2 cursor-pointer rounded-lg h-10 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium leading-normal tracking-[0.015em] transition-colors"
+          >
+            <span class="material-icons text-lg">wifi_tethering</span>
+            <span class="truncate">Test Connection</span>
+          </button>
+          <span id="mqttTestResult" class="flex items-center text-sm"></span>
+        </div>
+      </div>
+
+      <!-- Save Button -->
+      <button
+        id="saveMqttConfig"
+        class="flex items-center justify-center gap-2 w-full sm:w-auto cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors"
+      >
+        <span class="material-icons text-lg">save</span>
+        <span class="truncate">Save MQTT Configuration</span>
+      </button>
+
+      <!-- Restart Notice -->
+      <div id="mqttRestartNotice" class="bg-blue-50 border border-blue-200 rounded-lg p-3 hidden">
+        <div class="flex items-start gap-2">
+          <span class="material-icons text-blue-600 text-base">info</span>
+          <div class="text-xs text-blue-700">
+            <p class="font-medium text-blue-800">Restart Required</p>
+            <p class="mt-1">MQTT configuration changes require a restart to take effect. Use the restart button in the header to apply changes.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="bg-white rounded-xl shadow-sm overflow-hidden">
     <h2
       class="text-slate-800 text-xl sm:text-2xl font-semibold leading-tight tracking-[-0.01em] px-6 py-4 border-b border-slate-200"
@@ -822,6 +1157,16 @@ input:checked + .slider:before {
             </label>
           </div>
         </div>
+
+        <div class="flex justify-end">
+          <button
+            id="saveAutoPlaySettings"
+            class="flex items-center justify-center gap-2 min-w-[140px] cursor-pointer rounded-lg h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium leading-normal tracking-[0.015em] transition-colors"
+          >
+            <span class="material-icons text-lg">save</span>
+            <span class="truncate">Save Auto-play</span>
+          </button>
+        </div>
       </div>
     </div>
   </section>
@@ -846,12 +1191,31 @@ input:checked + .slider:before {
       </div>
 
       <div id="scheduledPauseSettings" class="space-y-4" style="display: none;">
-        <!-- WLED Control Option -->
-        <div class="bg-amber-50 rounded-lg p-4 border border-amber-200">
+        <!-- Finish Current Pattern Option -->
+        <div class="bg-sky-50 rounded-lg p-4 border border-sky-200">
           <div class="flex items-center justify-between">
             <div class="flex-1">
               <h4 class="text-slate-800 text-sm font-medium flex items-center gap-2">
-                <span class="material-icons text-amber-600 text-base">lightbulb</span>
+                <span class="material-icons text-slate-800 dark:text-slate-200 text-base">hourglass_bottom</span>
+                Finish Current Pattern
+              </h4>
+              <p class="text-xs text-slate-600 mt-1">
+                Let the current pattern complete before entering still mode
+              </p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="stillSandsFinishPattern">
+              <span class="slider round"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- WLED Control Option -->
+        <div class="bg-sky-50 rounded-lg p-4 border border-sky-200">
+          <div class="flex items-center justify-between">
+            <div class="flex-1">
+              <h4 class="text-slate-800 text-sm font-medium flex items-center gap-2">
+                <span class="material-icons text-slate-800 dark:text-slate-200 text-base">lightbulb</span>
                 Control WLED Lights
               </h4>
               <p class="text-xs text-slate-600 mt-1">
@@ -862,6 +1226,96 @@ input:checked + .slider:before {
               <input type="checkbox" id="stillSandsWledControl">
               <span class="slider round"></span>
             </label>
+          </div>
+        </div>
+
+        <!-- Timezone Selection -->
+        <div class="bg-sky-50 rounded-lg p-4 border border-sky-200">
+          <div class="flex items-center justify-between">
+            <div class="flex-1">
+              <h4 class="text-slate-800 text-sm font-medium flex items-center gap-2">
+                <span class="material-icons text-slate-800 dark:text-slate-200 text-base">schedule</span>
+                Timezone
+              </h4>
+              <p class="text-xs text-slate-600 mt-1">
+                Select a timezone for still periods (defaults to system timezone)
+              </p>
+            </div>
+            <select id="stillSandsTimezone" class="h-10 px-3 rounded-lg border border-slate-300 bg-white text-slate-800 text-sm min-w-[200px]">
+              <option value="">System Default</option>
+              <optgroup label="Americas">
+                <option value="America/New_York">Eastern Time (New York)</option>
+                <option value="America/Chicago">Central Time (Chicago)</option>
+                <option value="America/Denver">Mountain Time (Denver)</option>
+                <option value="America/Los_Angeles">Pacific Time (Los Angeles)</option>
+                <option value="America/Anchorage">Alaska (Anchorage)</option>
+                <option value="Pacific/Honolulu">Hawaii (Honolulu)</option>
+                <option value="America/Toronto">Toronto</option>
+                <option value="America/Vancouver">Vancouver</option>
+                <option value="America/Mexico_City">Mexico City</option>
+                <option value="America/Sao_Paulo">São Paulo</option>
+                <option value="America/Buenos_Aires">Buenos Aires</option>
+              </optgroup>
+              <optgroup label="Europe">
+                <option value="Europe/London">London</option>
+                <option value="Europe/Paris">Paris</option>
+                <option value="Europe/Berlin">Berlin</option>
+                <option value="Europe/Amsterdam">Amsterdam</option>
+                <option value="Europe/Rome">Rome</option>
+                <option value="Europe/Madrid">Madrid</option>
+                <option value="Europe/Zurich">Zurich</option>
+                <option value="Europe/Stockholm">Stockholm</option>
+                <option value="Europe/Moscow">Moscow</option>
+              </optgroup>
+              <optgroup label="Asia & Pacific">
+                <option value="Asia/Tokyo">Tokyo</option>
+                <option value="Asia/Shanghai">Shanghai</option>
+                <option value="Asia/Hong_Kong">Hong Kong</option>
+                <option value="Asia/Singapore">Singapore</option>
+                <option value="Asia/Seoul">Seoul</option>
+                <option value="Asia/Dubai">Dubai</option>
+                <option value="Asia/Kolkata">India (Kolkata)</option>
+                <option value="Asia/Bangkok">Bangkok</option>
+                <option value="Australia/Sydney">Sydney</option>
+                <option value="Australia/Melbourne">Melbourne</option>
+                <option value="Australia/Perth">Perth</option>
+                <option value="Pacific/Auckland">Auckland</option>
+              </optgroup>
+              <optgroup label="Africa">
+                <option value="Africa/Cairo">Cairo</option>
+                <option value="Africa/Johannesburg">Johannesburg</option>
+                <option value="Africa/Lagos">Lagos</option>
+              </optgroup>
+              <optgroup label="GMT Offsets">
+                <option value="Etc/GMT+12">GMT-12</option>
+                <option value="Etc/GMT+11">GMT-11</option>
+                <option value="Etc/GMT+10">GMT-10</option>
+                <option value="Etc/GMT+9">GMT-9</option>
+                <option value="Etc/GMT+8">GMT-8</option>
+                <option value="Etc/GMT+7">GMT-7</option>
+                <option value="Etc/GMT+6">GMT-6</option>
+                <option value="Etc/GMT+5">GMT-5</option>
+                <option value="Etc/GMT+4">GMT-4</option>
+                <option value="Etc/GMT+3">GMT-3</option>
+                <option value="Etc/GMT+2">GMT-2</option>
+                <option value="Etc/GMT+1">GMT-1</option>
+                <option value="Etc/GMT">GMT / UTC</option>
+                <option value="Etc/GMT-1">GMT+1</option>
+                <option value="Etc/GMT-2">GMT+2</option>
+                <option value="Etc/GMT-3">GMT+3</option>
+                <option value="Etc/GMT-4">GMT+4</option>
+                <option value="Etc/GMT-5">GMT+5</option>
+                <option value="Etc/GMT-6">GMT+6</option>
+                <option value="Etc/GMT-7">GMT+7</option>
+                <option value="Etc/GMT-8">GMT+8</option>
+                <option value="Etc/GMT-9">GMT+9</option>
+                <option value="Etc/GMT-10">GMT+10</option>
+                <option value="Etc/GMT-11">GMT+11</option>
+                <option value="Etc/GMT-12">GMT+12</option>
+                <option value="Etc/GMT-13">GMT+13</option>
+                <option value="Etc/GMT-14">GMT+14</option>
+              </optgroup>
+            </select>
           </div>
         </div>
 
@@ -890,8 +1344,9 @@ input:checked + .slider:before {
               <div>
                 <p class="font-medium text-blue-800">Important Notes:</p>
                 <ul class="mt-1 space-y-1 text-blue-700">
-                  <li>• Times are based on your system's local time zone</li>
-                  <li>• Currently running patterns will pause immediately when entering a still period</li>
+                  <li>• Times are based on the selected timezone (or system default if not set)</li>
+                  <li>• By default, patterns pause immediately when entering a still period</li>
+                  <li>• Enable "Finish Current Pattern" to let patterns complete first</li>
                   <li>• Patterns will resume automatically when exiting a still period</li>
                   <li>• Still periods that span midnight (e.g., 22:00 to 06:00) are supported</li>
                 </ul>
@@ -918,7 +1373,7 @@ input:checked + .slider:before {
     >
       Software Version
     </h2>
-    <div class="divide-y divide-slate-100">
+    <div>
       <div class="flex items-center gap-4 px-6 py-5">
         <div
           class="text-slate-600 flex items-center justify-center rounded-lg bg-slate-100 shrink-0 size-12"

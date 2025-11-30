@@ -71,6 +71,7 @@ class Backend(QObject):
     screenStateChanged = Signal(bool)  # True = on, False = off
     screenTimeoutChanged = Signal(int)  # New signal for timeout changes
     pauseBetweenPatternsChanged = Signal(int)  # New signal for pause changes
+    pausedChanged = Signal(bool)  # Signal when pause state changes
 
     # Backend connection status signals
     backendConnectionChanged = Signal(bool)  # True = backend reachable, False = unreachable
@@ -90,6 +91,7 @@ class Backend(QObject):
         self._current_file = ""
         self._progress = 0
         self._is_running = False
+        self._is_paused = False  # Track pause state separately
         self._is_connected = False
         self._serial_ports = []
         self._serial_connected = False
@@ -188,7 +190,11 @@ class Backend(QObject):
     @Property(bool, notify=statusChanged)
     def isRunning(self):
         return self._is_running
-    
+
+    @Property(bool, notify=pausedChanged)
+    def isPaused(self):
+        return self._is_paused
+
     @Property(bool, notify=connectionChanged)
     def isConnected(self):
         return self._is_connected
@@ -319,6 +325,13 @@ class Backend(QObject):
 
                 self._current_file = new_file
                 self._is_running = status.get("is_running", False)
+
+                # Handle pause state from WebSocket
+                new_paused = status.get("is_paused", False)
+                if new_paused != self._is_paused:
+                    print(f"⏸️ Pause state changed: {self._is_paused} -> {new_paused}")
+                    self._is_paused = new_paused
+                    self.pausedChanged.emit(new_paused)
 
                 # Handle serial connection status from WebSocket
                 ws_connection_status = status.get("connection_status", False)
@@ -658,7 +671,28 @@ class Backend(QObject):
     @Slot()
     def sendHome(self):
         print("🏠 Sending home command...")
-        asyncio.create_task(self._api_call("/send_home"))
+        asyncio.create_task(self._send_home())
+
+    async def _send_home(self):
+        """Send home command without timeout - homing can take up to 90 seconds."""
+        if not self.session:
+            self.errorOccurred.emit("Backend not ready")
+            return
+
+        try:
+            print("🏠 Calling /send_home (no timeout - homing can take up to 90s)...")
+            async with self.session.post(f"{self.base_url}/send_home") as resp:
+                print(f"🏠 Home command response status: {resp.status}")
+                if resp.status == 200:
+                    response_data = await resp.json()
+                    print(f"✅ Home command successful: {response_data}")
+                else:
+                    print(f"❌ Home command failed with status: {resp.status}")
+                    response_text = await resp.text()
+                    self.errorOccurred.emit(f"Home failed: {resp.status} - {response_text}")
+        except Exception as e:
+            print(f"💥 Exception in home command: {e}")
+            self.errorOccurred.emit(str(e))
     
     @Slot()
     def moveToCenter(self):

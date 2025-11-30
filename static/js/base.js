@@ -119,6 +119,10 @@ let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
 const reconnectDelay = 3000; // 3 seconds
 let isEditingSpeed = false; // Track if user is editing speed
+
+// WebSocket UI update throttling for Pi performance
+let lastUIUpdate = 0;
+const UI_UPDATE_INTERVAL = 100; // Minimum ms between UI updates (10 updates/sec max)
 let playerPreviewData = null; // Store the current pattern's preview data for modal
 let playerPreviewCtx = null; // Store the canvas context for modal preview
 let playerAnimationId = null; // Store animation frame ID for modal
@@ -179,6 +183,13 @@ function connectWebSocket() {
         try {
             const data = JSON.parse(event.data);
             if (data.type === 'status_update') {
+                // Throttle UI updates for better Pi performance
+                const now = Date.now();
+                if (now - lastUIUpdate < UI_UPDATE_INTERVAL) {
+                    return; // Skip this update, too soon
+                }
+                lastUIUpdate = now;
+
                 // Update modal status with the full data
                 syncModalControls(data.data);
                 
@@ -367,7 +378,8 @@ function setupPlayerPreviewCanvas(ctx) {
     container.style.minHeight = `${finalSize}px`;
     
     // Set the internal canvas size for high-DPI rendering
-    const pixelRatio = (window.devicePixelRatio || 1) * 2;
+    // Cap at 1.5x for better Pi performance (was 2x forced)
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
     canvas.width = finalSize * pixelRatio;
     canvas.height = finalSize * pixelRatio;
     
@@ -421,7 +433,8 @@ function drawLoadingState(ctx) {
     if (!ctx) return;
 
     const canvas = ctx.canvas;
-    const pixelRatio = (window.devicePixelRatio || 1) * 2;
+    // Must match the pixelRatio used when setting canvas size
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
     const containerSize = canvas.width / pixelRatio;
     const center = containerSize / 2;
 
@@ -453,7 +466,8 @@ function drawPlayerPreview(ctx, progress) {
     if (!ctx || !playerPreviewData || playerPreviewData.length === 0) return;
     
     const canvas = ctx.canvas;
-    const pixelRatio = (window.devicePixelRatio || 1) * 2;
+    // Must match the pixelRatio used when setting canvas size
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
     const containerSize = canvas.width / pixelRatio;
     const center = containerSize / 2;
     const scale = (containerSize / 2) - 30;
@@ -840,10 +854,15 @@ function syncModalControls(status) {
         modalPatternPreviewImg.src = previewUrl;
     }
     
-    // ETA
+    // ETA or Pause Countdown
     const modalEta = document.getElementById('modal-eta');
     if (modalEta) {
-        if (status.progress && status.progress.remaining_time !== null) {
+        // Check if we're in a pause between patterns
+        if (status.pause_time_remaining && status.pause_time_remaining > 0) {
+            const minutes = Math.floor(status.pause_time_remaining / 60);
+            const seconds = Math.floor(status.pause_time_remaining % 60);
+            modalEta.textContent = `Next in: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+        } else if (status.progress && status.progress.remaining_time !== null) {
             const minutes = Math.floor(status.progress.remaining_time / 60);
             const seconds = Math.floor(status.progress.remaining_time % 60);
             modalEta.textContent = `ETA: ${minutes}:${seconds.toString().padStart(2, '0')}`;

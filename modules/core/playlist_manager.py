@@ -86,6 +86,33 @@ def add_to_playlist(playlist_name, pattern):
     logger.info(f"Added pattern '{pattern}' to playlist '{playlist_name}'")
     return True
 
+def rename_playlist(old_name, new_name):
+    """Rename an existing playlist."""
+    if not new_name or not new_name.strip():
+        logger.warning("Cannot rename playlist: new name is empty")
+        return False, "New name cannot be empty"
+
+    new_name = new_name.strip()
+
+    playlists_dict = load_playlists()
+    if old_name not in playlists_dict:
+        logger.warning(f"Cannot rename non-existent playlist: {old_name}")
+        return False, "Playlist not found"
+
+    if old_name == new_name:
+        return True, "Name unchanged"
+
+    if new_name in playlists_dict:
+        logger.warning(f"Cannot rename playlist: '{new_name}' already exists")
+        return False, "A playlist with that name already exists"
+
+    # Copy files to new key and delete old key
+    playlists_dict[new_name] = playlists_dict[old_name]
+    del playlists_dict[old_name]
+    save_playlists(playlists_dict)
+    logger.info(f"Renamed playlist '{old_name}' to '{new_name}'")
+    return True, f"Playlist renamed to '{new_name}'"
+
 async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
     """Run a playlist with the given options."""
     if pattern_manager.pattern_lock.locked():

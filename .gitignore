@@ -12,3 +12,6 @@ patterns/cached_images/custom_*
 node_modules/
 *.log
 *.png
+# Custom branding assets (user uploads)
+static/custom/*
+!static/custom/.gitkeep

@@ -18,14 +18,15 @@ logger = logging.getLogger(__name__)
 
 class MQTTHandler(BaseMQTTHandler):
     """Real implementation of MQTT handler."""
-    
+
     def __init__(self, callback_registry: Dict[str, Callable]):
-        # MQTT Configuration from environment variables
-        self.broker = os.getenv('MQTT_BROKER')
-        self.port = int(os.getenv('MQTT_PORT', '1883'))
-        self.username = os.getenv('MQTT_USERNAME')
-        self.password = os.getenv('MQTT_PASSWORD')
-        self.client_id = os.getenv('MQTT_CLIENT_ID', 'dune_weaver')
+        # MQTT Configuration - prioritize state config over environment variables
+        # This allows UI configuration to override .env settings
+        self.broker = state.mqtt_broker if state.mqtt_broker else os.getenv('MQTT_BROKER')
+        self.port = state.mqtt_port if state.mqtt_port else int(os.getenv('MQTT_PORT', '1883'))
+        self.username = state.mqtt_username if state.mqtt_username else os.getenv('MQTT_USERNAME')
+        self.password = state.mqtt_password if state.mqtt_password else os.getenv('MQTT_PASSWORD')
+        self.client_id = state.mqtt_client_id if state.mqtt_client_id else os.getenv('MQTT_CLIENT_ID', 'dune_weaver')
         self.status_topic = os.getenv('MQTT_STATUS_TOPIC', 'dune_weaver/status')
         self.command_topic = os.getenv('MQTT_COMMAND_TOPIC', 'dune_weaver/command')
         self.status_interval = int(os.getenv('MQTT_STATUS_INTERVAL', '30'))
@@ -37,10 +38,10 @@ class MQTTHandler(BaseMQTTHandler):
         self.running = False
         self.status_thread = None
 
-        # Home Assistant MQTT Discovery settings
-        self.discovery_prefix = os.getenv('MQTT_DISCOVERY_PREFIX', 'homeassistant')
-        self.device_name = os.getenv('HA_DEVICE_NAME', 'Dune Weaver')
-        self.device_id = os.getenv('HA_DEVICE_ID', 'dune_weaver')
+        # Home Assistant MQTT Discovery settings - prioritize state config
+        self.discovery_prefix = state.mqtt_discovery_prefix if state.mqtt_discovery_prefix else os.getenv('MQTT_DISCOVERY_PREFIX', 'homeassistant')
+        self.device_name = state.mqtt_device_name if state.mqtt_device_name else os.getenv('HA_DEVICE_NAME', 'Dune Weaver')
+        self.device_id = state.mqtt_device_id if state.mqtt_device_id else os.getenv('HA_DEVICE_ID', 'dune_weaver')
         
         # Additional topics for state
         self.running_state_topic = f"{self.device_id}/state/running"
@@ -66,10 +67,14 @@ class MQTTHandler(BaseMQTTHandler):
         self.patterns = []
         self.playlists = []
 
+        # Track connection state
+        self._connected = False
+
         # Initialize MQTT client if broker is configured
         if self.broker:
             self.client = mqtt.Client(client_id=self.client_id)
             self.client.on_connect = self.on_connect
+            self.client.on_disconnect = self.on_disconnect
             self.client.on_message = self.on_message
 
             if self.username and self.password:
@@ -525,6 +530,7 @@ class MQTTHandler(BaseMQTTHandler):
     def on_connect(self, client, userdata, flags, rc):
         """Callback when connected to MQTT broker."""
         if rc == 0:
+            self._connected = True
             logger.info("MQTT Connection Accepted.")
             # Subscribe to command topics
             client.subscribe([
@@ -547,18 +553,25 @@ class MQTTHandler(BaseMQTTHandler):
             ])
             # Publish discovery configurations
             self.setup_ha_discovery()
-        elif rc == 1:
-            logger.error("MQTT Connection Refused. Protocol level not supported.")
-        elif rc == 2:
-            logger.error("MQTT Connection Refused. The client-identifier is not allowed by the server.")
-        elif rc == 3:
-            logger.error("MQTT Connection Refused. The MQTT service is not available.")
-        elif rc == 4:
-            logger.error("MQTT Connection Refused. The data in the username or password is malformed.")
-        elif rc == 5:
-            logger.error("MQTT Connection Refused. The client is not authorized to connect.")
         else:
-            logger.error(f"MQTT Connection Refused. Unknown error code: {rc}")
+            self._connected = False
+            error_messages = {
+                1: "Protocol level not supported",
+                2: "The client-identifier is not allowed by the server",
+                3: "The MQTT service is not available",
+                4: "The data in the username or password is malformed",
+                5: "The client is not authorized to connect"
+            }
+            error_msg = error_messages.get(rc, f"Unknown error code: {rc}")
+            logger.error(f"MQTT Connection Refused. {error_msg}")
+
+    def on_disconnect(self, client, userdata, rc):
+        """Callback when disconnected from MQTT broker."""
+        self._connected = False
+        if rc == 0:
+            logger.info("MQTT disconnected cleanly")
+        else:
+            logger.warning(f"MQTT disconnected unexpectedly with code: {rc}")
 
     def on_message(self, client, userdata, msg):
         """Callback when message is received."""
@@ -827,5 +840,25 @@ class MQTTHandler(BaseMQTTHandler):
 
     @property
     def is_enabled(self) -> bool:
-        """Return whether MQTT functionality is enabled."""
-        return bool(self.broker) 
+        """Return whether MQTT functionality is enabled.
+
+        MQTT is enabled if:
+        1. A broker address is configured (either via state or env var), AND
+        2. Either state.mqtt_enabled is True, OR no UI config exists (env-only mode)
+        """
+        # If no broker configured, MQTT is disabled
+        if not self.broker:
+            return False
+
+        # If state has mqtt_enabled explicitly set (UI was used), respect that setting
+        # If mqtt_broker is set in state, user configured via UI - use mqtt_enabled
+        if state.mqtt_broker:
+            return state.mqtt_enabled
+
+        # Otherwise, broker came from env vars - enable if broker exists
+        return True
+
+    @property
+    def is_connected(self) -> bool:
+        """Return whether MQTT client is currently connected to the broker."""
+        return self._connected and self.is_enabled 

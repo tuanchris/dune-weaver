@@ -6,6 +6,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Debounce timer for state saves (reduces SD card wear on Pi)
+_save_timer = None
+_save_lock = threading.Lock()
+
 class AppState:
     def __init__(self):
         # Private variables for properties
@@ -45,10 +49,17 @@ class AppState:
         # After homing, theta will be set to this value
         self.angular_homing_offset_degrees = 0.0
 
+        # Auto-homing settings for playlists
+        # When enabled, performs homing after X patterns during playlist execution
+        self.auto_home_enabled = False
+        self.auto_home_after_patterns = 5  # Number of patterns after which to auto-home
+        self.patterns_since_last_home = 0  # Counter for patterns played since last home
+
         self.STATE_FILE = "state.json"
         self.mqtt_handler = None  # Will be set by the MQTT handler
         self.conn = None
         self.port = None
+        self.preferred_port = None  # User's preferred port for auto-connect
         self.wled_ip = None
         self.led_provider = "none"  # "wled", "dw_leds", or "none"
         self.led_controller = None
@@ -82,6 +93,10 @@ class AppState:
         
         # Application name setting
         self.app_name = "Dune Weaver"  # Default app name
+
+        # Custom branding settings (filenames only, files stored in static/custom/)
+        # Favicon is auto-generated from logo as logo-favicon.ico
+        self.custom_logo = None  # Custom logo filename (e.g., "logo-abc123.png")
         
         # auto_play mode settings
         self.auto_play_enabled = False
@@ -95,7 +110,20 @@ class AppState:
         self.scheduled_pause_enabled = False
         self.scheduled_pause_time_slots = []  # List of time slot dictionaries
         self.scheduled_pause_control_wled = False  # Turn off WLED during pause periods
-        
+        self.scheduled_pause_finish_pattern = False  # Finish current pattern before pausing
+        self.scheduled_pause_timezone = None  # User-selected timezone (None = use system timezone)
+
+        # MQTT settings (UI-configurable, overrides .env if set)
+        self.mqtt_enabled = False  # Master enable/disable for MQTT
+        self.mqtt_broker = ""  # MQTT broker IP/hostname
+        self.mqtt_port = 1883  # MQTT broker port
+        self.mqtt_username = ""  # MQTT authentication username
+        self.mqtt_password = ""  # MQTT authentication password
+        self.mqtt_client_id = "dune_weaver"  # MQTT client ID
+        self.mqtt_discovery_prefix = "homeassistant"  # Home Assistant discovery prefix
+        self.mqtt_device_id = "dune_weaver"  # Device ID for Home Assistant
+        self.mqtt_device_name = "Dune Weaver"  # Device display name
+
         self.load()
 
     @property
@@ -210,6 +238,8 @@ class AppState:
             "gear_ratio": self.gear_ratio,
             "homing": self.homing,
             "angular_homing_offset_degrees": self.angular_homing_offset_degrees,
+            "auto_home_enabled": self.auto_home_enabled,
+            "auto_home_after_patterns": self.auto_home_after_patterns,
             "current_playlist": self._current_playlist,
             "current_playlist_name": self._current_playlist_name,
             "current_playlist_index": self.current_playlist_index,
@@ -220,6 +250,7 @@ class AppState:
             "custom_clear_from_in": self.custom_clear_from_in,
             "custom_clear_from_out": self.custom_clear_from_out,
             "port": self.port,
+            "preferred_port": self.preferred_port,
             "wled_ip": self.wled_ip,
             "led_provider": self.led_provider,
             "dw_led_num_leds": self.dw_led_num_leds,
@@ -233,6 +264,7 @@ class AppState:
             "dw_led_idle_timeout_enabled": self.dw_led_idle_timeout_enabled,
             "dw_led_idle_timeout_minutes": self.dw_led_idle_timeout_minutes,
             "app_name": self.app_name,
+            "custom_logo": self.custom_logo,
             "auto_play_enabled": self.auto_play_enabled,
             "auto_play_playlist": self.auto_play_playlist,
             "auto_play_run_mode": self.auto_play_run_mode,
@@ -242,6 +274,17 @@ class AppState:
             "scheduled_pause_enabled": self.scheduled_pause_enabled,
             "scheduled_pause_time_slots": self.scheduled_pause_time_slots,
             "scheduled_pause_control_wled": self.scheduled_pause_control_wled,
+            "scheduled_pause_finish_pattern": self.scheduled_pause_finish_pattern,
+            "scheduled_pause_timezone": self.scheduled_pause_timezone,
+            "mqtt_enabled": self.mqtt_enabled,
+            "mqtt_broker": self.mqtt_broker,
+            "mqtt_port": self.mqtt_port,
+            "mqtt_username": self.mqtt_username,
+            "mqtt_password": self.mqtt_password,
+            "mqtt_client_id": self.mqtt_client_id,
+            "mqtt_discovery_prefix": self.mqtt_discovery_prefix,
+            "mqtt_device_id": self.mqtt_device_id,
+            "mqtt_device_name": self.mqtt_device_name,
         }
 
     def from_dict(self, data):
@@ -261,6 +304,8 @@ class AppState:
         self.gear_ratio = data.get('gear_ratio', 10)
         self.homing = data.get('homing', 0)
         self.angular_homing_offset_degrees = data.get('angular_homing_offset_degrees', 0.0)
+        self.auto_home_enabled = data.get('auto_home_enabled', False)
+        self.auto_home_after_patterns = data.get('auto_home_after_patterns', 5)
         self._current_playlist = data.get("current_playlist", None)
         self._current_playlist_name = data.get("current_playlist_name", None)
         self.current_playlist_index = data.get("current_playlist_index", None)
@@ -271,6 +316,7 @@ class AppState:
         self.custom_clear_from_in = data.get("custom_clear_from_in", None)
         self.custom_clear_from_out = data.get("custom_clear_from_out", None)
         self.port = data.get("port", None)
+        self.preferred_port = data.get("preferred_port", None)
         self.wled_ip = data.get('wled_ip', None)
         self.led_provider = data.get('led_provider', "none")
         self.dw_led_num_leds = data.get('dw_led_num_leds', 60)
@@ -302,6 +348,7 @@ class AppState:
         self.dw_led_idle_timeout_minutes = data.get('dw_led_idle_timeout_minutes', 30)
 
         self.app_name = data.get("app_name", "Dune Weaver")
+        self.custom_logo = data.get("custom_logo", None)
         self.auto_play_enabled = data.get("auto_play_enabled", False)
         self.auto_play_playlist = data.get("auto_play_playlist", None)
         self.auto_play_run_mode = data.get("auto_play_run_mode", "loop")
@@ -311,6 +358,17 @@ class AppState:
         self.scheduled_pause_enabled = data.get("scheduled_pause_enabled", False)
         self.scheduled_pause_time_slots = data.get("scheduled_pause_time_slots", [])
         self.scheduled_pause_control_wled = data.get("scheduled_pause_control_wled", False)
+        self.scheduled_pause_finish_pattern = data.get("scheduled_pause_finish_pattern", False)
+        self.scheduled_pause_timezone = data.get("scheduled_pause_timezone", None)
+        self.mqtt_enabled = data.get("mqtt_enabled", False)
+        self.mqtt_broker = data.get("mqtt_broker", "")
+        self.mqtt_port = data.get("mqtt_port", 1883)
+        self.mqtt_username = data.get("mqtt_username", "")
+        self.mqtt_password = data.get("mqtt_password", "")
+        self.mqtt_client_id = data.get("mqtt_client_id", "dune_weaver")
+        self.mqtt_discovery_prefix = data.get("mqtt_discovery_prefix", "homeassistant")
+        self.mqtt_device_id = data.get("mqtt_device_id", "dune_weaver")
+        self.mqtt_device_name = data.get("mqtt_device_name", "Dune Weaver")
 
     def save(self):
         """Save the current state to a JSON file."""
@@ -319,6 +377,32 @@ class AppState:
                 json.dump(self.to_dict(), f)
         except Exception as e:
             print(f"Error saving state to {self.STATE_FILE}: {e}")
+
+    def save_debounced(self, delay: float = 2.0):
+        """
+        Schedule a state save after a delay, coalescing multiple rapid saves.
+        This reduces SD card writes on Raspberry Pi.
+
+        Args:
+            delay: Seconds to wait before saving (default 2.0)
+        """
+        global _save_timer
+        with _save_lock:
+            # Cancel any pending save
+            if _save_timer is not None:
+                _save_timer.cancel()
+            # Schedule new save
+            _save_timer = threading.Timer(delay, self._do_debounced_save)
+            _save_timer.daemon = True  # Don't block shutdown
+            _save_timer.start()
+
+    def _do_debounced_save(self):
+        """Internal method called by debounce timer."""
+        global _save_timer
+        with _save_lock:
+            _save_timer = None
+        self.save()
+        logger.debug("Debounced state save completed")
 
     def load(self):
         """Load state from a JSON file. If the file doesn't exist, create it with default values."""

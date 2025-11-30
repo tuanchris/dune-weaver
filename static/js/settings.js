@@ -112,17 +112,18 @@ async function updateSerialPorts() {
             const ports = await response.json();
             const portsElement = document.getElementById('availablePorts');
             const portSelect = document.getElementById('portSelect');
-            
+            const preferredPortSelect = document.getElementById('preferredPortSelect');
+
             if (portsElement) {
                 portsElement.textContent = ports.length > 0 ? ports.join(', ') : 'No ports available';
             }
-            
+
             if (portSelect) {
                 // Clear existing options except the first one
                 while (portSelect.options.length > 1) {
                     portSelect.remove(1);
                 }
-                
+
                 // Add new options
                 ports.forEach(port => {
                     const option = document.createElement('option');
@@ -141,9 +142,113 @@ async function updateSerialPorts() {
                     }
                 }
             }
+
+            // Also update the preferred port select dropdown
+            if (preferredPortSelect) {
+                // Store current selection
+                const currentPreferred = preferredPortSelect.value;
+
+                // Clear existing options except the first one (no preference)
+                while (preferredPortSelect.options.length > 1) {
+                    preferredPortSelect.remove(1);
+                }
+
+                // Add all available ports
+                ports.forEach(port => {
+                    const option = document.createElement('option');
+                    option.value = port;
+                    option.textContent = port;
+                    preferredPortSelect.appendChild(option);
+                });
+
+                // Restore selection if it's still available
+                if (currentPreferred && ports.includes(currentPreferred)) {
+                    preferredPortSelect.value = currentPreferred;
+                }
+            }
         }
     } catch (error) {
         logMessage(`Error fetching serial ports: ${error.message}`, LOG_TYPE.ERROR);
+    }
+}
+
+// Function to load and display preferred port setting
+async function loadPreferredPort() {
+    try {
+        const response = await fetch('/api/preferred-port');
+        if (response.ok) {
+            const data = await response.json();
+            const preferredPortSelect = document.getElementById('preferredPortSelect');
+            const currentPreferredPort = document.getElementById('currentPreferredPort');
+            const preferredPortDisplay = document.getElementById('preferredPortDisplay');
+
+            if (preferredPortSelect && data.preferred_port) {
+                // Check if the preferred port is in the options
+                const optionExists = Array.from(preferredPortSelect.options).some(
+                    opt => opt.value === data.preferred_port
+                );
+
+                if (optionExists) {
+                    preferredPortSelect.value = data.preferred_port;
+                } else {
+                    // Add the preferred port as an option (it might not be currently available)
+                    const option = document.createElement('option');
+                    option.value = data.preferred_port;
+                    option.textContent = `${data.preferred_port} (not currently available)`;
+                    preferredPortSelect.appendChild(option);
+                    preferredPortSelect.value = data.preferred_port;
+                }
+            }
+
+            // Show current preferred port indicator
+            if (currentPreferredPort && preferredPortDisplay && data.preferred_port) {
+                preferredPortDisplay.textContent = `Currently set to: ${data.preferred_port}`;
+                currentPreferredPort.classList.remove('hidden');
+            } else if (currentPreferredPort) {
+                currentPreferredPort.classList.add('hidden');
+            }
+        }
+    } catch (error) {
+        logMessage(`Error loading preferred port: ${error.message}`, LOG_TYPE.ERROR);
+    }
+}
+
+// Function to save preferred port setting
+async function savePreferredPort() {
+    const preferredPortSelect = document.getElementById('preferredPortSelect');
+    if (!preferredPortSelect) return;
+
+    const preferredPort = preferredPortSelect.value || null;
+
+    try {
+        const response = await fetch('/api/settings', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ connection: { preferred_port: preferredPort } })
+        });
+
+        if (response.ok) {
+            await response.json();
+            const currentPreferredPort = document.getElementById('currentPreferredPort');
+            const preferredPortDisplay = document.getElementById('preferredPortDisplay');
+
+            if (preferredPort) {
+                showStatusMessage(`Preferred port set to: ${preferredPort}`, 'success');
+                if (currentPreferredPort && preferredPortDisplay) {
+                    preferredPortDisplay.textContent = `Currently set to: ${preferredPort}`;
+                    currentPreferredPort.classList.remove('hidden');
+                }
+            } else {
+                showStatusMessage('Preferred port cleared - will auto-detect on startup', 'success');
+                if (currentPreferredPort) {
+                    currentPreferredPort.classList.add('hidden');
+                }
+            }
+        } else {
+            throw new Error('Failed to save preferred port');
+        }
+    } catch (error) {
+        showStatusMessage(`Failed to save preferred port: ${error.message}`, 'error');
     }
 }
 
@@ -252,35 +357,39 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, 300); // Delay to ensure page is fully loaded
     }
     
-    // Load all data asynchronously
+    // Load all data asynchronously using unified settings endpoint
     Promise.all([
-        // Check connection status
+        // Unified settings endpoint (replaces multiple individual fetches)
+        fetch('/api/settings').then(response => response.json()).catch(() => ({})),
+
+        // Non-settings operational endpoints (kept separate)
         fetch('/serial_status').then(response => response.json()).catch(() => ({ connected: false })),
-
-        // Load LED configuration (replaces old WLED-only loading)
-        fetch('/get_led_config').then(response => response.json()).catch(() => ({ provider: 'none', wled_ip: null })),
-        
-        // Load current version and check for updates
         fetch('/api/version').then(response => response.json()).catch(() => ({ current: '1.0.0', latest: '1.0.0', update_available: false })),
-        
-        // Load available serial ports
         fetch('/list_serial_ports').then(response => response.json()).catch(() => []),
-        
-        // Load available pattern files for clear pattern selection
-        getCachedPatternFiles().catch(() => []),
-        
-        // Load current custom clear patterns
-        fetch('/api/custom_clear_patterns').then(response => response.json()).catch(() => ({ custom_clear_from_in: null, custom_clear_from_out: null })),
-        
-        // Load current clear pattern speed
-        fetch('/api/clear_pattern_speed').then(response => response.json()).catch(() => ({ clear_pattern_speed: 200 })),
-        
-        // Load current app name
-        fetch('/api/app-name').then(response => response.json()).catch(() => ({ app_name: 'Dune Weaver' })),
+        getCachedPatternFiles().catch(() => [])
+    ]).then(([settings, statusData, updateData, ports, patterns]) => {
+        // Map unified settings to legacy variable names for backward compatibility with existing UI code
+        const ledConfigData = {
+            provider: settings.led?.provider || 'none',
+            wled_ip: settings.led?.wled_ip || null,
+            dw_led_num_leds: settings.led?.dw_led?.num_leds,
+            dw_led_gpio_pin: settings.led?.dw_led?.gpio_pin,
+            dw_led_pixel_order: settings.led?.dw_led?.pixel_order
+        };
+        const clearPatterns = {
+            custom_clear_from_in: settings.patterns?.custom_clear_from_in,
+            custom_clear_from_out: settings.patterns?.custom_clear_from_out
+        };
+        const clearSpeedData = {
+            clear_pattern_speed: settings.patterns?.clear_pattern_speed,
+            effective_speed: settings.patterns?.clear_pattern_speed // Will be handled by UI
+        };
+        const appNameData = { app_name: settings.app?.name || 'Dune Weaver' };
+        const scheduledPauseData = settings.scheduled_pause || { enabled: false, time_slots: [] };
+        const preferredPortData = { preferred_port: settings.connection?.preferred_port };
 
-        // Load Still Sands settings
-        fetch('/api/scheduled-pause').then(response => response.json()).catch(() => ({ enabled: false, time_slots: [] }))
-    ]).then(([statusData, ledConfigData, updateData, ports, patterns, clearPatterns, clearSpeedData, appNameData, scheduledPauseData]) => {
+        // Store full settings for other initialization functions
+        window.unifiedSettings = settings;
         // Update connection status
         setCachedConnectionStatus(statusData);
         updateConnectionUI(statusData);
@@ -357,7 +466,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             while (portSelect.options.length > 1) {
                 portSelect.remove(1);
             }
-            
+
             // Add new options
             ports.forEach(port => {
                 const option = document.createElement('option');
@@ -371,7 +480,50 @@ document.addEventListener('DOMContentLoaded', async () => {
                 portSelect.value = ports[0];
             }
         }
-        
+
+        // Update preferred port selection
+        const preferredPortSelect = document.getElementById('preferredPortSelect');
+        const currentPreferredPort = document.getElementById('currentPreferredPort');
+        const preferredPortDisplay = document.getElementById('preferredPortDisplay');
+
+        if (preferredPortSelect) {
+            // Clear existing options except the first one (no preference)
+            while (preferredPortSelect.options.length > 1) {
+                preferredPortSelect.remove(1);
+            }
+
+            // Add all available ports
+            ports.forEach(port => {
+                const option = document.createElement('option');
+                option.value = port;
+                option.textContent = port;
+                preferredPortSelect.appendChild(option);
+            });
+
+            // Set the current preferred port value
+            if (preferredPortData && preferredPortData.preferred_port) {
+                // Check if the preferred port is in the available ports
+                const isAvailable = ports.includes(preferredPortData.preferred_port);
+
+                if (isAvailable) {
+                    preferredPortSelect.value = preferredPortData.preferred_port;
+                } else {
+                    // Add the preferred port as an option (it might not be currently available)
+                    const option = document.createElement('option');
+                    option.value = preferredPortData.preferred_port;
+                    option.textContent = `${preferredPortData.preferred_port} (not currently available)`;
+                    preferredPortSelect.appendChild(option);
+                    preferredPortSelect.value = preferredPortData.preferred_port;
+                }
+
+                // Show the current preferred port indicator
+                if (currentPreferredPort && preferredPortDisplay) {
+                    preferredPortDisplay.textContent = `Currently set to: ${preferredPortData.preferred_port}`;
+                    currentPreferredPort.classList.remove('hidden');
+                }
+            }
+        }
+
         // Initialize autocomplete for clear patterns
         const clearFromInInput = document.getElementById('customClearFromInInput');
         const clearFromOutInput = document.getElementById('customClearFromOutInput');
@@ -438,20 +590,20 @@ function setupEventListeners() {
     if (saveAppNameButton && appNameInput) {
         saveAppNameButton.addEventListener('click', async () => {
             const appName = appNameInput.value.trim() || 'Dune Weaver';
-            
+
             try {
-                const response = await fetch('/api/app-name', {
-                    method: 'POST',
+                const response = await fetch('/api/settings', {
+                    method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ app_name: appName })
+                    body: JSON.stringify({ app: { name: appName } })
                 });
-                
+
                 if (response.ok) {
-                    const data = await response.json();
+                    await response.json();
                     showStatusMessage('Application name updated successfully. Refresh the page to see changes.', 'success');
-                    
+
                     // Update the page title and header immediately
-                    document.title = `Settings - ${data.app_name}`;
+                    document.title = `Settings - ${appName}`;
                     const headerTitle = document.querySelector('h1.text-gray-800');
                     if (headerTitle) {
                         // Update just the text content, preserving the connection status dot
@@ -630,7 +782,13 @@ function setupEventListeners() {
             }
         });
     }
-    
+
+    // Save preferred port button
+    const savePreferredPortButton = document.getElementById('savePreferredPort');
+    if (savePreferredPortButton) {
+        savePreferredPortButton.addEventListener('click', savePreferredPort);
+    }
+
     // Save custom clear patterns button
     const saveClearPatterns = document.getElementById('saveClearPatterns');
     if (saveClearPatterns) {
@@ -657,15 +815,17 @@ function setupEventListeners() {
             }
             
             try {
-                const response = await fetch('/api/custom_clear_patterns', {
-                    method: 'POST',
+                const response = await fetch('/api/settings', {
+                    method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        custom_clear_from_in: inValue || null,
-                        custom_clear_from_out: outValue || null
+                        patterns: {
+                            custom_clear_from_in: inValue || null,
+                            custom_clear_from_out: outValue || null
+                        }
                     })
                 });
-                
+
                 if (response.ok) {
                     showStatusMessage('Clear patterns saved successfully', 'success');
                 } else {
@@ -703,16 +863,16 @@ function setupEventListeners() {
             }
             
             try {
-                const response = await fetch('/api/clear_pattern_speed', {
-                    method: 'POST',
+                const response = await fetch('/api/settings', {
+                    method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ clear_pattern_speed: speed })
+                    body: JSON.stringify({ patterns: { clear_pattern_speed: speed } })
                 });
-                
+
                 if (response.ok) {
-                    const data = await response.json();
+                    await response.json();
                     if (speed === null) {
-                        showStatusMessage(`Clear pattern speed set to default (${data.effective_speed} steps/min)`, 'success');
+                        showStatusMessage('Clear pattern speed set to default', 'success');
                     } else {
                         showStatusMessage(`Clear pattern speed set to ${speed} steps/min`, 'success');
                     }
@@ -1126,8 +1286,18 @@ async function initializeauto_playMode() {
         logMessage(`Error loading auto_play settings: ${error.message}`, LOG_TYPE.ERROR);
     }
     
+    // Get save button
+    const saveAutoPlayButton = document.getElementById('saveAutoPlaySettings');
+
     // Function to save settings
-    async function saveSettings() {
+    async function saveSettings(showFeedback = false) {
+        const originalButtonHTML = saveAutoPlayButton ? saveAutoPlayButton.innerHTML : '';
+
+        if (showFeedback && saveAutoPlayButton) {
+            saveAutoPlayButton.disabled = true;
+            saveAutoPlayButton.innerHTML = '<span class="material-icons text-lg animate-spin">refresh</span><span class="truncate">Saving...</span>';
+        }
+
         try {
             const response = await fetch('/api/auto_play-mode', {
                 method: 'POST',
@@ -1141,28 +1311,42 @@ async function initializeauto_playMode() {
                     shuffle: auto_playShuffleToggle.checked
                 })
             });
-            
+
             if (!response.ok) {
                 throw new Error('Failed to save settings');
             }
+
+            if (showFeedback && saveAutoPlayButton) {
+                saveAutoPlayButton.innerHTML = '<span class="material-icons text-lg">check</span><span class="truncate">Saved!</span>';
+                showStatusMessage('Auto-play settings saved successfully', 'success');
+
+                setTimeout(() => {
+                    saveAutoPlayButton.innerHTML = originalButtonHTML;
+                    saveAutoPlayButton.disabled = false;
+                }, 2000);
+            }
         } catch (error) {
             logMessage(`Error saving auto_play settings: ${error.message}`, LOG_TYPE.ERROR);
+            if (showFeedback && saveAutoPlayButton) {
+                showStatusMessage(`Failed to save settings: ${error.message}`, 'error');
+                saveAutoPlayButton.innerHTML = originalButtonHTML;
+                saveAutoPlayButton.disabled = false;
+            }
         }
     }
-    
+
     // Toggle auto_play settings visibility and save
     auto_playToggle.addEventListener('change', async () => {
         auto_playSettings.style.display = auto_playToggle.checked ? 'block' : 'none';
-        await saveSettings();
+        await saveSettings(false); // Auto-save toggle state without full feedback
+        const statusText = auto_playToggle.checked ? 'enabled' : 'disabled';
+        showStatusMessage(`Auto-play ${statusText}`, 'success');
     });
-    
-    // Save when any setting changes
-    auto_playPlaylistSelect.addEventListener('change', saveSettings);
-    auto_playRunModeSelect.addEventListener('change', saveSettings);
-    auto_playPauseTimeInput.addEventListener('change', saveSettings);
-    auto_playPauseTimeInput.addEventListener('input', saveSettings); // Save as user types
-    auto_playClearPatternSelect.addEventListener('change', saveSettings);
-    auto_playShuffleToggle.addEventListener('change', saveSettings);
+
+    // Save button click handler
+    if (saveAutoPlayButton) {
+        saveAutoPlayButton.addEventListener('click', () => saveSettings(true));
+    }
 }
 
 // Initialize auto_play mode when DOM is ready
@@ -1182,6 +1366,8 @@ async function initializeStillSandsMode() {
     const saveStillSandsButton = document.getElementById('savePauseSettings');
     const timeSlotsContainer = document.getElementById('timeSlotsContainer');
     const wledControlToggle = document.getElementById('stillSandsWledControl');
+    const finishPatternToggle = document.getElementById('stillSandsFinishPattern');
+    const timezoneSelect = document.getElementById('stillSandsTimezone');
 
     // Check if elements exist
     if (!stillSandsToggle || !stillSandsSettings || !addTimeSlotButton || !saveStillSandsButton || !timeSlotsContainer) {
@@ -1218,6 +1404,16 @@ async function initializeStillSandsMode() {
         // Load WLED control setting
         if (wledControlToggle) {
             wledControlToggle.checked = data.control_wled || false;
+        }
+
+        // Load finish pattern setting
+        if (finishPatternToggle) {
+            finishPatternToggle.checked = data.finish_pattern || false;
+        }
+
+        // Load timezone setting
+        if (timezoneSelect) {
+            timezoneSelect.value = data.timezone || '';
         }
 
         // Load existing time slots
@@ -1444,6 +1640,8 @@ async function initializeStillSandsMode() {
                 body: JSON.stringify({
                     enabled: stillSandsToggle.checked,
                     control_wled: wledControlToggle ? wledControlToggle.checked : false,
+                    finish_pattern: finishPatternToggle ? finishPatternToggle.checked : false,
+                    timezone: timezoneSelect ? (timezoneSelect.value || null) : null,
                     time_slots: timeSlots.map(slot => ({
                         start_time: slot.start_time,
                         end_time: slot.end_time,
@@ -1507,6 +1705,24 @@ async function initializeStillSandsMode() {
             await saveStillSandsSettings();
         });
     }
+
+    // Add listener for finish pattern toggle
+    if (finishPatternToggle) {
+        finishPatternToggle.addEventListener('change', async () => {
+            logMessage(`Finish pattern toggle changed: ${finishPatternToggle.checked}`, LOG_TYPE.INFO);
+            // Auto-save when finish pattern setting changes
+            await saveStillSandsSettings();
+        });
+    }
+
+    // Add listener for timezone select
+    if (timezoneSelect) {
+        timezoneSelect.addEventListener('change', async () => {
+            logMessage(`Timezone changed: ${timezoneSelect.value || 'System Default'}`, LOG_TYPE.INFO);
+            // Auto-save when timezone changes
+            await saveStillSandsSettings();
+        });
+    }
 }
 
 // Homing Configuration
@@ -1519,6 +1735,9 @@ async function initializeHomingConfig() {
     const compassOffsetContainer = document.getElementById('compassOffsetContainer');
     const saveHomingConfigButton = document.getElementById('saveHomingConfig');
     const homingInfoContent = document.getElementById('homingInfoContent');
+    const autoHomeEnabledToggle = document.getElementById('autoHomeEnabledToggle');
+    const autoHomeSettings = document.getElementById('autoHomeSettings');
+    const autoHomeAfterPatternsInput = document.getElementById('autoHomeAfterPatternsInput');
 
     // Check if elements exist
     if (!homingModeCrash || !homingModeSensor || !angularOffsetInput || !saveHomingConfigButton || !homingInfoContent || !compassOffsetContainer) {
@@ -1574,14 +1793,28 @@ async function initializeHomingConfig() {
         }
 
         angularOffsetInput.value = data.angular_homing_offset_degrees || 0;
+
+        // Load auto-home settings
+        if (autoHomeEnabledToggle) {
+            autoHomeEnabledToggle.checked = data.auto_home_enabled || false;
+            if (autoHomeSettings) {
+                autoHomeSettings.style.display = data.auto_home_enabled ? 'block' : 'none';
+            }
+        }
+        if (autoHomeAfterPatternsInput) {
+            autoHomeAfterPatternsInput.value = data.auto_home_after_patterns || 5;
+        }
+
         updateHomingInfo();
 
-        logMessage(`Loaded homing config: mode=${data.homing_mode}, offset=${data.angular_homing_offset_degrees}°`, LOG_TYPE.INFO);
+        logMessage(`Loaded homing config: mode=${data.homing_mode}, offset=${data.angular_homing_offset_degrees}°, auto_home=${data.auto_home_enabled}, after=${data.auto_home_after_patterns}`, LOG_TYPE.INFO);
     } catch (error) {
         logMessage(`Error loading homing configuration: ${error.message}`, LOG_TYPE.ERROR);
         // Initialize with defaults if load fails
         homingModeCrash.checked = true;
         angularOffsetInput.value = 0;
+        if (autoHomeEnabledToggle) autoHomeEnabledToggle.checked = false;
+        if (autoHomeAfterPatternsInput) autoHomeAfterPatternsInput.value = 5;
         updateHomingInfo();
     }
 
@@ -1593,13 +1826,26 @@ async function initializeHomingConfig() {
         saveHomingConfigButton.innerHTML = '<span class="material-icons text-lg animate-spin">refresh</span><span class="truncate">Saving...</span>';
 
         try {
+            const requestBody = {
+                homing_mode: getSelectedMode(),
+                angular_homing_offset_degrees: parseFloat(angularOffsetInput.value) || 0
+            };
+
+            // Include auto-home settings if elements exist
+            if (autoHomeEnabledToggle) {
+                requestBody.auto_home_enabled = autoHomeEnabledToggle.checked;
+            }
+            if (autoHomeAfterPatternsInput) {
+                const afterPatterns = parseInt(autoHomeAfterPatternsInput.value);
+                if (!isNaN(afterPatterns) && afterPatterns >= 1) {
+                    requestBody.auto_home_after_patterns = afterPatterns;
+                }
+            }
+
             const response = await fetch('/api/homing-config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    homing_mode: getSelectedMode(),
-                    angular_homing_offset_degrees: parseFloat(angularOffsetInput.value) || 0
-                })
+                body: JSON.stringify(requestBody)
             });
 
             if (!response.ok) {
@@ -1630,4 +1876,317 @@ async function initializeHomingConfig() {
     homingModeCrash.addEventListener('change', updateHomingInfo);
     homingModeSensor.addEventListener('change', updateHomingInfo);
     saveHomingConfigButton.addEventListener('click', saveHomingConfig);
+
+    // Auto-home toggle event listener
+    if (autoHomeEnabledToggle && autoHomeSettings) {
+        autoHomeEnabledToggle.addEventListener('change', () => {
+            autoHomeSettings.style.display = autoHomeEnabledToggle.checked ? 'block' : 'none';
+        });
+    }
 }
+
+// Toggle password visibility helper
+function togglePasswordVisibility(inputId, button) {
+    const input = document.getElementById(inputId);
+    if (!input || !button) return;
+
+    const icon = button.querySelector('.material-icons');
+    if (input.type === 'password') {
+        input.type = 'text';
+        if (icon) icon.textContent = 'visibility';
+    } else {
+        input.type = 'password';
+        if (icon) icon.textContent = 'visibility_off';
+    }
+}
+
+// MQTT Configuration
+async function initializeMqttConfig() {
+    logMessage('Initializing MQTT configuration', LOG_TYPE.INFO);
+
+    const mqttEnableToggle = document.getElementById('mqttEnableToggle');
+    const mqttSettings = document.getElementById('mqttSettings');
+    const mqttStatusBanner = document.getElementById('mqttStatusBanner');
+    const mqttConnectedBanner = document.getElementById('mqttConnectedBanner');
+    const mqttDisconnectedBanner = document.getElementById('mqttDisconnectedBanner');
+    const mqttBrokerInput = document.getElementById('mqttBrokerInput');
+    const mqttPortInput = document.getElementById('mqttPortInput');
+    const mqttUsernameInput = document.getElementById('mqttUsernameInput');
+    const mqttPasswordInput = document.getElementById('mqttPasswordInput');
+    const mqttDeviceNameInput = document.getElementById('mqttDeviceNameInput');
+    const mqttDeviceIdInput = document.getElementById('mqttDeviceIdInput');
+    const mqttClientIdInput = document.getElementById('mqttClientIdInput');
+    const mqttDiscoveryPrefixInput = document.getElementById('mqttDiscoveryPrefixInput');
+    const testMqttButton = document.getElementById('testMqttConnection');
+    const mqttTestResult = document.getElementById('mqttTestResult');
+    const saveMqttButton = document.getElementById('saveMqttConfig');
+    const mqttRestartNotice = document.getElementById('mqttRestartNotice');
+
+    // Check if elements exist
+    if (!mqttEnableToggle || !mqttSettings || !saveMqttButton) {
+        logMessage('MQTT configuration elements not found, skipping initialization', LOG_TYPE.WARNING);
+        return;
+    }
+
+    logMessage('MQTT configuration elements found successfully', LOG_TYPE.INFO);
+
+    // Track if settings have changed (to show restart notice)
+    let originalConfig = null;
+    let configChanged = false;
+
+    // Function to update UI based on enabled state
+    function updateMqttSettingsVisibility() {
+        mqttSettings.style.display = mqttEnableToggle.checked ? 'block' : 'none';
+        if (mqttStatusBanner) {
+            mqttStatusBanner.classList.toggle('hidden', !mqttEnableToggle.checked);
+        }
+    }
+
+    // Function to update connection status banners
+    function updateConnectionStatus(connected) {
+        if (mqttConnectedBanner && mqttDisconnectedBanner) {
+            if (connected) {
+                mqttConnectedBanner.classList.remove('hidden');
+                mqttDisconnectedBanner.classList.add('hidden');
+            } else {
+                mqttConnectedBanner.classList.add('hidden');
+                mqttDisconnectedBanner.classList.remove('hidden');
+            }
+        }
+    }
+
+    // Function to check if config has changed
+    function checkConfigChanged() {
+        if (!originalConfig) return false;
+
+        const currentConfig = {
+            enabled: mqttEnableToggle.checked,
+            broker: mqttBrokerInput.value,
+            port: parseInt(mqttPortInput.value) || 1883,
+            username: mqttUsernameInput.value,
+            password: mqttPasswordInput.value,
+            device_name: mqttDeviceNameInput.value,
+            device_id: mqttDeviceIdInput.value,
+            client_id: mqttClientIdInput.value,
+            discovery_prefix: mqttDiscoveryPrefixInput.value
+        };
+
+        return JSON.stringify(currentConfig) !== JSON.stringify(originalConfig);
+    }
+
+    // Function to show/hide restart notice
+    function updateRestartNotice() {
+        configChanged = checkConfigChanged();
+        if (mqttRestartNotice) {
+            mqttRestartNotice.classList.toggle('hidden', !configChanged);
+        }
+    }
+
+    // Load current MQTT configuration
+    try {
+        const response = await fetch('/api/mqtt-config');
+        const data = await response.json();
+
+        mqttEnableToggle.checked = data.enabled || false;
+        mqttBrokerInput.value = data.broker || '';
+        mqttPortInput.value = data.port || 1883;
+        mqttUsernameInput.value = data.username || '';
+        // Note: Password is not returned from API for security
+        mqttDeviceNameInput.value = data.device_name || 'Dune Weaver';
+        mqttDeviceIdInput.value = data.device_id || 'dune_weaver';
+        mqttClientIdInput.value = data.client_id || 'dune_weaver';
+        mqttDiscoveryPrefixInput.value = data.discovery_prefix || 'homeassistant';
+
+        // Store original config for change detection
+        originalConfig = {
+            enabled: data.enabled || false,
+            broker: data.broker || '',
+            port: data.port || 1883,
+            username: data.username || '',
+            password: '', // We don't have the original password
+            device_name: data.device_name || 'Dune Weaver',
+            device_id: data.device_id || 'dune_weaver',
+            client_id: data.client_id || 'dune_weaver',
+            discovery_prefix: data.discovery_prefix || 'homeassistant'
+        };
+
+        updateMqttSettingsVisibility();
+
+        // Update connection status if MQTT is enabled
+        if (data.enabled) {
+            updateConnectionStatus(data.connected || false);
+        }
+
+        logMessage(`Loaded MQTT config: enabled=${data.enabled}, broker=${data.broker}`, LOG_TYPE.INFO);
+    } catch (error) {
+        logMessage(`Error loading MQTT configuration: ${error.message}`, LOG_TYPE.ERROR);
+        // Initialize with defaults if load fails
+        mqttEnableToggle.checked = false;
+        updateMqttSettingsVisibility();
+    }
+
+    // Function to save MQTT configuration
+    async function saveMqttConfig() {
+        // Validate required fields if MQTT is enabled
+        if (mqttEnableToggle.checked && !mqttBrokerInput.value.trim()) {
+            showStatusMessage('MQTT broker address is required when MQTT is enabled', 'error');
+            mqttBrokerInput.focus();
+            return;
+        }
+
+        // Update button UI to show loading state
+        const originalButtonHTML = saveMqttButton.innerHTML;
+        saveMqttButton.disabled = true;
+        saveMqttButton.innerHTML = '<span class="material-icons text-lg animate-spin">refresh</span><span class="truncate">Saving...</span>';
+
+        try {
+            const requestBody = {
+                enabled: mqttEnableToggle.checked,
+                broker: mqttBrokerInput.value.trim(),
+                port: parseInt(mqttPortInput.value) || 1883,
+                username: mqttUsernameInput.value.trim() || null,
+                device_name: mqttDeviceNameInput.value.trim() || 'Dune Weaver',
+                device_id: mqttDeviceIdInput.value.trim() || 'dune_weaver',
+                client_id: mqttClientIdInput.value.trim() || 'dune_weaver',
+                discovery_prefix: mqttDiscoveryPrefixInput.value.trim() || 'homeassistant'
+            };
+
+            // Only include password if it was changed (not empty)
+            if (mqttPasswordInput.value) {
+                requestBody.password = mqttPasswordInput.value;
+            }
+
+            const response = await fetch('/api/mqtt-config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Failed to save MQTT configuration');
+            }
+
+            const data = await response.json();
+
+            // Update original config for change detection
+            originalConfig = {
+                enabled: requestBody.enabled,
+                broker: requestBody.broker,
+                port: requestBody.port,
+                username: requestBody.username || '',
+                password: '', // Reset password tracking
+                device_name: requestBody.device_name,
+                device_id: requestBody.device_id,
+                client_id: requestBody.client_id,
+                discovery_prefix: requestBody.discovery_prefix
+            };
+
+            // Clear password field after save
+            mqttPasswordInput.value = '';
+
+            // Show success state temporarily
+            saveMqttButton.innerHTML = '<span class="material-icons text-lg">check</span><span class="truncate">Saved!</span>';
+            showStatusMessage('MQTT configuration saved successfully. Restart the application to apply changes.', 'success');
+
+            // Show restart notice
+            if (mqttRestartNotice) {
+                mqttRestartNotice.classList.remove('hidden');
+            }
+
+            // Restore button after 2 seconds
+            setTimeout(() => {
+                saveMqttButton.innerHTML = originalButtonHTML;
+                saveMqttButton.disabled = false;
+            }, 2000);
+        } catch (error) {
+            logMessage(`Error saving MQTT configuration: ${error.message}`, LOG_TYPE.ERROR);
+            showStatusMessage(`Failed to save MQTT configuration: ${error.message}`, 'error');
+
+            // Restore button immediately on error
+            saveMqttButton.innerHTML = originalButtonHTML;
+            saveMqttButton.disabled = false;
+        }
+    }
+
+    // Function to test MQTT connection
+    async function testMqttConnection() {
+        // Validate broker address
+        if (!mqttBrokerInput.value.trim()) {
+            showStatusMessage('Please enter a broker address to test', 'error');
+            mqttBrokerInput.focus();
+            return;
+        }
+
+        // Update button UI to show loading state
+        const originalButtonHTML = testMqttButton.innerHTML;
+        testMqttButton.disabled = true;
+        testMqttButton.innerHTML = '<span class="material-icons text-lg animate-spin">refresh</span><span class="truncate">Testing...</span>';
+
+        // Clear previous result
+        if (mqttTestResult) {
+            mqttTestResult.innerHTML = '';
+        }
+
+        try {
+            const requestBody = {
+                broker: mqttBrokerInput.value.trim(),
+                port: parseInt(mqttPortInput.value) || 1883,
+                username: mqttUsernameInput.value.trim() || null,
+                password: mqttPasswordInput.value || null
+            };
+
+            const response = await fetch('/api/mqtt-test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                if (mqttTestResult) {
+                    mqttTestResult.innerHTML = '<span class="material-icons text-green-600 mr-1">check_circle</span><span class="text-green-600">Connection successful!</span>';
+                }
+                showStatusMessage('MQTT connection test successful', 'success');
+            } else {
+                if (mqttTestResult) {
+                    mqttTestResult.innerHTML = `<span class="material-icons text-red-600 mr-1">error</span><span class="text-red-600">${data.error || 'Connection failed'}</span>`;
+                }
+                showStatusMessage(`MQTT test failed: ${data.error || 'Connection failed'}`, 'error');
+            }
+        } catch (error) {
+            logMessage(`Error testing MQTT connection: ${error.message}`, LOG_TYPE.ERROR);
+            if (mqttTestResult) {
+                mqttTestResult.innerHTML = `<span class="material-icons text-red-600 mr-1">error</span><span class="text-red-600">Test failed: ${error.message}</span>`;
+            }
+            showStatusMessage(`MQTT test failed: ${error.message}`, 'error');
+        } finally {
+            // Restore button
+            testMqttButton.innerHTML = originalButtonHTML;
+            testMqttButton.disabled = false;
+        }
+    }
+
+    // Event listeners
+    mqttEnableToggle.addEventListener('change', () => {
+        updateMqttSettingsVisibility();
+        updateRestartNotice();
+    });
+
+    // Track changes to show restart notice
+    [mqttBrokerInput, mqttPortInput, mqttUsernameInput, mqttPasswordInput,
+     mqttDeviceNameInput, mqttDeviceIdInput, mqttClientIdInput, mqttDiscoveryPrefixInput].forEach(input => {
+        if (input) {
+            input.addEventListener('input', updateRestartNotice);
+        }
+    });
+
+    testMqttButton.addEventListener('click', testMqttConnection);
+    saveMqttButton.addEventListener('click', saveMqttConfig);
+}
+
+// Initialize MQTT config when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    initializeMqttConfig();
+});

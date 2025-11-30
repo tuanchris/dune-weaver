@@ -314,25 +314,27 @@ Page {
                                         height: parent.height
                                         radius: 6
                                         color: pauseMouseArea.pressed ? "#1e40af" : (backend && backend.currentFile !== "" ? "#2563eb" : "#9ca3af")
-                                        
+
                                         Text {
                                             anchors.centerIn: parent
-                                            text: (backend && backend.isRunning) ? "||" : "▶"
+                                            // Show pause icon when running and not paused, play icon when paused
+                                            text: (backend && backend.isRunning && !backend.isPaused) ? "||" : "▶"
                                             color: "white"
                                             font.pixelSize: 14
                                             font.bold: true
                                         }
-                                        
+
                                         MouseArea {
                                             id: pauseMouseArea
                                             anchors.fill: parent
                                             enabled: backend && backend.currentFile !== ""
                                             onClicked: {
                                                 if (backend) {
-                                                    if (backend.isRunning) {
-                                                        backend.pauseExecution()
-                                                    } else {
+                                                    // If paused, resume; otherwise pause
+                                                    if (backend.isPaused) {
                                                         backend.resumeExecution()
+                                                    } else {
+                                                        backend.pauseExecution()
                                                     }
                                                 }
                                             }
