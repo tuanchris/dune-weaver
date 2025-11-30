@@ -2055,14 +2055,14 @@ async def set_mqtt_config(request: dict):
     try:
         # Update state with new values
         state.mqtt_enabled = request.get("enabled", False)
-        state.mqtt_broker = request.get("broker", "").strip()
-        state.mqtt_port = int(request.get("port", 1883))
-        state.mqtt_username = request.get("username", "").strip()
-        state.mqtt_password = request.get("password", "").strip()
-        state.mqtt_client_id = request.get("client_id", "dune_weaver").strip()
-        state.mqtt_discovery_prefix = request.get("discovery_prefix", "homeassistant").strip()
-        state.mqtt_device_id = request.get("device_id", "dune_weaver").strip()
-        state.mqtt_device_name = request.get("device_name", "Dune Weaver").strip()
+        state.mqtt_broker = (request.get("broker") or "").strip()
+        state.mqtt_port = int(request.get("port") or 1883)
+        state.mqtt_username = (request.get("username") or "").strip()
+        state.mqtt_password = (request.get("password") or "").strip()
+        state.mqtt_client_id = (request.get("client_id") or "dune_weaver").strip()
+        state.mqtt_discovery_prefix = (request.get("discovery_prefix") or "homeassistant").strip()
+        state.mqtt_device_id = (request.get("device_id") or "dune_weaver").strip()
+        state.mqtt_device_name = (request.get("device_name") or "Dune Weaver").strip()
 
         # Validate required fields when enabled
         if state.mqtt_enabled and not state.mqtt_broker:
@@ -2096,11 +2096,11 @@ async def test_mqtt_connection(request: dict):
     """Test MQTT connection with provided settings."""
     import paho.mqtt.client as mqtt_client
 
-    broker = request.get("broker", "").strip()
-    port = int(request.get("port", 1883))
-    username = request.get("username", "").strip()
-    password = request.get("password", "").strip()
-    client_id = request.get("client_id", "dune_weaver_test").strip()
+    broker = (request.get("broker") or "").strip()
+    port = int(request.get("port") or 1883)
+    username = (request.get("username") or "").strip()
+    password = (request.get("password") or "").strip()
+    client_id = (request.get("client_id") or "dune_weaver_test").strip()
 
     if not broker:
         return JSONResponse(
