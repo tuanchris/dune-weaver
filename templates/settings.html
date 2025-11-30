@@ -1076,12 +1076,31 @@ input:checked + .slider:before {
       </div>
 
       <div id="scheduledPauseSettings" class="space-y-4" style="display: none;">
-        <!-- WLED Control Option -->
-        <div class="bg-amber-50 rounded-lg p-4 border border-amber-200">
+        <!-- Finish Current Pattern Option -->
+        <div class="bg-sky-50 rounded-lg p-4 border border-sky-200">
           <div class="flex items-center justify-between">
             <div class="flex-1">
               <h4 class="text-slate-800 text-sm font-medium flex items-center gap-2">
-                <span class="material-icons text-amber-600 text-base">lightbulb</span>
+                <span class="material-icons text-slate-800 dark:text-slate-200 text-base">hourglass_bottom</span>
+                Finish Current Pattern
+              </h4>
+              <p class="text-xs text-slate-600 mt-1">
+                Let the current pattern complete before entering still mode
+              </p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="stillSandsFinishPattern">
+              <span class="slider round"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- WLED Control Option -->
+        <div class="bg-sky-50 rounded-lg p-4 border border-sky-200">
+          <div class="flex items-center justify-between">
+            <div class="flex-1">
+              <h4 class="text-slate-800 text-sm font-medium flex items-center gap-2">
+                <span class="material-icons text-slate-800 dark:text-slate-200 text-base">lightbulb</span>
                 Control WLED Lights
               </h4>
               <p class="text-xs text-slate-600 mt-1">
@@ -1121,7 +1140,8 @@ input:checked + .slider:before {
                 <p class="font-medium text-blue-800">Important Notes:</p>
                 <ul class="mt-1 space-y-1 text-blue-700">
                   <li>• Times are based on your system's local time zone</li>
-                  <li>• Currently running patterns will pause immediately when entering a still period</li>
+                  <li>• By default, patterns pause immediately when entering a still period</li>
+                  <li>• Enable "Finish Current Pattern" to let patterns complete first</li>
                   <li>• Patterns will resume automatically when exiting a still period</li>
                   <li>• Still periods that span midnight (e.g., 22:00 to 06:00) are supported</li>
                 </ul>

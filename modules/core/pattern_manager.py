@@ -714,7 +714,8 @@ async def run_theta_rho_file(file_path, is_playlist=False):
 
                 # Wait for resume if paused (manual or scheduled)
                 manual_pause = state.pause_requested
-                scheduled_pause = is_in_scheduled_pause_period()
+                # Only check scheduled pause during pattern if "finish pattern first" is NOT enabled
+                scheduled_pause = is_in_scheduled_pause_period() if not state.scheduled_pause_finish_pattern else False
 
                 if manual_pause or scheduled_pause:
                     if manual_pause and scheduled_pause:
@@ -878,6 +879,34 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                 
                 # Execute the pattern
                 await run_theta_rho_file(file_path, is_playlist=True)
+
+                # Check for scheduled pause after pattern completes (when "finish pattern first" is enabled)
+                if state.scheduled_pause_finish_pattern and is_in_scheduled_pause_period() and not state.stop_requested:
+                    logger.info("Pattern completed. Entering Still Sands period (finish pattern first mode)...")
+
+                    # Turn off LED controller if control_wled is enabled
+                    wled_was_off_for_scheduled = False
+                    if state.scheduled_pause_control_wled and state.led_controller:
+                        logger.info("Turning off LED lights during Still Sands period")
+                        state.led_controller.set_power(0)
+                        wled_was_off_for_scheduled = True
+                    elif state.led_controller:
+                        state.led_controller.effect_idle(state.dw_led_idle_effect)
+                        start_idle_led_timeout()
+
+                    # Wait until we're outside the scheduled pause period
+                    while is_in_scheduled_pause_period() and not state.stop_requested:
+                        await asyncio.sleep(1)
+
+                    if not state.stop_requested:
+                        logger.info("Still Sands period ended. Resuming playlist...")
+                        if state.led_controller:
+                            if wled_was_off_for_scheduled:
+                                logger.info("Turning LED lights back on as Still Sands period ended")
+                                state.led_controller.set_power(1)
+                                await asyncio.sleep(0.5)  # Critical delay for LED controller
+                            state.led_controller.effect_playing(state.dw_led_playing_effect)
+                            idle_timeout_manager.cancel_timeout()
 
                 # Handle pause between patterns
                 if idx < len(pattern_sequence) - 1 and not state.stop_requested and pause_time > 0 and not state.skip_requested:

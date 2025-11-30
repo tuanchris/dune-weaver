@@ -268,6 +268,7 @@ class TimeSlot(BaseModel):
 class ScheduledPauseRequest(BaseModel):
     enabled: bool
     control_wled: Optional[bool] = False
+    finish_pattern: Optional[bool] = False  # Finish current pattern before pausing
     time_slots: List[TimeSlot] = []
 
 class CoordinateRequest(BaseModel):
@@ -440,6 +441,7 @@ async def get_scheduled_pause():
     return {
         "enabled": state.scheduled_pause_enabled,
         "control_wled": state.scheduled_pause_control_wled,
+        "finish_pattern": state.scheduled_pause_finish_pattern,
         "time_slots": state.scheduled_pause_time_slots
     }
 
@@ -485,11 +487,13 @@ async def set_scheduled_pause(request: ScheduledPauseRequest):
         # Update state
         state.scheduled_pause_enabled = request.enabled
         state.scheduled_pause_control_wled = request.control_wled
+        state.scheduled_pause_finish_pattern = request.finish_pattern
         state.scheduled_pause_time_slots = [slot.model_dump() for slot in request.time_slots]
         state.save()
 
         wled_msg = " (with WLED control)" if request.control_wled else ""
-        logger.info(f"Still Sands {'enabled' if request.enabled else 'disabled'} with {len(request.time_slots)} time slots{wled_msg}")
+        finish_msg = " (finish pattern first)" if request.finish_pattern else ""
+        logger.info(f"Still Sands {'enabled' if request.enabled else 'disabled'} with {len(request.time_slots)} time slots{wled_msg}{finish_msg}")
         return {"success": True, "message": "Still Sands settings updated"}
 
     except HTTPException:

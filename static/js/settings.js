@@ -1339,6 +1339,7 @@ async function initializeStillSandsMode() {
     const saveStillSandsButton = document.getElementById('savePauseSettings');
     const timeSlotsContainer = document.getElementById('timeSlotsContainer');
     const wledControlToggle = document.getElementById('stillSandsWledControl');
+    const finishPatternToggle = document.getElementById('stillSandsFinishPattern');
 
     // Check if elements exist
     if (!stillSandsToggle || !stillSandsSettings || !addTimeSlotButton || !saveStillSandsButton || !timeSlotsContainer) {
@@ -1375,6 +1376,11 @@ async function initializeStillSandsMode() {
         // Load WLED control setting
         if (wledControlToggle) {
             wledControlToggle.checked = data.control_wled || false;
+        }
+
+        // Load finish pattern setting
+        if (finishPatternToggle) {
+            finishPatternToggle.checked = data.finish_pattern || false;
         }
 
         // Load existing time slots
@@ -1601,6 +1607,7 @@ async function initializeStillSandsMode() {
                 body: JSON.stringify({
                     enabled: stillSandsToggle.checked,
                     control_wled: wledControlToggle ? wledControlToggle.checked : false,
+                    finish_pattern: finishPatternToggle ? finishPatternToggle.checked : false,
                     time_slots: timeSlots.map(slot => ({
                         start_time: slot.start_time,
                         end_time: slot.end_time,
@@ -1661,6 +1668,15 @@ async function initializeStillSandsMode() {
         wledControlToggle.addEventListener('change', async () => {
             logMessage(`WLED control toggle changed: ${wledControlToggle.checked}`, LOG_TYPE.INFO);
             // Auto-save when WLED control changes
+            await saveStillSandsSettings();
+        });
+    }
+
+    // Add listener for finish pattern toggle
+    if (finishPatternToggle) {
+        finishPatternToggle.addEventListener('change', async () => {
+            logMessage(`Finish pattern toggle changed: ${finishPatternToggle.checked}`, LOG_TYPE.INFO);
+            // Auto-save when finish pattern setting changes
             await saveStillSandsSettings();
         });
     }
