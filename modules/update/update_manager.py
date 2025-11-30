@@ -76,8 +76,19 @@ def update_software():
         return False, error_msg, error_log
 
     run_command(["git", "checkout", latest_remote_tag, '--force'], f"Failed to checkout version {latest_remote_tag}")
-    run_command(["docker", "compose", "pull"], "Failed to fetch Docker containers")
-    run_command(["docker", "compose", "up", "-d"], "Failed to restart Docker containers")
+
+    # Get host project directory for docker compose commands
+    # When running inside a container, we need to use the host path for docker compose
+    host_project_dir = os.environ.get("HOST_PROJECT_DIR")
+    if host_project_dir:
+        compose_cmd = ["docker", "compose", "-f", f"{host_project_dir}/docker-compose.yml"]
+        logger.info(f"Using host project directory: {host_project_dir}")
+    else:
+        compose_cmd = ["docker", "compose"]
+        logger.warning("HOST_PROJECT_DIR not set, using default docker compose")
+
+    run_command(compose_cmd + ["pull"], "Failed to fetch Docker containers")
+    run_command(compose_cmd + ["up", "-d"], "Failed to restart Docker containers")
 
     update_status = check_git_updates()
 
