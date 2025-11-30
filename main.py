@@ -321,6 +321,80 @@ class ThetaRhoRequest(BaseModel):
 class GetCoordinatesRequest(BaseModel):
     file_name: str
 
+# ============================================================================
+# Unified Settings Models
+# ============================================================================
+
+class AppSettingsUpdate(BaseModel):
+    name: Optional[str] = None
+
+class ConnectionSettingsUpdate(BaseModel):
+    preferred_port: Optional[str] = None
+
+class PatternSettingsUpdate(BaseModel):
+    clear_pattern_speed: Optional[int] = None
+    custom_clear_from_in: Optional[str] = None
+    custom_clear_from_out: Optional[str] = None
+
+class AutoPlaySettingsUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    playlist: Optional[str] = None
+    run_mode: Optional[str] = None
+    pause_time: Optional[float] = None
+    clear_pattern: Optional[str] = None
+    shuffle: Optional[bool] = None
+
+class ScheduledPauseSettingsUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    control_wled: Optional[bool] = None
+    finish_pattern: Optional[bool] = None
+    time_slots: Optional[List[TimeSlot]] = None
+
+class HomingSettingsUpdate(BaseModel):
+    mode: Optional[int] = None
+    angular_offset_degrees: Optional[float] = None
+    auto_home_enabled: Optional[bool] = None
+    auto_home_after_patterns: Optional[int] = None
+
+class DwLedSettingsUpdate(BaseModel):
+    num_leds: Optional[int] = None
+    gpio_pin: Optional[int] = None
+    pixel_order: Optional[str] = None
+    brightness: Optional[int] = None
+    speed: Optional[int] = None
+    intensity: Optional[int] = None
+    idle_effect: Optional[dict] = None
+    playing_effect: Optional[dict] = None
+    idle_timeout_enabled: Optional[bool] = None
+    idle_timeout_minutes: Optional[int] = None
+
+class LedSettingsUpdate(BaseModel):
+    provider: Optional[str] = None  # "none", "wled", "dw_leds"
+    wled_ip: Optional[str] = None
+    dw_led: Optional[DwLedSettingsUpdate] = None
+
+class MqttSettingsUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    broker: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None  # Write-only, never returned in GET
+    client_id: Optional[str] = None
+    discovery_prefix: Optional[str] = None
+    device_id: Optional[str] = None
+    device_name: Optional[str] = None
+
+class SettingsUpdate(BaseModel):
+    """Request model for PATCH /api/settings - all fields optional for partial updates"""
+    app: Optional[AppSettingsUpdate] = None
+    connection: Optional[ConnectionSettingsUpdate] = None
+    patterns: Optional[PatternSettingsUpdate] = None
+    auto_play: Optional[AutoPlaySettingsUpdate] = None
+    scheduled_pause: Optional[ScheduledPauseSettingsUpdate] = None
+    homing: Optional[HomingSettingsUpdate] = None
+    led: Optional[LedSettingsUpdate] = None
+    mqtt: Optional[MqttSettingsUpdate] = None
+
 # Store active WebSocket connections
 active_status_connections = set()
 active_cache_progress_connections = set()
@@ -404,9 +478,241 @@ async def index(request: Request):
 async def settings(request: Request):
     return templates.TemplateResponse("settings.html", {"request": request, "app_name": state.app_name})
 
-@app.get("/api/auto_play-mode")
+# ============================================================================
+# Unified Settings API
+# ============================================================================
+
+@app.get("/api/settings", tags=["settings"])
+async def get_all_settings():
+    """
+    Get all application settings in a unified structure.
+
+    This endpoint consolidates multiple settings endpoints into a single response.
+    Individual settings endpoints are deprecated but still functional.
+    """
+    return {
+        "app": {
+            "name": state.app_name
+        },
+        "connection": {
+            "preferred_port": state.preferred_port
+        },
+        "patterns": {
+            "clear_pattern_speed": state.clear_pattern_speed,
+            "custom_clear_from_in": state.custom_clear_from_in,
+            "custom_clear_from_out": state.custom_clear_from_out
+        },
+        "auto_play": {
+            "enabled": state.auto_play_enabled,
+            "playlist": state.auto_play_playlist,
+            "run_mode": state.auto_play_run_mode,
+            "pause_time": state.auto_play_pause_time,
+            "clear_pattern": state.auto_play_clear_pattern,
+            "shuffle": state.auto_play_shuffle
+        },
+        "scheduled_pause": {
+            "enabled": state.scheduled_pause_enabled,
+            "control_wled": state.scheduled_pause_control_wled,
+            "finish_pattern": state.scheduled_pause_finish_pattern,
+            "time_slots": state.scheduled_pause_time_slots
+        },
+        "homing": {
+            "mode": state.homing,
+            "angular_offset_degrees": state.angular_homing_offset_degrees,
+            "auto_home_enabled": state.auto_home_enabled,
+            "auto_home_after_patterns": state.auto_home_after_patterns
+        },
+        "led": {
+            "provider": state.led_provider,
+            "wled_ip": state.wled_ip,
+            "dw_led": {
+                "num_leds": state.dw_led_num_leds,
+                "gpio_pin": state.dw_led_gpio_pin,
+                "pixel_order": state.dw_led_pixel_order,
+                "brightness": state.dw_led_brightness,
+                "speed": state.dw_led_speed,
+                "intensity": state.dw_led_intensity,
+                "idle_effect": state.dw_led_idle_effect,
+                "playing_effect": state.dw_led_playing_effect,
+                "idle_timeout_enabled": state.dw_led_idle_timeout_enabled,
+                "idle_timeout_minutes": state.dw_led_idle_timeout_minutes
+            }
+        },
+        "mqtt": {
+            "enabled": state.mqtt_enabled,
+            "broker": state.mqtt_broker,
+            "port": state.mqtt_port,
+            "username": state.mqtt_username,
+            "has_password": bool(state.mqtt_password),
+            "client_id": state.mqtt_client_id,
+            "discovery_prefix": state.mqtt_discovery_prefix,
+            "device_id": state.mqtt_device_id,
+            "device_name": state.mqtt_device_name
+        }
+    }
+
+@app.patch("/api/settings", tags=["settings"])
+async def update_settings(settings_update: SettingsUpdate):
+    """
+    Partially update application settings.
+
+    Only include the categories and fields you want to update.
+    All fields are optional - only provided values will be updated.
+
+    Example: {"app": {"name": "My Sand Table"}, "auto_play": {"enabled": true}}
+    """
+    updated_categories = []
+    requires_restart = False
+    led_reinit_needed = False
+    old_led_provider = state.led_provider
+
+    # App settings
+    if settings_update.app:
+        if settings_update.app.name is not None:
+            state.app_name = settings_update.app.name or "Dune Weaver"
+        updated_categories.append("app")
+
+    # Connection settings
+    if settings_update.connection:
+        if settings_update.connection.preferred_port is not None:
+            port = settings_update.connection.preferred_port
+            state.preferred_port = None if port in ("", "none") else port
+        updated_categories.append("connection")
+
+    # Pattern settings
+    if settings_update.patterns:
+        p = settings_update.patterns
+        if p.clear_pattern_speed is not None:
+            state.clear_pattern_speed = p.clear_pattern_speed if p.clear_pattern_speed > 0 else None
+        if p.custom_clear_from_in is not None:
+            state.custom_clear_from_in = p.custom_clear_from_in or None
+        if p.custom_clear_from_out is not None:
+            state.custom_clear_from_out = p.custom_clear_from_out or None
+        updated_categories.append("patterns")
+
+    # Auto-play settings
+    if settings_update.auto_play:
+        ap = settings_update.auto_play
+        if ap.enabled is not None:
+            state.auto_play_enabled = ap.enabled
+        if ap.playlist is not None:
+            state.auto_play_playlist = ap.playlist or None
+        if ap.run_mode is not None:
+            state.auto_play_run_mode = ap.run_mode
+        if ap.pause_time is not None:
+            state.auto_play_pause_time = ap.pause_time
+        if ap.clear_pattern is not None:
+            state.auto_play_clear_pattern = ap.clear_pattern
+        if ap.shuffle is not None:
+            state.auto_play_shuffle = ap.shuffle
+        updated_categories.append("auto_play")
+
+    # Scheduled pause (Still Sands) settings
+    if settings_update.scheduled_pause:
+        sp = settings_update.scheduled_pause
+        if sp.enabled is not None:
+            state.scheduled_pause_enabled = sp.enabled
+        if sp.control_wled is not None:
+            state.scheduled_pause_control_wled = sp.control_wled
+        if sp.finish_pattern is not None:
+            state.scheduled_pause_finish_pattern = sp.finish_pattern
+        if sp.time_slots is not None:
+            state.scheduled_pause_time_slots = [slot.model_dump() for slot in sp.time_slots]
+        updated_categories.append("scheduled_pause")
+
+    # Homing settings
+    if settings_update.homing:
+        h = settings_update.homing
+        if h.mode is not None:
+            state.homing = h.mode
+        if h.angular_offset_degrees is not None:
+            state.angular_homing_offset_degrees = h.angular_offset_degrees
+        if h.auto_home_enabled is not None:
+            state.auto_home_enabled = h.auto_home_enabled
+        if h.auto_home_after_patterns is not None:
+            state.auto_home_after_patterns = h.auto_home_after_patterns
+        updated_categories.append("homing")
+
+    # LED settings
+    if settings_update.led:
+        led = settings_update.led
+        if led.provider is not None:
+            state.led_provider = led.provider
+            if led.provider != old_led_provider:
+                led_reinit_needed = True
+        if led.wled_ip is not None:
+            state.wled_ip = led.wled_ip or None
+        if led.dw_led:
+            dw = led.dw_led
+            if dw.num_leds is not None:
+                state.dw_led_num_leds = dw.num_leds
+            if dw.gpio_pin is not None:
+                state.dw_led_gpio_pin = dw.gpio_pin
+            if dw.pixel_order is not None:
+                state.dw_led_pixel_order = dw.pixel_order
+            if dw.brightness is not None:
+                state.dw_led_brightness = dw.brightness
+            if dw.speed is not None:
+                state.dw_led_speed = dw.speed
+            if dw.intensity is not None:
+                state.dw_led_intensity = dw.intensity
+            if dw.idle_effect is not None:
+                state.dw_led_idle_effect = dw.idle_effect
+            if dw.playing_effect is not None:
+                state.dw_led_playing_effect = dw.playing_effect
+            if dw.idle_timeout_enabled is not None:
+                state.dw_led_idle_timeout_enabled = dw.idle_timeout_enabled
+            if dw.idle_timeout_minutes is not None:
+                state.dw_led_idle_timeout_minutes = dw.idle_timeout_minutes
+        updated_categories.append("led")
+
+    # MQTT settings
+    if settings_update.mqtt:
+        m = settings_update.mqtt
+        if m.enabled is not None:
+            state.mqtt_enabled = m.enabled
+        if m.broker is not None:
+            state.mqtt_broker = m.broker
+        if m.port is not None:
+            state.mqtt_port = m.port
+        if m.username is not None:
+            state.mqtt_username = m.username
+        if m.password is not None:
+            state.mqtt_password = m.password
+        if m.client_id is not None:
+            state.mqtt_client_id = m.client_id
+        if m.discovery_prefix is not None:
+            state.mqtt_discovery_prefix = m.discovery_prefix
+        if m.device_id is not None:
+            state.mqtt_device_id = m.device_id
+        if m.device_name is not None:
+            state.mqtt_device_name = m.device_name
+        updated_categories.append("mqtt")
+        requires_restart = True
+
+    # Save state
+    state.save()
+
+    # Handle LED reinitialization if provider changed
+    if led_reinit_needed:
+        logger.info(f"LED provider changed from {old_led_provider} to {state.led_provider}, reinitialization may be needed")
+
+    logger.info(f"Settings updated: {', '.join(updated_categories)}")
+
+    return {
+        "success": True,
+        "updated_categories": updated_categories,
+        "requires_restart": requires_restart,
+        "led_reinit_needed": led_reinit_needed
+    }
+
+# ============================================================================
+# Individual Settings Endpoints (Deprecated - use /api/settings instead)
+# ============================================================================
+
+@app.get("/api/auto_play-mode", deprecated=True, tags=["settings-deprecated"])
 async def get_auto_play_mode():
-    """Get current auto_play mode settings."""
+    """DEPRECATED: Use GET /api/settings instead. Get current auto_play mode settings."""
     return {
         "enabled": state.auto_play_enabled,
         "playlist": state.auto_play_playlist,
@@ -416,9 +722,9 @@ async def get_auto_play_mode():
         "shuffle": state.auto_play_shuffle
     }
 
-@app.post("/api/auto_play-mode")
+@app.post("/api/auto_play-mode", deprecated=True, tags=["settings-deprecated"])
 async def set_auto_play_mode(request: auto_playModeRequest):
-    """Update auto_play mode settings."""
+    """DEPRECATED: Use PATCH /api/settings instead. Update auto_play mode settings."""
     state.auto_play_enabled = request.enabled
     if request.playlist is not None:
         state.auto_play_playlist = request.playlist
@@ -435,9 +741,9 @@ async def set_auto_play_mode(request: auto_playModeRequest):
     logger.info(f"auto_play mode {'enabled' if request.enabled else 'disabled'}, playlist: {request.playlist}")
     return {"success": True, "message": "auto_play mode settings updated"}
 
-@app.get("/api/scheduled-pause")
+@app.get("/api/scheduled-pause", deprecated=True, tags=["settings-deprecated"])
 async def get_scheduled_pause():
-    """Get current Still Sands settings."""
+    """DEPRECATED: Use GET /api/settings instead. Get current Still Sands settings."""
     return {
         "enabled": state.scheduled_pause_enabled,
         "control_wled": state.scheduled_pause_control_wled,
@@ -445,7 +751,7 @@ async def get_scheduled_pause():
         "time_slots": state.scheduled_pause_time_slots
     }
 
-@app.post("/api/scheduled-pause")
+@app.post("/api/scheduled-pause", deprecated=True, tags=["settings-deprecated"])
 async def set_scheduled_pause(request: ScheduledPauseRequest):
     """Update Still Sands settings."""
     try:
@@ -502,7 +808,7 @@ async def set_scheduled_pause(request: ScheduledPauseRequest):
         logger.error(f"Error updating Still Sands settings: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to update Still Sands settings: {str(e)}")
 
-@app.get("/api/homing-config")
+@app.get("/api/homing-config", deprecated=True, tags=["settings-deprecated"])
 async def get_homing_config():
     """Get homing configuration (mode, compass offset, and auto-home settings)."""
     return {
@@ -518,7 +824,7 @@ class HomingConfigRequest(BaseModel):
     auto_home_enabled: Optional[bool] = None
     auto_home_after_patterns: Optional[int] = None
 
-@app.post("/api/homing-config")
+@app.post("/api/homing-config", deprecated=True, tags=["settings-deprecated"])
 async def set_homing_config(request: HomingConfigRequest):
     """Set homing configuration (mode, compass offset, and auto-home settings)."""
     try:
@@ -1109,14 +1415,14 @@ async def serial_status():
         "preferred_port": state.preferred_port
     }
 
-@app.get("/api/preferred-port")
+@app.get("/api/preferred-port", deprecated=True, tags=["settings-deprecated"])
 async def get_preferred_port():
     """Get the currently configured preferred port for auto-connect."""
     return {
         "preferred_port": state.preferred_port
     }
 
-@app.post("/api/preferred-port")
+@app.post("/api/preferred-port", deprecated=True, tags=["settings-deprecated"])
 async def set_preferred_port(request: Request):
     """Set the preferred port for auto-connect."""
     data = await request.json()
@@ -1308,9 +1614,9 @@ async def get_wled_ip():
         raise HTTPException(status_code=404, detail="No WLED IP set")
     return {"success": True, "wled_ip": state.wled_ip}
 
-@app.post("/set_led_config")
+@app.post("/set_led_config", deprecated=True, tags=["settings-deprecated"])
 async def set_led_config(request: LEDConfigRequest):
-    """Configure LED provider (WLED, DW LEDs, or none)"""
+    """DEPRECATED: Use PATCH /api/settings instead. Configure LED provider (WLED, DW LEDs, or none)"""
     if request.provider not in ["wled", "dw_leds", "none"]:
         raise HTTPException(status_code=400, detail="Invalid provider. Must be 'wled', 'dw_leds', or 'none'")
 
@@ -1408,9 +1714,9 @@ async def set_led_config(request: LEDConfigRequest):
         "dw_led_brightness": state.dw_led_brightness
     }
 
-@app.get("/get_led_config")
+@app.get("/get_led_config", deprecated=True, tags=["settings-deprecated"])
 async def get_led_config():
-    """Get current LED provider configuration"""
+    """DEPRECATED: Use GET /api/settings instead. Get current LED provider configuration"""
     # Auto-detect provider for backward compatibility with existing installations
     provider = state.led_provider
     if not provider or provider == "none":
@@ -1442,7 +1748,7 @@ async def skip_pattern():
     state.skip_requested = True
     return {"success": True}
 
-@app.get("/api/custom_clear_patterns")
+@app.get("/api/custom_clear_patterns", deprecated=True, tags=["settings-deprecated"])
 async def get_custom_clear_patterns():
     """Get the currently configured custom clear patterns."""
     return {
@@ -1451,7 +1757,7 @@ async def get_custom_clear_patterns():
         "custom_clear_from_out": state.custom_clear_from_out
     }
 
-@app.post("/api/custom_clear_patterns")
+@app.post("/api/custom_clear_patterns", deprecated=True, tags=["settings-deprecated"])
 async def set_custom_clear_patterns(request: dict):
     """Set custom clear patterns for clear_from_in and clear_from_out."""
     try:
@@ -1483,7 +1789,7 @@ async def set_custom_clear_patterns(request: dict):
         logger.error(f"Failed to set custom clear patterns: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/clear_pattern_speed")
+@app.get("/api/clear_pattern_speed", deprecated=True, tags=["settings-deprecated"])
 async def get_clear_pattern_speed():
     """Get the current clearing pattern speed setting."""
     return {
@@ -1492,9 +1798,9 @@ async def get_clear_pattern_speed():
         "effective_speed": state.clear_pattern_speed if state.clear_pattern_speed is not None else state.speed
     }
 
-@app.post("/api/clear_pattern_speed")
+@app.post("/api/clear_pattern_speed", deprecated=True, tags=["settings-deprecated"])
 async def set_clear_pattern_speed(request: dict):
-    """Set the clearing pattern speed."""
+    """DEPRECATED: Use PATCH /api/settings instead. Set the clearing pattern speed."""
     try:
         # If speed is None or "none", use default behavior (state.speed)
         speed_value = request.get("clear_pattern_speed")
@@ -1522,14 +1828,14 @@ async def set_clear_pattern_speed(request: dict):
         logger.error(f"Failed to set clear pattern speed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/app-name")
+@app.get("/api/app-name", deprecated=True, tags=["settings-deprecated"])
 async def get_app_name():
-    """Get current application name."""
+    """DEPRECATED: Use GET /api/settings instead. Get current application name."""
     return {"app_name": state.app_name}
 
-@app.post("/api/app-name")
+@app.post("/api/app-name", deprecated=True, tags=["settings-deprecated"])
 async def set_app_name(request: dict):
-    """Update application name."""
+    """DEPRECATED: Use PATCH /api/settings instead. Update application name."""
     app_name = request.get("app_name", "").strip()
     if not app_name:
         app_name = "Dune Weaver"  # Reset to default if empty
@@ -1540,9 +1846,9 @@ async def set_app_name(request: dict):
     logger.info(f"Application name updated to: {app_name}")
     return {"success": True, "app_name": app_name}
 
-@app.get("/api/mqtt-config")
+@app.get("/api/mqtt-config", deprecated=True, tags=["settings-deprecated"])
 async def get_mqtt_config():
-    """Get current MQTT configuration.
+    """DEPRECATED: Use GET /api/settings instead. Get current MQTT configuration.
 
     Note: Password is not returned for security reasons.
     """
@@ -1564,9 +1870,9 @@ async def get_mqtt_config():
         "is_mock": handler.__class__.__name__ == 'MockMQTTHandler'
     }
 
-@app.post("/api/mqtt-config")
+@app.post("/api/mqtt-config", deprecated=True, tags=["settings-deprecated"])
 async def set_mqtt_config(request: dict):
-    """Update MQTT configuration. Requires restart to take effect."""
+    """DEPRECATED: Use PATCH /api/settings instead. Update MQTT configuration. Requires restart to take effect."""
     try:
         # Update state with new values
         state.mqtt_enabled = request.get("enabled", False)

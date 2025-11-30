@@ -221,21 +221,21 @@ async function savePreferredPort() {
     const preferredPort = preferredPortSelect.value || null;
 
     try {
-        const response = await fetch('/api/preferred-port', {
-            method: 'POST',
+        const response = await fetch('/api/settings', {
+            method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ preferred_port: preferredPort })
+            body: JSON.stringify({ connection: { preferred_port: preferredPort } })
         });
 
         if (response.ok) {
-            const data = await response.json();
+            await response.json();
             const currentPreferredPort = document.getElementById('currentPreferredPort');
             const preferredPortDisplay = document.getElementById('preferredPortDisplay');
 
-            if (data.preferred_port) {
-                showStatusMessage(`Preferred port set to: ${data.preferred_port}`, 'success');
+            if (preferredPort) {
+                showStatusMessage(`Preferred port set to: ${preferredPort}`, 'success');
                 if (currentPreferredPort && preferredPortDisplay) {
-                    preferredPortDisplay.textContent = `Currently set to: ${data.preferred_port}`;
+                    preferredPortDisplay.textContent = `Currently set to: ${preferredPort}`;
                     currentPreferredPort.classList.remove('hidden');
                 }
             } else {
@@ -357,38 +357,39 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, 300); // Delay to ensure page is fully loaded
     }
     
-    // Load all data asynchronously
+    // Load all data asynchronously using unified settings endpoint
     Promise.all([
-        // Check connection status
+        // Unified settings endpoint (replaces multiple individual fetches)
+        fetch('/api/settings').then(response => response.json()).catch(() => ({})),
+
+        // Non-settings operational endpoints (kept separate)
         fetch('/serial_status').then(response => response.json()).catch(() => ({ connected: false })),
-
-        // Load LED configuration (replaces old WLED-only loading)
-        fetch('/get_led_config').then(response => response.json()).catch(() => ({ provider: 'none', wled_ip: null })),
-
-        // Load current version and check for updates
         fetch('/api/version').then(response => response.json()).catch(() => ({ current: '1.0.0', latest: '1.0.0', update_available: false })),
-
-        // Load available serial ports
         fetch('/list_serial_ports').then(response => response.json()).catch(() => []),
+        getCachedPatternFiles().catch(() => [])
+    ]).then(([settings, statusData, updateData, ports, patterns]) => {
+        // Map unified settings to legacy variable names for backward compatibility with existing UI code
+        const ledConfigData = {
+            provider: settings.led?.provider || 'none',
+            wled_ip: settings.led?.wled_ip || null,
+            dw_led_num_leds: settings.led?.dw_led?.num_leds,
+            dw_led_gpio_pin: settings.led?.dw_led?.gpio_pin,
+            dw_led_pixel_order: settings.led?.dw_led?.pixel_order
+        };
+        const clearPatterns = {
+            custom_clear_from_in: settings.patterns?.custom_clear_from_in,
+            custom_clear_from_out: settings.patterns?.custom_clear_from_out
+        };
+        const clearSpeedData = {
+            clear_pattern_speed: settings.patterns?.clear_pattern_speed,
+            effective_speed: settings.patterns?.clear_pattern_speed // Will be handled by UI
+        };
+        const appNameData = { app_name: settings.app?.name || 'Dune Weaver' };
+        const scheduledPauseData = settings.scheduled_pause || { enabled: false, time_slots: [] };
+        const preferredPortData = { preferred_port: settings.connection?.preferred_port };
 
-        // Load available pattern files for clear pattern selection
-        getCachedPatternFiles().catch(() => []),
-
-        // Load current custom clear patterns
-        fetch('/api/custom_clear_patterns').then(response => response.json()).catch(() => ({ custom_clear_from_in: null, custom_clear_from_out: null })),
-
-        // Load current clear pattern speed
-        fetch('/api/clear_pattern_speed').then(response => response.json()).catch(() => ({ clear_pattern_speed: 200 })),
-
-        // Load current app name
-        fetch('/api/app-name').then(response => response.json()).catch(() => ({ app_name: 'Dune Weaver' })),
-
-        // Load Still Sands settings
-        fetch('/api/scheduled-pause').then(response => response.json()).catch(() => ({ enabled: false, time_slots: [] })),
-
-        // Load preferred port setting
-        fetch('/api/preferred-port').then(response => response.json()).catch(() => ({ preferred_port: null }))
-    ]).then(([statusData, ledConfigData, updateData, ports, patterns, clearPatterns, clearSpeedData, appNameData, scheduledPauseData, preferredPortData]) => {
+        // Store full settings for other initialization functions
+        window.unifiedSettings = settings;
         // Update connection status
         setCachedConnectionStatus(statusData);
         updateConnectionUI(statusData);
@@ -589,20 +590,20 @@ function setupEventListeners() {
     if (saveAppNameButton && appNameInput) {
         saveAppNameButton.addEventListener('click', async () => {
             const appName = appNameInput.value.trim() || 'Dune Weaver';
-            
+
             try {
-                const response = await fetch('/api/app-name', {
-                    method: 'POST',
+                const response = await fetch('/api/settings', {
+                    method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ app_name: appName })
+                    body: JSON.stringify({ app: { name: appName } })
                 });
-                
+
                 if (response.ok) {
-                    const data = await response.json();
+                    await response.json();
                     showStatusMessage('Application name updated successfully. Refresh the page to see changes.', 'success');
-                    
+
                     // Update the page title and header immediately
-                    document.title = `Settings - ${data.app_name}`;
+                    document.title = `Settings - ${appName}`;
                     const headerTitle = document.querySelector('h1.text-gray-800');
                     if (headerTitle) {
                         // Update just the text content, preserving the connection status dot
@@ -814,15 +815,17 @@ function setupEventListeners() {
             }
             
             try {
-                const response = await fetch('/api/custom_clear_patterns', {
-                    method: 'POST',
+                const response = await fetch('/api/settings', {
+                    method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        custom_clear_from_in: inValue || null,
-                        custom_clear_from_out: outValue || null
+                        patterns: {
+                            custom_clear_from_in: inValue || null,
+                            custom_clear_from_out: outValue || null
+                        }
                     })
                 });
-                
+
                 if (response.ok) {
                     showStatusMessage('Clear patterns saved successfully', 'success');
                 } else {
@@ -860,16 +863,16 @@ function setupEventListeners() {
             }
             
             try {
-                const response = await fetch('/api/clear_pattern_speed', {
-                    method: 'POST',
+                const response = await fetch('/api/settings', {
+                    method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ clear_pattern_speed: speed })
+                    body: JSON.stringify({ patterns: { clear_pattern_speed: speed } })
                 });
-                
+
                 if (response.ok) {
-                    const data = await response.json();
+                    await response.json();
                     if (speed === null) {
-                        showStatusMessage(`Clear pattern speed set to default (${data.effective_speed} steps/min)`, 'success');
+                        showStatusMessage('Clear pattern speed set to default', 'success');
                     } else {
                         showStatusMessage(`Clear pattern speed set to ${speed} steps/min`, 'success');
                     }
