@@ -840,10 +840,15 @@ function syncModalControls(status) {
         modalPatternPreviewImg.src = previewUrl;
     }
     
-    // ETA
+    // ETA or Pause Countdown
     const modalEta = document.getElementById('modal-eta');
     if (modalEta) {
-        if (status.progress && status.progress.remaining_time !== null) {
+        // Check if we're in a pause between patterns
+        if (status.pause_time_remaining && status.pause_time_remaining > 0) {
+            const minutes = Math.floor(status.pause_time_remaining / 60);
+            const seconds = Math.floor(status.pause_time_remaining % 60);
+            modalEta.textContent = `Next in: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+        } else if (status.progress && status.progress.remaining_time !== null) {
             const minutes = Math.floor(status.progress.remaining_time / 60);
             const seconds = Math.floor(status.progress.remaining_time % 60);
             modalEta.textContent = `ETA: ${minutes}:${seconds.toString().padStart(2, '0')}`;
