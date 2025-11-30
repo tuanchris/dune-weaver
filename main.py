@@ -2478,28 +2478,26 @@ async def rebuild_cache_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 def signal_handler(signum, frame):
-    """Handle shutdown signals gracefully but forcefully."""
+    """Handle shutdown signals gracefully."""
     logger.info("Received shutdown signal, cleaning up...")
     try:
         # Turn off all LEDs on shutdown
         if state.led_controller:
             state.led_controller.set_power(0)
-        # Run cleanup operations - need to handle async in sync context
-        try:
-            # Try to run in existing loop if available
-            import asyncio
-            loop = asyncio.get_running_loop()
-            # If we're in an event loop, schedule the coroutine
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(asyncio.run, pattern_manager.stop_actions())
-                future.result(timeout=5.0)  # Wait up to 5 seconds
-        except RuntimeError:
-            # No running loop, create a new one
-            import asyncio
-            asyncio.run(pattern_manager.stop_actions())
-        except Exception as cleanup_err:
-            logger.error(f"Error in async cleanup: {cleanup_err}")
+
+        # Shutdown process pool to prevent semaphore leaks
+        global process_pool
+        if process_pool:
+            logger.info("Shutting down process pool...")
+            process_pool.shutdown(wait=False, cancel_futures=True)
+            process_pool = None
+
+        # Stop pattern manager motion controller
+        pattern_manager.motion_controller.stop()
+
+        # Set stop flags to halt any running patterns
+        state.stop_requested = True
+        state.pause_requested = False
 
         state.save()
         logger.info("Cleanup completed")
@@ -2507,7 +2505,9 @@ def signal_handler(signum, frame):
         logger.error(f"Error during cleanup: {str(e)}")
     finally:
         logger.info("Exiting application...")
-        os._exit(0)  # Force exit regardless of other threads
+        # Use os._exit after cleanup is complete to avoid async stack tracebacks
+        # This is safe because we've already: shut down process pool, stopped motion controller, saved state
+        os._exit(0)
 
 @app.get("/api/version")
 async def get_version_info(force_refresh: bool = False):
