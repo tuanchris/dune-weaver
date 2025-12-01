@@ -988,42 +988,37 @@ input:checked + .slider:before {
                 placeholder="dune_weaver"
                 value="dune_weaver"
               />
-              <p class="text-xs text-slate-500">Unique identifier (no spaces)</p>
+              <p class="text-xs text-slate-500">Must be unique per table (no spaces). Used for MQTT topics.</p>
             </label>
           </div>
         </div>
 
-        <!-- Advanced Settings (Collapsible) -->
-        <details class="border-t border-slate-200 pt-4">
-          <summary class="text-slate-700 text-sm font-medium cursor-pointer hover:text-slate-900">
-            Advanced Settings
-          </summary>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            <label class="flex flex-col gap-1.5">
-              <span class="text-slate-700 text-sm font-medium leading-normal">Client ID</span>
-              <input
-                id="mqttClientIdInput"
-                type="text"
-                class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-normal leading-normal transition-colors"
-                placeholder="dune_weaver"
-                value="dune_weaver"
-              />
-              <p class="text-xs text-slate-500">MQTT client identifier</p>
-            </label>
+        <!-- Client ID and Discovery Prefix -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label class="flex flex-col gap-1.5">
+            <span class="text-slate-700 text-sm font-medium leading-normal">Client ID</span>
+            <input
+              id="mqttClientIdInput"
+              type="text"
+              class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-normal leading-normal transition-colors"
+              placeholder="dune_weaver"
+              value="dune_weaver"
+            />
+            <p class="text-xs text-slate-500">Must be unique if running multiple tables on the same broker</p>
+          </label>
 
-            <label class="flex flex-col gap-1.5">
-              <span class="text-slate-700 text-sm font-medium leading-normal">Discovery Prefix</span>
-              <input
-                id="mqttDiscoveryPrefixInput"
-                type="text"
-                class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-normal leading-normal transition-colors"
-                placeholder="homeassistant"
-                value="homeassistant"
-              />
-              <p class="text-xs text-slate-500">Home Assistant discovery topic prefix</p>
-            </label>
-          </div>
-        </details>
+          <label class="flex flex-col gap-1.5">
+            <span class="text-slate-700 text-sm font-medium leading-normal">Discovery Prefix</span>
+            <input
+              id="mqttDiscoveryPrefixInput"
+              type="text"
+              class="form-input flex w-full min-w-0 resize-none overflow-hidden rounded-lg text-slate-900 focus:outline-0 focus:ring-2 focus:ring-sky-500 border border-slate-300 bg-white focus:border-sky-500 h-10 placeholder:text-slate-400 px-4 text-base font-normal leading-normal transition-colors"
+              placeholder="homeassistant"
+              value="homeassistant"
+            />
+            <p class="text-xs text-slate-500">Home Assistant discovery topic prefix</p>
+          </label>
+        </div>
 
         <!-- Test Connection Button -->
         <div class="flex flex-wrap gap-3 pt-2">
