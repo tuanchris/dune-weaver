@@ -838,6 +838,99 @@ function setupEventListeners() {
         });
     }
     
+    // Logo upload functionality
+    const logoFileInput = document.getElementById('logoFileInput');
+    const resetLogoBtn = document.getElementById('resetLogoBtn');
+    const logoPreview = document.getElementById('logoPreview');
+    const logoUploadStatus = document.getElementById('logoUploadStatus');
+
+    if (logoFileInput) {
+        logoFileInput.addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // Show uploading status
+            if (logoUploadStatus) {
+                logoUploadStatus.textContent = 'Uploading...';
+                logoUploadStatus.className = 'text-xs text-slate-500';
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/api/upload-logo', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+
+                    // Update preview image with cache-busting query param
+                    if (logoPreview) {
+                        logoPreview.src = data.url + '?t=' + Date.now();
+                    }
+
+                    // Show reset button
+                    if (resetLogoBtn) {
+                        resetLogoBtn.classList.remove('hidden');
+                    }
+
+                    // Show success status
+                    if (logoUploadStatus) {
+                        logoUploadStatus.textContent = 'Logo uploaded successfully!';
+                        logoUploadStatus.className = 'text-xs text-green-600';
+                        setTimeout(() => {
+                            logoUploadStatus.textContent = '';
+                        }, 3000);
+                    }
+
+                    showStatusMessage('Logo uploaded successfully. Refresh the page to see all changes.', 'success');
+                } else {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to upload logo');
+                }
+            } catch (error) {
+                if (logoUploadStatus) {
+                    logoUploadStatus.textContent = `Error: ${error.message}`;
+                    logoUploadStatus.className = 'text-xs text-red-600';
+                }
+                showStatusMessage(`Failed to upload logo: ${error.message}`, 'error');
+            }
+
+            // Reset file input so the same file can be re-selected
+            logoFileInput.value = '';
+        });
+    }
+
+    if (resetLogoBtn) {
+        resetLogoBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/custom-logo', {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    // Reset preview to default logo
+                    if (logoPreview) {
+                        logoPreview.src = '/static/apple-touch-icon.png?t=' + Date.now();
+                    }
+
+                    // Hide reset button
+                    resetLogoBtn.classList.add('hidden');
+
+                    showStatusMessage('Logo reset to default. Refresh the page to see all changes.', 'success');
+                } else {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to reset logo');
+                }
+            } catch (error) {
+                showStatusMessage(`Failed to reset logo: ${error.message}`, 'error');
+            }
+        });
+    }
+
     // Save clear pattern speed button
     const saveClearSpeed = document.getElementById('saveClearSpeed');
     if (saveClearSpeed) {
