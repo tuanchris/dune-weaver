@@ -794,12 +794,13 @@ function displayPatternBatch() {
 // Create a pattern card element
 function createPatternCard(pattern) {
     const card = document.createElement('div');
-    card.className = 'pattern-card group relative flex flex-col items-center gap-3 bg-gray-50';
+    card.className = 'pattern-card flex flex-col items-center gap-3 bg-gray-50';
+    card.style = 'max-width:128px; width:100%; min-width:80px;';
     card.dataset.pattern = pattern;
     
     // Create preview container with proper styling for loading indicator
     const previewContainer = document.createElement('div');
-    previewContainer.className = 'w-32 h-32 rounded-full shadow-md relative pattern-preview';
+    previewContainer.className = 'rounded-full shadow-md relative pattern-preview group aspect-square w-full max-w-[128px] min-w-[80px] overflow-hidden';
     previewContainer.dataset.pattern = pattern;
     
     // Add loading indicator
