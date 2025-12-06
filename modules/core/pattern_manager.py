@@ -25,6 +25,45 @@ logger = logging.getLogger(__name__)
 THETA_RHO_DIR = './patterns'
 os.makedirs(THETA_RHO_DIR, exist_ok=True)
 
+# Execution time log file (JSON Lines format - one JSON object per line)
+EXECUTION_LOG_FILE = './execution_times.jsonl'
+
+def log_execution_time(pattern_name: str, table_type: str, speed: int, actual_time: float,
+                       total_coordinates: int, was_completed: bool):
+    """Log pattern execution time to JSON Lines file for analysis.
+
+    Args:
+        pattern_name: Name of the pattern file
+        table_type: Type of table (e.g., 'dune_weaver', 'dune_weaver_mini')
+        speed: Speed setting used (0-255)
+        actual_time: Actual execution time in seconds (excluding pauses)
+        total_coordinates: Total number of coordinates in the pattern
+        was_completed: Whether the pattern completed normally (not stopped/skipped)
+    """
+    # Format time as HH:MM:SS
+    hours, remainder = divmod(int(actual_time), 3600)
+    minutes, seconds = divmod(remainder, 60)
+    time_formatted = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+    log_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "pattern_name": pattern_name,
+        "table_type": table_type or "unknown",
+        "speed": speed,
+        "actual_time_seconds": round(actual_time, 2),
+        "actual_time_formatted": time_formatted,
+        "total_coordinates": total_coordinates,
+        "completed": was_completed
+    }
+
+    try:
+        with open(EXECUTION_LOG_FILE, 'a') as f:
+            f.write(json.dumps(log_entry) + '\n')
+
+        logger.info(f"Execution time logged: {pattern_name} - {time_formatted} (speed: {speed}, table: {table_type})")
+    except Exception as e:
+        logger.error(f"Failed to log execution time: {e}")
+
 # Create an asyncio Event for pause/resume
 pause_event = asyncio.Event()
 pause_event.set()  # Initially not paused
@@ -684,8 +723,9 @@ async def run_theta_rho_file(file_path, is_playlist=False):
         logger.info(f"Starting pattern execution: {file_path}")
         logger.info(f"t: {state.current_theta}, r: {state.current_rho}")
         await reset_theta()
-        
+
         start_time = time.time()
+        total_pause_time = 0  # Track total time spent paused (manual + scheduled)
         if state.led_controller:
             logger.info(f"Setting LED to playing effect: {state.dw_led_playing_effect}")
             await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
@@ -723,6 +763,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                 scheduled_pause = is_in_scheduled_pause_period() if not state.scheduled_pause_finish_pattern else False
 
                 if manual_pause or scheduled_pause:
+                    pause_start = time.time()  # Track when pause started
                     if manual_pause and scheduled_pause:
                         logger.info("Execution paused (manual + scheduled pause active)...")
                     elif manual_pause:
@@ -750,6 +791,7 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                         if state.pause_requested:
                             await pause_event.wait()
 
+                    total_pause_time += time.time() - pause_start  # Add pause duration
                     logger.info("Execution resumed...")
                     if state.led_controller:
                         # Turn LED controller back on if it was turned off for scheduled pause
@@ -783,10 +825,24 @@ async def run_theta_rho_file(file_path, is_playlist=False):
 
         # Update progress one last time to show 100%
         elapsed_time = time.time() - start_time
+        actual_execution_time = elapsed_time - total_pause_time
         state.execution_progress = (total_coordinates, total_coordinates, 0, elapsed_time)
         # Give WebSocket a chance to send the final update
         await asyncio.sleep(0.1)
-        
+
+        # Log execution time (only for completed patterns, not stopped/skipped)
+        was_completed = not state.stop_requested and not state.skip_requested
+        pattern_name = os.path.basename(file_path)
+        effective_speed = state.clear_pattern_speed if (is_clear_file and state.clear_pattern_speed is not None) else state.speed
+        log_execution_time(
+            pattern_name=pattern_name,
+            table_type=state.table_type,
+            speed=effective_speed,
+            actual_time=actual_execution_time,
+            total_coordinates=total_coordinates,
+            was_completed=was_completed
+        )
+
         if not state.conn:
             logger.error("Device is not connected. Stopping pattern execution.")
             return

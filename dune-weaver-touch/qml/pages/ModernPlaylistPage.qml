@@ -558,9 +558,10 @@ Page {
                                                 id: singleModeRadio
                                                 text: "Single"
                                                 font.pixelSize: 11
-                                                checked: runMode === "single"
-                                                onCheckedChanged: {
-                                                    if (checked) runMode = "single"
+                                                checked: true  // Default
+                                                onClicked: {
+                                                    runMode = "single"
+                                                    console.log("Run mode set to:", runMode)
                                                 }
 
                                                 contentItem: Text {
@@ -576,9 +577,10 @@ Page {
                                                 id: loopModeRadio
                                                 text: "Loop"
                                                 font.pixelSize: 11
-                                                checked: runMode === "loop"
-                                                onCheckedChanged: {
-                                                    if (checked) runMode = "loop"
+                                                checked: false
+                                                onClicked: {
+                                                    runMode = "loop"
+                                                    console.log("Run mode set to:", runMode)
                                                 }
 
                                                 contentItem: Text {
@@ -998,11 +1000,13 @@ Page {
                                             rowSpacing: 5
                                             
                                             RadioButton {
+                                                id: adaptiveRadio
                                                 text: "Adaptive"
                                                 font.pixelSize: 11
-                                                checked: clearPattern === "adaptive"
-                                                onCheckedChanged: {
-                                                    if (checked) clearPattern = "adaptive"
+                                                checked: true  // Default
+                                                onClicked: {
+                                                    clearPattern = "adaptive"
+                                                    console.log("Clear pattern set to:", clearPattern)
                                                 }
 
                                                 contentItem: Text {
@@ -1015,11 +1019,13 @@ Page {
                                             }
 
                                             RadioButton {
+                                                id: clearCenterRadio
                                                 text: "Clear Center"
                                                 font.pixelSize: 11
-                                                checked: clearPattern === "clear_center"
-                                                onCheckedChanged: {
-                                                    if (checked) clearPattern = "clear_center"
+                                                checked: false
+                                                onClicked: {
+                                                    clearPattern = "clear_center"
+                                                    console.log("Clear pattern set to:", clearPattern)
                                                 }
 
                                                 contentItem: Text {
@@ -1032,11 +1038,13 @@ Page {
                                             }
 
                                             RadioButton {
+                                                id: clearEdgeRadio
                                                 text: "Clear Edge"
                                                 font.pixelSize: 11
-                                                checked: clearPattern === "clear_perimeter"
-                                                onCheckedChanged: {
-                                                    if (checked) clearPattern = "clear_perimeter"
+                                                checked: false
+                                                onClicked: {
+                                                    clearPattern = "clear_perimeter"
+                                                    console.log("Clear pattern set to:", clearPattern)
                                                 }
 
                                                 contentItem: Text {
@@ -1049,11 +1057,13 @@ Page {
                                             }
 
                                             RadioButton {
+                                                id: noneRadio
                                                 text: "None"
                                                 font.pixelSize: 11
-                                                checked: clearPattern === "none"
-                                                onCheckedChanged: {
-                                                    if (checked) clearPattern = "none"
+                                                checked: false
+                                                onClicked: {
+                                                    clearPattern = "none"
+                                                    console.log("Clear pattern set to:", clearPattern)
                                                 }
 
                                                 contentItem: Text {
