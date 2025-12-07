@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class DWLEDController:
     """Dune Weaver LED Controller for NeoPixel LED strips"""
 
-    def __init__(self, num_leds: int = 60, gpio_pin: int = 12, brightness: float = 0.35,
+    def __init__(self, num_leds: int = 60, gpio_pin: int = 18, brightness: float = 0.35,
                  pixel_order: str = "GRB", speed: int = 128, intensity: int = 128):
         """
         Initialize Dune Weaver LED controller

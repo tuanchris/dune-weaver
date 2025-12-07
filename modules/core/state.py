@@ -66,7 +66,7 @@ class AppState:
 
         # DW LED settings
         self.dw_led_num_leds = 60  # Number of LEDs in strip
-        self.dw_led_gpio_pin = 12  # GPIO pin (12, 13, 18, or 19)
+        self.dw_led_gpio_pin = 18  # GPIO pin (12, 13, 18, or 19)
         self.dw_led_pixel_order = "GRB"  # Pixel color order for WS281x (GRB, RGB, BGR, etc.)
         self.dw_led_brightness = 35  # Brightness 0-100
         self.dw_led_speed = 128  # Effect speed 0-255
@@ -320,7 +320,7 @@ class AppState:
         self.wled_ip = data.get('wled_ip', None)
         self.led_provider = data.get('led_provider', "none")
         self.dw_led_num_leds = data.get('dw_led_num_leds', 60)
-        self.dw_led_gpio_pin = data.get('dw_led_gpio_pin', 12)
+        self.dw_led_gpio_pin = data.get('dw_led_gpio_pin', 18)
         self.dw_led_pixel_order = data.get('dw_led_pixel_order', "GRB")
         self.dw_led_brightness = data.get('dw_led_brightness', 35)
         self.dw_led_speed = data.get('dw_led_speed', 128)
