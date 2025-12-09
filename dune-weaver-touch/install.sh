@@ -8,10 +8,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ACTUAL_USER="${SUDO_USER:-$USER}"
 USER_HOME=$(eval echo ~$ACTUAL_USER)
 
+# Detect Raspberry Pi model
+PI_MODEL=$(cat /proc/device-tree/model 2>/dev/null | tr -d '\0' || echo "unknown")
+IS_PI5=false
+if [[ "$PI_MODEL" == *"Pi 5"* ]]; then
+    IS_PI5=true
+fi
+
 echo "🎯 Dune Weaver Touch - Complete Installation"
 echo "============================================="
 echo "App directory: $SCRIPT_DIR"
 echo "User: $ACTUAL_USER"
+echo "Detected: $PI_MODEL"
 echo ""
 
 # Check if running as root
@@ -89,28 +97,34 @@ configure_boot_settings() {
     sed -i '/dtoverlay=vc4-fkms-v3d/d' "$CONFIG_FILE"
     sed -i '/dtoverlay=vc4-xfkms-v3d/d' "$CONFIG_FILE"
 
-    # Add full KMS if not present
-    if ! grep -q "dtoverlay=vc4-kms-v3d" "$CONFIG_FILE"; then
-        # Find [all] section or add at end
-        if grep -q "^\[all\]" "$CONFIG_FILE"; then
-            sed -i '/^\[all\]/a dtoverlay=vc4-kms-v3d' "$CONFIG_FILE"
+    if [ "$IS_PI5" = true ]; then
+        # Pi 5: KMS is enabled by default, gpu_mem is ignored (dedicated VRAM)
+        echo "   ℹ️  Pi 5 detected - KMS enabled by default, skipping vc4-kms-v3d overlay"
+        echo "   ℹ️  Pi 5 has dedicated VRAM, skipping gpu_mem setting"
+    else
+        # Pi 3/4: Add full KMS if not present
+        if ! grep -q "dtoverlay=vc4-kms-v3d" "$CONFIG_FILE"; then
+            # Find [all] section or add at end
+            if grep -q "^\[all\]" "$CONFIG_FILE"; then
+                sed -i '/^\[all\]/a dtoverlay=vc4-kms-v3d' "$CONFIG_FILE"
+            else
+                echo -e "\n[all]\ndtoverlay=vc4-kms-v3d" >> "$CONFIG_FILE"
+            fi
+            echo "   ✅ Enabled full KMS (vc4-kms-v3d) for eglfs support"
         else
-            echo -e "\n[all]\ndtoverlay=vc4-kms-v3d" >> "$CONFIG_FILE"
+            echo "   ℹ️  Full KMS already enabled"
         fi
-        echo "   ✅ Enabled full KMS (vc4-kms-v3d) for eglfs support"
-    else
-        echo "   ℹ️  Full KMS already enabled"
+
+        # Add GPU memory if not present (only for Pi 3/4 with shared memory)
+        if ! grep -q "gpu_mem=" "$CONFIG_FILE"; then
+            echo "gpu_mem=128" >> "$CONFIG_FILE"
+            echo "   ✅ Set GPU memory to 128MB"
+        else
+            echo "   ℹ️  GPU memory already configured"
+        fi
     fi
 
-    # Add GPU memory if not present
-    if ! grep -q "gpu_mem=" "$CONFIG_FILE"; then
-        echo "gpu_mem=128" >> "$CONFIG_FILE"
-        echo "   ✅ Set GPU memory to 128MB"
-    else
-        echo "   ℹ️  GPU memory already configured"
-    fi
-
-    # Disable splash screens for cleaner boot
+    # Disable splash screens for cleaner boot (all Pi models)
     if ! grep -q "disable_splash=1" "$CONFIG_FILE"; then
         echo "disable_splash=1" >> "$CONFIG_FILE"
         echo "   ✅ Disabled rainbow splash"
@@ -118,7 +132,7 @@ configure_boot_settings() {
         echo "   ℹ️  Rainbow splash already disabled"
     fi
 
-    echo "   🖥️  Boot configuration updated for eglfs"
+    echo "   🖥️  Boot configuration updated"
 }
 
 # Function to setup touch rotation via udev rule
@@ -185,14 +199,23 @@ setup_kiosk_optimizations() {
     local CMDLINE_FILE="/boot/firmware/cmdline.txt"
     [ ! -f "$CMDLINE_FILE" ] && CMDLINE_FILE="/boot/cmdline.txt"
 
+    # Determine DSI connector name based on Pi model
+    # Pi 5 uses DSI-2 (separate DRM device), Pi 3/4 use DSI-1
+    local DSI_CONNECTOR="DSI-1"
+    if [ "$IS_PI5" = true ]; then
+        DSI_CONNECTOR="DSI-2"
+        echo "   ℹ️  Pi 5 detected - using DSI-2 connector"
+    fi
+
     # Configure cmdline.txt for display and boot
     if [ -f "$CMDLINE_FILE" ]; then
         cp "$CMDLINE_FILE" "${CMDLINE_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
 
         # Add video parameter for DSI display with rotation
-        if ! grep -q "video=DSI-1:800x480@60,rotate=180" "$CMDLINE_FILE"; then
-            sed -i 's/$/ video=DSI-1:800x480@60,rotate=180/' "$CMDLINE_FILE"
-            echo "   ✅ DSI display configuration added (800x480@60, rotated 180°)"
+        # Check for any existing DSI video configuration
+        if ! grep -q "video=DSI-[0-9]:800x480@60,rotate=180" "$CMDLINE_FILE"; then
+            sed -i "s/$/ video=${DSI_CONNECTOR}:800x480@60,rotate=180/" "$CMDLINE_FILE"
+            echo "   ✅ DSI display configuration added (${DSI_CONNECTOR}:800x480@60, rotated 180°)"
         else
             echo "   ℹ️  DSI display configuration already present"
         fi
@@ -287,6 +310,11 @@ setup_kiosk_optimizations
 echo ""
 echo "🎉 Installation Complete!"
 echo "========================"
+echo ""
+echo "📟 Detected: $PI_MODEL"
+if [ "$IS_PI5" = true ]; then
+    echo "   └─ Using Pi 5 optimized settings (DSI-2, dedicated VRAM)"
+fi
 echo ""
 echo "✅ Python virtual environment created at: $SCRIPT_DIR/venv"
 echo "✅ System scripts installed in /usr/local/bin/"
