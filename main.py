@@ -1173,8 +1173,8 @@ async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTa
             raise HTTPException(status_code=400, detail="Connection not established")
         
         if pattern_manager.pattern_lock.locked():
-            logger.warning("Attempted to run a pattern while another is already running")
-            raise HTTPException(status_code=409, detail="Another pattern is already running")
+            logger.info("Another pattern is running, stopping it first...")
+            await pattern_manager.stop_actions()
             
         files_to_run = [file_path]
         logger.info(f'Running theta-rho file: {request.file_name} with pre_execution={request.pre_execution}')
