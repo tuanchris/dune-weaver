@@ -1055,6 +1055,7 @@ function setupPreviewPanelEvents(pattern) {
             }
 
             // Check if a pattern is currently running and show stopping message
+            console.log('Play clicked, currentPlaybackStatus:', window.currentPlaybackStatus);
             if (window.currentPlaybackStatus?.is_running) {
                 showStatusMessage('Stopping current pattern...', 'info');
             }

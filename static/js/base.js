@@ -189,18 +189,19 @@ function connectWebSocket() {
         try {
             const data = JSON.parse(event.data);
             if (data.type === 'status_update') {
+                // Always update global playback status (not throttled)
+                // This ensures play button always has current state
+                window.currentPlaybackStatus = {
+                    is_running: data.data.is_running || false,
+                    current_file: data.data.current_file || null
+                };
+
                 // Throttle UI updates for better Pi performance
                 const now = Date.now();
                 if (now - lastUIUpdate < UI_UPDATE_INTERVAL) {
                     return; // Skip this update, too soon
                 }
                 lastUIUpdate = now;
-
-                // Update global playback status
-                window.currentPlaybackStatus = {
-                    is_running: data.data.is_running || false,
-                    current_file: data.data.current_file || null
-                };
 
                 // Update modal status with the full data
                 syncModalControls(data.data);
