@@ -155,6 +155,12 @@ function setModalVisibility(show, userAction = false) {
 }
 let currentPreviewFile = null; // Track the current file for preview data
 
+// Global playback status for cross-file access
+window.currentPlaybackStatus = {
+    is_running: false,
+    current_file: null
+};
+
 function connectWebSocket() {
     if (ws) {
         ws.close();
@@ -189,6 +195,12 @@ function connectWebSocket() {
                     return; // Skip this update, too soon
                 }
                 lastUIUpdate = now;
+
+                // Update global playback status
+                window.currentPlaybackStatus = {
+                    is_running: data.data.is_running || false,
+                    current_file: data.data.current_file || null
+                };
 
                 // Update modal status with the full data
                 syncModalControls(data.data);

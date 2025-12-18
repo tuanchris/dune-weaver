@@ -1054,6 +1054,11 @@ function setupPreviewPanelEvents(pattern) {
                 window.openPlayerPreviewModal();
             }
 
+            // Check if a pattern is currently running and show stopping message
+            if (window.currentPlaybackStatus?.is_running) {
+                showStatusMessage('Stopping current pattern...', 'info');
+            }
+
             // Get the selected pre-execution action
             const preExecutionInput = document.querySelector('input[name="preExecutionAction"]:checked');
             const preExecution = preExecutionInput ? preExecutionInput.value : 'none';
