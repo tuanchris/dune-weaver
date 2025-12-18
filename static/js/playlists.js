@@ -1375,6 +1375,11 @@ async function runPlaylist() {
     const clearPattern = document.getElementById('clearPatternSelect').value;
     const shuffle = document.getElementById('shuffleCheckbox')?.checked || false;
 
+    // Check if a pattern is currently running and show stopping message
+    if (window.currentPlaybackStatus?.is_running) {
+        showStatusMessage('Stopping current pattern...', 'info');
+    }
+
     try {
         const response = await fetch('/run_playlist', {
             method: 'POST',

@@ -116,8 +116,8 @@ def rename_playlist(old_name, new_name):
 async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
     """Run a playlist with the given options."""
     if pattern_manager.pattern_lock.locked():
-        logger.warning("Cannot start playlist: Another pattern is already running")
-        return False, "Cannot start playlist: Another pattern is already running"
+        logger.info("Another pattern is running, stopping it first...")
+        await pattern_manager.stop_actions()
 
     playlists = load_playlists()
     if playlist_name not in playlists:

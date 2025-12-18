@@ -155,6 +155,12 @@ function setModalVisibility(show, userAction = false) {
 }
 let currentPreviewFile = null; // Track the current file for preview data
 
+// Global playback status for cross-file access
+window.currentPlaybackStatus = {
+    is_running: false,
+    current_file: null
+};
+
 function connectWebSocket() {
     if (ws) {
         ws.close();
@@ -183,6 +189,13 @@ function connectWebSocket() {
         try {
             const data = JSON.parse(event.data);
             if (data.type === 'status_update') {
+                // Always update global playback status (not throttled)
+                // This ensures play button always has current state
+                window.currentPlaybackStatus = {
+                    is_running: data.data.is_running || false,
+                    current_file: data.data.current_file || null
+                };
+
                 // Throttle UI updates for better Pi performance
                 const now = Date.now();
                 if (now - lastUIUpdate < UI_UPDATE_INTERVAL) {
