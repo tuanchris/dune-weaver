@@ -280,13 +280,10 @@ setup_python_environment() {
         echo "   ℹ️  Virtual environment already exists"
     fi
 
-    # Install non-Qt dependencies
-    echo "   📦 Installing Python dependencies (qasync, aiohttp, Pillow)..."
+    # Install non-Qt dependencies from requirements.txt
+    echo "   📦 Installing Python dependencies..."
     "$SCRIPT_DIR/venv/bin/python" -m pip install --upgrade pip > /dev/null 2>&1
-    "$SCRIPT_DIR/venv/bin/pip" install \
-        qasync>=0.27.0 \
-        aiohttp>=3.9.0 \
-        Pillow>=10.0.0 > /dev/null 2>&1
+    "$SCRIPT_DIR/venv/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" > /dev/null 2>&1
 
     # Change ownership to the actual user (not root)
     chown -R "$ACTUAL_USER:$ACTUAL_USER" "$SCRIPT_DIR/venv"
