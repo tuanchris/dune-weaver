@@ -477,9 +477,10 @@ def get_machine_steps(timeout=10):
                         elif line.startswith("$22="):
                             # $22 reports if the homing cycle is enabled
                             # returns 0 if disabled, 1 if enabled
-                            homing = int(line.split('=')[1])
-                            state.homing = homing
-                            logger.info(f"Homing enabled: {homing}")
+                            # Note: We only log this, we don't overwrite state.homing
+                            # because user preference (saved in state.json) should take precedence
+                            firmware_homing = int(line.split('=')[1])
+                            logger.info(f"Firmware homing setting ($22): {firmware_homing}, using user preference: {state.homing}")
                 
                 # Check if we've received all the settings we need
                 if x_steps_per_mm is not None and y_steps_per_mm is not None:
