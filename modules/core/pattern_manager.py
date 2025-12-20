@@ -1049,6 +1049,7 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
         state.current_playlist = None
         state.current_playlist_index = None
         state.playlist_mode = None
+        state.pause_time_remaining = 0
 
         if state.led_controller:
             await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
@@ -1077,6 +1078,7 @@ async def stop_actions(clear_playlist = True, wait_for_lock = True):
                 state.current_playlist = None
                 state.current_playlist_index = None
                 state.playlist_mode = None
+                state.pause_time_remaining = 0
 
                 # Cancel progress update task if we're clearing the playlist
                 global progress_update_task
