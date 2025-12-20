@@ -794,7 +794,7 @@ function displayPatternBatch() {
 // Create a pattern card element
 function createPatternCard(pattern) {
     const card = document.createElement('div');
-    card.className = 'pattern-card flex flex-col items-center gap-3 bg-gray-50';
+    card.className = 'pattern-card group relative flex flex-col items-center gap-3 bg-gray-50';
     card.style = 'max-width:128px; width:100%; min-width:80px;';
     card.dataset.pattern = pattern;
     
