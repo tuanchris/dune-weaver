@@ -503,6 +503,8 @@ def get_machine_steps(timeout=10):
     if settings_complete:
         if y_steps_per_mm == 180 and x_steps_per_mm == 256:
             state.table_type = 'dune_weaver_mini'
+        if y_steps_per_mm == 210 and x_steps_per_mm == 256:
+            state.table_type = 'dune_weaver_mini_pro_byj'
         elif y_steps_per_mm == 287:
             state.table_type = 'dune_weaver'
         elif y_steps_per_mm == 164:
@@ -514,7 +516,7 @@ def get_machine_steps(timeout=10):
             logger.warning(f"Unknown table type with Y steps/mm: {y_steps_per_mm}")
 
         # Set gear ratio based on table type (hardcoded)
-        if state.table_type in ['dune_weaver_mini', 'dune_weaver_mini_pro']:
+        if state.table_type in ['dune_weaver_mini', 'dune_weaver_mini_pro', 'dune_weaver_mini_pro_byj']:
             state.gear_ratio = 6.25
         else:
             state.gear_ratio = 10
