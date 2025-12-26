@@ -166,7 +166,7 @@ function connectWebSocket() {
         ws.close();
     }
 
-    ws = new WebSocket(`ws://${window.location.host}/ws/status`);
+    ws = new WebSocket(`${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/status`);
     
     ws.onopen = function() {
         console.log("WebSocket connection established");
