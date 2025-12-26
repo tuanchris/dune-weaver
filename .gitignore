@@ -5,6 +5,7 @@ __pycache__/
 .env
 .idea
 *.json
+*.jsonl
 .venv/
 patterns/cached_svg/
 patterns/cached_images/custom_*
