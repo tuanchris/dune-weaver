@@ -503,9 +503,9 @@ def get_machine_steps(timeout=10):
     if settings_complete:
         if y_steps_per_mm == 180 and x_steps_per_mm == 256:
             state.table_type = 'dune_weaver_mini'
-        if y_steps_per_mm == 210 and x_steps_per_mm == 256:
+        elif y_steps_per_mm == 210 and x_steps_per_mm == 256:
             state.table_type = 'dune_weaver_mini_pro_byj'
-        if y_steps_per_mm == 270 and x_steps_per_mm == 200:
+        elif y_steps_per_mm == 270 and x_steps_per_mm == 200:
             state.table_type = 'dune_weaver_gold'
         elif y_steps_per_mm == 287:
             state.table_type = 'dune_weaver'
