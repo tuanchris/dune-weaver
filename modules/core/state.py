@@ -84,6 +84,7 @@ class AppState:
         self.dw_led_last_activity_time = None  # Last activity timestamp (runtime only, not persisted)
         self.skip_requested = False
         self.table_type = None
+        self.table_type_override = None  # User override for table type detection
         self._playlist_mode = "loop"
         self._pause_time = 0
         self._clear_pattern = "none"
@@ -285,6 +286,7 @@ class AppState:
             "mqtt_discovery_prefix": self.mqtt_discovery_prefix,
             "mqtt_device_id": self.mqtt_device_id,
             "mqtt_device_name": self.mqtt_device_name,
+            "table_type_override": self.table_type_override,
         }
 
     def from_dict(self, data):
@@ -369,6 +371,7 @@ class AppState:
         self.mqtt_discovery_prefix = data.get("mqtt_discovery_prefix", "homeassistant")
         self.mqtt_device_id = data.get("mqtt_device_id", "dune_weaver")
         self.mqtt_device_name = data.get("mqtt_device_name", "Dune Weaver")
+        self.table_type_override = data.get("table_type_override", None)
 
     def save(self):
         """Save the current state to a JSON file."""

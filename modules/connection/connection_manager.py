@@ -517,8 +517,11 @@ def get_machine_steps(timeout=10):
             state.table_type = None
             logger.warning(f"Unknown table type with Y steps/mm: {y_steps_per_mm}")
 
-        # Set gear ratio based on table type (hardcoded)
-        if state.table_type in ['dune_weaver_mini', 'dune_weaver_mini_pro', 'dune_weaver_mini_pro_byj', 'dune_weaver_gold']:
+        # Use override if set, otherwise use detected table type
+        effective_table_type = state.table_type_override or state.table_type
+
+        # Set gear ratio based on effective table type (hardcoded)
+        if effective_table_type in ['dune_weaver_mini', 'dune_weaver_mini_pro', 'dune_weaver_mini_pro_byj', 'dune_weaver_gold']:
             state.gear_ratio = 6.25
         else:
             state.gear_ratio = 10
@@ -528,10 +531,12 @@ def get_machine_steps(timeout=10):
         if gear_ratio_override is not None:
             try:
                 state.gear_ratio = float(gear_ratio_override)
-                logger.info(f"Machine type detected: {state.table_type}, gear ratio: {state.gear_ratio} (from GEAR_RATIO env var)")
+                logger.info(f"Machine type detected: {state.table_type}, effective: {effective_table_type}, gear ratio: {state.gear_ratio} (from GEAR_RATIO env var)")
             except ValueError:
                 logger.error(f"Invalid GEAR_RATIO env var value: {gear_ratio_override}, using default: {state.gear_ratio}")
-                logger.info(f"Machine type detected: {state.table_type}, gear ratio: {state.gear_ratio} (hardcoded)")
+                logger.info(f"Machine type detected: {state.table_type}, effective: {effective_table_type}, gear ratio: {state.gear_ratio} (hardcoded)")
+        elif state.table_type_override:
+            logger.info(f"Machine type detected: {state.table_type}, overridden to: {effective_table_type}, gear ratio: {state.gear_ratio}")
         else:
             logger.info(f"Machine type detected: {state.table_type}, gear ratio: {state.gear_ratio} (hardcoded)")
 
@@ -574,8 +579,9 @@ def home(timeout=90):
 
     def home_internal():
         nonlocal homing_success
+        effective_table_type = state.table_type_override or state.table_type
         homing_speed = 400
-        if state.table_type == 'dune_weaver_mini':
+        if effective_table_type == 'dune_weaver_mini':
             homing_speed = 100
         try:
             if state.homing == 1:
@@ -670,7 +676,7 @@ def home(timeout=90):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
-                    if state.table_type == 'dune_weaver_mini':
+                    if effective_table_type == 'dune_weaver_mini':
                         result = loop.run_until_complete(send_grbl_coordinates(0, -30, homing_speed, home=True))
                         if result == False:
                             logger.error("Crash homing failed - send_grbl_coordinates returned False")

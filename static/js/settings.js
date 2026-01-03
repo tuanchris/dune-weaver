@@ -1,3 +1,25 @@
+// ============================================================================
+// Collapsible Section Toggle
+// ============================================================================
+
+function toggleSection(headerElement) {
+    const contentElement = headerElement.nextElementSibling;
+
+    if (headerElement.classList.contains('collapsed')) {
+        // Expand
+        headerElement.classList.remove('collapsed');
+        contentElement.classList.remove('collapsed');
+    } else {
+        // Collapse
+        headerElement.classList.add('collapsed');
+        contentElement.classList.add('collapsed');
+    }
+}
+
+// ============================================================================
+// Constants and Utilities
+// ============================================================================
+
 // Constants for log message types
 const LOG_TYPE = {
     SUCCESS: 'success',
@@ -2282,4 +2304,105 @@ async function initializeMqttConfig() {
 // Initialize MQTT config when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
     initializeMqttConfig();
+    initializeTableTypeConfig();
 });
+
+// ============================================================================
+// Table Type Configuration
+// ============================================================================
+
+function initializeTableTypeConfig() {
+    const tableTypeSelect = document.getElementById('tableTypeSelect');
+    const saveTableTypeButton = document.getElementById('saveTableType');
+    const detectedTableType = document.getElementById('detectedTableType');
+
+    if (!tableTypeSelect || !saveTableTypeButton) {
+        logMessage('Table type elements not found', LOG_TYPE.WARNING);
+        return;
+    }
+
+    // Load current settings
+    loadTableTypeSettings();
+
+    // Save button click handler
+    saveTableTypeButton.addEventListener('click', saveTableTypeConfig);
+
+    async function loadTableTypeSettings() {
+        try {
+            const response = await fetch('/api/settings');
+            if (!response.ok) throw new Error('Failed to fetch settings');
+
+            const settings = await response.json();
+            const machine = settings.machine || {};
+
+            // Populate dropdown with available table types
+            tableTypeSelect.innerHTML = '<option value="">Auto-detect (use detected type)</option>';
+            if (machine.available_table_types) {
+                machine.available_table_types.forEach(type => {
+                    const option = document.createElement('option');
+                    option.value = type.value;
+                    option.textContent = type.label;
+                    tableTypeSelect.appendChild(option);
+                });
+            }
+
+            // Set current override value
+            if (machine.table_type_override) {
+                tableTypeSelect.value = machine.table_type_override;
+            } else {
+                tableTypeSelect.value = '';
+            }
+
+            // Update detected type display
+            if (detectedTableType) {
+                const detected = machine.detected_table_type;
+                if (detected) {
+                    // Find the label for the detected type
+                    const typeInfo = machine.available_table_types?.find(t => t.value === detected);
+                    detectedTableType.textContent = typeInfo ? typeInfo.label : detected;
+                } else {
+                    detectedTableType.textContent = 'Not connected';
+                }
+            }
+
+            logMessage('Table type settings loaded', LOG_TYPE.DEBUG);
+        } catch (error) {
+            logMessage(`Error loading table type settings: ${error.message}`, LOG_TYPE.ERROR);
+        }
+    }
+
+    async function saveTableTypeConfig() {
+        const originalButtonHTML = saveTableTypeButton.innerHTML;
+        saveTableTypeButton.disabled = true;
+        saveTableTypeButton.innerHTML = '<span class="material-icons text-lg animate-spin">refresh</span><span class="truncate">Saving...</span>';
+
+        try {
+            const response = await fetch('/api/settings', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    machine: {
+                        table_type_override: tableTypeSelect.value || ''
+                    }
+                })
+            });
+
+            if (!response.ok) throw new Error('Failed to save settings');
+
+            const result = await response.json();
+            if (result.success) {
+                showStatusMessage('Table type settings saved. Changes will take effect on next connection.', 'success');
+                // Reload to show updated effective type
+                await loadTableTypeSettings();
+            } else {
+                throw new Error('Save failed');
+            }
+        } catch (error) {
+            logMessage(`Error saving table type: ${error.message}`, LOG_TYPE.ERROR);
+            showStatusMessage(`Failed to save table type: ${error.message}`, 'error');
+        } finally {
+            saveTableTypeButton.innerHTML = originalButtonHTML;
+            saveTableTypeButton.disabled = false;
+        }
+    }
+}

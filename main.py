@@ -387,6 +387,9 @@ class MqttSettingsUpdate(BaseModel):
     device_id: Optional[str] = None
     device_name: Optional[str] = None
 
+class MachineSettingsUpdate(BaseModel):
+    table_type_override: Optional[str] = None  # Override detected table type, or empty string/"auto" to clear
+
 class SettingsUpdate(BaseModel):
     """Request model for PATCH /api/settings - all fields optional for partial updates"""
     app: Optional[AppSettingsUpdate] = None
@@ -397,6 +400,7 @@ class SettingsUpdate(BaseModel):
     homing: Optional[HomingSettingsUpdate] = None
     led: Optional[LedSettingsUpdate] = None
     mqtt: Optional[MqttSettingsUpdate] = None
+    machine: Optional[MachineSettingsUpdate] = None
 
 # Store active WebSocket connections
 active_status_connections = set()
@@ -553,6 +557,19 @@ async def get_all_settings():
             "discovery_prefix": state.mqtt_discovery_prefix,
             "device_id": state.mqtt_device_id,
             "device_name": state.mqtt_device_name
+        },
+        "machine": {
+            "detected_table_type": state.table_type,
+            "table_type_override": state.table_type_override,
+            "effective_table_type": state.table_type_override or state.table_type,
+            "available_table_types": [
+                {"value": "dune_weaver_mini", "label": "Dune Weaver Mini"},
+                {"value": "dune_weaver_mini_pro", "label": "Dune Weaver Mini Pro"},
+                {"value": "dune_weaver_mini_pro_byj", "label": "Dune Weaver Mini Pro (BYJ)"},
+                {"value": "dune_weaver_gold", "label": "Dune Weaver Gold"},
+                {"value": "dune_weaver", "label": "Dune Weaver"},
+                {"value": "dune_weaver_pro", "label": "Dune Weaver Pro"}
+            ]
         }
     }
 
@@ -703,6 +720,14 @@ async def update_settings(settings_update: SettingsUpdate):
             state.mqtt_device_name = m.device_name
         updated_categories.append("mqtt")
         requires_restart = True
+
+    # Machine settings
+    if settings_update.machine:
+        m = settings_update.machine
+        if m.table_type_override is not None:
+            # Empty string or "auto" clears the override
+            state.table_type_override = None if m.table_type_override in ("", "auto") else m.table_type_override
+        updated_categories.append("machine")
 
     # Save state
     state.save()
