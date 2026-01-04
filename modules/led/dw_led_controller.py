@@ -59,10 +59,37 @@ class DWLEDController:
         if self._initialized:
             return True
 
+        # Try standard NeoPixel library first (works on Pi 4 and earlier)
+        # If that fails, fall back to Pi 5-specific library
+        neopixel_module = None
+        using_pi5_library = False
+
         try:
             import board
             import neopixel
+            neopixel_module = neopixel
+            logger.info("Using standard NeoPixel library")
+        except (ImportError, RuntimeError) as e:
+            logger.warning(f"Standard NeoPixel library failed: {e}. Trying Pi 5 library...")
+            try:
+                import board
+                from adafruit_blinka_raspberry_pi5_neopixel import neopixel as neopixel_pi5
+                neopixel_module = neopixel_pi5
+                using_pi5_library = True
+                logger.info("Using Adafruit Pi 5 NeoPixel library (PIO-based)")
+            except ImportError as e2:
+                error_msg = (
+                    f"Failed to import NeoPixel libraries. "
+                    f"Standard library error: {e}. "
+                    f"Pi 5 library error: {e2}. "
+                    f"For Pi 4 and earlier: pip install adafruit-circuitpython-neopixel adafruit-blinka. "
+                    f"For Pi 5: pip install Adafruit-Blinka-Raspberry-Pi5-Neopixel"
+                )
+                self._init_error = error_msg
+                logger.error(error_msg)
+                return False
 
+        try:
             # Map GPIO pin numbers to board pins
             pin_map = {
                 12: board.D12,
@@ -80,7 +107,7 @@ class DWLEDController:
             board_pin = pin_map[self.gpio_pin]
 
             # Initialize NeoPixel strip
-            self._pixels = neopixel.NeoPixel(
+            self._pixels = neopixel_module.NeoPixel(
                 board_pin,
                 self.num_leds,
                 brightness=self.brightness,
@@ -100,14 +127,10 @@ class DWLEDController:
             self._segment.colors[2] = rgb_to_color(*self._color3)
 
             self._initialized = True
-            logger.info(f"DW LEDs initialized: {self.num_leds} LEDs on GPIO {self.gpio_pin}")
+            library_type = "Pi 5 (PIO)" if using_pi5_library else "standard"
+            logger.info(f"DW LEDs initialized: {self.num_leds} LEDs on GPIO {self.gpio_pin} using {library_type} library")
             return True
 
-        except ImportError as e:
-            error_msg = f"Failed to import NeoPixel libraries: {e}. Make sure adafruit-circuitpython-neopixel and Adafruit-Blinka are installed."
-            self._init_error = error_msg
-            logger.error(error_msg)
-            return False
         except Exception as e:
             error_msg = f"Failed to initialize NeoPixel hardware: {e}"
             self._init_error = error_msg
