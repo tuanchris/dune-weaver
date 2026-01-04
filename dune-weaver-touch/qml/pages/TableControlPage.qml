@@ -185,7 +185,14 @@ Page {
                                 Menu {
                                     id: portMenu
                                     y: parent.height
-                                    
+
+                                    // Rotate menu for Pi 5 linuxfb
+                                    transform: Rotation {
+                                        angle: typeof rotateDisplay !== 'undefined' && rotateDisplay ? 180 : 0
+                                        origin.x: portMenu.width / 2
+                                        origin.y: portMenu.height / 2
+                                    }
+
                                     Repeater {
                                         model: serialPorts
                                         MenuItem {
