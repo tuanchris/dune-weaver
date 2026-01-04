@@ -1,6 +1,6 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
-import QtQuick.Effects
+// import QtQuick.Effects  // Disabled - MultiEffect causes issues on linuxfb
 import "." as Components
 
 Rectangle {
@@ -22,16 +22,19 @@ Rectangle {
 
     color: Components.ThemeManager.surfaceColor
     radius: 12
-    
-    // Drop shadow effect
-    layer.enabled: true
-    layer.effect: MultiEffect {
-        shadowEnabled: true
-        shadowColor: "#20000000"
-        shadowBlur: 0.8
-        shadowVerticalOffset: 2
-        shadowHorizontalOffset: 0
-    }
+    border.width: 1
+    border.color: Components.ThemeManager.borderColor
+
+    // Drop shadow effect - disabled on linuxfb (causes rendering issues)
+    // Using simple border instead for compatibility
+    // layer.enabled: true
+    // layer.effect: MultiEffect {
+    //     shadowEnabled: true
+    //     shadowColor: "#20000000"
+    //     shadowBlur: 0.8
+    //     shadowVerticalOffset: 2
+    //     shadowHorizontalOffset: 0
+    // }
     
     // Hover/press animation
     scale: mouseArea.pressed ? 0.95 : (mouseArea.containsMouse ? 1.02 : 1.0)
