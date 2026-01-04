@@ -1,0 +1,241 @@
+#!/bin/bash
+#
+# Dune Weaver CLI
+#
+# Usage: dw <command>
+#
+# Commands:
+#   install     Run initial setup (Docker + WiFi fix)
+#   start       Start Dune Weaver
+#   stop        Stop Dune Weaver
+#   restart     Restart Dune Weaver
+#   update      Pull latest changes and restart
+#   logs        View live logs (Ctrl+C to exit)
+#   status      Show container status
+#   shell       Open a shell in the container
+#   help        Show this help message
+#
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+# Find dune-weaver directory
+find_install_dir() {
+    # Check common locations
+    if [[ -f "$HOME/dune-weaver/main.py" ]]; then
+        echo "$HOME/dune-weaver"
+    elif [[ -f "/home/pi/dune-weaver/main.py" ]]; then
+        echo "/home/pi/dune-weaver"
+    elif [[ -f "./main.py" ]]; then
+        pwd
+    else
+        echo ""
+    fi
+}
+
+# Check if using Docker or systemd
+is_docker_mode() {
+    [[ -f "$INSTALL_DIR/docker-compose.yml" ]] && command -v docker &> /dev/null && docker compose ps &> /dev/null
+}
+
+INSTALL_DIR=$(find_install_dir)
+
+# Check if installed
+check_installed() {
+    if [[ -z "$INSTALL_DIR" ]]; then
+        echo -e "${RED}Error: Dune Weaver not found${NC}"
+        echo ""
+        echo "Please install first:"
+        echo "  git clone https://github.com/tuanchris/dune-weaver --single-branch"
+        echo "  cd dune-weaver"
+        echo "  dw install"
+        exit 1
+    fi
+}
+
+# Commands
+cmd_install() {
+    if [[ -z "$INSTALL_DIR" ]]; then
+        # Not installed, check if we're in the right directory
+        if [[ -f "./docker-compose.yml" ]] && [[ -f "./main.py" ]]; then
+            INSTALL_DIR=$(pwd)
+        else
+            echo -e "${RED}Error: Run this from the dune-weaver directory${NC}"
+            echo ""
+            echo "  git clone https://github.com/tuanchris/dune-weaver --single-branch"
+            echo "  cd dune-weaver"
+            echo "  dw install"
+            exit 1
+        fi
+    fi
+
+    cd "$INSTALL_DIR"
+    bash setup-pi.sh "$@"
+}
+
+cmd_start() {
+    check_installed
+    echo -e "${BLUE}Starting Dune Weaver...${NC}"
+    cd "$INSTALL_DIR"
+
+    if is_docker_mode; then
+        docker compose up -d
+    else
+        sudo systemctl start dune-weaver
+    fi
+
+    echo -e "${GREEN}Started!${NC} Access at http://$(hostname -I | awk '{print $1}'):8080"
+}
+
+cmd_stop() {
+    check_installed
+    echo -e "${BLUE}Stopping Dune Weaver...${NC}"
+    cd "$INSTALL_DIR"
+
+    if is_docker_mode; then
+        docker compose down
+    else
+        sudo systemctl stop dune-weaver
+    fi
+
+    echo -e "${GREEN}Stopped${NC}"
+}
+
+cmd_restart() {
+    check_installed
+    echo -e "${BLUE}Restarting Dune Weaver...${NC}"
+    cd "$INSTALL_DIR"
+
+    if is_docker_mode; then
+        docker compose restart
+    else
+        sudo systemctl restart dune-weaver
+    fi
+
+    echo -e "${GREEN}Restarted${NC}"
+}
+
+cmd_update() {
+    check_installed
+    echo -e "${BLUE}Updating Dune Weaver...${NC}"
+    cd "$INSTALL_DIR"
+
+    echo "Pulling latest code..."
+    git pull
+
+    if is_docker_mode; then
+        echo "Pulling latest Docker image..."
+        docker compose pull
+
+        echo "Restarting with new version..."
+        docker compose up -d
+    else
+        echo "Updating Python dependencies..."
+        source .venv/bin/activate
+        pip install -r requirements.txt
+
+        echo "Restarting service..."
+        sudo systemctl restart dune-weaver
+    fi
+
+    echo -e "${GREEN}Updated!${NC}"
+}
+
+cmd_logs() {
+    check_installed
+    cd "$INSTALL_DIR"
+
+    if is_docker_mode; then
+        docker compose logs -f
+    else
+        sudo journalctl -u dune-weaver -f
+    fi
+}
+
+cmd_status() {
+    check_installed
+    cd "$INSTALL_DIR"
+
+    if is_docker_mode; then
+        docker compose ps
+    else
+        sudo systemctl status dune-weaver
+    fi
+}
+
+cmd_shell() {
+    check_installed
+    cd "$INSTALL_DIR"
+
+    if is_docker_mode; then
+        docker compose exec dune-weaver /bin/bash
+    else
+        echo -e "${YELLOW}Shell not available in systemd mode${NC}"
+        echo "Use: cd $INSTALL_DIR && source .venv/bin/activate"
+    fi
+}
+
+cmd_help() {
+    echo -e "${GREEN}Dune Weaver CLI${NC}"
+    echo ""
+    echo "Usage: dw <command>"
+    echo ""
+    echo "Commands:"
+    echo "  install     Run initial setup (Docker + WiFi fix)"
+    echo "  start       Start Dune Weaver"
+    echo "  stop        Stop Dune Weaver"
+    echo "  restart     Restart Dune Weaver"
+    echo "  update      Pull latest changes and restart"
+    echo "  logs        View live logs (Ctrl+C to exit)"
+    echo "  status      Show container status"
+    echo "  shell       Open a shell in the container"
+    echo "  help        Show this help message"
+    echo ""
+    if [[ -n "$INSTALL_DIR" ]]; then
+        echo -e "Install directory: ${BLUE}$INSTALL_DIR${NC}"
+    fi
+}
+
+# Main
+case "${1:-help}" in
+    install)
+        shift
+        cmd_install "$@"
+        ;;
+    start)
+        cmd_start
+        ;;
+    stop)
+        cmd_stop
+        ;;
+    restart)
+        cmd_restart
+        ;;
+    update)
+        cmd_update
+        ;;
+    logs)
+        cmd_logs
+        ;;
+    status)
+        cmd_status
+        ;;
+    shell)
+        cmd_shell
+        ;;
+    help|--help|-h)
+        cmd_help
+        ;;
+    *)
+        echo -e "${RED}Unknown command: $1${NC}"
+        echo ""
+        cmd_help
+        exit 1
+        ;;
+esac

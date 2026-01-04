@@ -92,7 +92,7 @@ check_raspberry_pi() {
         return
     fi
 
-    MODEL=$(cat /proc/device-tree/model)
+    MODEL=$(tr -d '\0' < /proc/device-tree/model)
     echo "Detected: $MODEL"
 
     # Check for 64-bit OS
@@ -214,6 +214,17 @@ check_directory() {
     print_success "Running from $INSTALL_DIR"
 }
 
+# Install dw CLI command
+install_cli() {
+    print_step "Installing 'dw' command..."
+
+    # Copy dw script to /usr/local/bin
+    sudo cp "$INSTALL_DIR/dw" /usr/local/bin/dw
+    sudo chmod +x /usr/local/bin/dw
+
+    print_success "'dw' command installed"
+}
+
 # Deploy with Docker
 deploy_docker() {
     print_step "Deploying Dune Weaver with Docker Compose..."
@@ -301,19 +312,13 @@ print_final_instructions() {
     echo -e "  ${BLUE}http://$HOSTNAME.local:8080${NC}"
     echo ""
 
-    if [[ "$USE_DOCKER" == "true" ]]; then
-        echo "Useful commands:"
-        echo "  View logs:     cd $INSTALL_DIR && docker compose logs -f"
-        echo "  Restart:       cd $INSTALL_DIR && docker compose restart"
-        echo "  Update:        cd $INSTALL_DIR && git pull && docker compose pull && docker compose up -d"
-        echo "  Stop:          cd $INSTALL_DIR && docker compose down"
-    else
-        echo "Useful commands:"
-        echo "  View logs:     sudo journalctl -u dune-weaver -f"
-        echo "  Restart:       sudo systemctl restart dune-weaver"
-        echo "  Status:        sudo systemctl status dune-weaver"
-        echo "  Stop:          sudo systemctl stop dune-weaver"
-    fi
+    echo "Manage with the 'dw' command:"
+    echo "  dw logs        View live logs"
+    echo "  dw restart     Restart Dune Weaver"
+    echo "  dw update      Pull latest and restart"
+    echo "  dw stop        Stop Dune Weaver"
+    echo "  dw status      Show status"
+    echo "  dw help        Show all commands"
     echo ""
 
     if [[ "$DOCKER_GROUP_ADDED" == "true" ]]; then
@@ -369,6 +374,7 @@ main() {
         deploy_python
     fi
 
+    install_cli
     print_final_instructions
 }
 
