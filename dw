@@ -246,61 +246,15 @@ cmd_touch() {
             check_installed
             local touch_dir="$INSTALL_DIR/dune-weaver-touch"
 
-            if [[ ! -d "$touch_dir" ]]; then
-                echo -e "${RED}Touch app not found at $touch_dir${NC}"
+            if [[ ! -f "$touch_dir/install.sh" ]]; then
+                echo -e "${RED}Touch app installer not found at $touch_dir/install.sh${NC}"
                 echo "Make sure you have the dune-weaver-touch directory in your dune-weaver folder."
                 exit 1
             fi
 
-            echo -e "${BLUE}Installing touch app...${NC}"
+            echo -e "${BLUE}Running touch app installer...${NC}"
             cd "$touch_dir"
-
-            # Install system dependencies for Qt/PySide6
-            echo "Installing system dependencies..."
-            sudo apt update
-            sudo apt install -y python3-venv python3-pip \
-                libxcb-cursor0 libxkbcommon0 libxcb-xinerama0 \
-                libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
-                libxcb-randr0 libxcb-render-util0 libxcb-shape0
-
-            # Create venv and install dependencies
-            echo "Setting up Python environment..."
-            python3 -m venv venv
-            source venv/bin/activate
-            pip install --upgrade pip
-            pip install -r requirements.txt
-            deactivate
-
-            # Create systemd service
-            echo "Creating systemd service..."
-            sudo tee /etc/systemd/system/dune-weaver-touch.service > /dev/null << EOF
-[Unit]
-Description=Dune Weaver Touch App
-After=network.target
-
-[Service]
-Type=simple
-User=$USER
-WorkingDirectory=$touch_dir
-Environment=QT_QPA_PLATFORM=eglfs
-Environment=QT_QPA_EGLFS_INTEGRATION=eglfs_kms
-Environment=QT_QPA_EGLFS_KMS_CONFIG=$touch_dir/eglfs_config.json
-Environment=QML2_IMPORT_PATH=$touch_dir/venv/lib/python3.11/site-packages/PySide6/qml
-ExecStart=$touch_dir/venv/bin/python $touch_dir/main.py
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-            # Enable and start service
-            sudo systemctl daemon-reload
-            sudo systemctl enable dune-weaver-touch
-            sudo systemctl start dune-weaver-touch
-
-            echo -e "${GREEN}Touch app installed!${NC}"
-            echo "View logs with: dw touch logs"
+            sudo bash install.sh
             ;;
         help|*)
             echo -e "${GREEN}Touch App Commands${NC}"
