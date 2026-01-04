@@ -3,6 +3,11 @@ name: Docker
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - 'Dockerfile'
+      - 'requirements.txt'
+  # Allow manual trigger for when you need to rebuild anyway
+  workflow_dispatch:
     
 env:
   REGISTRY: ghcr.io
