@@ -152,10 +152,22 @@ cmd_logs() {
     check_installed
     cd "$INSTALL_DIR"
 
+    # Parse optional line count (e.g., dw logs 100)
+    local lines="${1:-}"
+    local follow="-f"
+
+    if [[ -n "$lines" ]]; then
+        follow="--tail $lines"
+    fi
+
     if is_docker_mode; then
-        sudo docker compose logs -f
+        sudo docker compose logs $follow
     else
-        sudo journalctl -u dune-weaver -f
+        if [[ -n "$lines" ]]; then
+            sudo journalctl -u dune-weaver -n "$lines"
+        else
+            sudo journalctl -u dune-weaver -f
+        fi
     fi
 }
 
@@ -193,7 +205,7 @@ cmd_help() {
     echo "  stop        Stop Dune Weaver"
     echo "  restart     Restart Dune Weaver"
     echo "  update      Pull latest changes and restart"
-    echo "  logs        View live logs (Ctrl+C to exit)"
+    echo "  logs [N]    View logs (N=number of lines, or follow if omitted)"
     echo "  status      Show container status"
     echo "  shell       Open a shell in the container"
     echo "  help        Show this help message"
@@ -222,7 +234,7 @@ case "${1:-help}" in
         cmd_update
         ;;
     logs)
-        cmd_logs
+        cmd_logs "$2"
         ;;
     status)
         cmd_status
