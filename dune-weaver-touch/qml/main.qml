@@ -264,29 +264,60 @@ ApplicationWindow {
     }
 
     // Custom error dialog as fallback for Pi 5 rotation
-    Dialog {
+    Popup {
         id: customErrorDialog
-        title: "Error"
         modal: true
-        anchors.centerIn: parent
-        width: 300
-        height: 150
-        visible: false
-
-        // Rotate for Pi 5
-        rotation: typeof rotateDisplay !== 'undefined' && rotateDisplay ? 180 : 0
-        transformOrigin: Item.Center
+        x: (window.width - width) / 2
+        y: (window.height - height) / 2
+        width: 320
+        height: 180
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
         property string errorText: ""
 
-        Label {
-            anchors.centerIn: parent
-            text: customErrorDialog.errorText
-            wrapMode: Text.WordWrap
-            width: parent.width - 40
-            horizontalAlignment: Text.AlignHCenter
+        background: Rectangle {
+            color: "#2d2d2d"
+            radius: 12
+            border.color: "#404040"
+            border.width: 1
+
+            // Rotate the entire dialog content for Pi 5
+            rotation: typeof rotateDisplay !== 'undefined' && rotateDisplay ? 180 : 0
+            transformOrigin: Item.Center
         }
 
-        standardButtons: Dialog.Ok
+        contentItem: Item {
+            rotation: typeof rotateDisplay !== 'undefined' && rotateDisplay ? 180 : 0
+            transformOrigin: Item.Center
+
+            Column {
+                anchors.fill: parent
+                anchors.margins: 20
+                spacing: 15
+
+                Label {
+                    text: "Error"
+                    font.pixelSize: 18
+                    font.bold: true
+                    color: "#ff6b6b"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                }
+
+                Label {
+                    text: customErrorDialog.errorText
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    color: "#ffffff"
+                    font.pixelSize: 14
+                }
+
+                Button {
+                    text: "OK"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    onClicked: customErrorDialog.close()
+                }
+            }
+        }
     }
 }
