@@ -232,6 +232,54 @@ setup_kiosk_optimizations() {
     echo "   🖥️  Kiosk optimizations applied"
 }
 
+# Function to create eglfs configuration for Qt
+create_eglfs_config() {
+    echo "🖥️  Creating EGLFS configuration..."
+
+    local CONFIG_FILE="$SCRIPT_DIR/eglfs_config.json"
+
+    # Find the correct DRM device with DSI connector
+    local DRM_DEVICE="/dev/dri/card0"
+    local DSI_CONNECTOR="DSI-1"
+
+    # Check each card for DSI connector
+    for card in /sys/class/drm/card*/; do
+        card_name=$(basename "$card")
+        if [ -d "$card/${card_name}-DSI-1" ]; then
+            DRM_DEVICE="/dev/dri/$card_name"
+            DSI_CONNECTOR="DSI-1"
+            echo "   ✅ Found DSI-1 on $card_name"
+            break
+        elif [ -d "$card/${card_name}-DSI-2" ]; then
+            DRM_DEVICE="/dev/dri/$card_name"
+            DSI_CONNECTOR="DSI-2"
+            echo "   ✅ Found DSI-2 on $card_name"
+            break
+        fi
+    done
+
+    cat > "$CONFIG_FILE" << EOF
+{
+  "device": "$DRM_DEVICE",
+  "hwcursor": false,
+  "pbuffers": true,
+  "separateScreens": false,
+  "outputs": [
+    {
+      "name": "$DSI_CONNECTOR",
+      "mode": "800x480"
+    }
+  ]
+}
+EOF
+
+    chown "$ACTUAL_USER:$ACTUAL_USER" "$CONFIG_FILE"
+    chmod 644 "$CONFIG_FILE"
+
+    echo "   ✅ EGLFS config created: $CONFIG_FILE"
+    echo "   📟 Device: $DRM_DEVICE, Connector: $DSI_CONNECTOR"
+}
+
 # Function to setup user groups for DRM/input access
 setup_user_groups() {
     echo "👥 Setting up user groups for hardware access..."
@@ -343,6 +391,7 @@ echo ""
 
 # Install everything
 setup_user_groups
+create_eglfs_config
 setup_python_environment
 install_scripts
 setup_systemd
@@ -368,6 +417,7 @@ echo "✅ Mouse cursor hiding configured (Qt + unclutter)"
 echo "✅ Kiosk optimizations applied"
 echo "✅ Console auto-login configured"
 echo "✅ User groups configured (video, render, input)"
+echo "✅ EGLFS display config created"
 echo ""
 echo "🔧 Service Management:"
 echo "   Start now:  sudo systemctl start dune-weaver-touch"
