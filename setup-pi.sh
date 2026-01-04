@@ -82,6 +82,14 @@ print_success() {
     echo -e "${GREEN}$1${NC}"
 }
 
+# Install essential packages (git, vim)
+install_essentials() {
+    print_step "Installing essential packages..."
+    sudo apt update
+    sudo apt install -y git vim
+    print_success "Essential packages installed"
+}
+
 # Check if running on Raspberry Pi
 check_raspberry_pi() {
     print_step "Checking system compatibility..."
@@ -358,6 +366,7 @@ main() {
 
     # Run setup steps
     check_raspberry_pi
+    install_essentials
     ensure_repo
     update_system
     disable_wlan_powersave
