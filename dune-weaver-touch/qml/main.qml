@@ -104,6 +104,13 @@ ApplicationWindow {
         id: patternModel
     }
     
+    // Rotation container for Pi 5 linuxfb
+    Item {
+        id: rotationContainer
+        anchors.fill: parent
+        rotation: typeof rotateDisplay !== 'undefined' && rotateDisplay ? 180 : 0
+        transformOrigin: Item.Center
+
     StackView {
         id: stackView
         anchors.fill: parent
@@ -204,13 +211,7 @@ ApplicationWindow {
             }
         }
     }
-    
-    MessageDialog {
-        id: errorDialog
-        title: "Error"
-        buttons: MessageDialog.Ok
-    }
-    
+
     // Virtual Keyboard Support
     InputPanel {
         id: inputPanel
@@ -218,7 +219,7 @@ ApplicationWindow {
         y: window.height
         anchors.left: parent.left
         anchors.right: parent.right
-        
+
         states: State {
             name: "visible"
             when: inputPanel.active
@@ -227,7 +228,7 @@ ApplicationWindow {
                 y: window.height - inputPanel.height
             }
         }
-        
+
         transitions: Transition {
             from: ""
             to: "visible"
@@ -241,5 +242,12 @@ ApplicationWindow {
                 }
             }
         }
+    }
+    } // End rotationContainer
+
+    MessageDialog {
+        id: errorDialog
+        title: "Error"
+        buttons: MessageDialog.Ok
     }
 }

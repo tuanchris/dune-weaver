@@ -58,16 +58,10 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     export QT_QPA_PLATFORM=""  # Let Qt use default
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     # Linux/Raspberry Pi - use linuxfb for all Pi models
+    # Pi 5 rotation is handled in QML (linuxfb rotation parameter requires Qt patch)
     if [ -e /dev/fb0 ]; then
-        # Check if Pi 5 - needs explicit rotation
-        PI_MODEL=$(cat /proc/device-tree/model 2>/dev/null | tr -d '\0' || echo "unknown")
-        if [[ "$PI_MODEL" == *"Pi 5"* ]]; then
-            echo "   Platform: Raspberry Pi 5 (using linuxfb with 180° rotation)"
-            export QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0:rotation=180
-        else
-            echo "   Platform: Linux (using linuxfb backend)"
-            export QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0
-        fi
+        echo "   Platform: Linux (using linuxfb backend)"
+        export QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0
         export QT_QPA_FB_HIDECURSOR=1
     else
         echo "   Platform: Linux (using xcb/X11 backend)"

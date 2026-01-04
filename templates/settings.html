@@ -1523,9 +1523,81 @@ input:checked + .slider:before {
           <span id="updateText" class="truncate">Update</span>
         </button>
       </div>
+      <div class="flex items-center gap-4 px-6 py-5 border-t border-slate-200">
+        <div
+          class="text-slate-600 flex items-center justify-center rounded-lg bg-slate-100 shrink-0 size-12"
+        >
+          <span class="material-icons text-3xl">article</span>
+        </div>
+        <div class="flex-1">
+          <p class="text-slate-800 text-base font-medium leading-normal">
+            Application Logs
+          </p>
+          <p class="text-slate-500 text-sm font-normal leading-normal">View real-time application logs</p>
+        </div>
+        <button
+          id="openLogsBtn"
+          onclick="openLogsModal()"
+          class="flex items-center justify-center gap-1.5 min-w-[84px] cursor-pointer rounded-lg h-9 px-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium leading-normal tracking-[0.015em] transition-colors"
+        >
+          <span class="material-icons text-base">terminal</span>
+          <span class="truncate">View Logs</span>
+        </button>
+      </div>
     </div>
   </section>
 </div>
 {% endblock %} {% block scripts %}
+<!-- Logs Modal - placed in scripts block to be outside main content container -->
+<div id="logsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden p-4">
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+    <!-- Modal Header -->
+    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-gray-600">
+      <div class="flex items-center gap-3">
+        <span class="material-icons text-2xl text-slate-600 dark:text-gray-300">article</span>
+        <h3 class="text-lg font-semibold text-slate-800 dark:text-gray-100">Application Logs</h3>
+        <span id="logsConnectionStatus" class="text-xs px-2 py-1 rounded-full bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300">Connecting...</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <select id="logLevelFilter" onchange="filterLogs()" class="form-select text-sm rounded-lg border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 h-8 px-2">
+          <option value="">All Levels</option>
+          <option value="DEBUG">Debug</option>
+          <option value="INFO">Info</option>
+          <option value="WARNING">Warning</option>
+          <option value="ERROR">Error</option>
+          <option value="CRITICAL">Critical</option>
+        </select>
+        <button
+          onclick="clearLogs()"
+          class="flex items-center justify-center gap-1 rounded-lg h-8 px-3 bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 text-xs font-medium transition-colors"
+        >
+          <span class="material-icons text-sm">delete_sweep</span>
+          Clear
+        </button>
+        <label class="flex items-center gap-1.5 text-sm text-slate-600 dark:text-gray-300">
+          <input type="checkbox" id="logsAutoScroll" checked class="rounded border-slate-300 dark:border-gray-600">
+          Auto-scroll
+        </label>
+        <button
+          onclick="closeLogsModal()"
+          class="flex items-center justify-center rounded-lg size-8 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400 transition-colors"
+        >
+          <span class="material-icons">close</span>
+        </button>
+      </div>
+    </div>
+    <!-- Modal Body -->
+    <div id="logsContainer" class="flex-1 overflow-y-auto p-4 font-mono text-xs bg-slate-50 dark:bg-gray-900">
+      <div id="logsContent" class="space-y-1">
+        <!-- Log entries will be inserted here -->
+      </div>
+    </div>
+    <!-- Modal Footer -->
+    <div class="px-6 py-3 border-t border-slate-200 dark:border-gray-600 flex items-center justify-between text-xs text-slate-500 dark:text-gray-400">
+      <span id="logsCount">0 entries</span>
+      <span id="logsInfo">Showing last 500 log entries</span>
+    </div>
+  </div>
+</div>
 <script src="/static/js/settings.js"></script>
 {% endblock %}

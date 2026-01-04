@@ -7,7 +7,7 @@ import signal
 from pathlib import Path
 from PySide6.QtCore import QUrl, QTimer, QObject, QEvent
 from PySide6.QtGui import QGuiApplication, QTouchEvent, QMouseEvent
-from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterType
+from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterType, QQmlContext
 from qasync import QEventLoop
 
 # Load environment variables from .env file if it exists
@@ -87,6 +87,15 @@ async def startup_tasks():
     
     logger.info("✨ dune-weaver-touch startup tasks completed")
 
+def is_pi5():
+    """Check if running on Raspberry Pi 5"""
+    try:
+        with open('/proc/device-tree/model', 'r') as f:
+            model = f.read()
+            return 'Pi 5' in model
+    except:
+        return False
+
 def main():
     # Enable virtual keyboard
     os.environ['QT_IM_MODULE'] = 'qtvirtualkeyboard'
@@ -110,6 +119,13 @@ def main():
     
     # Load QML
     engine = QQmlApplicationEngine()
+
+    # Set rotation flag for Pi 5 (linuxfb doesn't support rotation parameter)
+    rotate_display = is_pi5() and 'linuxfb' in os.environ.get('QT_QPA_PLATFORM', '')
+    engine.rootContext().setContextProperty("rotateDisplay", rotate_display)
+    if rotate_display:
+        logger.info("🔄 Pi 5 detected with linuxfb - enabling QML rotation")
+
     qml_file = Path(__file__).parent / "qml" / "main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_file)))
     

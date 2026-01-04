@@ -64,14 +64,8 @@ setup_systemd() {
     local SERVICE_FILE="/etc/systemd/system/dune-weaver-touch.service"
 
     # Generate service file with linuxfb backend (works on all Pi models)
-    # Pi 5 needs explicit rotation since cmdline.txt rotation doesn't apply to Qt linuxfb
-    local QT_PLATFORM="linuxfb:fb=/dev/fb0"
-    if [ "$IS_PI5" = true ]; then
-        QT_PLATFORM="linuxfb:fb=/dev/fb0:rotation=180"
-        echo "   ℹ️  Using linuxfb backend with 180° rotation (Pi 5)"
-    else
-        echo "   ℹ️  Using linuxfb backend"
-    fi
+    # Pi 5 rotation is handled in QML (linuxfb rotation parameter requires Qt patch)
+    echo "   ℹ️  Using linuxfb backend"
 
     cat > "$SERVICE_FILE" << EOF
 [Unit]
@@ -84,7 +78,7 @@ Type=simple
 User=$ACTUAL_USER
 Group=$ACTUAL_USER
 WorkingDirectory=$SCRIPT_DIR
-Environment=QT_QPA_PLATFORM=$QT_PLATFORM
+Environment=QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0
 Environment=QT_QPA_FB_HIDECURSOR=1
 ExecStart=$SCRIPT_DIR/venv/bin/python $SCRIPT_DIR/main.py
 Restart=always

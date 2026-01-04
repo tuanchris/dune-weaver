@@ -25,6 +25,7 @@ from modules.led.idle_timeout_manager import idle_timeout_manager
 import math
 from modules.core.cache_manager import generate_all_image_previews, get_cache_path, generate_image_preview, get_pattern_metadata
 from modules.core.version_manager import version_manager
+from modules.core.log_handler import init_memory_handler, get_memory_handler
 import json
 import base64
 import time
@@ -52,6 +53,9 @@ logging.basicConfig(
         logging.StreamHandler(),
     ]
 )
+
+# Initialize memory log handler for web UI log viewer
+init_memory_handler(max_entries=500)
 
 logger = logging.getLogger(__name__)
 
@@ -475,6 +479,80 @@ async def websocket_cache_progress_endpoint(websocket: WebSocket):
             await websocket.close()
         except RuntimeError:
             pass
+
+
+# WebSocket endpoint for real-time log streaming
+@app.websocket("/ws/logs")
+async def websocket_logs_endpoint(websocket: WebSocket):
+    """Stream application logs in real-time via WebSocket."""
+    await websocket.accept()
+
+    handler = get_memory_handler()
+    if not handler:
+        await websocket.close()
+        return
+
+    # Subscribe to log updates
+    log_queue = handler.subscribe()
+
+    try:
+        while True:
+            try:
+                # Wait for new log entry with timeout
+                log_entry = await asyncio.wait_for(log_queue.get(), timeout=30.0)
+                await websocket.send_json({
+                    "type": "log_entry",
+                    "data": log_entry
+                })
+            except asyncio.TimeoutError:
+                # Send heartbeat to keep connection alive
+                await websocket.send_json({"type": "heartbeat"})
+            except RuntimeError as e:
+                if "close message has been sent" in str(e):
+                    break
+                raise
+    except WebSocketDisconnect:
+        pass
+    finally:
+        handler.unsubscribe(log_queue)
+        try:
+            await websocket.close()
+        except RuntimeError:
+            pass
+
+
+# API endpoint to retrieve logs
+@app.get("/api/logs", tags=["logs"])
+async def get_logs(limit: int = 100, level: str = None):
+    """
+    Retrieve application logs from memory buffer.
+
+    Args:
+        limit: Maximum number of log entries to return (default: 100, max: 500)
+        level: Filter by log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+
+    Returns:
+        List of log entries with timestamp, level, logger, and message.
+    """
+    handler = get_memory_handler()
+    if not handler:
+        return {"logs": [], "error": "Log handler not initialized"}
+
+    # Clamp limit to reasonable range
+    limit = max(1, min(limit, 500))
+
+    logs = handler.get_logs(limit=limit, level=level)
+    return {"logs": logs, "count": len(logs)}
+
+
+@app.delete("/api/logs", tags=["logs"])
+async def clear_logs():
+    """Clear all logs from the memory buffer."""
+    handler = get_memory_handler()
+    if handler:
+        handler.clear()
+    return {"status": "ok", "message": "Logs cleared"}
+
 
 # FastAPI routes
 @app.get("/")
