@@ -229,10 +229,34 @@ setup_kiosk_optimizations() {
         fi
     fi
 
-    # Note about auto-login - let user configure manually
-    echo "   ℹ️  Auto-login configuration skipped (manual setup recommended)"
-
     echo "   🖥️  Kiosk optimizations applied"
+}
+
+# Function to setup console auto-login
+setup_console_autologin() {
+    echo "🔑 Setting up console auto-login..."
+
+    local OVERRIDE_DIR="/etc/systemd/system/getty@tty1.service.d"
+    local OVERRIDE_FILE="$OVERRIDE_DIR/autologin.conf"
+
+    # Create override directory
+    mkdir -p "$OVERRIDE_DIR"
+
+    # Create autologin override for getty@tty1
+    cat > "$OVERRIDE_FILE" << EOF
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin $ACTUAL_USER --noclear %I \$TERM
+EOF
+
+    chmod 644 "$OVERRIDE_FILE"
+    echo "   ✅ Getty autologin override created: $OVERRIDE_FILE"
+
+    # Reload systemd to pick up changes
+    systemctl daemon-reload
+    echo "   ✅ Systemd daemon reloaded"
+
+    echo "   🔑 Console auto-login configured for user: $ACTUAL_USER"
 }
 
 # Function to setup Python virtual environment and install dependencies
@@ -303,6 +327,7 @@ configure_boot_settings
 setup_touch_rotation
 hide_mouse_cursor
 setup_kiosk_optimizations
+setup_console_autologin
 
 echo ""
 echo "🎉 Installation Complete!"
@@ -318,6 +343,7 @@ echo "✅ System scripts installed in /usr/local/bin/"
 echo "✅ Systemd service configured for auto-start"
 echo "✅ Mouse cursor hiding configured (Qt + unclutter)"
 echo "✅ Kiosk optimizations applied"
+echo "✅ Console auto-login configured"
 echo ""
 echo "🔧 Service Management:"
 echo "   Start now:  sudo systemctl start dune-weaver-touch"
@@ -326,12 +352,9 @@ echo "   Status:     sudo systemctl status dune-weaver-touch"
 echo "   Logs:       sudo journalctl -u dune-weaver-touch -f"
 echo ""
 echo "🚀 Next Steps:"
-echo "   1. ${YELLOW}⚠️  REBOOT REQUIRED${NC} for config.txt changes (vc4-kms-v3d) to take effect"
-echo "   2. Configure auto-login (recommended for kiosk mode):"
-echo "      sudo ./setup-autologin.sh    (automated setup)"
-echo "      OR manually: sudo raspi-config → System Options → Boot/Auto Login → Desktop Autologin"
-echo "   3. After reboot, the app will start automatically on boot via systemd service"
-echo "   4. Check the logs if you encounter any issues: sudo journalctl -u dune-weaver-touch -f"
+echo "   1. ⚠️  REBOOT REQUIRED for config.txt changes to take effect"
+echo "   2. After reboot, the app will start automatically on boot via systemd service"
+echo "   3. Check the logs if you encounter any issues: sudo journalctl -u dune-weaver-touch -f"
 echo ""
 echo "💡 To start the service now without rebooting:"
 echo "   sudo systemctl start dune-weaver-touch"
