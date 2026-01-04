@@ -14,8 +14,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         # GPIO/NeoPixel support for DW LEDs
         python3-dev python3-pip \
         libgpiod2 libgpiod-dev \
-        # lgpio for Pi 5 GPIO support (rpi-lgpio Python package depends on this)
-        python3-lgpio \
         scons \
         systemd \
         # Docker CLI for container self-restart/update

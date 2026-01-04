@@ -14,11 +14,11 @@ requests>=2.31.0
 Pillow
 aiohttp
 # GPIO/NeoPixel support for DW LEDs and Desert Compass
-# Pi 4 and earlier:
-RPi.GPIO>=0.7.1  # Required by Adafruit Blinka on Raspberry Pi and for reed switch
-rpi-ws281x>=5.0.0  # Low-level NeoPixel/WS281x driver
-adafruit-circuitpython-neopixel>=6.3.0
-Adafruit-Blinka>=8.0.0
-# Pi 5 support (uses PIO instead of PWM, rpi-lgpio replaces RPi.GPIO):
-rpi-lgpio>=0.4  # Drop-in replacement for RPi.GPIO on Pi 5
+# Note: rpi-lgpio is a drop-in replacement for RPi.GPIO that works on Pi 5
+# Do NOT install both RPi.GPIO and rpi-lgpio - they conflict
+lgpio>=0.2.2.0  # Low-level GPIO library (required by rpi-lgpio)
+rpi-lgpio>=0.4  # Provides RPi.GPIO interface, works on Pi 4 and Pi 5
+rpi-ws281x>=5.0.0  # Low-level NeoPixel/WS281x driver (Pi 4)
+adafruit-circuitpython-neopixel>=6.3.0  # Standard NeoPixel library (Pi 4)
+Adafruit-Blinka>=8.0.0  # CircuitPython compatibility layer
 Adafruit-Blinka-Raspberry-Pi5-Neopixel>=1.0.0  # Pi 5 PIO-based NeoPixel driver
