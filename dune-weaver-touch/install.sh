@@ -61,13 +61,32 @@ install_scripts() {
 setup_systemd() {
     echo "🚀 Setting up systemd service..."
 
-    # Update paths in the service file
-    sed "s|/home/pi/dune-weaver-touch|$SCRIPT_DIR|g" "$SCRIPT_DIR/dune-weaver-touch.service" > /tmp/dune-weaver-touch.service
-    sed -i "s|User=pi|User=$ACTUAL_USER|g" /tmp/dune-weaver-touch.service
-    sed -i "s|Group=pi|Group=$ACTUAL_USER|g" /tmp/dune-weaver-touch.service
+    local SERVICE_FILE="/etc/systemd/system/dune-weaver-touch.service"
 
-    # Copy service file
-    cp /tmp/dune-weaver-touch.service /etc/systemd/system/
+    # Generate service file with linuxfb backend (works on all Pi models)
+    echo "   ℹ️  Using linuxfb backend"
+    cat > "$SERVICE_FILE" << EOF
+[Unit]
+Description=Dune Weaver Touch Interface
+After=multi-user.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=$ACTUAL_USER
+Group=$ACTUAL_USER
+WorkingDirectory=$SCRIPT_DIR
+Environment=QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0
+Environment=QT_QPA_FB_HIDECURSOR=1
+ExecStart=$SCRIPT_DIR/venv/bin/python $SCRIPT_DIR/main.py
+Restart=always
+RestartSec=10
+StartLimitInterval=200
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
 
     # Enable service
     systemctl daemon-reload

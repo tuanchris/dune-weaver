@@ -57,27 +57,13 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "   Platform: macOS (using native cocoa backend)"
     export QT_QPA_PLATFORM=""  # Let Qt use default
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    # Linux - check for DRM devices to determine if eglfs is available
-    if [ -e /dev/dri/card0 ] || [ -e /dev/dri/card1 ]; then
-        echo "   Platform: Linux with DRM (using eglfs backend)"
-        export QT_QPA_PLATFORM=eglfs
-        export QT_QPA_EGLFS_INTEGRATION=eglfs_kms
-        export QT_QPA_EGLFS_KMS_ATOMIC=1
-        export QT_QPA_EGLFS_HIDECURSOR=1
-        export QT_QPA_EGLFS_ALWAYS_SET_MODE=1
-
-        # Touch rotation is handled by udev rule: /etc/udev/rules.d/99-ft5x06-rotate.rules
-        # The rule applies a libinput calibration matrix for 180° rotation
-
-        # Use eglfs_config.json with corrected connector name (DSI-1)
-        if [ -f "$SCRIPT_DIR/eglfs_config.json" ]; then
-            echo "   Using eglfs config: $SCRIPT_DIR/eglfs_config.json"
-            export QT_QPA_EGLFS_KMS_CONFIG="$SCRIPT_DIR/eglfs_config.json"
-        else
-            echo "   EGLFS mode: Auto-detection (no config file)"
-        fi
+    # Linux/Raspberry Pi - use linuxfb for all Pi models
+    if [ -e /dev/fb0 ]; then
+        echo "   Platform: Linux (using linuxfb backend)"
+        export QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0
+        export QT_QPA_FB_HIDECURSOR=1
     else
-        echo "   Platform: Linux without DRM (using xcb/X11 backend)"
+        echo "   Platform: Linux (using xcb/X11 backend)"
         export QT_QPA_PLATFORM=xcb
     fi
 else
