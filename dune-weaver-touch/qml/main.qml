@@ -57,8 +57,14 @@ ApplicationWindow {
         }
         
         onErrorOccurred: function(error) {
-            errorDialog.text = error
-            errorDialog.open()
+            // Use custom dialog on Pi 5 for proper rotation
+            if (typeof rotateDisplay !== 'undefined' && rotateDisplay) {
+                customErrorDialog.errorText = error
+                customErrorDialog.open()
+            } else {
+                errorDialog.text = error
+                errorDialog.open()
+            }
         }
         
         onScreenStateChanged: function(isOn) {
@@ -249,9 +255,38 @@ ApplicationWindow {
         }
     }
 
+    // Error dialog - note: MessageDialog is a system dialog, rotation may not work
+    // If rotation doesn't work, we'll need to replace with a custom Dialog
     MessageDialog {
         id: errorDialog
         title: "Error"
         buttons: MessageDialog.Ok
+    }
+
+    // Custom error dialog as fallback for Pi 5 rotation
+    Dialog {
+        id: customErrorDialog
+        title: "Error"
+        modal: true
+        anchors.centerIn: parent
+        width: 300
+        height: 150
+        visible: false
+
+        // Rotate for Pi 5
+        rotation: typeof rotateDisplay !== 'undefined' && rotateDisplay ? 180 : 0
+        transformOrigin: Item.Center
+
+        property string errorText: ""
+
+        Label {
+            anchors.centerIn: parent
+            text: customErrorDialog.errorText
+            wrapMode: Text.WordWrap
+            width: parent.width - 40
+            horizontalAlignment: Text.AlignHCenter
+        }
+
+        standardButtons: Dialog.Ok
     }
 }
