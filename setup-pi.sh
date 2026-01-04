@@ -230,14 +230,7 @@ deploy_docker() {
     print_step "Deploying Dune Weaver with Docker Compose..."
 
     cd "$INSTALL_DIR"
-
-    # Use newgrp to apply docker group if just added, otherwise use sudo
-    if [[ "$DOCKER_GROUP_ADDED" == "true" ]]; then
-        echo "Starting Docker containers (using sudo since group not yet active)..."
-        sudo docker compose up -d
-    else
-        docker compose up -d
-    fi
+    sudo docker compose up -d
 
     print_success "Docker deployment complete!"
 }
