@@ -5,6 +5,7 @@ import QtQuick.Dialogs
 import QtQuick.VirtualKeyboard 2.15
 import DuneWeaver 1.0
 import "components"
+import "components" as Components
 
 ApplicationWindow {
     id: window
@@ -12,6 +13,11 @@ ApplicationWindow {
     width: 800
     height: 480
     title: "Dune Weaver Touch"
+
+    // Solid background to prevent console bleed-through on linuxfb
+    // linuxfb doesn't have proper compositing, so we need to ensure
+    // the entire window is filled with an opaque color
+    color: Components.ThemeManager.backgroundColor
 
     property int currentPageIndex: 0
     property alias stackView: stackView
