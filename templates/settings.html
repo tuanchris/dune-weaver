@@ -221,7 +221,7 @@ input:checked + .slider:before {
 }
 
 .section-toggle-icon {
-  transition: transform 0.2s ease-in-out;
+  /* No transition - causes partial repaint issues on linuxfb */
 }
 
 .section-header.collapsed .section-toggle-icon {
@@ -234,16 +234,11 @@ input:checked + .slider:before {
 
 .section-content {
   overflow: hidden;
-  transition: max-height 0.3s ease-in-out, opacity 0.2s ease-in-out, padding 0.2s ease-in-out;
-  max-height: 2000px;
-  opacity: 1;
+  /* No transitions - causes partial repaint issues on linuxfb/embedded displays */
 }
 
 .section-content.collapsed {
-  max-height: 0;
-  opacity: 0;
-  padding-top: 0 !important;
-  padding-bottom: 0 !important;
+  display: none;
 }
 
 /* Time slot specific styles */
