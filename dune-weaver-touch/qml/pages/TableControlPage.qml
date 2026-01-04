@@ -1,7 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
-import QtQuick.Effects
+// import QtQuick.Effects  // Disabled - causes issues on linuxfb
 import "../components"
 import "../components" as Components
 
@@ -186,12 +186,8 @@ Page {
                                     id: portMenu
                                     y: parent.height
 
-                                    // Rotate menu for Pi 5 linuxfb
-                                    transform: Rotation {
-                                        angle: typeof rotateDisplay !== 'undefined' && rotateDisplay ? 180 : 0
-                                        origin.x: portMenu.width / 2
-                                        origin.y: portMenu.height / 2
-                                    }
+                                    // Note: Menu rotation for Pi 5 handled differently
+                                    // transform property not well supported on Menu
 
                                     Repeater {
                                         model: serialPorts

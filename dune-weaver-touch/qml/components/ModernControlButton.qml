@@ -1,7 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
-import QtQuick.Effects
+// import QtQuick.Effects  // Disabled - causes issues on linuxfb
 
 Rectangle {
     property alias text: buttonLabel.text
@@ -9,38 +9,41 @@ Rectangle {
     property color buttonColor: "#2196F3"
     property bool enabled: true
     property int fontSize: 16
-    
+
     signal clicked()
-    
+
     radius: 12
     color: enabled ? buttonColor : "#E0E0E0"
     opacity: enabled ? 1.0 : 0.6
-    
+    border.width: 1
+    border.color: Qt.darker(buttonColor, 1.2)
+
     // Gradient effect
     gradient: Gradient {
         GradientStop { position: 0; color: Qt.lighter(buttonColor, 1.1) }
         GradientStop { position: 1; color: buttonColor }
     }
-    
+
     // Press animation
     scale: mouseArea.pressed ? 0.95 : (mouseArea.containsMouse ? 1.02 : 1.0)
-    
+
     Behavior on scale {
         NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
     }
-    
+
     Behavior on color {
         ColorAnimation { duration: 200 }
     }
-    
-    // Shadow effect
-    layer.enabled: true
-    layer.effect: MultiEffect {
-        shadowEnabled: true
-        shadowColor: "#25000000"
-        shadowBlur: 0.8
-        shadowVerticalOffset: 2
-    }
+
+    // Shadow effect - disabled on linuxfb (causes rendering issues)
+    // Using border instead for visual separation
+    // layer.enabled: true
+    // layer.effect: MultiEffect {
+    //     shadowEnabled: true
+    //     shadowColor: "#25000000"
+    //     shadowBlur: 0.8
+    //     shadowVerticalOffset: 2
+    // }
     
     RowLayout {
         anchors.centerIn: parent
