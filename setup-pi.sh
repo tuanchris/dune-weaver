@@ -2,17 +2,18 @@
 #
 # Dune Weaver Raspberry Pi Setup Script
 #
-# One-command setup for deploying Dune Weaver on Raspberry Pi
-# Run this script from the cloned dune-weaver directory:
+# ONE-COMMAND INSTALL (recommended):
+#   curl -fsSL https://raw.githubusercontent.com/tuanchris/dune-weaver/main/setup-pi.sh | bash
 #
+# OR from existing clone:
 #   git clone https://github.com/tuanchris/dune-weaver --single-branch
 #   cd dune-weaver
 #   bash setup-pi.sh
 #
 # Options:
-#   bash setup-pi.sh --no-docker    # Use Python venv instead of Docker
-#   bash setup-pi.sh --no-wifi-fix  # Skip WiFi stability fix
-#   bash setup-pi.sh --help         # Show help
+#   --no-docker     Use Python venv instead of Docker
+#   --no-wifi-fix   Skip WiFi stability fix
+#   --help          Show help
 #
 
 set -e
@@ -27,7 +28,8 @@ NC='\033[0m' # No Color
 # Default options
 USE_DOCKER=true
 FIX_WIFI=true  # Applied by default for stability
-INSTALL_DIR="$(pwd)"  # Assume running from cloned dune-weaver directory
+INSTALL_DIR="$HOME/dune-weaver"
+REPO_URL="https://github.com/tuanchris/dune-weaver"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -43,19 +45,16 @@ while [[ $# -gt 0 ]]; do
         --help|-h)
             echo "Dune Weaver Raspberry Pi Setup Script"
             echo ""
-            echo "Usage:"
-            echo "  git clone https://github.com/tuanchris/dune-weaver --single-branch"
-            echo "  cd dune-weaver"
-            echo "  bash setup-pi.sh [OPTIONS]"
+            echo "One-command install:"
+            echo "  curl -fsSL https://raw.githubusercontent.com/tuanchris/dune-weaver/main/setup-pi.sh | bash"
+            echo ""
+            echo "Or from existing clone:"
+            echo "  cd ~/dune-weaver && bash setup-pi.sh [OPTIONS]"
             echo ""
             echo "Options:"
             echo "  --no-docker     Use Python venv instead of Docker"
             echo "  --no-wifi-fix   Skip WiFi stability fix (applied by default)"
             echo "  --help, -h      Show this help message"
-            echo ""
-            echo "Examples:"
-            echo "  bash setup-pi.sh              # Standard Docker installation + WiFi fix"
-            echo "  bash setup-pi.sh --no-docker  # Python venv installation + WiFi fix"
             exit 0
             ;;
         *)
@@ -196,22 +195,30 @@ install_python_deps() {
 }
 
 # Verify we're in the dune-weaver directory
-check_directory() {
-    print_step "Verifying dune-weaver directory..."
+ensure_repo() {
+    print_step "Setting up dune-weaver repository..."
 
-    # Check for key files that indicate we're in the right directory
-    if [[ ! -f "docker-compose.yml" ]] || [[ ! -f "main.py" ]]; then
-        print_error "This script must be run from the dune-weaver directory"
-        echo ""
-        echo "Please run:"
-        echo "  git clone https://github.com/tuanchris/dune-weaver --single-branch"
-        echo "  cd dune-weaver"
-        echo "  bash setup-pi.sh"
-        exit 1
+    # Check if we're already in the dune-weaver directory
+    if [[ -f "docker-compose.yml" ]] && [[ -f "main.py" ]]; then
+        INSTALL_DIR="$(pwd)"
+        print_success "Using existing repo at $INSTALL_DIR"
+        return
     fi
 
-    INSTALL_DIR="$(pwd)"
-    print_success "Running from $INSTALL_DIR"
+    # Check if repo exists in home directory
+    if [[ -d "$INSTALL_DIR" ]] && [[ -f "$INSTALL_DIR/main.py" ]]; then
+        print_success "Found existing repo at $INSTALL_DIR"
+        cd "$INSTALL_DIR"
+        echo "Pulling latest changes..."
+        git pull
+        return
+    fi
+
+    # Clone the repository
+    print_step "Cloning dune-weaver repository..."
+    git clone "$REPO_URL" --single-branch "$INSTALL_DIR"
+    cd "$INSTALL_DIR"
+    print_success "Cloned to $INSTALL_DIR"
 }
 
 # Install dw CLI command
@@ -230,7 +237,7 @@ deploy_docker() {
     print_step "Deploying Dune Weaver with Docker Compose..."
 
     cd "$INSTALL_DIR"
-    sudo docker compose up -d
+    sudo docker compose up -d --quiet-pull
 
     print_success "Docker deployment complete!"
 }
@@ -350,8 +357,8 @@ main() {
     echo ""
 
     # Run setup steps
-    check_directory
     check_raspberry_pi
+    ensure_repo
     update_system
     disable_wlan_powersave
 

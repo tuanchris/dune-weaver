@@ -13,6 +13,7 @@
 #   logs        View live logs (Ctrl+C to exit)
 #   status      Show container status
 #   shell       Open a shell in the container
+#   touch       Manage touch screen app
 #   help        Show this help message
 #
 
@@ -130,12 +131,17 @@ cmd_update() {
     echo "Pulling latest code..."
     git pull
 
+    # Update dw CLI
+    echo "Updating dw command..."
+    sudo cp "$INSTALL_DIR/dw" /usr/local/bin/dw
+    sudo chmod +x /usr/local/bin/dw
+
     if is_docker_mode; then
         echo "Pulling latest Docker image..."
         sudo docker compose pull
 
         echo "Restarting with new version..."
-        sudo docker compose up -d
+        sudo docker compose up -d --quiet-pull
     else
         echo "Updating Python dependencies..."
         source .venv/bin/activate
@@ -145,7 +151,18 @@ cmd_update() {
         sudo systemctl restart dune-weaver
     fi
 
-    echo -e "${GREEN}Updated!${NC}"
+    # Update touch app if installed
+    local touch_dir="/home/pi/dune-weaver-touch"
+    if [[ -d "$touch_dir" ]]; then
+        echo ""
+        echo -e "${BLUE}Updating touch app...${NC}"
+        cd "$touch_dir"
+        git pull
+        sudo systemctl restart dune-weaver-touch
+        echo -e "${GREEN}Touch app updated!${NC}"
+    fi
+
+    echo -e "${GREEN}Update complete!${NC}"
 }
 
 cmd_logs() {
@@ -194,6 +211,53 @@ cmd_shell() {
     fi
 }
 
+# Touch app commands (systemd service)
+cmd_touch() {
+    local subcmd="${1:-help}"
+
+    case "$subcmd" in
+        logs)
+            local lines="${2:-}"
+            if [[ -n "$lines" ]]; then
+                sudo journalctl -u dune-weaver-touch -n "$lines"
+            else
+                sudo journalctl -u dune-weaver-touch -f
+            fi
+            ;;
+        restart)
+            echo -e "${BLUE}Restarting touch app...${NC}"
+            sudo systemctl restart dune-weaver-touch
+            echo -e "${GREEN}Touch app restarted${NC}"
+            ;;
+        stop)
+            echo -e "${BLUE}Stopping touch app...${NC}"
+            sudo systemctl stop dune-weaver-touch
+            echo -e "${GREEN}Touch app stopped${NC}"
+            ;;
+        start)
+            echo -e "${BLUE}Starting touch app...${NC}"
+            sudo systemctl start dune-weaver-touch
+            echo -e "${GREEN}Touch app started${NC}"
+            ;;
+        status)
+            sudo systemctl status dune-weaver-touch
+            ;;
+        help|*)
+            echo -e "${GREEN}Touch App Commands${NC}"
+            echo ""
+            echo "Usage: dw touch <command>"
+            echo ""
+            echo "Commands:"
+            echo "  logs [N]    View logs (N lines or follow if omitted)"
+            echo "  restart     Restart touch app"
+            echo "  stop        Stop touch app"
+            echo "  start       Start touch app"
+            echo "  status      Show touch app status"
+            echo "  help        Show this help message"
+            ;;
+    esac
+}
+
 cmd_help() {
     echo -e "${GREEN}Dune Weaver CLI${NC}"
     echo ""
@@ -208,6 +272,7 @@ cmd_help() {
     echo "  logs [N]    View logs (N=number of lines, or follow if omitted)"
     echo "  status      Show container status"
     echo "  shell       Open a shell in the container"
+    echo "  touch       Manage touch screen app (run 'dw touch help')"
     echo "  help        Show this help message"
     echo ""
     if [[ -n "$INSTALL_DIR" ]]; then
@@ -241,6 +306,10 @@ case "${1:-help}" in
         ;;
     shell)
         cmd_shell
+        ;;
+    touch)
+        shift
+        cmd_touch "$@"
         ;;
     help|--help|-h)
         cmd_help
