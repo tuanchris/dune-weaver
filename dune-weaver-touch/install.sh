@@ -80,6 +80,9 @@ Group=$ACTUAL_USER
 WorkingDirectory=$SCRIPT_DIR
 Environment=QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0
 Environment=QT_QPA_FB_HIDECURSOR=1
+# Hide console cursor before starting (fallback if kernel param not set)
+ExecStartPre=/bin/sh -c 'echo 0 > /sys/class/graphics/fbcon/cursor_blink || true'
+ExecStartPre=/bin/sh -c 'setterm --cursor off > /dev/tty1 || true'
 ExecStart=$SCRIPT_DIR/venv/bin/python $SCRIPT_DIR/main.py
 Restart=always
 RestartSec=10
@@ -260,6 +263,14 @@ setup_kiosk_optimizations() {
             echo "   ✅ Boot splash enabled"
         else
             echo "   ℹ️  Boot splash already enabled"
+        fi
+
+        # Disable console cursor (the blinking underscore on fbcon)
+        if ! grep -q "vt.global_cursor_default=0" "$CMDLINE_FILE"; then
+            sed -i 's/$/ vt.global_cursor_default=0/' "$CMDLINE_FILE"
+            echo "   ✅ Console cursor disabled"
+        else
+            echo "   ℹ️  Console cursor already disabled"
         fi
     fi
 

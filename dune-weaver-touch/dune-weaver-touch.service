@@ -10,6 +10,9 @@ Group=pi
 WorkingDirectory=/home/pi/dune-weaver-touch
 Environment=QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0
 Environment=QT_QPA_FB_HIDECURSOR=1
+# Hide console cursor before starting (fallback if kernel param not set)
+ExecStartPre=/bin/sh -c 'echo 0 > /sys/class/graphics/fbcon/cursor_blink || true'
+ExecStartPre=/bin/sh -c 'setterm --cursor off > /dev/tty1 || true'
 ExecStart=/home/pi/dune-weaver-touch/venv/bin/python /home/pi/dune-weaver-touch/main.py
 Restart=always
 RestartSec=10

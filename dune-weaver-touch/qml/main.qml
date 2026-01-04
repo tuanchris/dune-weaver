@@ -14,9 +14,7 @@ ApplicationWindow {
     height: 480
     title: "Dune Weaver Touch"
 
-    // Solid background to prevent console bleed-through on linuxfb
-    // linuxfb doesn't have proper compositing, so we need to ensure
-    // the entire window is filled with an opaque color
+    // Solid background color for ApplicationWindow
     color: Components.ThemeManager.backgroundColor
 
     property int currentPageIndex: 0
@@ -25,9 +23,27 @@ ApplicationWindow {
     property bool shouldNavigateToExecution: false
     property string currentPatternName: ""
     property string currentPatternPreview: ""
-    
+
+    // Property to force full repaint on linuxfb (toggle to trigger update)
+    property bool forceRepaint: false
+
     onCurrentPageIndexChanged: {
         console.log("📱 currentPageIndex changed to:", currentPageIndex)
+    }
+
+    // Force full repaint function - call when screen wakes up
+    // On linuxfb, we need to force Qt to redraw the ENTIRE scene graph,
+    // not just individual components. The trick is to briefly hide/show
+    // the content which forces Qt to mark everything as dirty.
+    function triggerFullRepaint() {
+        console.log("🔄 Triggering full repaint for linuxfb")
+        forceRepaint = !forceRepaint
+        fullScreenBackground.requestPaint()
+
+        // Force entire scene graph repaint by toggling visibility
+        // This marks all items as dirty and forces a complete redraw
+        rotationContainer.visible = false
+        repaintRestoreTimer.start()
     }
     
     onShouldNavigateToExecutionChanged: {
@@ -75,6 +91,12 @@ ApplicationWindow {
         
         onScreenStateChanged: function(isOn) {
             console.log("🖥️ Screen state changed:", isOn ? "ON" : "OFF")
+            if (isOn) {
+                // Force full repaint when screen wakes up on linuxfb
+                // This is necessary because linuxfb doesn't automatically
+                // redraw the entire framebuffer after unblank
+                repaintTimer.start()
+            }
         }
         
         onBackendConnectionChanged: function(connected) {
@@ -115,7 +137,56 @@ ApplicationWindow {
     PatternModel {
         id: patternModel
     }
-    
+
+    // Timer to delay repaint slightly after screen wake (ensures framebuffer is ready)
+    Timer {
+        id: repaintTimer
+        interval: 150  // 150ms delay for framebuffer to be ready
+        repeat: false
+        onTriggered: {
+            window.triggerFullRepaint()
+        }
+    }
+
+    // Timer to restore visibility after hiding (completes the force-repaint trick)
+    Timer {
+        id: repaintRestoreTimer
+        interval: 50  // Brief 50ms hide
+        repeat: false
+        onTriggered: {
+            rotationContainer.visible = true
+            console.log("🎨 Full scene repaint completed")
+        }
+    }
+
+    // Full-screen opaque background using Canvas for forced repaint capability
+    // This is essential for linuxfb which doesn't have proper compositing
+    // and shows the Linux console through transparent areas
+    Canvas {
+        id: fullScreenBackground
+        anchors.fill: parent
+        z: -1  // Behind everything else
+
+        // Repaint when forceRepaint toggles or theme changes
+        property color bgColor: Components.ThemeManager.backgroundColor
+        property bool repaintTrigger: window.forceRepaint
+
+        onBgColorChanged: requestPaint()
+        onRepaintTriggerChanged: requestPaint()
+
+        onPaint: {
+            var ctx = getContext("2d")
+            ctx.fillStyle = bgColor
+            ctx.fillRect(0, 0, width, height)
+            console.log("🎨 Full screen background painted:", width, "x", height)
+        }
+
+        Component.onCompleted: {
+            // Force initial paint
+            requestPaint()
+        }
+    }
+
     // Rotation container for Pi 5 linuxfb
     Item {
         id: rotationContainer

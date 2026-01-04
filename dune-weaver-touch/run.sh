@@ -63,6 +63,9 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
         echo "   Platform: Linux (using linuxfb backend)"
         export QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0
         export QT_QPA_FB_HIDECURSOR=1
+        # Hide console cursor (the blinking underscore)
+        echo 0 > /sys/class/graphics/fbcon/cursor_blink 2>/dev/null || true
+        setterm --cursor off > /dev/tty1 2>/dev/null || true
     else
         echo "   Platform: Linux (using xcb/X11 backend)"
         export QT_QPA_PLATFORM=xcb
