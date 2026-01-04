@@ -57,17 +57,22 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "   Platform: macOS (using native cocoa backend)"
     export QT_QPA_PLATFORM=""  # Let Qt use default
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    # Linux/Raspberry Pi - use linuxfb for all Pi models
-    # Pi 5 rotation is handled in QML (linuxfb rotation parameter requires Qt patch)
-    if [ -e /dev/fb0 ]; then
-        echo "   Platform: Linux (using linuxfb backend)"
-        export QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0
-        export QT_QPA_FB_HIDECURSOR=1
-        # Hide console cursor (the blinking underscore)
-        echo 0 > /sys/class/graphics/fbcon/cursor_blink 2>/dev/null || true
-        setterm --cursor off > /dev/tty1 2>/dev/null || true
+    # Linux - check for DRM devices to determine if eglfs is available
+    if [ -e /dev/dri/card0 ] || [ -e /dev/dri/card1 ]; then
+        echo "   Platform: Linux with DRM (using eglfs backend)"
+        export QT_QPA_PLATFORM=eglfs
+        export QT_QPA_EGLFS_INTEGRATION=eglfs_kms
+        export QT_QPA_EGLFS_KMS_ATOMIC=1
+        export QT_QPA_EGLFS_HIDECURSOR=1
+        export QT_QPA_EGLFS_ALWAYS_SET_MODE=1
+
+        # Use eglfs_config.json if available
+        if [ -f "$SCRIPT_DIR/eglfs_config.json" ]; then
+            echo "   Using eglfs config: $SCRIPT_DIR/eglfs_config.json"
+            export QT_QPA_EGLFS_KMS_CONFIG="$SCRIPT_DIR/eglfs_config.json"
+        fi
     else
-        echo "   Platform: Linux (using xcb/X11 backend)"
+        echo "   Platform: Linux without DRM (using xcb/X11 backend)"
         export QT_QPA_PLATFORM=xcb
     fi
 else

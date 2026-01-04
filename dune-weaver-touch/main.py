@@ -120,11 +120,12 @@ def main():
     # Load QML
     engine = QQmlApplicationEngine()
 
-    # Set rotation flag for Pi 5 (linuxfb doesn't support rotation parameter)
-    rotate_display = is_pi5() and 'linuxfb' in os.environ.get('QT_QPA_PLATFORM', '')
+    # Set rotation flag for Pi 5 (display needs 180° rotation via QML)
+    # This applies regardless of Qt backend (eglfs or linuxfb)
+    rotate_display = is_pi5()
     engine.rootContext().setContextProperty("rotateDisplay", rotate_display)
     if rotate_display:
-        logger.info("🔄 Pi 5 detected with linuxfb - enabling QML rotation")
+        logger.info("🔄 Pi 5 detected - enabling QML rotation (180°)")
 
     qml_file = Path(__file__).parent / "qml" / "main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_file)))

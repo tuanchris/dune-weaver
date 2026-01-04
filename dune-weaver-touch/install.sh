@@ -63,26 +63,29 @@ setup_systemd() {
 
     local SERVICE_FILE="/etc/systemd/system/dune-weaver-touch.service"
 
-    # Generate service file with linuxfb backend (works on all Pi models)
-    # Pi 5 rotation is handled in QML (linuxfb rotation parameter requires Qt patch)
-    echo "   ℹ️  Using linuxfb backend"
+    # Generate service file with EGLFS backend (GPU-accelerated, proper compositing)
+    # Pi 5 rotation is handled in QML since EGLFS rotation may not work on Pi 5
+    echo "   ℹ️  Using EGLFS backend (GPU-accelerated)"
 
     cat > "$SERVICE_FILE" << EOF
 [Unit]
 Description=Dune Weaver Touch Interface
 After=multi-user.target network-online.target
 Wants=network-online.target
+# Wait for DRM/KMS devices to be ready
+After=systemd-udev-settle.service
+Wants=systemd-udev-settle.service
 
 [Service]
 Type=simple
 User=$ACTUAL_USER
 Group=$ACTUAL_USER
 WorkingDirectory=$SCRIPT_DIR
-Environment=QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0
-Environment=QT_QPA_FB_HIDECURSOR=1
-# Hide console cursor before starting (fallback if kernel param not set)
-ExecStartPre=/bin/sh -c 'echo 0 > /sys/class/graphics/fbcon/cursor_blink || true'
-ExecStartPre=/bin/sh -c 'setterm --cursor off > /dev/tty1 || true'
+Environment=QT_QPA_PLATFORM=eglfs
+Environment=QT_QPA_EGLFS_ALWAYS_SET_MODE=1
+Environment=QT_QPA_EGLFS_HIDECURSOR=1
+Environment=QT_QPA_EGLFS_INTEGRATION=eglfs_kms
+Environment=QT_QPA_EGLFS_KMS_ATOMIC=1
 ExecStart=$SCRIPT_DIR/venv/bin/python $SCRIPT_DIR/main.py
 Restart=always
 RestartSec=10

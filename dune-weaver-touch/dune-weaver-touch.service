@@ -2,17 +2,20 @@
 Description=Dune Weaver Touch Interface
 After=multi-user.target network-online.target
 Wants=network-online.target
+# Wait for DRM/KMS devices to be ready
+After=systemd-udev-settle.service
+Wants=systemd-udev-settle.service
 
 [Service]
 Type=simple
 User=pi
 Group=pi
 WorkingDirectory=/home/pi/dune-weaver-touch
-Environment=QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0
-Environment=QT_QPA_FB_HIDECURSOR=1
-# Hide console cursor before starting (fallback if kernel param not set)
-ExecStartPre=/bin/sh -c 'echo 0 > /sys/class/graphics/fbcon/cursor_blink || true'
-ExecStartPre=/bin/sh -c 'setterm --cursor off > /dev/tty1 || true'
+Environment=QT_QPA_PLATFORM=eglfs
+Environment=QT_QPA_EGLFS_ALWAYS_SET_MODE=1
+Environment=QT_QPA_EGLFS_HIDECURSOR=1
+Environment=QT_QPA_EGLFS_INTEGRATION=eglfs_kms
+Environment=QT_QPA_EGLFS_KMS_ATOMIC=1
 ExecStart=/home/pi/dune-weaver-touch/venv/bin/python /home/pi/dune-weaver-touch/main.py
 Restart=always
 RestartSec=10
