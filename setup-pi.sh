@@ -3,9 +3,13 @@
 # Dune Weaver Raspberry Pi Setup Script
 #
 # One-command setup for deploying Dune Weaver on Raspberry Pi
-# Usage: curl -fsSL https://raw.githubusercontent.com/tuanchris/dune-weaver/main/setup-pi.sh | bash
+# Run this script from the cloned dune-weaver directory:
 #
-# Or with options:
+#   git clone https://github.com/tuanchris/dune-weaver --single-branch
+#   cd dune-weaver
+#   bash setup-pi.sh
+#
+# Options:
 #   bash setup-pi.sh --no-docker    # Use Python venv instead of Docker
 #   bash setup-pi.sh --no-wifi-fix  # Skip WiFi stability fix
 #   bash setup-pi.sh --help         # Show help
@@ -23,8 +27,7 @@ NC='\033[0m' # No Color
 # Default options
 USE_DOCKER=true
 FIX_WIFI=true  # Applied by default for stability
-INSTALL_DIR="$HOME/dune-weaver"
-REPO_URL="https://github.com/tuanchris/dune-weaver"
+INSTALL_DIR="$(pwd)"  # Assume running from cloned dune-weaver directory
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -37,25 +40,22 @@ while [[ $# -gt 0 ]]; do
             FIX_WIFI=false
             shift
             ;;
-        --install-dir)
-            INSTALL_DIR="$2"
-            shift 2
-            ;;
         --help|-h)
             echo "Dune Weaver Raspberry Pi Setup Script"
             echo ""
-            echo "Usage: $0 [OPTIONS]"
+            echo "Usage:"
+            echo "  git clone https://github.com/tuanchris/dune-weaver --single-branch"
+            echo "  cd dune-weaver"
+            echo "  bash setup-pi.sh [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --no-docker     Use Python venv instead of Docker (for Pi Zero 2W)"
+            echo "  --no-docker     Use Python venv instead of Docker"
             echo "  --no-wifi-fix   Skip WiFi stability fix (applied by default)"
-            echo "  --install-dir   Custom installation directory (default: ~/dune-weaver)"
             echo "  --help, -h      Show this help message"
             echo ""
             echo "Examples:"
-            echo "  $0                        # Standard Docker installation + WiFi fix"
-            echo "  $0 --no-docker            # Python venv installation + WiFi fix"
-            echo "  $0 --no-wifi-fix          # Docker without WiFi fix"
+            echo "  bash setup-pi.sh              # Standard Docker installation + WiFi fix"
+            echo "  bash setup-pi.sh --no-docker  # Python venv installation + WiFi fix"
             exit 0
             ;;
         *)
@@ -195,27 +195,23 @@ install_python_deps() {
     print_success "Python dependencies installed"
 }
 
-# Clone repository
-clone_repo() {
-    print_step "Cloning Dune Weaver repository..."
+# Verify we're in the dune-weaver directory
+check_directory() {
+    print_step "Verifying dune-weaver directory..."
 
-    if [[ -d "$INSTALL_DIR" ]]; then
-        echo "Directory $INSTALL_DIR already exists"
-        read -p "Update existing installation? (y/N) " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            cd "$INSTALL_DIR"
-            git pull
-        else
-            print_error "Installation cancelled"
-            exit 1
-        fi
-    else
-        git clone "$REPO_URL" --single-branch "$INSTALL_DIR"
+    # Check for key files that indicate we're in the right directory
+    if [[ ! -f "docker-compose.yml" ]] || [[ ! -f "main.py" ]]; then
+        print_error "This script must be run from the dune-weaver directory"
+        echo ""
+        echo "Please run:"
+        echo "  git clone https://github.com/tuanchris/dune-weaver --single-branch"
+        echo "  cd dune-weaver"
+        echo "  bash setup-pi.sh"
+        exit 1
     fi
 
-    cd "$INSTALL_DIR"
-    print_success "Repository ready at $INSTALL_DIR"
+    INSTALL_DIR="$(pwd)"
+    print_success "Running from $INSTALL_DIR"
 }
 
 # Deploy with Docker
@@ -356,6 +352,7 @@ main() {
     echo ""
 
     # Run setup steps
+    check_directory
     check_raspberry_pi
     update_system
     disable_wlan_powersave
@@ -363,8 +360,6 @@ main() {
     if [[ "$FIX_WIFI" == "true" ]]; then
         apply_wifi_fix
     fi
-
-    clone_repo
 
     if [[ "$USE_DOCKER" == "true" ]]; then
         install_docker
