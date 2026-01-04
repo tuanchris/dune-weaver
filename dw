@@ -41,7 +41,8 @@ find_install_dir() {
 
 # Check if using Docker or systemd
 is_docker_mode() {
-    [[ -f "$INSTALL_DIR/docker-compose.yml" ]] && command -v docker &> /dev/null && docker compose ps &> /dev/null
+    # Docker mode if docker-compose.yml exists and docker is available
+    [[ -f "$INSTALL_DIR/docker-compose.yml" ]] && command -v docker &> /dev/null
 }
 
 INSTALL_DIR=$(find_install_dir)
