@@ -152,7 +152,7 @@ cmd_update() {
     fi
 
     # Update touch app if installed
-    local touch_dir="/home/pi/dune-weaver-touch"
+    local touch_dir="$INSTALL_DIR/dune-weaver-touch"
     if [[ -d "$touch_dir" ]]; then
         echo ""
         echo -e "${BLUE}Updating touch app...${NC}"
@@ -243,10 +243,17 @@ cmd_touch() {
             sudo systemctl status dune-weaver-touch
             ;;
         install)
-            local touch_dir="/home/pi/dune-weaver-touch"
-            local touch_repo="https://github.com/tuanchris/dune-weaver-touch"
+            check_installed
+            local touch_dir="$INSTALL_DIR/dune-weaver-touch"
+
+            if [[ ! -d "$touch_dir" ]]; then
+                echo -e "${RED}Touch app not found at $touch_dir${NC}"
+                echo "Make sure you have the dune-weaver-touch directory in your dune-weaver folder."
+                exit 1
+            fi
 
             echo -e "${BLUE}Installing touch app...${NC}"
+            cd "$touch_dir"
 
             # Install system dependencies for Qt/PySide6
             echo "Installing system dependencies..."
@@ -255,17 +262,6 @@ cmd_touch() {
                 libxcb-cursor0 libxkbcommon0 libxcb-xinerama0 \
                 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
                 libxcb-randr0 libxcb-render-util0 libxcb-shape0
-
-            # Clone or update repo
-            if [[ -d "$touch_dir" ]]; then
-                echo "Updating existing installation..."
-                cd "$touch_dir"
-                git pull
-            else
-                echo "Cloning touch app repository..."
-                git clone "$touch_repo" "$touch_dir"
-                cd "$touch_dir"
-            fi
 
             # Create venv and install dependencies
             echo "Setting up Python environment..."
@@ -284,7 +280,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=pi
+User=$USER
 WorkingDirectory=$touch_dir
 Environment=QT_QPA_PLATFORM=eglfs
 Environment=QT_QPA_EGLFS_INTEGRATION=eglfs_kms
