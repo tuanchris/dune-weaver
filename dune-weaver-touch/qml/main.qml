@@ -211,8 +211,9 @@ ApplicationWindow {
             }
         }
     }
+    } // End rotationContainer
 
-    // Virtual Keyboard Support
+    // Virtual Keyboard Support - outside rotation container for proper positioning
     InputPanel {
         id: inputPanel
         z: 99999
@@ -220,12 +221,16 @@ ApplicationWindow {
         anchors.left: parent.left
         anchors.right: parent.right
 
+        // Rotate keyboard for Pi 5
+        rotation: typeof rotateDisplay !== 'undefined' && rotateDisplay ? 180 : 0
+        transformOrigin: Item.Center
+
         states: State {
             name: "visible"
             when: inputPanel.active
             PropertyChanges {
                 target: inputPanel
-                y: window.height - inputPanel.height
+                y: typeof rotateDisplay !== 'undefined' && rotateDisplay ? 0 : window.height - inputPanel.height
             }
         }
 
@@ -243,7 +248,6 @@ ApplicationWindow {
             }
         }
     }
-    } // End rotationContainer
 
     MessageDialog {
         id: errorDialog
