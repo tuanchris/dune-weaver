@@ -24,5 +24,6 @@ services:
       - "/dev/ttyAMA0:/dev/ttyAMA0"  # Alternative serial device
       - "/dev/gpiomem:/dev/gpiomem"  # GPIO memory access for DW LEDs
       - "/dev/mem:/dev/mem"          # Direct memory access for PWM
+      - "/dev/pio0:/dev/pio0"        # PIO device for Pi 5 NeoPixel support
     privileged: true  # Required for GPIO/PWM access
     container_name: dune-weaver
