@@ -410,6 +410,9 @@ async def cleanup_pattern_manager():
     global progress_update_task, pattern_lock, pause_event
 
     try:
+        # Signal stop to allow any running pattern to exit gracefully
+        state.stop_requested = True
+
         # Stop motion control thread
         motion_controller.stop()
 
@@ -425,22 +428,27 @@ async def cleanup_pattern_manager():
             except Exception as e:
                 logger.error(f"Error cancelling progress update task: {e}")
 
-        # Clean up pattern lock
-        if pattern_lock:
+        # Clean up pattern lock - wait for it to be released naturally, don't force release
+        # Force releasing an asyncio.Lock can corrupt internal state if held by another coroutine
+        if pattern_lock and pattern_lock.locked():
+            logger.info("Pattern lock is held, waiting for release (max 5s)...")
             try:
-                if pattern_lock.locked():
-                    pattern_lock.release()
-                pattern_lock = None
+                # Wait with timeout for the lock to become available
+                async with asyncio.timeout(5.0):
+                    async with pattern_lock:
+                        pass  # Lock acquired means previous holder released it
+                logger.info("Pattern lock released normally")
+            except asyncio.TimeoutError:
+                logger.warning("Timed out waiting for pattern lock - creating fresh lock")
             except Exception as e:
-                logger.error(f"Error cleaning up pattern lock: {e}")
+                logger.error(f"Error waiting for pattern lock: {e}")
 
-        # Clean up pause event
+        # Clean up pause event - wake up any waiting tasks, then create fresh event
         if pause_event:
             try:
                 pause_event.set()  # Wake up any waiting tasks
-                pause_event = None
             except Exception as e:
-                logger.error(f"Error cleaning up pause event: {e}")
+                logger.error(f"Error setting pause event: {e}")
 
         # Clean up pause condition from state
         if state.pause_condition:
@@ -467,10 +475,11 @@ async def cleanup_pattern_manager():
     except Exception as e:
         logger.error(f"Error during pattern manager cleanup: {e}")
     finally:
-        # Ensure we always reset these
+        # Reset to fresh instances instead of None to allow continued operation
         progress_update_task = None
-        pattern_lock = None
-        pause_event = None
+        pattern_lock = asyncio.Lock()  # Fresh lock instead of None
+        pause_event = asyncio.Event()  # Fresh event instead of None
+        pause_event.set()  # Initially not paused
 
 def list_theta_rho_files():
     files = []
@@ -786,10 +795,13 @@ async def run_theta_rho_file(file_path, is_playlist=False):
 
                     # Wait until both manual pause is released AND we're outside scheduled pause period
                     while state.pause_requested or is_in_scheduled_pause_period():
-                        await asyncio.sleep(1)  # Check every second
-                        # Also wait for the pause event in case of manual pause
                         if state.pause_requested:
+                            # For manual pause, wait directly on the event for immediate response
+                            # The while loop re-checks state after wake to handle rapid pause/resume
                             await pause_event.wait()
+                        else:
+                            # For scheduled pause only, check periodically
+                            await asyncio.sleep(1)
 
                     total_pause_time += time.time() - pause_start  # Add pause duration
                     logger.info("Execution resumed...")

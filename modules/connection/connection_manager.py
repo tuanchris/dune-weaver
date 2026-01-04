@@ -95,14 +95,24 @@ class SerialConnection(BaseConnection):
         return self.ser is not None and self.ser.is_open
 
     def close(self) -> None:
-        # Run async update_machine_position in sync context
+        # Save current state synchronously first (critical for position persistence)
         try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(update_machine_position())
-            loop.close()
+            state.save()
         except Exception as e:
-            logger.error(f"Error updating machine position on close: {e}")
+            logger.error(f"Error saving state on close: {e}")
+
+        # Schedule async position update if event loop exists, otherwise skip
+        # This avoids creating nested event loops which causes RuntimeError
+        try:
+            loop = asyncio.get_running_loop()
+            # We're in async context - schedule as task (fire-and-forget)
+            asyncio.create_task(update_machine_position())
+            logger.debug("Scheduled async machine position update")
+        except RuntimeError:
+            # No running event loop - we're in sync context
+            # Position was already saved above, skip async update to avoid nested loop
+            logger.debug("No event loop running, skipping async position update")
+
         with self.lock:
             if self.ser.is_open:
                 self.ser.close()
@@ -150,14 +160,24 @@ class WebSocketConnection(BaseConnection):
         return self.ws is not None
 
     def close(self) -> None:
-        # Run async update_machine_position in sync context
+        # Save current state synchronously first (critical for position persistence)
         try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(update_machine_position())
-            loop.close()
+            state.save()
         except Exception as e:
-            logger.error(f"Error updating machine position on close: {e}")
+            logger.error(f"Error saving state on close: {e}")
+
+        # Schedule async position update if event loop exists, otherwise skip
+        # This avoids creating nested event loops which causes RuntimeError
+        try:
+            loop = asyncio.get_running_loop()
+            # We're in async context - schedule as task (fire-and-forget)
+            asyncio.create_task(update_machine_position())
+            logger.debug("Scheduled async machine position update")
+        except RuntimeError:
+            # No running event loop - we're in sync context
+            # Position was already saved above, skip async update to avoid nested loop
+            logger.debug("No event loop running, skipping async position update")
+
         with self.lock:
             if self.ws:
                 self.ws.close()
