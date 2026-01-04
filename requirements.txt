@@ -21,4 +21,4 @@ rpi-lgpio>=0.4  # Provides RPi.GPIO interface, works on Pi 4 and Pi 5
 rpi-ws281x>=5.0.0  # Low-level NeoPixel/WS281x driver (Pi 4)
 adafruit-circuitpython-neopixel>=6.3.0  # Standard NeoPixel library (Pi 4)
 Adafruit-Blinka>=8.0.0  # CircuitPython compatibility layer
-Adafruit-Blinka-Raspberry-Pi5-Neopixel>=1.0.0  # Pi 5 PIO-based NeoPixel driver
+Adafruit-Blinka-Raspberry-Pi5-Neopixel>=1.0.0rc1  # Pi 5 PIO-based NeoPixel driver (pre-release)
