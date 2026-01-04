@@ -162,8 +162,20 @@ setup_touch_rotation() {
 
     local UDEV_RULE_FILE="/etc/udev/rules.d/99-ft5x06-rotate.rules"
 
-    # Create udev rule for FT5x06 touch controller (180° rotation)
-    cat > "$UDEV_RULE_FILE" << 'EOF'
+    # Pi 5 with linuxfb: QML handles rotation (including touch transform)
+    # Pi 3/4: Use udev rule for touch rotation to match kernel framebuffer rotation
+    if [ "$IS_PI5" = true ]; then
+        echo "   ℹ️  Pi 5 detected - touch rotation handled by QML, skipping udev rule"
+        # Remove any existing touch rotation rule
+        if [ -f "$UDEV_RULE_FILE" ]; then
+            rm -f "$UDEV_RULE_FILE"
+            udevadm control --reload-rules
+            udevadm trigger
+            echo "   ✅ Removed existing touch rotation udev rule"
+        fi
+    else
+        # Create udev rule for FT5x06 touch controller (180° rotation)
+        cat > "$UDEV_RULE_FILE" << 'EOF'
 # Rotate FT5x06 touchscreen 180 degrees using libinput calibration matrix
 # Matrix format: a b c d e f 0 0 1
 # For 180° rotation: -1 0 1  0 -1 1  0 0 1
@@ -172,15 +184,16 @@ SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="*generic ft5x06*", \
   ENV{LIBINPUT_CALIBRATION_MATRIX}="-1 0 1  0 -1 1  0 0 1"
 EOF
 
-    chmod 644 "$UDEV_RULE_FILE"
-    echo "   ✅ Touch rotation udev rule created: $UDEV_RULE_FILE"
+        chmod 644 "$UDEV_RULE_FILE"
+        echo "   ✅ Touch rotation udev rule created: $UDEV_RULE_FILE"
 
-    # Reload udev rules
-    udevadm control --reload-rules
-    udevadm trigger
-    echo "   ✅ Udev rules reloaded"
+        # Reload udev rules
+        udevadm control --reload-rules
+        udevadm trigger
+        echo "   ✅ Udev rules reloaded"
 
-    echo "   👆 Touch rotation configured (180°)"
+        echo "   👆 Touch rotation configured (180°)"
+    fi
 }
 
 # Function to hide mouse cursor
