@@ -18,6 +18,7 @@ Environment=QT_QPA_EGLFS_HIDECURSOR=1
 Environment=QT_QPA_FB_HIDECURSOR=1
 Environment=QT_QPA_EGLFS_INTEGRATION=eglfs_kms
 Environment=QT_QPA_EGLFS_KMS_ATOMIC=1
+Environment=QT_QPA_EGLFS_KMS_CONFIG=/home/pi/dune-weaver-touch/eglfs_config.json
 ExecStart=/home/pi/dune-weaver-touch/venv/bin/python /home/pi/dune-weaver-touch/main.py
 Restart=always
 RestartSec=10

@@ -232,6 +232,28 @@ setup_kiosk_optimizations() {
     echo "   🖥️  Kiosk optimizations applied"
 }
 
+# Function to setup user groups for DRM/input access
+setup_user_groups() {
+    echo "👥 Setting up user groups for hardware access..."
+
+    local REQUIRED_GROUPS=("video" "render" "input" "gpio")
+
+    for group in "${REQUIRED_GROUPS[@]}"; do
+        if getent group "$group" > /dev/null 2>&1; then
+            if id -nG "$ACTUAL_USER" | grep -qw "$group"; then
+                echo "   ℹ️  User already in '$group' group"
+            else
+                usermod -aG "$group" "$ACTUAL_USER"
+                echo "   ✅ Added user to '$group' group"
+            fi
+        else
+            echo "   ⚠️  Group '$group' does not exist, skipping"
+        fi
+    done
+
+    echo "   👥 User groups configured"
+}
+
 # Function to setup console auto-login
 setup_console_autologin() {
     echo "🔑 Setting up console auto-login..."
@@ -320,6 +342,7 @@ echo "Starting complete installation..."
 echo ""
 
 # Install everything
+setup_user_groups
 setup_python_environment
 install_scripts
 setup_systemd
@@ -344,6 +367,7 @@ echo "✅ Systemd service configured for auto-start"
 echo "✅ Mouse cursor hiding configured (Qt + unclutter)"
 echo "✅ Kiosk optimizations applied"
 echo "✅ Console auto-login configured"
+echo "✅ User groups configured (video, render, input)"
 echo ""
 echo "🔧 Service Management:"
 echo "   Start now:  sudo systemctl start dune-weaver-touch"
