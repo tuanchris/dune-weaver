@@ -900,65 +900,66 @@
         </div>
     </div>
 
-    <!-- Logs Modal -->
-    <div id="logsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden p-4">
-      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col">
-        <!-- Modal Header -->
-        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-gray-600">
-          <div class="flex items-center gap-3">
-            <span class="material-icons text-2xl text-slate-600 dark:text-gray-300">article</span>
-            <h3 class="text-lg font-semibold text-slate-800 dark:text-gray-100">Application Logs</h3>
-            <span id="logsConnectionStatus" class="text-xs px-2 py-1 rounded-full bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300">Connecting...</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <select id="logLevelFilter" onchange="filterLogs()" class="form-select text-xs rounded-lg border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 py-2 pl-3 pr-10">
-              <option value="">All Levels</option>
-              <option value="DEBUG">Debug</option>
-              <option value="INFO">Info</option>
-              <option value="WARNING">Warning</option>
-              <option value="ERROR">Error</option>
-              <option value="CRITICAL">Critical</option>
-            </select>
-            <button
-              onclick="clearLogs()"
-              class="flex items-center justify-center gap-1 rounded-lg h-8 px-3 bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 text-xs font-medium transition-colors"
-            >
-              <span class="material-icons text-sm">delete_sweep</span>
-              Clear
-            </button>
-            <label class="flex items-center gap-1.5 text-sm text-slate-600 dark:text-gray-300">
-              <input type="checkbox" id="logsAutoScroll" checked class="rounded border-slate-300 dark:border-gray-600">
-              Auto-scroll
-            </label>
-            <button
-              onclick="closeLogsModal()"
-              class="flex items-center justify-center rounded-lg size-8 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400 transition-colors"
-            >
-              <span class="material-icons">close</span>
-            </button>
-          </div>
+    <!-- Logs Bottom Panel -->
+    <div id="logsPanel" class="fixed left-0 right-0 z-20 bg-white dark:bg-gray-800 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] flex flex-col transition-transform duration-300 ease-out" style="bottom: 0; height: 45vh; transform: translateY(100%);">
+      <!-- Panel Header -->
+      <div class="flex items-center justify-between px-4 py-2 border-b border-slate-200 dark:border-gray-600 shrink-0">
+        <div class="flex items-center gap-2">
+          <span class="material-icons text-lg text-slate-600 dark:text-gray-300">article</span>
+          <h3 class="text-sm font-semibold text-slate-800 dark:text-gray-100">Logs</h3>
+          <span id="logsConnectionStatus" class="text-xs px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300">Connecting...</span>
         </div>
-        <!-- Modal Body -->
-        <div id="logsContainer" class="flex-1 overflow-y-auto p-4 font-mono text-xs bg-slate-50 dark:bg-gray-900">
-          <div id="logsContent" class="space-y-1">
-            <!-- Log entries will be inserted here -->
-          </div>
+        <div class="flex items-center gap-2">
+          <select id="logLevelFilter" onchange="filterLogs()" class="form-select text-xs rounded border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 py-1 pl-2 pr-8">
+            <option value="">All</option>
+            <option value="DEBUG">Debug</option>
+            <option value="INFO">Info</option>
+            <option value="WARNING">Warn</option>
+            <option value="ERROR">Error</option>
+            <option value="CRITICAL">Critical</option>
+          </select>
+          <button
+            onclick="clearLogs()"
+            class="flex items-center justify-center rounded h-7 px-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 text-xs font-medium transition-colors"
+            title="Clear logs"
+          >
+            <span class="material-icons text-sm">delete_sweep</span>
+          </button>
+          <label class="flex items-center gap-1 text-xs text-slate-600 dark:text-gray-300">
+            <input type="checkbox" id="logsAutoScroll" checked class="rounded border-slate-300 dark:border-gray-600 w-3.5 h-3.5">
+            Auto
+          </label>
+          <button
+            onclick="closeLogsModal()"
+            class="flex items-center justify-center rounded size-7 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400 transition-colors"
+            title="Close logs"
+          >
+            <span class="material-icons text-lg">close</span>
+          </button>
         </div>
-        <!-- Modal Footer -->
-        <div class="px-6 py-3 border-t border-slate-200 dark:border-gray-600 flex items-center justify-between text-xs text-slate-500 dark:text-gray-400">
-          <span id="logsCount">0 entries</span>
-          <span id="logsInfo">Showing last 500 log entries</span>
+      </div>
+      <!-- Panel Body -->
+      <div id="logsContainer" class="flex-1 overflow-y-auto p-2 font-mono text-xs bg-slate-50 dark:bg-gray-900">
+        <div id="logsContent" class="space-y-0.5">
+          <!-- Log entries will be inserted here -->
         </div>
+      </div>
+      <!-- Panel Footer -->
+      <div class="px-4 py-1.5 border-t border-slate-200 dark:border-gray-600 flex items-center justify-between text-xs text-slate-500 dark:text-gray-400 shrink-0">
+        <span id="logsCount">0 entries</span>
+        <span id="logsInfo">Last 500 entries</span>
       </div>
     </div>
 
     <script>
     // ============================================================================
-    // Application Logs Modal
+    // Application Logs Bottom Panel
     // ============================================================================
     let logsWebSocket = null;
     let logsEntries = [];
+    let logsPanelOpen = false;
     const MAX_LOG_ENTRIES = 500;
+    const LOGS_PANEL_HEIGHT = '45vh';
 
     const LOG_LEVEL_COLORS = {
         DEBUG: 'text-gray-500 dark:text-gray-400',
@@ -976,20 +977,63 @@
         CRITICAL: 'bg-red-100 dark:bg-red-900/50'
     };
 
-    function openLogsModal() {
-        const modal = document.getElementById('logsModal');
-        modal.classList.remove('hidden');
+    function openLogsModal(skipSave = false) {
+        if (logsPanelOpen) return;
+        logsPanelOpen = true;
+
+        const panel = document.getElementById('logsPanel');
+        const footer = document.querySelector('footer');
+        const previewBtn = document.getElementById('toggle-preview-modal-btn');
+
+        // Slide panel up
+        panel.style.transform = 'translateY(0)';
+
+        // Push footer up
+        if (footer) {
+            footer.style.transition = 'transform 0.3s ease-out';
+            footer.style.transform = `translateY(-${LOGS_PANEL_HEIGHT})`;
+        }
+
+        // Push floating preview button up
+        if (previewBtn) {
+            previewBtn.style.transition = 'transform 0.3s ease-out';
+            previewBtn.style.transform = `translateY(-${LOGS_PANEL_HEIGHT})`;
+        }
+
+        // Persist state across pages
+        if (!skipSave) {
+            localStorage.setItem('logsPanelOpen', 'true');
+        }
+
         loadInitialLogs();
         connectLogsWebSocket();
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) closeLogsModal();
-        });
         document.addEventListener('keydown', handleLogsEscapeKey);
     }
 
     function closeLogsModal() {
-        const modal = document.getElementById('logsModal');
-        modal.classList.add('hidden');
+        if (!logsPanelOpen) return;
+        logsPanelOpen = false;
+
+        const panel = document.getElementById('logsPanel');
+        const footer = document.querySelector('footer');
+        const previewBtn = document.getElementById('toggle-preview-modal-btn');
+
+        // Slide panel down
+        panel.style.transform = 'translateY(100%)';
+
+        // Reset footer position
+        if (footer) {
+            footer.style.transform = 'translateY(0)';
+        }
+
+        // Reset floating button position
+        if (previewBtn) {
+            previewBtn.style.transform = 'translateY(0)';
+        }
+
+        // Persist state across pages
+        localStorage.removeItem('logsPanelOpen');
+
         if (logsWebSocket) {
             logsWebSocket.close();
             logsWebSocket = null;
@@ -1000,6 +1044,14 @@
     function handleLogsEscapeKey(e) {
         if (e.key === 'Escape') closeLogsModal();
     }
+
+    // Restore logs panel state on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        if (localStorage.getItem('logsPanelOpen') === 'true') {
+            // Small delay to ensure DOM is ready
+            setTimeout(() => openLogsModal(true), 100);
+        }
+    });
 
     async function loadInitialLogs() {
         const logsContent = document.getElementById('logsContent');
