@@ -16,6 +16,37 @@ function toggleSection(headerElement) {
     }
 }
 
+// Initialize section headers with proper event listeners for cross-browser compatibility
+// This fixes Firefox issues where inline onclick handlers may not work reliably
+// with user-select: none and flexbox layouts
+function initializeSectionHeaders() {
+    const sectionHeaders = document.querySelectorAll('.section-header');
+    sectionHeaders.forEach(header => {
+        // Remove inline onclick to prevent double-firing
+        header.removeAttribute('onclick');
+
+        // Add click event listener (more reliable than inline onclick in Firefox)
+        header.addEventListener('click', function(e) {
+            // Prevent text selection on double-click
+            e.preventDefault();
+            toggleSection(this);
+        });
+
+        // Also handle keyboard accessibility
+        header.setAttribute('role', 'button');
+        header.setAttribute('tabindex', '0');
+        header.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleSection(this);
+            }
+        });
+    });
+}
+
+// Initialize on DOM ready
+document.addEventListener('DOMContentLoaded', initializeSectionHeaders);
+
 // ============================================================================
 // Constants and Utilities
 // ============================================================================
