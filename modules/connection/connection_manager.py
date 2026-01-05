@@ -644,44 +644,10 @@ def home(timeout=90):
                     time.sleep(0.1)
 
                 if not (state.homed_x and state.homed_y):
-                    logger.warning(f"Did not receive all homing messages (X:{state.homed_x}, Y:{state.homed_y})")
-
-                    # Retry homing for the axis that didn't home
-                    retry_axis = None
-                    if state.homed_x and not state.homed_y:
-                        retry_axis = "Y"
-                    elif state.homed_y and not state.homed_x:
-                        retry_axis = "X"
-
-                    if retry_axis:
-                        logger.info(f"{retry_axis} axis didn't home, nudging and retrying...")
-                        # Wait for idle first
-                        check_idle()
-                        # Send small movement to move away from sensor
-                        state.conn.send(f"G1 {retry_axis}10 F{homing_speed}\n")
-                        time.sleep(2)
-                        check_idle()
-                        # Retry homing
-                        state.conn.send("$H\n")
-                        logger.info(f"Sent $H retry, waiting for {retry_axis} homing message...")
-                        retry_start = time.time()
-                        while (time.time() - retry_start) < 20:
-                            try:
-                                response = state.conn.readline()
-                                if response:
-                                    logger.debug(f"Retry homing response: {response}")
-                                    if f"[MSG:Homed:{retry_axis}]" in response:
-                                        if retry_axis == "X":
-                                            state.homed_x = True
-                                        else:
-                                            state.homed_y = True
-                                        logger.info(f"Retry successful: Received [MSG:Homed:{retry_axis}]")
-                                        break
-                            except Exception as e:
-                                logger.error(f"Error reading retry response: {e}")
-                            time.sleep(0.1)
-                        if (retry_axis == "X" and not state.homed_x) or (retry_axis == "Y" and not state.homed_y):
-                            logger.error(f"{retry_axis} axis homing retry failed")
+                    logger.warning(f"Did not receive all homing messages (X:{state.homed_x}, Y:{state.homed_y}), unlocking and continuing...")
+                    # Unlock machine to clear any alarm state
+                    state.conn.send("$X\n")
+                    time.sleep(0.5)
 
                 # Wait for idle state after $H
                 logger.info("Waiting for device to reach idle state after $H...")
