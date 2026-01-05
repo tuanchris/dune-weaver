@@ -183,8 +183,8 @@
 
 {% block content %}
 <div class="layout-content-container flex flex-col w-full max-w-5xl mb-24">
-    <div class="flex-none bg-gray-50 py-4">
-        <div class="mt-2 sm:mt-8">
+    <div id="browseHeader" class="flex-none bg-gray-50 py-4">
+        <div class="mt-2 sm:mt-8 lg:mt-2">
             <!-- Header Row -->
             <div class="flex items-center justify-between gap-2 mb-4">
                 <h2 class="text-gray-900 text-3xl font-bold leading-tight tracking-tight">
@@ -259,7 +259,7 @@
         </div>
     </div>
     <section class="px-4 py-6">
-        <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-4 sm:gap-5 md:gap-6">
+        <div class="grid gap-4 sm:gap-5 md:gap-6" style="grid-template-columns: repeat(auto-fill, minmax(100px, 128px)); justify-content: center;">
             <!-- All patterns will be populated here -->
         </div>
         <!-- Spacer to allow scrolling past last patterns -->
@@ -459,5 +459,184 @@ window.loadPatterns = async function() {
     updateDeleteButtonState(null);
   }
 };
+
+// Sticky search bar on desktop
+(function() {
+  // Only apply on large screens (lg: 1024px+)
+  const mediaQuery = window.matchMedia('(min-width: 1024px)');
+  if (!mediaQuery.matches) return;
+
+  // Create a compact fixed search bar
+  const siteHeaderHeight = 56;
+  let fixedBar = null;
+  let isFixed = false;
+  const triggerPoint = 150; // Scroll distance to trigger
+
+  function createFixedBar() {
+    if (fixedBar) return;
+
+    fixedBar = document.createElement('div');
+    fixedBar.id = 'fixedSearchBar';
+    // Get actual header height
+    const siteHeader = document.querySelector('header');
+    const headerHeight = siteHeader ? siteHeader.offsetHeight : 64;
+
+    fixedBar.style.cssText = `
+      position: fixed;
+      top: ${headerHeight}px;
+      left: 0;
+      right: 0;
+      background: #f9fafb;
+      border-bottom: 1px solid #e5e7eb;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+      z-index: 9;
+      transform: translateY(-100%);
+      transition: transform 0.2s ease;
+    `;
+    if (document.documentElement.classList.contains('dark')) {
+      fixedBar.style.background = '#1a1a1a';
+      fixedBar.style.borderColor = '#404040';
+    }
+
+    fixedBar.innerHTML = `
+      <div class="max-w-5xl mx-auto px-4 py-2 flex items-center gap-3">
+        <div class="flex items-center gap-1 shrink-0">
+          <span class="text-xs font-medium text-gray-700 dark:text-gray-300">Sort:</span>
+          <select id="fixedSortSelect" class="text-xs rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 bg-white text-gray-900 px-2 py-1">
+            <option value="name">Name</option>
+            <option value="date">Date Modified</option>
+            <option value="coordinates">Coordinates</option>
+            <option value="favorite">Favorite</option>
+          </select>
+          <button id="fixedSortDirBtn" class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500">
+            <span class="material-icons text-sm" id="fixedSortDirIcon">arrow_upward</span>
+          </button>
+        </div>
+        <div class="relative flex-1">
+          <input id="fixedSearchInput" class="form-input block w-full h-11 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 bg-gray-50 py-2.5 p-4 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm" placeholder="Search patterns..." type="search" />
+          <button id="fixedSearchBtn" class="inline-flex absolute top-0 right-0 h-11 w-11 items-center justify-center rounded-lg bg-blue-600 p-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+            <span class="material-icons text-sm font-semibold text-white">search</span>
+          </button>
+        </div>
+        <button id="fixedAddBtn" class="inline-flex items-center justify-center rounded-lg h-11 w-11 bg-blue-600 text-white shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+          <span class="material-icons">add</span>
+        </button>
+      </div>
+    `;
+
+    document.body.appendChild(fixedBar);
+
+    // Sync with main controls
+    const mainSearch = document.getElementById('patternSearch');
+    const fixedSearch = fixedBar.querySelector('#fixedSearchInput');
+    const fixedSearchBtn = fixedBar.querySelector('#fixedSearchBtn');
+    const fixedAdd = fixedBar.querySelector('#fixedAddBtn');
+
+    // Search on Enter key
+    fixedSearch.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        if (mainSearch) mainSearch.value = fixedSearch.value;
+        if (typeof searchPatterns === 'function') {
+          searchPatterns(fixedSearch.value.trim());
+        }
+      }
+    });
+
+    // Also sync on input for live typing
+    fixedSearch.addEventListener('input', () => {
+      if (mainSearch) mainSearch.value = fixedSearch.value;
+    });
+
+    // Search button click
+    fixedSearchBtn.addEventListener('click', () => {
+      if (mainSearch) mainSearch.value = fixedSearch.value;
+      if (typeof searchPatterns === 'function') {
+        searchPatterns(fixedSearch.value.trim());
+      }
+    });
+
+    fixedAdd.addEventListener('click', () => {
+      document.getElementById('patternFileInput')?.click();
+    });
+
+    // Sort controls sync
+    const mainSortSelect = document.getElementById('browseSortFieldSelect');
+    const mainSortDirBtn = document.getElementById('browseSortDirectionBtn');
+    const mainSortDirIcon = document.getElementById('browseSortDirectionIcon');
+    const fixedSortSelect = fixedBar.querySelector('#fixedSortSelect');
+    const fixedSortDirBtn = fixedBar.querySelector('#fixedSortDirBtn');
+    const fixedSortDirIcon = fixedBar.querySelector('#fixedSortDirIcon');
+
+    // Sync initial values from main controls
+    if (mainSortSelect) {
+      fixedSortSelect.value = mainSortSelect.value;
+    }
+    if (mainSortDirIcon) {
+      fixedSortDirIcon.textContent = mainSortDirIcon.textContent;
+    }
+
+    // Fixed sort select change -> sync to main and trigger sort
+    fixedSortSelect.addEventListener('change', () => {
+      if (mainSortSelect) {
+        mainSortSelect.value = fixedSortSelect.value;
+        mainSortSelect.dispatchEvent(new Event('change'));
+      }
+    });
+
+    // Fixed sort direction button click -> sync to main and trigger sort
+    fixedSortDirBtn.addEventListener('click', () => {
+      if (mainSortDirBtn) {
+        mainSortDirBtn.click();
+        // After click, sync the icon
+        setTimeout(() => {
+          if (mainSortDirIcon) {
+            fixedSortDirIcon.textContent = mainSortDirIcon.textContent;
+          }
+        }, 50);
+      }
+    });
+
+    // Listen for changes on main controls to sync back to fixed
+    if (mainSortSelect) {
+      mainSortSelect.addEventListener('change', () => {
+        fixedSortSelect.value = mainSortSelect.value;
+      });
+    }
+
+    // Create observer to sync sort direction icon changes
+    if (mainSortDirIcon) {
+      const observer = new MutationObserver(() => {
+        fixedSortDirIcon.textContent = mainSortDirIcon.textContent;
+      });
+      observer.observe(mainSortDirIcon, { childList: true, characterData: true, subtree: true });
+    }
+  }
+
+  function handleScroll() {
+    if (!mediaQuery.matches) return;
+
+    if (window.scrollY > triggerPoint && !isFixed) {
+      createFixedBar();
+      requestAnimationFrame(() => {
+        fixedBar.style.transform = 'translateY(0)';
+      });
+      isFixed = true;
+    } else if (window.scrollY <= triggerPoint && isFixed) {
+      if (fixedBar) {
+        fixedBar.style.transform = 'translateY(-100%)';
+      }
+      isFixed = false;
+    }
+  }
+
+  window.addEventListener('scroll', handleScroll, { passive: true });
+  mediaQuery.addEventListener('change', (e) => {
+    if (!e.matches && fixedBar) {
+      fixedBar.remove();
+      fixedBar = null;
+      isFixed = false;
+    }
+  });
+})();
 </script>
 {% endblock %}
