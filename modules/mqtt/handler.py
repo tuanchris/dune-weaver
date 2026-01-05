@@ -669,7 +669,8 @@ class MQTTHandler(BaseMQTTHandler):
                 if 0 <= brightness <= 100 and state.led_controller and state.led_provider == "dw_leds":
                     controller = state.led_controller.get_controller()
                     if controller and hasattr(controller, 'set_brightness'):
-                        controller.set_brightness(brightness / 100.0)
+                        # DW LED controller expects 0-100, converts internally to 0.0-1.0
+                        controller.set_brightness(brightness)
                         self.client.publish(f"{self.device_id}/led/brightness/state", brightness, retain=True)
             elif msg.topic == self.led_effect_topic:
                 # Handle LED effect command (DW LEDs only)
