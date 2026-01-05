@@ -12,6 +12,7 @@ services:
       - ./playlists.json:/app/playlists.json
       - ./metadata_cache.json:/app/metadata_cache.json
       - ./patterns:/app/patterns
+      - ./static/custom:/app/static/custom  # Custom logo/branding
       # Mount Docker socket to allow container to restart itself
       - /var/run/docker.sock:/var/run/docker.sock
       # Mount timezone file from host for Still Sands scheduling
