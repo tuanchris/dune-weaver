@@ -13,6 +13,18 @@
 .pattern-card.selected {
   border: 2px solid #0c7ff2;
 }
+
+/* Pattern grid - responsive columns */
+#patternGrid {
+  grid-template-columns: repeat(3, 1fr);
+  justify-content: center;
+}
+@media (min-width: 480px) {
+  #patternGrid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 128px));
+  }
+}
+
 @media (min-width: 1024px) {
   .preview-open .layout-content-container {
     margin-right: 28rem;
@@ -259,7 +271,7 @@
         </div>
     </div>
     <section class="px-4 py-6">
-        <div class="grid gap-4 sm:gap-5 md:gap-6" style="grid-template-columns: repeat(auto-fill, minmax(100px, 128px)); justify-content: center;">
+        <div id="patternGrid" class="grid gap-2 sm:gap-4 md:gap-6">
             <!-- All patterns will be populated here -->
         </div>
         <!-- Spacer to allow scrolling past last patterns -->
