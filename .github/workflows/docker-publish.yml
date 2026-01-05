@@ -6,6 +6,7 @@ on:
     paths:
       - 'Dockerfile'
       - 'requirements.txt'
+      - 'VERSION'
   # Allow manual trigger for when you need to rebuild anyway
   workflow_dispatch:
     
