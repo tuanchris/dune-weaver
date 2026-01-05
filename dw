@@ -142,6 +142,7 @@ cmd_update() {
 
         echo "Restarting with new version..."
         sudo docker compose up -d --quiet-pull
+        sudo docker compose restart
     else
         echo "Updating Python dependencies..."
         source .venv/bin/activate
