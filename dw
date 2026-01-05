@@ -151,9 +151,9 @@ cmd_update() {
         sudo systemctl restart dune-weaver
     fi
 
-    # Update touch app if installed
+    # Update touch app if installed (check both directory and service exist)
     local touch_dir="$INSTALL_DIR/dune-weaver-touch"
-    if [[ -d "$touch_dir" ]]; then
+    if [[ -d "$touch_dir" ]] && systemctl list-unit-files dune-weaver-touch.service 2>/dev/null | grep -q dune-weaver-touch; then
         echo ""
         echo -e "${BLUE}Updating touch app...${NC}"
         cd "$touch_dir"
