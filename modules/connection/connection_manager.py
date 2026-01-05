@@ -648,11 +648,6 @@ def home(timeout=90):
                     # Unlock machine to clear any alarm state
                     state.conn.send("$X\n")
                     time.sleep(0.5)
-                    # Set current Y position as zero if Y didn't home
-                    if not state.homed_y:
-                        state.conn.send("G92 Y0\n")
-                        logger.info("Set current Y position as zero (G92 Y0)")
-                        time.sleep(0.2)
 
                 # Wait for idle state after $H
                 logger.info("Waiting for device to reach idle state after $H...")
