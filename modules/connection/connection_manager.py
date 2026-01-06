@@ -277,25 +277,32 @@ def connect_device(homing=True):
 def check_and_unlock_alarm():
     """
     Check if GRBL is in alarm state and unlock it with $X if needed.
-    Uses $A command to log detailed alarm information before unlocking.
     Returns True if device is ready (unlocked or no alarm), False on error.
+
+    Note: If sensors are physically triggered (Pn:XY), the alarm may persist
+    but we still return True to allow homing to proceed.
     """
     try:
         logger.info("Checking device status for alarm state...")
 
+        # Clear any pending data in buffer first
+        while state.conn.in_waiting() > 0:
+            state.conn.readline()
+
         # Send status query
         state.conn.send('?\n')
-        time.sleep(0.1)
+        time.sleep(0.2)
 
         # Read response with timeout
-        max_attempts = 5
+        max_attempts = 10
         response = None
 
         for attempt in range(max_attempts):
             if state.conn.in_waiting() > 0:
                 response = state.conn.readline()
                 logger.debug(f"Status response: {response}")
-                break
+                if response and ('<' in response or 'Alarm' in response or 'Idle' in response):
+                    break  # Got a valid status response
             time.sleep(0.1)
 
         if not response:
@@ -306,34 +313,38 @@ def check_and_unlock_alarm():
         if "Alarm" in response:
             logger.warning(f"Device in ALARM state: {response}")
 
-            # Query alarm details with $A command
-            logger.info("Querying alarm details with $A command...")
-            state.conn.send('$A\n')
-            time.sleep(0.2)
-
-            # Read and log alarm details
-            for attempt in range(max_attempts):
-                if state.conn.in_waiting() > 0:
-                    alarm_details = state.conn.readline()
-                    logger.warning(f"Alarm details: {alarm_details}")
-                    break
-                time.sleep(0.1)
-
             # Send unlock command
             logger.info("Sending $X to unlock...")
             state.conn.send('$X\n')
-            time.sleep(0.5)
+            time.sleep(1.0)  # Give more time for unlock to process
+
+            # Clear buffer before verification
+            while state.conn.in_waiting() > 0:
+                discarded = state.conn.readline()
+                logger.debug(f"Discarded response: {discarded}")
 
             # Verify unlock succeeded
             state.conn.send('?\n')
-            time.sleep(0.1)
+            time.sleep(0.3)
 
-            verify_response = state.conn.readline()
-            logger.debug(f"Verification response: {verify_response}")
+            verify_response = None
+            for attempt in range(max_attempts):
+                if state.conn.in_waiting() > 0:
+                    verify_response = state.conn.readline()
+                    logger.debug(f"Verification response: {verify_response}")
+                    if verify_response and '<' in verify_response:
+                        break
+                time.sleep(0.1)
 
-            if "Alarm" in verify_response:
-                logger.error("Failed to unlock device from alarm state")
-                return False
+            if verify_response and "Alarm" in verify_response:
+                # Check if pins are physically triggered (Pn: in response)
+                if "Pn:" in verify_response:
+                    logger.warning(f"Alarm persists due to triggered sensors: {verify_response}")
+                    logger.warning("Proceeding anyway - homing may clear the sensor state")
+                    return True  # Let homing attempt to proceed
+                else:
+                    logger.error("Failed to unlock device from alarm state")
+                    return False
             else:
                 logger.info("Device successfully unlocked")
                 return True
