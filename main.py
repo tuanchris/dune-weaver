@@ -107,6 +107,10 @@ async def lifespan(app: FastAPI):
     global process_pool
     process_pool = ProcessPoolExecutor(max_workers=process_pool_size)
     logger.info(f"Initialized process pool with {process_pool_size} workers (detected {cpu_count} cores total)")
+    
+    # Share process pool with preview module
+    from modules.core.preview import set_process_pool
+    set_process_pool(process_pool)
 
     try:
         connection_manager.connect_device()
@@ -242,14 +246,10 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down Dune Weaver application...")
 
-    # Shutdown process pools
+    # Shutdown process pool
     if process_pool:
         process_pool.shutdown(wait=True)
         logger.info("Process pool shutdown complete")
-    
-    # Shutdown preview generation process pool
-    from modules.core.preview import shutdown_process_pool
-    shutdown_process_pool()
 
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
@@ -2753,16 +2753,12 @@ def signal_handler(signum, frame):
         if state.led_controller:
             state.led_controller.set_power(0)
 
-        # Shutdown process pools to prevent semaphore leaks
+        # Shutdown process pool to prevent semaphore leaks
         global process_pool
         if process_pool:
             logger.info("Shutting down process pool...")
             process_pool.shutdown(wait=False, cancel_futures=True)
             process_pool = None
-        
-        # Shutdown preview generation process pool
-        from modules.core.preview import shutdown_process_pool
-        shutdown_process_pool()
 
         # Stop pattern manager motion controller
         pattern_manager.motion_controller.stop()

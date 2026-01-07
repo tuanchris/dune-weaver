@@ -8,34 +8,29 @@ import math
 import asyncio
 import sys
 import logging
-from concurrent.futures import ProcessPoolExecutor
 from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
-# Process pool for preview generation - separate processes = separate GILs
-_process_pool = None
+# Shared process pool - set by main.py at startup
+_shared_pool = None
 
 
-def _get_cpu_count():
-    """Get the number of available CPU cores."""
-    try:
-        return os.cpu_count() or 1
-    except Exception:
-        return 1
-
-
-def _get_optimal_worker_count():
-    """Calculate optimal worker count based on available CPUs.
+def set_process_pool(pool):
+    """Set the shared process pool for preview generation.
     
-    - Leave at least 1 CPU for motion control thread
-    - Use at most 3 workers (diminishing returns beyond that)
-    - Minimum 1 worker
+    Called by main.py at startup to share a single pool across modules.
     """
-    cpu_count = _get_cpu_count()
-    # Reserve 1 CPU for motion control, use rest for workers (max 3)
-    workers = min(3, max(1, cpu_count - 1))
-    return workers
+    global _shared_pool
+    _shared_pool = pool
+    logger.debug("Preview module using shared process pool")
+
+
+def _get_process_pool():
+    """Get the shared process pool."""
+    if _shared_pool is None:
+        raise RuntimeError("Process pool not initialized - call set_process_pool() first")
+    return _shared_pool
 
 
 def _get_worker_cpu_affinity():
@@ -44,30 +39,11 @@ def _get_worker_cpu_affinity():
     Returns CPUs 1 through N-1 (leaving CPU 0 for motion control),
     or None if affinity shouldn't be set.
     """
-    cpu_count = _get_cpu_count()
+    cpu_count = os.cpu_count() or 1
     if cpu_count <= 1:
         return None  # Single core - don't set affinity
     # Use all CPUs except CPU 0 (reserved for motion control)
     return set(range(1, cpu_count))
-
-
-def _get_process_pool():
-    """Get or create the process pool for preview generation."""
-    global _process_pool
-    if _process_pool is None:
-        worker_count = _get_optimal_worker_count()
-        _process_pool = ProcessPoolExecutor(max_workers=worker_count)
-        logger.info(f"Created ProcessPoolExecutor for preview generation ({worker_count} workers, {_get_cpu_count()} CPUs detected)")
-    return _process_pool
-
-
-def shutdown_process_pool():
-    """Shutdown the process pool gracefully."""
-    global _process_pool
-    if _process_pool is not None:
-        _process_pool.shutdown(wait=False)
-        _process_pool = None
-        logger.info("Preview process pool shut down")
 
 
 def _setup_worker_process():
