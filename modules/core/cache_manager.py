@@ -5,6 +5,7 @@ import asyncio
 import logging
 from pathlib import Path
 from modules.core.pattern_manager import list_theta_rho_files, THETA_RHO_DIR, parse_theta_rho_file
+from modules.core.preview import _get_process_pool
 
 logger = logging.getLogger(__name__)
 
@@ -15,12 +16,8 @@ def _is_pattern_running() -> bool:
     return bool(state.current_playing_file and not state.pause_requested)
 
 
-def _set_worker_thread_affinity():
-    """Pin current thread to CPUs 1-3, leaving CPU 0 for motion control.
-    
-    This prevents cache contention between cache generation and the
-    real-time motion control thread on CPU 0.
-    """
+def _setup_worker_process():
+    """Setup worker process with CPU affinity and lower priority."""
     import sys
     if sys.platform != 'linux':
         return
@@ -28,16 +25,21 @@ def _set_worker_thread_affinity():
     try:
         os.sched_setaffinity(0, {1, 2, 3})
     except Exception:
-        pass  # Best effort - don't block on failure
-
-
-def _parse_file_isolated(pattern_path):
-    """Parse a pattern file on CPUs 1-3 to avoid contention with motion thread."""
-    _set_worker_thread_affinity()
+        pass
+    
     try:
-        os.nice(10)  # Lower priority
+        os.nice(10)
     except Exception:
         pass
+
+
+def _parse_file_in_process(pattern_path):
+    """Parse a pattern file in a worker process.
+    
+    This runs in a separate process with its own GIL,
+    so it cannot block the motion control thread.
+    """
+    _setup_worker_process()
     return parse_theta_rho_file(pattern_path)
 
 
@@ -495,7 +497,12 @@ async def generate_image_preview(pattern_file):
             pattern_path = os.path.join(THETA_RHO_DIR, pattern_file)
             
             try:
-                coordinates = await asyncio.to_thread(_parse_file_isolated, pattern_path)
+                loop = asyncio.get_event_loop()
+                coordinates = await loop.run_in_executor(
+                    _get_process_pool(),
+                    _parse_file_in_process,
+                    pattern_path
+                )
                 
                 if coordinates:
                     first_coord = {"x": coordinates[0][0], "y": coordinates[0][1]}
@@ -669,8 +676,13 @@ async def generate_metadata_cache():
                 cache_progress["current_file"] = file_name
                 
                 try:
-                    # Parse file to get metadata (on CPUs 1-3 to avoid motion thread contention)
-                    coordinates = await asyncio.to_thread(_parse_file_isolated, pattern_path)
+                    # Parse file in separate process to avoid GIL contention with motion thread
+                    loop = asyncio.get_event_loop()
+                    coordinates = await loop.run_in_executor(
+                        _get_process_pool(),
+                        _parse_file_in_process,
+                        pattern_path
+                    )
                     if coordinates:
                         first_coord = {"x": coordinates[0][0], "y": coordinates[0][1]}
                         last_coord = {"x": coordinates[-1][0], "y": coordinates[-1][1]}

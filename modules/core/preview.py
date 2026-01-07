@@ -1,68 +1,101 @@
-"""Preview module for generating image previews of patterns."""
+"""Preview module for generating image previews of patterns.
+
+Uses ProcessPoolExecutor to run CPU-intensive preview generation in separate
+processes, completely eliminating Python GIL contention with the motion control thread.
+"""
 import os
 import math
 import asyncio
 import sys
 import logging
+from concurrent.futures import ProcessPoolExecutor
 from io import BytesIO
-from PIL import Image, ImageDraw
-from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR
 
 logger = logging.getLogger(__name__)
 
+# Process pool for preview generation - separate processes = separate GILs
+# Limited to 2 workers to avoid overloading Pi Zero 2 W
+_process_pool = None
 
-def _set_worker_thread_affinity():
-    """Pin current thread to CPUs 1-3, leaving CPU 0 for motion control.
+
+def _get_process_pool():
+    """Get or create the process pool for preview generation."""
+    global _process_pool
+    if _process_pool is None:
+        # Use 2 workers max - leaves CPU capacity for motion control
+        _process_pool = ProcessPoolExecutor(max_workers=2)
+        logger.info("Created ProcessPoolExecutor for preview generation (2 workers)")
+    return _process_pool
+
+
+def shutdown_process_pool():
+    """Shutdown the process pool gracefully."""
+    global _process_pool
+    if _process_pool is not None:
+        _process_pool.shutdown(wait=False)
+        _process_pool = None
+        logger.info("Preview process pool shut down")
+
+
+def _setup_worker_process():
+    """Setup function called at start of worker process.
     
-    This prevents cache contention between preview generation and the
-    real-time motion control thread on CPU 0.
+    Configures CPU affinity and priority for the worker process.
+    This runs once when each worker process starts.
     """
     if sys.platform != 'linux':
         return
     
     try:
-        # Pin to CPUs 1, 2, 3 - leave CPU 0 dedicated to motion thread
+        # Pin worker process to CPUs 1-3, leaving CPU 0 for motion control
         os.sched_setaffinity(0, {1, 2, 3})
-        logger.debug("Preview thread pinned to CPUs 1-3")
-    except Exception as e:
-        logger.debug(f"Could not set CPU affinity: {e}")
-
-
-def _lower_process_priority():
-    """Lower the current thread/process priority for CPU-intensive work.
-    
-    This reduces impact on time-sensitive operations like UART communication
-    during pattern execution. Works without special permissions.
-    """
-    if sys.platform != 'linux':
-        return
+    except Exception:
+        pass
     
     try:
-        # Positive nice values lower priority (no permissions needed)
+        # Lower priority (positive nice = lower priority)
         os.nice(10)
     except Exception:
-        pass  # Silently ignore - priority lowering is best-effort
+        pass
 
 
-def _parse_file_isolated(file_path):
-    """Parse a pattern file on CPUs 1-3 to avoid contention with motion thread."""
-    _set_worker_thread_affinity()
-    _lower_process_priority()
-    return parse_theta_rho_file(file_path)
-
-
-def _generate_preview_sync(file_path, coordinates, format):
-    """Synchronous preview generation at lower priority on isolated CPUs.
+def _generate_preview_in_process(pattern_file, format='WEBP'):
+    """Generate preview entirely within a worker process.
     
-    Runs CPU-intensive PIL operations at reduced priority on CPUs 1-3,
-    leaving CPU 0 dedicated to the motion control thread for smooth UART.
+    This function runs in a separate process with its own GIL,
+    so it cannot block the motion control thread's Python execution.
+    
+    All imports are done inside the function to ensure they happen
+    in the worker process, not the main process.
     """
-    _set_worker_thread_affinity()  # Pin to CPUs 1-3
-    _lower_process_priority()       # Lower nice priority
+    # Setup worker process (CPU affinity + nice)
+    _setup_worker_process()
     
-    # Use 1000x1000 for high quality rendering
+    # Import dependencies in the worker process
+    from PIL import Image, ImageDraw
+    from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR
+    
+    file_path = os.path.join(THETA_RHO_DIR, pattern_file)
+    
+    # Parse the pattern file
+    coordinates = []
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            for line in file:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                try:
+                    theta, rho = map(float, line.split())
+                    coordinates.append((theta, rho))
+                except ValueError:
+                    continue
+    except Exception as e:
+        logger.error(f"Error reading file {file_path}: {e}")
+        coordinates = []
+    
+    # Image generation parameters
     RENDER_SIZE = 2048
-    # Final display size
     DISPLAY_SIZE = 512
     
     if not coordinates:
@@ -86,7 +119,7 @@ def _generate_preview_sync(file_path, coordinates, format):
         img_byte_arr.seek(0)
         return img_byte_arr.getvalue()
 
-    # Image drawing parameters
+    # Create image and draw pattern
     img = Image.new('RGBA', (RENDER_SIZE, RENDER_SIZE), (255, 255, 255, 0))
     draw = ImageDraw.Draw(img)
     
@@ -108,12 +141,11 @@ def _generate_preview_sync(file_path, coordinates, format):
         x, y = points_to_draw[0]
         draw.ellipse([(x-r, y-r), (x+r, y+r)], fill=LINE_COLOR)
 
-    # Scale down to display size with high-quality resampling
+    # Scale down and rotate
     img = img.resize((DISPLAY_SIZE, DISPLAY_SIZE), Image.Resampling.LANCZOS)
-    
-    # Rotate the image 180 degrees
     img = img.rotate(180)
 
+    # Save to bytes
     img_byte_arr = BytesIO()
     img.save(img_byte_arr, format=format, lossless=False, alpha_quality=20, method=0)
     img_byte_arr.seek(0)
@@ -121,15 +153,23 @@ def _generate_preview_sync(file_path, coordinates, format):
 
 
 async def generate_preview_image(pattern_file, format='WEBP'):
-    """Generate a preview for a pattern file, optimized for a 300x300 view.
+    """Generate a preview for a pattern file.
     
-    Runs CPU-intensive work in a thread pool at lower priority to avoid
-    impacting UART communication during pattern execution.
+    Runs in a separate process via ProcessPoolExecutor to completely
+    eliminate GIL contention with the motion control thread.
     """
-    file_path = os.path.join(THETA_RHO_DIR, pattern_file)
+    loop = asyncio.get_event_loop()
+    pool = _get_process_pool()
     
-    # Parse coordinates on CPUs 1-3 to avoid contention with motion thread on CPU 0
-    coordinates = await asyncio.to_thread(_parse_file_isolated, file_path)
-    
-    # Run CPU-intensive PIL work in thread at lower priority on CPUs 1-3
-    return await asyncio.to_thread(_generate_preview_sync, file_path, coordinates, format)
+    try:
+        # Run preview generation in a separate process (separate GIL)
+        result = await loop.run_in_executor(
+            pool,
+            _generate_preview_in_process,
+            pattern_file,
+            format
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error generating preview for {pattern_file}: {e}")
+        return None
