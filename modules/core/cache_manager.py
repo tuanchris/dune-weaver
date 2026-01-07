@@ -8,6 +8,21 @@ from modules.core.pattern_manager import list_theta_rho_files, THETA_RHO_DIR, pa
 
 logger = logging.getLogger(__name__)
 
+
+def _is_pattern_running() -> bool:
+    """Check if a pattern is currently being executed (non-async version)."""
+    from modules.core.state import state
+    return bool(state.current_playing_file and not state.pause_requested)
+
+
+async def _should_throttle_cache() -> bool:
+    """Check if cache generation should be throttled due to pattern execution.
+    
+    When a pattern is running, cache generation yields CPU time to prevent
+    UART stuttering on resource-constrained devices like Pi Zero 2 W.
+    """
+    return _is_pattern_running()
+
 # Global cache progress state
 cache_progress = {
     "is_running": False,
@@ -440,6 +455,10 @@ async def generate_image_preview(pattern_file):
     from modules.core.pattern_manager import parse_theta_rho_file
     
     try:
+        # Throttle when pattern is running to prevent UART stuttering
+        if await _should_throttle_cache():
+            await asyncio.sleep(0.5)  # Yield significant CPU time
+        
         logger.debug(f"Starting preview generation for {pattern_file}")
         
         # Check if we need to update metadata cache
@@ -560,6 +579,10 @@ async def generate_all_image_previews():
             # Log progress
             progress = min(i + batch_size, total_files)
             logger.info(f"Image cache generation progress: {progress}/{total_files} files processed")
+            
+            # Throttle between batches when pattern is running to prevent UART stuttering
+            if await _should_throttle_cache():
+                await asyncio.sleep(1.0)  # Longer delay between batches during playback
         
         logger.info(f"Image cache generation completed: {successful}/{total_files} patterns cached successfully, {skipped_files} patterns skipped (already cached)")
         
@@ -646,8 +669,12 @@ async def generate_metadata_cache():
             logger.info(f"Metadata cache generation progress: {progress}/{total_files} files processed")
             
             # Delay between batches for system recovery
+            # Use longer delay when pattern is running to prevent UART stuttering
             if i + batch_size < total_files:
-                await asyncio.sleep(0.3)
+                if _is_pattern_running():
+                    await asyncio.sleep(1.0)  # Longer delay during playback
+                else:
+                    await asyncio.sleep(0.3)
         
         logger.info(f"Metadata cache generation completed: {successful}/{total_files} patterns cached successfully, {skipped_files} patterns skipped (already cached)")
         

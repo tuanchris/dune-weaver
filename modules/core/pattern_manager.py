@@ -238,14 +238,97 @@ class MotionControlThread:
         self.paused = False
 
     def start(self):
-        """Start the motion control thread."""
+        """Start the motion control thread with elevated priority."""
         if self.thread and self.thread.is_alive():
             return
 
         self.running = True
         self.thread = threading.Thread(target=self._motion_loop, daemon=True)
         self.thread.start()
+        
+        # Elevate thread priority after start for QoS
+        self._set_thread_priority()
+        self._set_cpu_affinity()
         logger.info("Motion control thread started")
+
+    def _set_thread_priority(self):
+        """Set real-time priority for motion thread to prevent UART stuttering.
+        
+        Attempts SCHED_RR (real-time round-robin) first, falls back to nice.
+        Requires CAP_SYS_NICE capability for full real-time scheduling.
+        """
+        import os
+        import sys
+        
+        # Only attempt on Linux (Raspberry Pi)
+        if sys.platform != 'linux':
+            logger.debug("Thread priority elevation only supported on Linux")
+            return
+        
+        tid = self.thread.native_id
+        if not tid:
+            logger.warning("Could not get thread native_id for priority elevation")
+            return
+        
+        # Try SCHED_RR (real-time round-robin) with moderate priority
+        try:
+            import ctypes
+            import ctypes.util
+            
+            libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
+            
+            SCHED_RR = 2
+            
+            class sched_param(ctypes.Structure):
+                _fields_ = [('sched_priority', ctypes.c_int)]
+            
+            # Priority 50 out of 1-99 range (moderate real-time priority)
+            param = sched_param(50)
+            result = libc.sched_setscheduler(tid, SCHED_RR, ctypes.byref(param))
+            
+            if result == 0:
+                logger.info(f"Motion thread set to SCHED_RR priority 50 (real-time)")
+                return
+            else:
+                errno = ctypes.get_errno()
+                logger.debug(f"SCHED_RR failed with errno {errno}, trying nice fallback")
+        except Exception as e:
+            logger.debug(f"SCHED_RR setup failed: {e}, trying nice fallback")
+        
+        # Fallback: try to use negative nice value (still requires CAP_SYS_NICE)
+        try:
+            # Note: This sets nice for the entire process, not just the thread
+            # But it's better than nothing when SCHED_RR isn't available
+            current_nice = os.nice(0)
+            if current_nice > -10:
+                os.nice(-10 - current_nice)  # Try to get to -10
+                logger.info("Process priority elevated via nice(-10)")
+        except PermissionError:
+            logger.info("Thread priority elevation requires CAP_SYS_NICE capability - using default priority")
+        except Exception as e:
+            logger.debug(f"Nice priority elevation failed: {e}")
+
+    def _set_cpu_affinity(self):
+        """Pin motion thread to dedicated CPU core for consistent timing.
+        
+        On Pi Zero 2 W (4 cores), pins to CPU 0 so other work uses CPUs 1-3.
+        """
+        import os
+        import sys
+        
+        if sys.platform != 'linux':
+            return
+        
+        tid = self.thread.native_id
+        if not tid:
+            return
+        
+        try:
+            # Pin motion thread to CPU 0
+            os.sched_setaffinity(tid, {0})
+            logger.info("Motion thread pinned to CPU 0 for consistent timing")
+        except Exception as e:
+            logger.debug(f"CPU affinity not set: {e}")
 
     def stop(self):
         """Stop the motion control thread."""

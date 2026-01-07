@@ -3,6 +3,8 @@ services:
     build: . # Uncomment this if you need to build
     image: ghcr.io/tuanchris/dune-weaver:main # Use latest production image
     restart: always
+    cap_add:
+      - SYS_NICE  # Enable real-time thread priority for smooth UART communication
     # ports:
     #   - "8080:8080" # Map port 8080 of the container to 8080 of the host (access via http://localhost:8080)
     network_mode: "host" # Use host network for device access
