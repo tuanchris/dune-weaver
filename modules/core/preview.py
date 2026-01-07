@@ -11,6 +11,23 @@ from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR
 logger = logging.getLogger(__name__)
 
 
+def _set_worker_thread_affinity():
+    """Pin current thread to CPUs 1-3, leaving CPU 0 for motion control.
+    
+    This prevents cache contention between preview generation and the
+    real-time motion control thread on CPU 0.
+    """
+    if sys.platform != 'linux':
+        return
+    
+    try:
+        # Pin to CPUs 1, 2, 3 - leave CPU 0 dedicated to motion thread
+        os.sched_setaffinity(0, {1, 2, 3})
+        logger.debug("Preview thread pinned to CPUs 1-3")
+    except Exception as e:
+        logger.debug(f"Could not set CPU affinity: {e}")
+
+
 def _lower_process_priority():
     """Lower the current thread/process priority for CPU-intensive work.
     
@@ -27,13 +44,21 @@ def _lower_process_priority():
         pass  # Silently ignore - priority lowering is best-effort
 
 
-def _generate_preview_sync(file_path, coordinates, format):
-    """Synchronous preview generation at lower priority.
-    
-    Runs CPU-intensive PIL operations at reduced priority to avoid
-    starving the motion control thread.
-    """
+def _parse_file_isolated(file_path):
+    """Parse a pattern file on CPUs 1-3 to avoid contention with motion thread."""
+    _set_worker_thread_affinity()
     _lower_process_priority()
+    return parse_theta_rho_file(file_path)
+
+
+def _generate_preview_sync(file_path, coordinates, format):
+    """Synchronous preview generation at lower priority on isolated CPUs.
+    
+    Runs CPU-intensive PIL operations at reduced priority on CPUs 1-3,
+    leaving CPU 0 dedicated to the motion control thread for smooth UART.
+    """
+    _set_worker_thread_affinity()  # Pin to CPUs 1-3
+    _lower_process_priority()       # Lower nice priority
     
     # Use 1000x1000 for high quality rendering
     RENDER_SIZE = 2048
@@ -103,8 +128,8 @@ async def generate_preview_image(pattern_file, format='WEBP'):
     """
     file_path = os.path.join(THETA_RHO_DIR, pattern_file)
     
-    # Parse coordinates first (I/O bound)
-    coordinates = await asyncio.to_thread(parse_theta_rho_file, file_path)
+    # Parse coordinates on CPUs 1-3 to avoid contention with motion thread on CPU 0
+    coordinates = await asyncio.to_thread(_parse_file_isolated, file_path)
     
-    # Run CPU-intensive PIL work in thread at lower priority
+    # Run CPU-intensive PIL work in thread at lower priority on CPUs 1-3
     return await asyncio.to_thread(_generate_preview_sync, file_path, coordinates, format)
