@@ -17,13 +17,20 @@ def _is_pattern_running() -> bool:
 
 
 def _setup_worker_process():
-    """Setup worker process with CPU affinity and lower priority."""
+    """Setup worker process with CPU affinity and lower priority.
+    
+    Dynamically determines available CPUs and pins to all except CPU 0.
+    """
     import sys
     if sys.platform != 'linux':
         return
     
     try:
-        os.sched_setaffinity(0, {1, 2, 3})
+        cpu_count = os.cpu_count() or 1
+        if cpu_count > 1:
+            # Use all CPUs except CPU 0 (reserved for motion control)
+            worker_cpus = set(range(1, cpu_count))
+            os.sched_setaffinity(0, worker_cpus)
     except Exception:
         pass
     

@@ -14,17 +14,50 @@ from io import BytesIO
 logger = logging.getLogger(__name__)
 
 # Process pool for preview generation - separate processes = separate GILs
-# Limited to 2 workers to avoid overloading Pi Zero 2 W
 _process_pool = None
+
+
+def _get_cpu_count():
+    """Get the number of available CPU cores."""
+    try:
+        return os.cpu_count() or 1
+    except Exception:
+        return 1
+
+
+def _get_optimal_worker_count():
+    """Calculate optimal worker count based on available CPUs.
+    
+    - Leave at least 1 CPU for motion control thread
+    - Use at most 3 workers (diminishing returns beyond that)
+    - Minimum 1 worker
+    """
+    cpu_count = _get_cpu_count()
+    # Reserve 1 CPU for motion control, use rest for workers (max 3)
+    workers = min(3, max(1, cpu_count - 1))
+    return workers
+
+
+def _get_worker_cpu_affinity():
+    """Get the set of CPUs for worker processes.
+    
+    Returns CPUs 1 through N-1 (leaving CPU 0 for motion control),
+    or None if affinity shouldn't be set.
+    """
+    cpu_count = _get_cpu_count()
+    if cpu_count <= 1:
+        return None  # Single core - don't set affinity
+    # Use all CPUs except CPU 0 (reserved for motion control)
+    return set(range(1, cpu_count))
 
 
 def _get_process_pool():
     """Get or create the process pool for preview generation."""
     global _process_pool
     if _process_pool is None:
-        # Use 2 workers max - leaves CPU capacity for motion control
-        _process_pool = ProcessPoolExecutor(max_workers=2)
-        logger.info("Created ProcessPoolExecutor for preview generation (2 workers)")
+        worker_count = _get_optimal_worker_count()
+        _process_pool = ProcessPoolExecutor(max_workers=worker_count)
+        logger.info(f"Created ProcessPoolExecutor for preview generation ({worker_count} workers, {_get_cpu_count()} CPUs detected)")
     return _process_pool
 
 
@@ -46,11 +79,13 @@ def _setup_worker_process():
     if sys.platform != 'linux':
         return
     
-    try:
-        # Pin worker process to CPUs 1-3, leaving CPU 0 for motion control
-        os.sched_setaffinity(0, {1, 2, 3})
-    except Exception:
-        pass
+    # Set CPU affinity dynamically based on available cores
+    worker_cpus = _get_worker_cpu_affinity()
+    if worker_cpus:
+        try:
+            os.sched_setaffinity(0, worker_cpus)
+        except Exception:
+            pass
     
     try:
         # Lower priority (positive nice = lower priority)

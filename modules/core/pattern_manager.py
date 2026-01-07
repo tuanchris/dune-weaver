@@ -311,7 +311,8 @@ class MotionControlThread:
     def _set_cpu_affinity(self):
         """Pin motion thread to dedicated CPU core for consistent timing.
         
-        On Pi Zero 2 W (4 cores), pins to CPU 0 so other work uses CPUs 1-3.
+        Pins to CPU 0 so worker processes can use the remaining CPUs.
+        On single-core systems, skips affinity setting.
         """
         import os
         import sys
@@ -324,9 +325,14 @@ class MotionControlThread:
             return
         
         try:
+            cpu_count = os.cpu_count() or 1
+            if cpu_count <= 1:
+                logger.debug("Single-core system detected, skipping CPU affinity")
+                return
+            
             # Pin motion thread to CPU 0
             os.sched_setaffinity(tid, {0})
-            logger.info("Motion thread pinned to CPU 0 for consistent timing")
+            logger.info(f"Motion thread pinned to CPU 0 ({cpu_count} CPUs detected)")
         except Exception as e:
             logger.debug(f"CPU affinity not set: {e}")
 
