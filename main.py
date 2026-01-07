@@ -30,21 +30,13 @@ import json
 import base64
 import time
 import argparse
-from concurrent.futures import ProcessPoolExecutor
-import multiprocessing
 import subprocess
 import platform
+from modules.core import process_pool as pool_module
 
 # Get log level from environment variable, default to INFO
 log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
 log_level = getattr(logging, log_level_str, logging.INFO)
-
-# Create a process pool for CPU-intensive tasks
-# Limit to reasonable number of workers for embedded systems
-cpu_count = multiprocessing.cpu_count()
-# Maximum 3 workers (leaving 1 for motion), minimum 1
-process_pool_size = min(3, max(1, cpu_count - 1))
-process_pool = None  # Will be initialized in lifespan
 
 logging.basicConfig(
     level=log_level,
@@ -103,14 +95,8 @@ async def lifespan(app: FastAPI):
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Initialize process pool for CPU-intensive tasks
-    global process_pool
-    process_pool = ProcessPoolExecutor(max_workers=process_pool_size)
-    logger.info(f"Initialized process pool with {process_pool_size} workers (detected {cpu_count} cores total)")
-    
-    # Share process pool with preview module
-    from modules.core.preview import set_process_pool
-    set_process_pool(process_pool)
+    # Initialize shared process pool for CPU-intensive tasks
+    pool_module.init_pool()
 
     try:
         connection_manager.connect_device()
@@ -247,9 +233,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down Dune Weaver application...")
 
     # Shutdown process pool
-    if process_pool:
-        process_pool.shutdown(wait=True)
-        logger.info("Process pool shutdown complete")
+    pool_module.shutdown_pool(wait=True)
 
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
@@ -1240,7 +1224,7 @@ async def get_theta_rho_coordinates(request: GetCoordinatesRequest):
         # Parse the theta-rho file in a separate process for CPU-intensive work
         # This prevents blocking the motion control thread
         loop = asyncio.get_event_loop()
-        coordinates = await loop.run_in_executor(process_pool, parse_theta_rho_file, file_path)
+        coordinates = await loop.run_in_executor(pool_module.get_pool(), parse_theta_rho_file, file_path)
         
         if not coordinates:
             raise HTTPException(status_code=400, detail="No valid coordinates found in file")
@@ -2325,7 +2309,7 @@ async def preview_thr_batch(request: dict):
                 logger.debug(f"Metadata cache miss for {file_name}, parsing file")
                 # Use process pool for CPU-intensive parsing
                 loop = asyncio.get_event_loop()
-                coordinates = await loop.run_in_executor(process_pool, parse_theta_rho_file, pattern_file_path)
+                coordinates = await loop.run_in_executor(pool_module.get_pool(), parse_theta_rho_file, pattern_file_path)
                 first_coord = coordinates[0] if coordinates else None
                 last_coord = coordinates[-1] if coordinates else None
                 first_coord_obj = {"x": first_coord[0], "y": first_coord[1]} if first_coord else None
@@ -2754,11 +2738,7 @@ def signal_handler(signum, frame):
             state.led_controller.set_power(0)
 
         # Shutdown process pool to prevent semaphore leaks
-        global process_pool
-        if process_pool:
-            logger.info("Shutting down process pool...")
-            process_pool.shutdown(wait=False, cancel_futures=True)
-            process_pool = None
+        pool_module.shutdown_pool(wait=False, cancel_futures=True)
 
         # Stop pattern manager motion controller
         pattern_manager.motion_controller.stop()

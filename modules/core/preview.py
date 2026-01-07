@@ -6,68 +6,11 @@ processes, completely eliminating Python GIL contention with the motion control 
 import os
 import math
 import asyncio
-import sys
 import logging
 from io import BytesIO
+from modules.core import process_pool as pool_module
 
 logger = logging.getLogger(__name__)
-
-# Shared process pool - set by main.py at startup
-_shared_pool = None
-
-
-def set_process_pool(pool):
-    """Set the shared process pool for preview generation.
-    
-    Called by main.py at startup to share a single pool across modules.
-    """
-    global _shared_pool
-    _shared_pool = pool
-    logger.debug("Preview module using shared process pool")
-
-
-def _get_process_pool():
-    """Get the shared process pool."""
-    if _shared_pool is None:
-        raise RuntimeError("Process pool not initialized - call set_process_pool() first")
-    return _shared_pool
-
-
-def _get_worker_cpu_affinity():
-    """Get the set of CPUs for worker processes.
-    
-    Returns CPUs 1 through N-1 (leaving CPU 0 for motion control),
-    or None if affinity shouldn't be set.
-    """
-    cpu_count = os.cpu_count() or 1
-    if cpu_count <= 1:
-        return None  # Single core - don't set affinity
-    # Use all CPUs except CPU 0 (reserved for motion control)
-    return set(range(1, cpu_count))
-
-
-def _setup_worker_process():
-    """Setup function called at start of worker process.
-    
-    Configures CPU affinity and priority for the worker process.
-    This runs once when each worker process starts.
-    """
-    if sys.platform != 'linux':
-        return
-    
-    # Set CPU affinity dynamically based on available cores
-    worker_cpus = _get_worker_cpu_affinity()
-    if worker_cpus:
-        try:
-            os.sched_setaffinity(0, worker_cpus)
-        except Exception:
-            pass
-    
-    try:
-        # Lower priority (positive nice = lower priority)
-        os.nice(10)
-    except Exception:
-        pass
 
 
 def _generate_preview_in_process(pattern_file, format='WEBP'):
@@ -80,7 +23,7 @@ def _generate_preview_in_process(pattern_file, format='WEBP'):
     in the worker process, not the main process.
     """
     # Setup worker process (CPU affinity + nice)
-    _setup_worker_process()
+    pool_module.setup_worker_process()
     
     # Import dependencies in the worker process
     from PIL import Image, ImageDraw
@@ -170,7 +113,7 @@ async def generate_preview_image(pattern_file, format='WEBP'):
     eliminate GIL contention with the motion control thread.
     """
     loop = asyncio.get_event_loop()
-    pool = _get_process_pool()
+    pool = pool_module.get_pool()
     
     try:
         # Run preview generation in a separate process (separate GIL)
