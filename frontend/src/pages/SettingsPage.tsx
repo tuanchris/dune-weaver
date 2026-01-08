@@ -177,6 +177,7 @@ export function SettingsPage() {
     try {
       const response = await fetch('/serial_status')
       const data = await response.json()
+      console.log('Serial status response:', data)
       setPorts(data.available_ports || [])
       setIsConnected(data.connected || false)
       setConnectionStatus(data.connected ? 'Connected' : 'Disconnected')
@@ -187,6 +188,11 @@ export function SettingsPage() {
       console.error('Error fetching ports:', error)
     }
   }
+
+  // Always fetch ports on mount since connection is the default section
+  useEffect(() => {
+    fetchPorts()
+  }, [])
 
   const fetchSettings = async () => {
     try {
@@ -507,26 +513,24 @@ export function SettingsPage() {
             <div className="space-y-3">
               <Label>Available Serial Ports</Label>
               <div className="flex gap-3">
-                <div className="relative flex-1" style={{ zIndex: 50 }}>
-                  <Select value={selectedPort} onValueChange={setSelectedPort}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a port..." />
-                    </SelectTrigger>
-                    <SelectContent position="popper" sideOffset={4}>
-                      {ports.length === 0 ? (
-                        <SelectItem value="_none" disabled>
-                          No ports available
+                <Select value={selectedPort} onValueChange={setSelectedPort}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Select a port..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ports.length === 0 ? (
+                      <div className="py-6 text-center text-sm text-muted-foreground">
+                        No serial ports found
+                      </div>
+                    ) : (
+                      ports.map((port) => (
+                        <SelectItem key={port.port} value={port.port}>
+                          {port.port} - {port.description}
                         </SelectItem>
-                      ) : (
-                        ports.map((port) => (
-                          <SelectItem key={port.port} value={port.port}>
-                            {port.port} - {port.description}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
                 <Button
                   onClick={handleConnect}
                   disabled={isLoading === 'connect' || !selectedPort || isConnected}
