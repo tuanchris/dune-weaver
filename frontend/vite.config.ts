@@ -11,7 +11,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: parseInt(process.env.PORT || '80'),
+    port: parseInt(process.env.PORT || '5173'),
     proxy: {
       // WebSocket endpoints
       '/ws': {

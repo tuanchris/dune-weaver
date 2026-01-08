@@ -30,6 +30,8 @@ export function Layout() {
 
   // Connection status
   const [isConnected, setIsConnected] = useState(false)
+  const [isBackendConnected, setIsBackendConnected] = useState(false)
+  const [connectionAttempts, setConnectionAttempts] = useState(0)
   const wsRef = useRef<WebSocket | null>(null)
 
   // Fetch app settings
@@ -77,6 +79,11 @@ export function Layout() {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       const ws = new WebSocket(`${protocol}//${window.location.host}/ws/status`)
 
+      ws.onopen = () => {
+        setIsBackendConnected(true)
+        setConnectionAttempts(0)
+      }
+
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
@@ -90,8 +97,14 @@ export function Layout() {
       }
 
       ws.onclose = () => {
+        setIsBackendConnected(false)
+        setConnectionAttempts((prev) => prev + 1)
         // Reconnect after 3 seconds (don't change device status on WS disconnect)
         setTimeout(connectWebSocket, 3000)
+      }
+
+      ws.onerror = () => {
+        setIsBackendConnected(false)
       }
 
       wsRef.current = ws
@@ -296,8 +309,115 @@ export function Layout() {
     }
   }, [isDark])
 
+  // Blocking overlay logs state
+  const [blockingLogs, setBlockingLogs] = useState<Array<{ timestamp: string; level: string; message: string }>>([])
+  const blockingLogsRef = useRef<HTMLDivElement>(null)
+
+  // Fetch logs when backend is disconnected (for blocking overlay)
+  useEffect(() => {
+    if (isBackendConnected) {
+      setBlockingLogs([])
+      return
+    }
+
+    // Try to fetch logs even when WebSocket fails (HTTP might work)
+    const fetchLogs = async () => {
+      try {
+        const response = await fetch('/api/logs?limit=50')
+        const data = await response.json()
+        const validLogs = (data.logs || [])
+          .filter((log: { message?: string }) => log && log.message && log.message.trim() !== '')
+          .reverse()
+        setBlockingLogs(validLogs)
+        setTimeout(() => {
+          if (blockingLogsRef.current) {
+            blockingLogsRef.current.scrollTop = blockingLogsRef.current.scrollHeight
+          }
+        }, 100)
+      } catch {
+        // Backend not available
+      }
+    }
+
+    fetchLogs()
+    const interval = setInterval(fetchLogs, 3000)
+    return () => clearInterval(interval)
+  }, [isBackendConnected])
+
   return (
     <div className="min-h-screen bg-background">
+      {/* Backend Connection Blocking Overlay */}
+      {!isBackendConnected && (
+        <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center p-4">
+          <div className="w-full max-w-2xl space-y-6">
+            {/* Connection Status */}
+            <div className="text-center space-y-4">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-500/10 mb-2">
+                <span className="material-icons-outlined text-4xl text-amber-500 animate-pulse">
+                  sync
+                </span>
+              </div>
+              <h2 className="text-2xl font-bold">Connecting to Backend</h2>
+              <p className="text-muted-foreground">
+                {connectionAttempts === 0
+                  ? 'Establishing connection...'
+                  : `Reconnecting... (attempt ${connectionAttempts})`
+                }
+              </p>
+              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                <span>Waiting for server at {window.location.host}</span>
+              </div>
+            </div>
+
+            {/* Logs Panel */}
+            <div className="bg-muted/50 rounded-lg border overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2 border-b bg-muted">
+                <div className="flex items-center gap-2">
+                  <span className="material-icons-outlined text-base">article</span>
+                  <span className="text-sm font-medium">Recent Logs</span>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {blockingLogs.length > 0 ? `${blockingLogs.length} entries` : 'No logs available'}
+                </span>
+              </div>
+              <div
+                ref={blockingLogsRef}
+                className="h-48 overflow-auto p-3 font-mono text-xs space-y-0.5"
+              >
+                {blockingLogs.length > 0 ? (
+                  blockingLogs.map((log, i) => (
+                    <div key={i} className="py-0.5 flex gap-2">
+                      <span className="text-muted-foreground shrink-0">
+                        {formatTimestamp(log.timestamp)}
+                      </span>
+                      <span className={`shrink-0 font-semibold ${
+                        log.level === 'ERROR' ? 'text-red-500' :
+                        log.level === 'WARNING' ? 'text-amber-500' :
+                        log.level === 'DEBUG' ? 'text-muted-foreground' :
+                        'text-foreground'
+                      }`}>
+                        [{log.level || 'LOG'}]
+                      </span>
+                      <span className="break-all">{log.message || ''}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-muted-foreground text-center py-8">
+                    Waiting for backend to start...
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Hint */}
+            <p className="text-center text-xs text-muted-foreground">
+              Make sure the backend server is running on port 8080
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="sticky top-0 z-40 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex h-14 items-center justify-between px-4">

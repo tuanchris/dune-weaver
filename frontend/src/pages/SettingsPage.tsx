@@ -507,18 +507,26 @@ export function SettingsPage() {
             <div className="space-y-3">
               <Label>Available Serial Ports</Label>
               <div className="flex gap-3">
-                <Select value={selectedPort} onValueChange={setSelectedPort}>
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Select a port..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ports.map((port) => (
-                      <SelectItem key={port.port} value={port.port}>
-                        {port.port} - {port.description}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="relative flex-1" style={{ zIndex: 50 }}>
+                  <Select value={selectedPort} onValueChange={setSelectedPort}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a port..." />
+                    </SelectTrigger>
+                    <SelectContent position="popper" sideOffset={4}>
+                      {ports.length === 0 ? (
+                        <SelectItem value="_none" disabled>
+                          No ports available
+                        </SelectItem>
+                      ) : (
+                        ports.map((port) => (
+                          <SelectItem key={port.port} value={port.port}>
+                            {port.port} - {port.description}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Button
                   onClick={handleConnect}
                   disabled={isLoading === 'connect' || !selectedPort || isConnected}

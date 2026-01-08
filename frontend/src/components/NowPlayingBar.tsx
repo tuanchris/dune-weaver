@@ -91,16 +91,17 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
 
   // Fetch preview image when current file changes
   useEffect(() => {
-    if (status?.current_file) {
+    const currentFile = status?.current_file
+    if (currentFile) {
       fetch('/preview_thr_batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_names: [status.current_file] }),
+        body: JSON.stringify({ file_names: [currentFile] }),
       })
         .then((r) => r.json())
         .then((data) => {
-          if (data[status.current_file]?.image_data) {
-            setPreviewUrl(data[status.current_file].image_data)
+          if (data[currentFile]?.image_data) {
+            setPreviewUrl(data[currentFile].image_data)
           }
         })
         .catch(() => {})
