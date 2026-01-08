@@ -309,38 +309,52 @@ export function Layout() {
     }
   }, [isDark])
 
-  // Blocking overlay logs state
-  const [blockingLogs, setBlockingLogs] = useState<Array<{ timestamp: string; level: string; message: string }>>([])
+  // Blocking overlay logs state - shows connection attempts
+  const [connectionLogs, setConnectionLogs] = useState<Array<{ timestamp: string; level: string; message: string }>>([])
   const blockingLogsRef = useRef<HTMLDivElement>(null)
 
-  // Fetch logs when backend is disconnected (for blocking overlay)
+  // Add connection attempt logs when backend is disconnected
   useEffect(() => {
     if (isBackendConnected) {
-      setBlockingLogs([])
+      setConnectionLogs([])
       return
     }
 
-    // Try to fetch logs even when WebSocket fails (HTTP might work)
-    const fetchLogs = async () => {
-      try {
-        const response = await fetch('/api/logs?limit=50')
-        const data = await response.json()
-        const validLogs = (data.logs || [])
-          .filter((log: { message?: string }) => log && log.message && log.message.trim() !== '')
-          .reverse()
-        setBlockingLogs(validLogs)
-        setTimeout(() => {
-          if (blockingLogsRef.current) {
-            blockingLogsRef.current.scrollTop = blockingLogsRef.current.scrollHeight
-          }
-        }, 100)
-      } catch {
-        // Backend not available
-      }
+    // Add initial log entry
+    const addLog = (level: string, message: string) => {
+      setConnectionLogs((prev) => {
+        const newLog = {
+          timestamp: new Date().toISOString(),
+          level,
+          message,
+        }
+        const newLogs = [...prev, newLog].slice(-50) // Keep last 50 entries
+        return newLogs
+      })
+      // Auto-scroll to bottom
+      setTimeout(() => {
+        if (blockingLogsRef.current) {
+          blockingLogsRef.current.scrollTop = blockingLogsRef.current.scrollHeight
+        }
+      }, 10)
     }
 
-    fetchLogs()
-    const interval = setInterval(fetchLogs, 3000)
+    addLog('INFO', `Attempting to connect to backend at ${window.location.host}...`)
+
+    // Log connection attempts
+    const interval = setInterval(() => {
+      addLog('INFO', `Retrying connection to WebSocket /ws/status...`)
+
+      // Also try HTTP to see if backend is partially up
+      fetch('/api/settings', { method: 'GET' })
+        .then(() => {
+          addLog('INFO', 'HTTP endpoint responding, waiting for WebSocket...')
+        })
+        .catch(() => {
+          // Still down
+        })
+    }, 3000)
+
     return () => clearInterval(interval)
   }, [isBackendConnected])
 
@@ -370,43 +384,37 @@ export function Layout() {
               </div>
             </div>
 
-            {/* Logs Panel */}
+            {/* Connection Logs Panel */}
             <div className="bg-muted/50 rounded-lg border overflow-hidden">
               <div className="flex items-center justify-between px-4 py-2 border-b bg-muted">
                 <div className="flex items-center gap-2">
-                  <span className="material-icons-outlined text-base">article</span>
-                  <span className="text-sm font-medium">Recent Logs</span>
+                  <span className="material-icons-outlined text-base">terminal</span>
+                  <span className="text-sm font-medium">Connection Log</span>
                 </div>
                 <span className="text-xs text-muted-foreground">
-                  {blockingLogs.length > 0 ? `${blockingLogs.length} entries` : 'No logs available'}
+                  {connectionLogs.length} entries
                 </span>
               </div>
               <div
                 ref={blockingLogsRef}
                 className="h-48 overflow-auto p-3 font-mono text-xs space-y-0.5"
               >
-                {blockingLogs.length > 0 ? (
-                  blockingLogs.map((log, i) => (
-                    <div key={i} className="py-0.5 flex gap-2">
-                      <span className="text-muted-foreground shrink-0">
-                        {formatTimestamp(log.timestamp)}
-                      </span>
-                      <span className={`shrink-0 font-semibold ${
-                        log.level === 'ERROR' ? 'text-red-500' :
-                        log.level === 'WARNING' ? 'text-amber-500' :
-                        log.level === 'DEBUG' ? 'text-muted-foreground' :
-                        'text-foreground'
-                      }`}>
-                        [{log.level || 'LOG'}]
-                      </span>
-                      <span className="break-all">{log.message || ''}</span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-muted-foreground text-center py-8">
-                    Waiting for backend to start...
-                  </p>
-                )}
+                {connectionLogs.map((log, i) => (
+                  <div key={i} className="py-0.5 flex gap-2">
+                    <span className="text-muted-foreground shrink-0">
+                      {formatTimestamp(log.timestamp)}
+                    </span>
+                    <span className={`shrink-0 font-semibold ${
+                      log.level === 'ERROR' ? 'text-red-500' :
+                      log.level === 'WARNING' ? 'text-amber-500' :
+                      log.level === 'DEBUG' ? 'text-muted-foreground' :
+                      'text-foreground'
+                    }`}>
+                      [{log.level}]
+                    </span>
+                    <span className="break-all">{log.message}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
