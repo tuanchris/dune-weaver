@@ -44,6 +44,7 @@ export default defineConfig({
       '/pause_execution': 'http://localhost:8080',
       '/resume_execution': 'http://localhost:8080',
       '/serial_status': 'http://localhost:8080',
+      '/list_serial_ports': 'http://localhost:8080',
       '/connect': 'http://localhost:8080',
       '/disconnect': 'http://localhost:8080',
       '/get_speed': 'http://localhost:8080',

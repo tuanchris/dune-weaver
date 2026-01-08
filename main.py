@@ -1275,7 +1275,7 @@ async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTa
             logger.warning("Attempted to run a pattern without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
         
-        if pattern_manager.pattern_lock.locked():
+        if pattern_manager.get_pattern_lock().locked():
             logger.info("Another pattern is running, stopping it first...")
             await pattern_manager.stop_actions()
             

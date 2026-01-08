@@ -23,10 +23,6 @@ import {
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 
 // Types
-interface SerialPort {
-  port: string
-  description: string
-}
 
 interface Settings {
   app_name?: string
@@ -67,7 +63,7 @@ export function SettingsPage() {
   const sectionParam = searchParams.get('section')
 
   // Connection state
-  const [ports, setPorts] = useState<SerialPort[]>([])
+  const [ports, setPorts] = useState<string[]>([])
   const [selectedPort, setSelectedPort] = useState('')
   const [isConnected, setIsConnected] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState('Disconnected')
@@ -175,14 +171,18 @@ export function SettingsPage() {
 
   const fetchPorts = async () => {
     try {
-      const response = await fetch('/serial_status')
-      const data = await response.json()
-      console.log('Serial status response:', data)
-      setPorts(data.available_ports || [])
-      setIsConnected(data.connected || false)
-      setConnectionStatus(data.connected ? 'Connected' : 'Disconnected')
-      if (data.current_port) {
-        setSelectedPort(data.current_port)
+      // Fetch available ports
+      const portsResponse = await fetch('/list_serial_ports')
+      const portsData = await portsResponse.json()
+      setPorts(portsData || [])
+
+      // Fetch connection status
+      const statusResponse = await fetch('/serial_status')
+      const statusData = await statusResponse.json()
+      setIsConnected(statusData.connected || false)
+      setConnectionStatus(statusData.connected ? 'Connected' : 'Disconnected')
+      if (statusData.port) {
+        setSelectedPort(statusData.port)
       }
     } catch (error) {
       console.error('Error fetching ports:', error)
@@ -524,8 +524,8 @@ export function SettingsPage() {
                       </div>
                     ) : (
                       ports.map((port) => (
-                        <SelectItem key={port.port} value={port.port}>
-                          {port.port} - {port.description}
+                        <SelectItem key={port} value={port}>
+                          {port}
                         </SelectItem>
                       ))
                     )}
