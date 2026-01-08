@@ -68,6 +68,7 @@ export function Layout() {
 
   // Now Playing bar state
   const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(false)
+  const wasPlayingRef = useRef(false) // Track previous playing state to detect start
   const [logs, setLogs] = useState<Array<{ timestamp: string; level: string; logger: string; message: string }>>([])
   const [logLevelFilter, setLogLevelFilter] = useState<string>('ALL')
   const logsWsRef = useRef<WebSocket | null>(null)
@@ -90,6 +91,15 @@ export function Layout() {
           // Use device connection status from the status message
           if (data.connected !== undefined) {
             setIsConnected(data.connected)
+          }
+          // Auto-open Now Playing bar when playback starts
+          if (data.type === 'status_update' && data.data) {
+            const isPlaying = data.data.is_running || data.data.is_paused
+            if (isPlaying && !wasPlayingRef.current) {
+              // Playback just started - open the Now Playing bar
+              setIsNowPlayingOpen(true)
+            }
+            wasPlayingRef.current = isPlaying
           }
         } catch {
           // Ignore parse errors
