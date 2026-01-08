@@ -16,3 +16,4 @@ node_modules/
 # Custom branding assets (user uploads)
 static/custom/*
 !static/custom/.gitkeep
+.claude/
