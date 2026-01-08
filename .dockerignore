@@ -1,0 +1,44 @@
+# Git
+.git
+.gitignore
+
+# Node modules (built in Docker)
+frontend/node_modules
+node_modules
+
+# Build outputs (built in Docker)
+static/dist
+
+# Development files
+.env
+.env.*
+*.log
+.DS_Store
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+
+# Documentation
+*.md
+!README.md
+
+# Docker files (not needed in image)
+docker-compose*.yml
+Dockerfile*
+
+# Test files
+tests/
+*.test.*
+
+# Dune Weaver Touch (separate app)
+dune-weaver-touch/

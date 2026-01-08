@@ -114,6 +114,9 @@ class AppState:
         self.scheduled_pause_finish_pattern = False  # Finish current pattern before pausing
         self.scheduled_pause_timezone = None  # User-selected timezone (None = use system timezone)
 
+        # Server port setting (requires restart to take effect)
+        self.server_port = 8080  # Default server port
+
         # MQTT settings (UI-configurable, overrides .env if set)
         self.mqtt_enabled = False  # Master enable/disable for MQTT
         self.mqtt_broker = ""  # MQTT broker IP/hostname
