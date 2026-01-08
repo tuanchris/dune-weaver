@@ -223,6 +223,19 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
                   {status?.is_paused ? 'play_arrow' : 'pause'}
                 </span>
               </Button>
+              {status?.playlist && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleSkip()
+                  }}
+                >
+                  <span className="material-icons text-lg">skip_next</span>
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
