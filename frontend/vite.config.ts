@@ -43,6 +43,7 @@ export default defineConfig({
       '/run_theta_rho': 'http://localhost:8080',
       '/pause_execution': 'http://localhost:8080',
       '/resume_execution': 'http://localhost:8080',
+      '/skip_pattern': 'http://localhost:8080',
       '/serial_status': 'http://localhost:8080',
       '/list_serial_ports': 'http://localhost:8080',
       '/connect': 'http://localhost:8080',

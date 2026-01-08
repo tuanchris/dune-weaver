@@ -133,7 +133,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
 
   const handleSkip = async () => {
     try {
-      const response = await fetch('/skip', { method: 'POST' })
+      const response = await fetch('/skip_pattern', { method: 'POST' })
       if (!response.ok) throw new Error()
       toast.success('Skipping to next pattern')
     } catch {
