@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { Slider } from '@/components/ui/slider'
+import { Input } from '@/components/ui/input'
 
 interface PlaybackStatus {
   current_file: string | null
@@ -142,14 +142,23 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
     }
   }
 
-  const handleSpeedChange = async (value: number[]) => {
+  const [speedInput, setSpeedInput] = useState('')
+
+  const handleSpeedSubmit = async () => {
+    const speed = parseInt(speedInput)
+    if (isNaN(speed) || speed < 100 || speed > 6000) {
+      toast.error('Speed must be between 100 and 6000 mm/s')
+      return
+    }
     try {
       const response = await fetch('/set_speed', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ speed: value[0] }),
+        body: JSON.stringify({ speed }),
       })
       if (!response.ok) throw new Error()
+      setSpeedInput('')
+      toast.success(`Speed set to ${speed} mm/s`)
     } catch {
       toast.error('Failed to set speed')
     }
@@ -183,12 +192,10 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
         } ${isLogsOpen ? 'bottom-80' : 'bottom-16'}`}
       >
         {/* Mini Bar (always visible) */}
-        <div
-          className="flex items-start gap-4 px-4 py-3"
-        >
+        <div className="flex gap-4 px-4 py-3">
           {/* Pattern Preview - Large */}
           <div
-            className="w-28 h-28 rounded-xl overflow-hidden bg-muted shrink-0 border cursor-pointer"
+            className="w-24 h-24 rounded-lg overflow-hidden bg-muted shrink-0 border cursor-pointer"
             onClick={() => isPlaying && setIsExpanded(!isExpanded)}
           >
             {previewUrl && isPlaying ? (
@@ -199,130 +206,92 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
-                <span className="material-icons-outlined text-muted-foreground text-4xl">
+                <span className="material-icons-outlined text-muted-foreground text-3xl">
                   {isPlaying ? 'image' : 'hourglass_empty'}
                 </span>
               </div>
             )}
           </div>
 
-          {/* Pattern Info & Details */}
-          <div className="flex-1 min-w-0 space-y-2">
-            {isPlaying && status ? (
-              <>
-                {/* Title Row */}
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-lg font-medium truncate">{patternName}</p>
-                  {status.is_paused && (
-                    <span className="text-sm text-muted-foreground shrink-0">(Paused)</span>
+          {/* Main Content Area */}
+          {isPlaying && status ? (
+            <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+              {/* Top Row: Title + Controls */}
+              <div className="flex items-center gap-3">
+                <p className="text-base font-medium truncate flex-1">{patternName}</p>
+                {status.is_paused && (
+                  <span className="text-xs bg-muted px-2 py-0.5 rounded">Paused</span>
+                )}
+                <div className="flex items-center shrink-0">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handlePause}>
+                    <span className="material-icons text-lg">
+                      {status.is_paused ? 'play_arrow' : 'pause'}
+                    </span>
+                  </Button>
+                  {status.playlist && (
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleSkip}>
+                      <span className="material-icons text-lg">skip_next</span>
+                    </Button>
                   )}
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleStop}>
+                    <span className="material-icons text-lg">stop</span>
+                  </Button>
                 </div>
+              </div>
 
-                {/* Time & Progress Row */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{formatTime(elapsedTime)}</span>
-                    <span>{progressPercent.toFixed(0)}%</span>
-                    <span>-{formatTime(remainingTime)}</span>
-                  </div>
-                  <Progress value={progressPercent} className="h-2" />
-                </div>
+              {/* Middle Row: Progress */}
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-muted-foreground w-10">{formatTime(elapsedTime)}</span>
+                <Progress value={progressPercent} className="h-1.5 flex-1" />
+                <span className="text-xs text-muted-foreground w-10 text-right">-{formatTime(remainingTime)}</span>
+              </div>
 
-                {/* Speed Slider */}
-                <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-                  <span className="material-icons-outlined text-muted-foreground text-sm">speed</span>
-                  <Slider
-                    value={[status.speed]}
-                    onValueChange={handleSpeedChange}
-                    min={100}
-                    max={6000}
-                    step={100}
-                    className="flex-1"
+              {/* Bottom Row: Speed + Playlist Info */}
+              <div className="flex items-center gap-4">
+                {/* Speed Input */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">Speed:</span>
+                  <Input
+                    type="number"
+                    placeholder={String(status.speed)}
+                    value={speedInput}
+                    onChange={(e) => setSpeedInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSpeedSubmit()}
+                    className="h-6 w-16 text-xs px-2"
+                    onClick={(e) => e.stopPropagation()}
                   />
-                  <span className="text-xs text-muted-foreground w-16 text-right">{status.speed} mm/s</span>
+                  <span className="text-xs text-muted-foreground">mm/s</span>
                 </div>
 
                 {/* Playlist Info */}
                 {status.playlist && (
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <span className="material-icons-outlined text-sm">queue_music</span>
-                      {status.playlist.current_index + 1} / {status.playlist.total_files}
+                  <>
+                    <div className="w-px h-4 bg-border" />
+                    <span className="text-xs text-muted-foreground">
+                      {status.playlist.current_index + 1}/{status.playlist.total_files}
                     </span>
                     {status.playlist.next_file && (
-                      <span className="truncate">
+                      <span className="text-xs text-muted-foreground truncate">
                         Next: {formatPatternName(status.playlist.next_file)}
                       </span>
                     )}
-                  </div>
+                  </>
                 )}
-              </>
-            ) : (
-              <p className="text-lg text-muted-foreground">Not playing</p>
-            )}
-          </div>
-
-          {/* Quick Controls */}
-          {isPlaying && (
-            <div className="flex flex-col items-center gap-1 shrink-0">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handlePause()
-                }}
-              >
-                <span className="material-icons text-lg">
-                  {status?.is_paused ? 'play_arrow' : 'pause'}
-                </span>
-              </Button>
-              {status?.playlist && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleSkip()
-                  }}
-                >
-                  <span className="material-icons text-lg">skip_next</span>
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleStop()
-                }}
-              >
-                <span className="material-icons text-lg">stop</span>
-              </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center">
+              <p className="text-base text-muted-foreground">Not playing</p>
             </div>
           )}
 
-          {/* Expand/Close Indicator */}
-          {isPlaying ? (
-            <span
-              className={`material-icons-outlined text-muted-foreground transition-transform ${
-                isExpanded ? 'rotate-180' : ''
-              }`}
-            >
-              expand_less
-            </span>
-          ) : (
+          {/* Close Button */}
+          {!isPlaying && (
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
-              onClick={(e) => {
-                e.stopPropagation()
-                onClose()
-              }}
+              className="h-8 w-8 self-center"
+              onClick={onClose}
             >
               <span className="material-icons-outlined text-lg">close</span>
             </Button>
