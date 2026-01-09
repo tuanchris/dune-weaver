@@ -2,7 +2,6 @@ import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useEffect, useState, useRef } from 'react'
 import { toast } from 'sonner'
 import { NowPlayingBar } from '@/components/NowPlayingBar'
-import { Button } from '@/components/ui/button'
 
 const navItems = [
   { path: '/', label: 'Browse', icon: 'grid_view', title: 'Browse Patterns' },
@@ -477,53 +476,45 @@ export function Layout() {
             />
             <span className="font-semibold text-lg">{appName}</span>
             <span
-              className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}
-              title={isConnected ? 'Connected to table' : 'Disconnected from table'}
+              className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
+              title={isConnected ? 'Connected' : 'Disconnected'}
             />
           </Link>
           <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
+            <button
               onClick={() => setIsDark(!isDark)}
-              className="rounded-full"
+              className="rounded-full w-10 h-10 flex items-center justify-center hover:bg-accent"
               aria-label="Toggle dark mode"
               title="Toggle Theme"
             >
               <span className="material-icons-outlined">
                 {isDark ? 'light_mode' : 'dark_mode'}
               </span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
+            </button>
+            <button
               onClick={handleOpenLogs}
-              className="rounded-full"
+              className="rounded-full w-10 h-10 flex items-center justify-center hover:bg-accent"
               aria-label="View logs"
               title="View Application Logs"
             >
               <span className="material-icons-outlined">article</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
+            </button>
+            <button
               onClick={handleRestart}
-              className="rounded-full text-amber-500 hover:text-amber-600"
+              className="rounded-full w-10 h-10 flex items-center justify-center hover:bg-accent text-amber-500"
               aria-label="Restart system"
               title="Restart System"
             >
               <span className="material-icons-outlined">restart_alt</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
+            </button>
+            <button
               onClick={handleShutdown}
-              className="rounded-full text-red-500 hover:text-red-600"
+              className="rounded-full w-10 h-10 flex items-center justify-center hover:bg-accent text-red-500"
               aria-label="Shutdown system"
               title="Shutdown System"
             >
               <span className="material-icons-outlined">power_settings_new</span>
-            </Button>
+            </button>
           </div>
         </div>
       </header>
@@ -550,7 +541,7 @@ export function Layout() {
       {!isNowPlayingOpen && (
         <button
           onClick={() => setIsNowPlayingOpen(true)}
-          className="fixed right-4 bottom-20 z-30 w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center transition-all duration-200 hover:bg-primary/90 hover:shadow-xl hover:scale-110 active:scale-95"
+          className="fixed right-4 bottom-20 z-30 w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 transition-all"
           title="Now Playing"
         >
           <span className="material-icons">play_circle</span>
@@ -584,33 +575,27 @@ export function Layout() {
                 </span>
               </div>
               <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
+                <button
                   onClick={handleCopyLogs}
-                  className="rounded-full"
+                  className="rounded-full w-7 h-7 flex items-center justify-center hover:bg-accent"
                   title="Copy logs"
                 >
                   <span className="material-icons-outlined text-base">content_copy</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
+                </button>
+                <button
                   onClick={handleDownloadLogs}
-                  className="rounded-full"
+                  className="rounded-full w-7 h-7 flex items-center justify-center hover:bg-accent"
                   title="Download logs"
                 >
                   <span className="material-icons-outlined text-base">download</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
+                </button>
+                <button
                   onClick={() => setIsLogsOpen(false)}
-                  className="rounded-full"
+                  className="rounded-full w-7 h-7 flex items-center justify-center hover:bg-accent"
                   title="Close logs"
                 >
                   <span className="material-icons-outlined text-base">close</span>
-                </Button>
+                </button>
               </div>
             </div>
             <div
@@ -651,17 +636,13 @@ export function Layout() {
               <Link
                 key={item.path}
                 to={item.path}
-                className={`relative flex flex-col items-center justify-center gap-1 transition-all duration-200 ${
+                className={`flex flex-col items-center justify-center gap-1 transition-colors ${
                   isActive
                     ? 'text-primary'
-                    : 'text-muted-foreground hover:text-foreground active:scale-95'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                {/* Active indicator pill */}
-                {isActive && (
-                  <span className="absolute -top-0.5 w-8 h-1 rounded-full bg-primary" />
-                )}
-                <span className={`text-xl ${isActive ? 'material-icons' : 'material-icons-outlined'}`}>
+                <span className="material-icons-outlined text-xl">
                   {item.icon}
                 </span>
                 <span className="text-xs font-medium">{item.label}</span>

@@ -543,10 +543,8 @@ export function PlaylistsPage() {
                   <span className="truncate text-sm font-medium">{name}</span>
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="h-7 w-7"
+                  <button
+                    className="p-1 rounded hover:bg-muted-foreground/20"
                     onClick={(e) => {
                       e.stopPropagation()
                       setPlaylistToRename(name)
@@ -555,18 +553,16 @@ export function PlaylistsPage() {
                     }}
                   >
                     <span className="material-icons-outlined text-base">edit</span>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/20"
+                  </button>
+                  <button
+                    className="p-1 rounded hover:bg-destructive/20 text-destructive"
                     onClick={(e) => {
                       e.stopPropagation()
                       handleDeletePlaylist(name)
                     }}
                   >
                     <span className="material-icons-outlined text-base">delete</span>
-                  </Button>
+                  </button>
                 </div>
               </div>
             ))
