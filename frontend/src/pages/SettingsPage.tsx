@@ -29,14 +29,43 @@ interface Settings {
   app_name?: string
   custom_logo?: string
   preferred_port?: string
+  // Machine settings
   table_type_override?: string
+  detected_table_type?: string
+  available_table_types?: { value: string; label: string }[]
+  // Homing settings
   homing_mode?: number
   angular_offset?: number
   auto_home_enabled?: boolean
   auto_home_after_patterns?: number
+  // Pattern clearing settings
   clear_pattern_speed?: number
   custom_clear_from_in?: string
   custom_clear_from_out?: string
+}
+
+interface TimeSlot {
+  start_time: string
+  end_time: string
+  days: 'daily' | 'weekdays' | 'weekends' | 'custom'
+  custom_days?: string[]
+}
+
+interface StillSandsSettings {
+  enabled: boolean
+  finish_pattern: boolean
+  control_wled: boolean
+  timezone: string
+  time_slots: TimeSlot[]
+}
+
+interface AutoPlaySettings {
+  enabled: boolean
+  playlist: string
+  run_mode: 'single' | 'loop'
+  pause_time: number
+  clear_pattern: string
+  shuffle: boolean
 }
 
 interface LedConfig {
@@ -87,11 +116,27 @@ export function SettingsPage() {
   const [loadedSections, setLoadedSections] = useState<Set<string>>(new Set())
 
   // Auto-play state
-  const [autoPlayEnabled, setAutoPlayEnabled] = useState(false)
+  const [autoPlaySettings, setAutoPlaySettings] = useState<AutoPlaySettings>({
+    enabled: false,
+    playlist: '',
+    run_mode: 'loop',
+    pause_time: 5,
+    clear_pattern: 'adaptive',
+    shuffle: false,
+  })
   const [playlists, setPlaylists] = useState<string[]>([])
 
   // Still Sands state
-  const [stillSandsEnabled, setStillSandsEnabled] = useState(false)
+  const [stillSandsSettings, setStillSandsSettings] = useState<StillSandsSettings>({
+    enabled: false,
+    finish_pattern: false,
+    control_wled: false,
+    timezone: '',
+    time_slots: [],
+  })
+
+  // Pattern search state for clearing patterns
+  const [patternFiles, setPatternFiles] = useState<string[]>([])
 
   // Version state
   const [versionInfo, setVersionInfo] = useState<{
@@ -129,14 +174,21 @@ export function SettingsPage() {
       case 'mqtt':
       case 'autoplay':
       case 'stillsands':
+      case 'machine':
+      case 'homing':
+      case 'clearing':
         // These all share settings data
         if (!loadedSections.has('_settings')) {
           setLoadedSections((prev) => new Set(prev).add('_settings'))
           await fetchSettings()
         }
-        if (section === 'autoplay' && !loadedSections.has('_playlists')) {
+        if ((section === 'autoplay' || section === 'clearing') && !loadedSections.has('_playlists')) {
           setLoadedSections((prev) => new Set(prev).add('_playlists'))
           await fetchPlaylists()
+        }
+        if (section === 'clearing' && !loadedSections.has('_patterns')) {
+          setLoadedSections((prev) => new Set(prev).add('_patterns'))
+          await fetchPatternFiles()
         }
         break
       case 'led':
@@ -145,6 +197,16 @@ export function SettingsPage() {
       case 'version':
         await fetchVersionInfo()
         break
+    }
+  }
+
+  const fetchPatternFiles = async () => {
+    try {
+      const response = await fetch('/api/patterns')
+      const data = await response.json()
+      setPatternFiles(data.patterns?.map((p: { file: string }) => p.file) || [])
+    } catch (error) {
+      console.error('Error fetching pattern files:', error)
     }
   }
 
@@ -229,16 +291,40 @@ export function SettingsPage() {
         app_name: data.app?.name,
         custom_logo: data.app?.custom_logo,
         preferred_port: data.connection?.preferred_port,
+        // Machine settings
+        table_type_override: data.machine?.table_type_override,
+        detected_table_type: data.machine?.detected_table_type,
+        available_table_types: data.machine?.available_table_types,
+        // Homing settings
+        homing_mode: data.homing?.mode,
+        angular_offset: data.homing?.angular_offset_degrees,
+        auto_home_enabled: data.homing?.auto_home_enabled,
+        auto_home_after_patterns: data.homing?.auto_home_after_patterns,
+        // Pattern clearing settings
         clear_pattern_speed: data.patterns?.clear_pattern_speed,
         custom_clear_from_in: data.patterns?.custom_clear_from_in,
         custom_clear_from_out: data.patterns?.custom_clear_from_out,
       })
-      // Also set auto-play and still sands from the same response
+      // Set auto-play settings
       if (data.auto_play) {
-        setAutoPlayEnabled(data.auto_play.enabled || false)
+        setAutoPlaySettings({
+          enabled: data.auto_play.enabled || false,
+          playlist: data.auto_play.playlist || '',
+          run_mode: data.auto_play.run_mode || 'loop',
+          pause_time: data.auto_play.pause_time ?? 5,
+          clear_pattern: data.auto_play.clear_pattern || 'adaptive',
+          shuffle: data.auto_play.shuffle || false,
+        })
       }
+      // Set still sands settings
       if (data.scheduled_pause) {
-        setStillSandsEnabled(data.scheduled_pause.enabled || false)
+        setStillSandsSettings({
+          enabled: data.scheduled_pause.enabled || false,
+          finish_pattern: data.scheduled_pause.finish_pattern || false,
+          control_wled: data.scheduled_pause.control_wled || false,
+          timezone: data.scheduled_pause.timezone || '',
+          time_slots: data.scheduled_pause.time_slots || [],
+        })
       }
       // Set MQTT config from the same response
       if (data.mqtt) {
@@ -474,6 +560,140 @@ export function SettingsPage() {
     }
   }
 
+  const handleSaveMachineSettings = async () => {
+    setIsLoading('machine')
+    try {
+      const response = await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          machine: {
+            table_type_override: settings.table_type_override || '',
+          },
+        }),
+      })
+      if (response.ok) {
+        toast.success('Machine settings saved')
+      }
+    } catch (error) {
+      toast.error('Failed to save machine settings')
+    } finally {
+      setIsLoading(null)
+    }
+  }
+
+  const handleSaveHomingConfig = async () => {
+    setIsLoading('homing')
+    try {
+      const response = await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          homing: {
+            mode: settings.homing_mode,
+            angular_offset_degrees: settings.angular_offset,
+            auto_home_enabled: settings.auto_home_enabled,
+            auto_home_after_patterns: settings.auto_home_after_patterns,
+          },
+        }),
+      })
+      if (response.ok) {
+        toast.success('Homing configuration saved')
+      }
+    } catch (error) {
+      toast.error('Failed to save homing configuration')
+    } finally {
+      setIsLoading(null)
+    }
+  }
+
+  const handleSaveClearingSettings = async () => {
+    setIsLoading('clearing')
+    try {
+      const response = await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patterns: {
+            clear_pattern_speed: settings.clear_pattern_speed || null,
+            custom_clear_from_in: settings.custom_clear_from_in || null,
+            custom_clear_from_out: settings.custom_clear_from_out || null,
+          },
+        }),
+      })
+      if (response.ok) {
+        toast.success('Clearing settings saved')
+      }
+    } catch (error) {
+      toast.error('Failed to save clearing settings')
+    } finally {
+      setIsLoading(null)
+    }
+  }
+
+  const handleSaveAutoPlaySettings = async () => {
+    setIsLoading('autoplay')
+    try {
+      const response = await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          auto_play: autoPlaySettings,
+        }),
+      })
+      if (response.ok) {
+        toast.success('Auto-play settings saved')
+      }
+    } catch (error) {
+      toast.error('Failed to save auto-play settings')
+    } finally {
+      setIsLoading(null)
+    }
+  }
+
+  const handleSaveStillSandsSettings = async () => {
+    setIsLoading('stillsands')
+    try {
+      const response = await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scheduled_pause: stillSandsSettings,
+        }),
+      })
+      if (response.ok) {
+        toast.success('Still Sands settings saved')
+      }
+    } catch (error) {
+      toast.error('Failed to save Still Sands settings')
+    } finally {
+      setIsLoading(null)
+    }
+  }
+
+  const addTimeSlot = () => {
+    setStillSandsSettings({
+      ...stillSandsSettings,
+      time_slots: [
+        ...stillSandsSettings.time_slots,
+        { start_time: '22:00', end_time: '06:00', days: 'daily' },
+      ],
+    })
+  }
+
+  const removeTimeSlot = (index: number) => {
+    setStillSandsSettings({
+      ...stillSandsSettings,
+      time_slots: stillSandsSettings.time_slots.filter((_, i) => i !== index),
+    })
+  }
+
+  const updateTimeSlot = (index: number, updates: Partial<TimeSlot>) => {
+    const newSlots = [...stillSandsSettings.time_slots]
+    newSlots[index] = { ...newSlots[index], ...updates }
+    setStillSandsSettings({ ...stillSandsSettings, time_slots: newSlots })
+  }
+
   return (
     <div className="flex flex-col w-full max-w-5xl mx-auto gap-6 py-6 px-4">
       {/* Page Header */}
@@ -574,6 +794,213 @@ export function SettingsPage() {
                 Select a port and click 'Connect' to establish a connection.
               </p>
             </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Machine Settings */}
+        <AccordionItem value="machine" id="section-machine" className="border rounded-lg px-4 overflow-visible">
+          <AccordionTrigger className="hover:no-underline">
+            <div className="flex items-center gap-3">
+              <span className="material-icons-outlined text-muted-foreground">
+                precision_manufacturing
+              </span>
+              <div className="text-left">
+                <div className="font-semibold">Machine Settings</div>
+                <div className="text-sm text-muted-foreground font-normal">
+                  Table type and hardware configuration
+                </div>
+              </div>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="pt-4 pb-6 space-y-6">
+            {/* Detected Table Type */}
+            <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg">
+              <span className="material-icons-outlined text-muted-foreground">info</span>
+              <span className="text-sm">
+                Detected:{' '}
+                <span className="font-medium">
+                  {settings.detected_table_type || 'Unknown'}
+                </span>
+              </span>
+            </div>
+
+            {/* Table Type Override */}
+            <div className="space-y-3">
+              <Label>Table Type Override</Label>
+              <div className="flex gap-3">
+                <Select
+                  value={settings.table_type_override || ''}
+                  onValueChange={(value) =>
+                    setSettings({ ...settings, table_type_override: value || undefined })
+                  }
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Auto-detect (use detected type)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Auto-detect (use detected type)</SelectItem>
+                    {settings.available_table_types?.map((type) => (
+                      <SelectItem key={type.value} value={type.value}>
+                        {type.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={handleSaveMachineSettings}
+                  disabled={isLoading === 'machine'}
+                  className="gap-2"
+                >
+                  {isLoading === 'machine' ? (
+                    <span className="material-icons-outlined animate-spin">sync</span>
+                  ) : (
+                    <span className="material-icons-outlined">save</span>
+                  )}
+                  Save
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Override the automatically detected table type. This affects gear ratio calculations and homing behavior.
+              </p>
+            </div>
+
+            <Alert className="flex items-start">
+              <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
+              <AlertDescription>
+                Table type is normally detected automatically from GRBL settings. Use override if auto-detection is incorrect for your hardware.
+              </AlertDescription>
+            </Alert>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Homing Configuration */}
+        <AccordionItem value="homing" id="section-homing" className="border rounded-lg px-4 overflow-visible">
+          <AccordionTrigger className="hover:no-underline">
+            <div className="flex items-center gap-3">
+              <span className="material-icons-outlined text-muted-foreground">
+                home
+              </span>
+              <div className="text-left">
+                <div className="font-semibold">Homing Configuration</div>
+                <div className="text-sm text-muted-foreground font-normal">
+                  Homing mode and auto-home settings
+                </div>
+              </div>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="pt-4 pb-6 space-y-6">
+            {/* Homing Mode Selection */}
+            <div className="space-y-3">
+              <Label>Homing Mode</Label>
+              <RadioGroup
+                value={String(settings.homing_mode || 0)}
+                onValueChange={(value) =>
+                  setSettings({ ...settings, homing_mode: parseInt(value) })
+                }
+                className="space-y-3"
+              >
+                <div className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50">
+                  <RadioGroupItem value="0" id="homing-crash" className="mt-0.5" />
+                  <div className="flex-1">
+                    <Label htmlFor="homing-crash" className="font-medium cursor-pointer">
+                      Crash Homing
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Y axis moves until physical stop, then theta and rho set to 0
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50">
+                  <RadioGroupItem value="1" id="homing-sensor" className="mt-0.5" />
+                  <div className="flex-1">
+                    <Label htmlFor="homing-sensor" className="font-medium cursor-pointer">
+                      Sensor Homing
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Homes both X and Y axes using sensors
+                    </p>
+                  </div>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {/* Sensor Offset (only visible for sensor mode) */}
+            {settings.homing_mode === 1 && (
+              <div className="space-y-3">
+                <Label htmlFor="angular-offset">Sensor Offset (degrees)</Label>
+                <Input
+                  id="angular-offset"
+                  type="number"
+                  min="0"
+                  max="360"
+                  step="0.1"
+                  value={settings.angular_offset || 0}
+                  onChange={(e) =>
+                    setSettings({ ...settings, angular_offset: parseFloat(e.target.value) || 0 })
+                  }
+                  placeholder="0.0"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Set the angle (in degrees) where your radial arm should be offset. Choose a value so the radial arm points East.
+                </p>
+              </div>
+            )}
+
+            {/* Auto-Home During Playlists */}
+            <div className="p-4 bg-muted/50 rounded-lg space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium flex items-center gap-2">
+                    <span className="material-icons-outlined text-base">autorenew</span>
+                    Auto-Home During Playlists
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Perform homing after a set number of patterns to maintain accuracy
+                  </p>
+                </div>
+                <Switch
+                  checked={settings.auto_home_enabled || false}
+                  onCheckedChange={(checked) =>
+                    setSettings({ ...settings, auto_home_enabled: checked })
+                  }
+                />
+              </div>
+
+              {settings.auto_home_enabled && (
+                <div className="space-y-2">
+                  <Label htmlFor="auto-home-patterns">Home after every X patterns</Label>
+                  <Input
+                    id="auto-home-patterns"
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={settings.auto_home_after_patterns || 5}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        auto_home_after_patterns: parseInt(e.target.value) || 5,
+                      })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Homing occurs after the clear pattern completes, before the next pattern.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <Button
+              onClick={handleSaveHomingConfig}
+              disabled={isLoading === 'homing'}
+              className="gap-2"
+            >
+              {isLoading === 'homing' ? (
+                <span className="material-icons-outlined animate-spin">sync</span>
+              ) : (
+                <span className="material-icons-outlined">save</span>
+              )}
+              Save Homing Configuration
+            </Button>
           </AccordionContent>
         </AccordionItem>
 
@@ -701,6 +1128,127 @@ export function SettingsPage() {
                 This name appears in the browser tab and header.
               </p>
             </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Pattern Clearing */}
+        <AccordionItem value="clearing" id="section-clearing" className="border rounded-lg px-4 overflow-visible">
+          <AccordionTrigger className="hover:no-underline">
+            <div className="flex items-center gap-3">
+              <span className="material-icons-outlined text-muted-foreground">
+                cleaning_services
+              </span>
+              <div className="text-left">
+                <div className="font-semibold">Pattern Clearing</div>
+                <div className="text-sm text-muted-foreground font-normal">
+                  Customize clearing speed and patterns
+                </div>
+              </div>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="pt-4 pb-6 space-y-6">
+            <p className="text-sm text-muted-foreground">
+              Customize the clearing behavior used when transitioning between patterns.
+            </p>
+
+            {/* Clearing Speed */}
+            <div className="p-4 bg-muted/50 rounded-lg space-y-4">
+              <h4 className="font-medium">Clearing Speed</h4>
+              <p className="text-sm text-muted-foreground">
+                Set a custom speed for clearing patterns. Leave empty to use the default pattern speed.
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor="clear-speed">Speed (steps per minute)</Label>
+                <Input
+                  id="clear-speed"
+                  type="number"
+                  min="50"
+                  max="2000"
+                  step="50"
+                  value={settings.clear_pattern_speed || ''}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      clear_pattern_speed: e.target.value ? parseInt(e.target.value) : undefined,
+                    })
+                  }
+                  placeholder="Default (use pattern speed)"
+                />
+              </div>
+            </div>
+
+            {/* Custom Clear Patterns */}
+            <div className="p-4 bg-muted/50 rounded-lg space-y-4">
+              <h4 className="font-medium">Custom Clear Patterns</h4>
+              <p className="text-sm text-muted-foreground">
+                Choose specific patterns to use when clearing. Leave empty for default behavior.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="clear-from-in">Clear From Center Pattern</Label>
+                  <Select
+                    value={settings.custom_clear_from_in || ''}
+                    onValueChange={(value) =>
+                      setSettings({ ...settings, custom_clear_from_in: value || undefined })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Default (built-in)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Default (built-in)</SelectItem>
+                      {patternFiles.map((file) => (
+                        <SelectItem key={file} value={file}>
+                          {file}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Pattern used when clearing from center outward.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="clear-from-out">Clear From Perimeter Pattern</Label>
+                  <Select
+                    value={settings.custom_clear_from_out || ''}
+                    onValueChange={(value) =>
+                      setSettings({ ...settings, custom_clear_from_out: value || undefined })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Default (built-in)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Default (built-in)</SelectItem>
+                      {patternFiles.map((file) => (
+                        <SelectItem key={file} value={file}>
+                          {file}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Pattern used when clearing from perimeter inward.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <Button
+              onClick={handleSaveClearingSettings}
+              disabled={isLoading === 'clearing'}
+              className="gap-2"
+            >
+              {isLoading === 'clearing' ? (
+                <span className="material-icons-outlined animate-spin">sync</span>
+              ) : (
+                <span className="material-icons-outlined">save</span>
+              )}
+              Save Clearing Settings
+            </Button>
           </AccordionContent>
         </AccordionItem>
 
@@ -1009,16 +1557,23 @@ export function SettingsPage() {
                 </p>
               </div>
               <Switch
-                checked={autoPlayEnabled}
-                onCheckedChange={setAutoPlayEnabled}
+                checked={autoPlaySettings.enabled}
+                onCheckedChange={(checked) =>
+                  setAutoPlaySettings({ ...autoPlaySettings, enabled: checked })
+                }
               />
             </div>
 
-            {autoPlayEnabled && (
+            {autoPlaySettings.enabled && (
               <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
                 <div className="space-y-2">
                   <Label>Startup Playlist</Label>
-                  <Select>
+                  <Select
+                    value={autoPlaySettings.playlist}
+                    onValueChange={(value) =>
+                      setAutoPlaySettings({ ...autoPlaySettings, playlist: value })
+                    }
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select a playlist..." />
                     </SelectTrigger>
@@ -1030,12 +1585,23 @@ export function SettingsPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Choose which playlist to play when the system starts.
+                  </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Run Mode</Label>
-                    <Select defaultValue="loop">
+                    <Select
+                      value={autoPlaySettings.run_mode}
+                      onValueChange={(value) =>
+                        setAutoPlaySettings({
+                          ...autoPlaySettings,
+                          run_mode: value as 'single' | 'loop',
+                        })
+                      }
+                    >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -1047,11 +1613,77 @@ export function SettingsPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>Pause Between Patterns (s)</Label>
-                    <Input type="number" defaultValue="5" min="0" step="0.5" />
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={autoPlaySettings.pause_time}
+                      onChange={(e) =>
+                        setAutoPlaySettings({
+                          ...autoPlaySettings,
+                          pause_time: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Clear Pattern</Label>
+                    <Select
+                      value={autoPlaySettings.clear_pattern}
+                      onValueChange={(value) =>
+                        setAutoPlaySettings({ ...autoPlaySettings, clear_pattern: value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        <SelectItem value="adaptive">Adaptive</SelectItem>
+                        <SelectItem value="clear_from_in">Clear From Center</SelectItem>
+                        <SelectItem value="clear_from_out">Clear From Perimeter</SelectItem>
+                        <SelectItem value="clear_sideway">Clear Sideway</SelectItem>
+                        <SelectItem value="random">Random</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Pattern to run before each main pattern.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Shuffle Playlist</p>
+                      <p className="text-xs text-muted-foreground">
+                        Randomize pattern order
+                      </p>
+                    </div>
+                    <Switch
+                      checked={autoPlaySettings.shuffle}
+                      onCheckedChange={(checked) =>
+                        setAutoPlaySettings({ ...autoPlaySettings, shuffle: checked })
+                      }
+                    />
                   </div>
                 </div>
               </div>
             )}
+
+            <Button
+              onClick={handleSaveAutoPlaySettings}
+              disabled={isLoading === 'autoplay'}
+              className="gap-2"
+            >
+              {isLoading === 'autoplay' ? (
+                <span className="material-icons-outlined animate-spin">sync</span>
+              ) : (
+                <span className="material-icons-outlined">save</span>
+              )}
+              Save Auto-play Settings
+            </Button>
           </AccordionContent>
         </AccordionItem>
 
@@ -1079,20 +1711,211 @@ export function SettingsPage() {
                 </p>
               </div>
               <Switch
-                checked={stillSandsEnabled}
-                onCheckedChange={setStillSandsEnabled}
+                checked={stillSandsSettings.enabled}
+                onCheckedChange={(checked) =>
+                  setStillSandsSettings({ ...stillSandsSettings, enabled: checked })
+                }
               />
             </div>
 
-            {stillSandsEnabled && (
-              <Alert className="flex items-start">
-                <span className="material-icons-outlined text-base mr-2 shrink-0">schedule</span>
-                <AlertDescription>
-                  Configure time periods when the sand table should rest.
-                  Patterns will resume automatically when still periods end.
-                </AlertDescription>
-              </Alert>
+            {stillSandsSettings.enabled && (
+              <div className="space-y-4">
+                {/* Options */}
+                <div className="p-4 bg-muted/50 rounded-lg space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="material-icons-outlined text-base text-muted-foreground">
+                        hourglass_bottom
+                      </span>
+                      <div>
+                        <p className="text-sm font-medium">Finish Current Pattern</p>
+                        <p className="text-xs text-muted-foreground">
+                          Let the current pattern complete before entering still mode
+                        </p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={stillSandsSettings.finish_pattern}
+                      onCheckedChange={(checked) =>
+                        setStillSandsSettings({ ...stillSandsSettings, finish_pattern: checked })
+                      }
+                    />
+                  </div>
+
+                  <Separator />
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="material-icons-outlined text-base text-muted-foreground">
+                        lightbulb
+                      </span>
+                      <div>
+                        <p className="text-sm font-medium">Control WLED Lights</p>
+                        <p className="text-xs text-muted-foreground">
+                          Turn off WLED lights during still periods
+                        </p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={stillSandsSettings.control_wled}
+                      onCheckedChange={(checked) =>
+                        setStillSandsSettings({ ...stillSandsSettings, control_wled: checked })
+                      }
+                    />
+                  </div>
+
+                  <Separator />
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="material-icons-outlined text-base text-muted-foreground">
+                        schedule
+                      </span>
+                      <div>
+                        <p className="text-sm font-medium">Timezone</p>
+                        <p className="text-xs text-muted-foreground">
+                          Select a timezone for still periods
+                        </p>
+                      </div>
+                    </div>
+                    <Select
+                      value={stillSandsSettings.timezone}
+                      onValueChange={(value) =>
+                        setStillSandsSettings({ ...stillSandsSettings, timezone: value })
+                      }
+                    >
+                      <SelectTrigger className="w-[200px]">
+                        <SelectValue placeholder="System Default" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">System Default</SelectItem>
+                        <SelectItem value="America/New_York">Eastern Time</SelectItem>
+                        <SelectItem value="America/Chicago">Central Time</SelectItem>
+                        <SelectItem value="America/Denver">Mountain Time</SelectItem>
+                        <SelectItem value="America/Los_Angeles">Pacific Time</SelectItem>
+                        <SelectItem value="Europe/London">London</SelectItem>
+                        <SelectItem value="Europe/Paris">Paris</SelectItem>
+                        <SelectItem value="Europe/Berlin">Berlin</SelectItem>
+                        <SelectItem value="Asia/Tokyo">Tokyo</SelectItem>
+                        <SelectItem value="Asia/Shanghai">Shanghai</SelectItem>
+                        <SelectItem value="Australia/Sydney">Sydney</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Time Slots */}
+                <div className="p-4 bg-muted/50 rounded-lg space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium">Still Periods</h4>
+                    <Button onClick={addTimeSlot} size="sm" variant="outline" className="gap-1">
+                      <span className="material-icons text-base">add</span>
+                      Add Period
+                    </Button>
+                  </div>
+
+                  <p className="text-sm text-muted-foreground">
+                    Define time periods when the sands should rest.
+                  </p>
+
+                  {stillSandsSettings.time_slots.length === 0 ? (
+                    <div className="text-center py-6 text-muted-foreground">
+                      <span className="material-icons text-3xl mb-2">schedule</span>
+                      <p className="text-sm">No still periods configured</p>
+                      <p className="text-xs">Click "Add Period" to create one</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {stillSandsSettings.time_slots.map((slot, index) => (
+                        <div
+                          key={index}
+                          className="p-3 border rounded-lg bg-background space-y-3"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">Period {index + 1}</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeTimeSlot(index)}
+                              className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                            >
+                              <span className="material-icons text-base">delete</span>
+                            </Button>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Start Time</Label>
+                              <Input
+                                type="time"
+                                value={slot.start_time}
+                                onChange={(e) =>
+                                  updateTimeSlot(index, { start_time: e.target.value })
+                                }
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">End Time</Label>
+                              <Input
+                                type="time"
+                                value={slot.end_time}
+                                onChange={(e) =>
+                                  updateTimeSlot(index, { end_time: e.target.value })
+                                }
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <Label className="text-xs">Days</Label>
+                            <Select
+                              value={slot.days}
+                              onValueChange={(value) =>
+                                updateTimeSlot(index, {
+                                  days: value as TimeSlot['days'],
+                                })
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="daily">Daily</SelectItem>
+                                <SelectItem value="weekdays">Weekdays</SelectItem>
+                                <SelectItem value="weekends">Weekends</SelectItem>
+                                <SelectItem value="custom">Custom</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <Alert className="flex items-start">
+                  <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
+                  <AlertDescription>
+                    Times are based on the selected timezone. Still periods that span midnight
+                    (e.g., 22:00 to 06:00) are supported. Patterns resume automatically when
+                    still periods end.
+                  </AlertDescription>
+                </Alert>
+              </div>
             )}
+
+            <Button
+              onClick={handleSaveStillSandsSettings}
+              disabled={isLoading === 'stillsands'}
+              className="gap-2"
+            >
+              {isLoading === 'stillsands' ? (
+                <span className="material-icons-outlined animate-spin">sync</span>
+              ) : (
+                <span className="material-icons-outlined">save</span>
+              )}
+              Save Still Sands Settings
+            </Button>
           </AccordionContent>
         </AccordionItem>
 

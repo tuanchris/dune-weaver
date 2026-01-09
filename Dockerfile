@@ -1,22 +1,5 @@
-# Stage 1: Build frontend
-FROM --platform=$TARGETPLATFORM node:20-slim AS frontend-builder
-
-WORKDIR /app/frontend
-
-# Copy frontend package files
-COPY frontend/package*.json ./
-
-# Install dependencies
-RUN npm ci
-
-# Copy frontend source
-COPY frontend/ ./
-
-# Build frontend
-RUN npm run build
-
-# Stage 2: Python backend with nginx
-FROM --platform=$TARGETPLATFORM python:3.11-slim-bookworm
+# Backend-only Dockerfile
+FROM python:3.11-slim-bookworm
 
 # Faster, repeatable builds
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -34,8 +17,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libgpiod2 libgpiod-dev \
         scons \
         systemd \
-        # Nginx for serving frontend
-        nginx \
         # Docker CLI for container self-restart/update
         ca-certificates curl gnupg \
     && pip install --upgrade pip \
@@ -50,21 +31,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get purge -y gcc g++ make scons \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/sites-available/default
-RUN rm -f /etc/nginx/sites-enabled/default && \
-    ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
-
 # Copy backend code
 COPY . .
 
-# Copy built frontend from Stage 1
-COPY --from=frontend-builder /app/static/dist ./static/dist
+# Expose backend API port
+EXPOSE 8080
 
-# Ensure startup script is executable
-RUN chmod +x /app/start.sh
-
-# Expose ports: 80 for frontend (nginx), 8080 for backend API
-EXPOSE 80 8080
-
-CMD ["/app/start.sh"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
