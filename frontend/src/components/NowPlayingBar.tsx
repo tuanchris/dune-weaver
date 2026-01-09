@@ -195,15 +195,15 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
             {isPlaying ? (
               <>
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium truncate">{patternName}</p>
+                  <p className="text-lg font-medium truncate">{patternName}</p>
                   {status?.is_paused && (
-                    <span className="text-xs text-muted-foreground">(Paused)</span>
+                    <span className="text-sm text-muted-foreground">(Paused)</span>
                   )}
                 </div>
-                <Progress value={progressPercent} className="h-1 mt-1" />
+                <Progress value={progressPercent} className="h-2 mt-2" />
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">Not playing</p>
+              <p className="text-lg text-muted-foreground">Not playing</p>
             )}
           </div>
 
