@@ -101,7 +101,7 @@ def lower_priority(nice_value: int = 10) -> bool:
     """Lower current thread/process priority for background work.
     
     Args:
-        nice_value: Nice value to set (positive = lower priority).
+        nice_value: Target nice value (positive = lower priority).
     
     Returns:
         True if priority was lowered.
@@ -110,8 +110,10 @@ def lower_priority(nice_value: int = 10) -> bool:
         return False
     
     try:
-        os.nice(nice_value)
-        logger.debug(f"Process priority lowered via nice(+{nice_value})")
+        current_nice = os.nice(0)
+        if current_nice < nice_value:
+            os.nice(nice_value - current_nice)
+            logger.debug(f"Process priority lowered to nice {nice_value}")
         return True
     except Exception as e:
         logger.debug(f"Could not lower priority: {e}")
