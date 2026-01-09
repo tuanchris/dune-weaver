@@ -528,8 +528,8 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
       {/* Now Playing Bar - slides up to full height on mobile, 50vh on desktop when expanded */}
       <div
         ref={barRef}
-        className={`fixed left-0 right-0 z-40 bg-background border-t shadow-lg transition-all duration-300 ${isLogsOpen ? 'bottom-80' : isExpanded ? 'bottom-16' : 'bottom-20'}`}
-        style={{ height: isExpanded ? 'calc(100vh - 64px - 64px)' : '256px' }}
+        className={`fixed left-0 right-0 z-40 bg-background border-t shadow-lg transition-all duration-300 ${isLogsOpen ? 'bottom-80' : isExpanded ? 'bottom-16' : 'bottom-16 max-md:bottom-20'}`}
+        data-now-playing-bar={isExpanded ? 'expanded' : 'collapsed'}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
@@ -611,6 +611,13 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                         )}
                       </div>
 
+                      {/* Progress Bar - Desktop only (inline, above controls) */}
+                      <div className="hidden md:flex items-center gap-3">
+                        <span className="text-sm text-muted-foreground w-12 font-mono">{formatTime(elapsedTime)}</span>
+                        <Progress value={progressPercent} className="h-2 flex-1" />
+                        <span className="text-sm text-muted-foreground w-12 text-right font-mono">-{formatTime(remainingTime)}</span>
+                      </div>
+
                       {/* Playback Controls - Centered */}
                       <div className="flex items-center justify-center gap-3">
                         <Button
@@ -662,7 +669,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
 
                     {/* Next Pattern Preview - hidden on mobile */}
                     {status.playlist?.next_file && (
-                      <div className="hidden md:flex shrink-0 flex-col items-center gap-1">
+                      <div className="hidden md:flex shrink-0 flex-col items-center gap-1 mr-16">
                         <p className="text-xs text-muted-foreground font-medium">Up Next</p>
                         <div className="w-24 h-24 rounded-full overflow-hidden bg-muted border-2">
                           {nextPreviewUrl ? (
@@ -690,9 +697,9 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                 )}
               </div>
 
-              {/* Progress Bar - Full width at bottom */}
+              {/* Progress Bar - Mobile only (full width at bottom) */}
               {isPlaying && status && (
-                <div className="flex items-center gap-3 px-6 pb-3">
+                <div className="flex md:hidden items-center gap-3 px-6 pb-3">
                   <span className="text-sm text-muted-foreground w-12 font-mono">{formatTime(elapsedTime)}</span>
                   <Progress value={progressPercent} className="h-2 flex-1" />
                   <span className="text-sm text-muted-foreground w-12 text-right font-mono">-{formatTime(remainingTime)}</span>
@@ -703,10 +710,10 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
 
           {/* Expanded view - Real-time canvas preview */}
           {isExpanded && isPlaying && (
-            <div className="flex-1 flex flex-col md:justify-center px-4 py-2 md:py-4 overflow-hidden">
-              <div className="w-full max-w-5xl mx-auto flex flex-col md:flex-row gap-3 md:gap-6 md:-ml-16">
+            <div className="flex-1 flex flex-col md:items-center md:justify-center px-4 py-2 md:py-4 overflow-hidden">
+              <div className="w-full max-w-5xl mx-auto flex flex-col md:flex-row md:items-center md:justify-center gap-3 md:gap-6">
                 {/* Canvas - full width on mobile */}
-                <div className="flex items-center justify-center flex-1 min-h-0">
+                <div className="flex items-center justify-center flex-1 md:flex-none min-h-0">
                   <canvas
                     ref={canvasRef}
                     width={600}
@@ -719,7 +726,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                 {/* Controls */}
                 <div className="md:w-80 shrink-0 flex flex-col justify-start md:justify-center gap-2 md:gap-4">
                 {/* Pattern Info */}
-                <div className="text-center md:text-left">
+                <div className="text-center">
                   <h2 className="text-lg md:text-xl font-semibold truncate">{patternName}</h2>
                   {status?.playlist && (
                     <p className="text-sm text-muted-foreground">
