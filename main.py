@@ -651,6 +651,9 @@ async def get_all_settings():
             "detected_table_type": state.table_type,
             "table_type_override": state.table_type_override,
             "effective_table_type": state.table_type_override or state.table_type,
+            "gear_ratio": state.gear_ratio,
+            "x_steps_per_mm": state.x_steps_per_mm,
+            "y_steps_per_mm": state.y_steps_per_mm,
             "available_table_types": [
                 {"value": "dune_weaver_mini", "label": "Dune Weaver Mini"},
                 {"value": "dune_weaver_mini_pro", "label": "Dune Weaver Mini Pro"},
@@ -2836,26 +2839,26 @@ async def get_version_info(force_refresh: bool = False):
 
 @app.post("/api/update")
 async def trigger_update():
-    """Trigger software update (placeholder for future implementation)"""
+    """Trigger software update by pulling latest Docker images and recreating containers."""
     try:
-        # For now, just return the GitHub release URL
-        version_info = await version_manager.get_version_info()
-        if version_info.get("latest_release"):
+        logger.info("Update triggered via API")
+        success, error_message, error_log = update_manager.update_software()
+
+        if success:
             return JSONResponse(content={
-                "success": False,
-                "message": "Automatic updates not implemented yet",
-                "manual_update_url": version_info["latest_release"].get("html_url"),
-                "instructions": "Please visit the GitHub release page to download and install the update manually"
+                "success": True,
+                "message": "Update started. Containers are being recreated with the latest images. The page will reload shortly."
             })
         else:
             return JSONResponse(content={
                 "success": False,
-                "message": "No updates available"
+                "message": error_message or "Update failed",
+                "errors": error_log
             })
     except Exception as e:
         logger.error(f"Error triggering update: {e}")
         return JSONResponse(
-            content={"success": False, "message": "Failed to check for updates"},
+            content={"success": False, "message": f"Failed to trigger update: {str(e)}"},
             status_code=500
         )
 

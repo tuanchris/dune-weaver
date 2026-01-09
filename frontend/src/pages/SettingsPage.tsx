@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { SearchableSelect } from '@/components/ui/searchable-select'
 
 // Types
 
@@ -32,6 +33,10 @@ interface Settings {
   // Machine settings
   table_type_override?: string
   detected_table_type?: string
+  effective_table_type?: string
+  gear_ratio?: number
+  x_steps_per_mm?: number
+  y_steps_per_mm?: number
   available_table_types?: { value: string; label: string }[]
   // Homing settings
   homing_mode?: number
@@ -176,6 +181,11 @@ export function SettingsPage() {
     switch (section) {
       case 'connection':
         await fetchPorts()
+        // Also load settings for preferred port
+        if (!loadedSections.has('_settings')) {
+          setLoadedSections((prev) => new Set(prev).add('_settings'))
+          await fetchSettings()
+        }
         break
       case 'application':
       case 'mqtt':
@@ -225,6 +235,30 @@ export function SettingsPage() {
       setVersionInfo(data)
     } catch (error) {
       console.error('Failed to fetch version info:', error)
+    }
+  }
+
+  const handleTriggerUpdate = async () => {
+    if (!confirm('This will update the software and restart the containers. The page will reload automatically. Continue?')) {
+      return
+    }
+    setIsLoading('update')
+    try {
+      const response = await fetch('/api/update', { method: 'POST' })
+      const data = await response.json()
+      if (data.success) {
+        toast.success('Update started! The page will reload in a few seconds...')
+        // Wait a bit for containers to restart, then reload
+        setTimeout(() => {
+          window.location.reload()
+        }, 10000)
+      } else {
+        toast.error(data.message || 'Update failed')
+      }
+    } catch (error) {
+      toast.error('Failed to trigger update')
+    } finally {
+      setIsLoading(null)
     }
   }
 
@@ -299,6 +333,10 @@ export function SettingsPage() {
         // Machine settings
         table_type_override: data.machine?.table_type_override,
         detected_table_type: data.machine?.detected_table_type,
+        effective_table_type: data.machine?.effective_table_type,
+        gear_ratio: data.machine?.gear_ratio,
+        x_steps_per_mm: data.machine?.x_steps_per_mm,
+        y_steps_per_mm: data.machine?.y_steps_per_mm,
         available_table_types: data.machine?.available_table_types,
         // Homing settings
         homing_mode: data.homing?.mode,
@@ -414,6 +452,30 @@ export function SettingsPage() {
       }
     } catch (error) {
       toast.error('Failed to disconnect')
+    } finally {
+      setIsLoading(null)
+    }
+  }
+
+  const handleSavePreferredPort = async () => {
+    setIsLoading('preferredPort')
+    try {
+      const response = await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          connection: { preferred_port: settings.preferred_port || null },
+        }),
+      })
+      if (response.ok) {
+        toast.success(
+          settings.preferred_port
+            ? `Auto-connect set to ${settings.preferred_port}`
+            : 'Auto-connect disabled'
+        )
+      }
+    } catch (error) {
+      toast.error('Failed to save preferred port')
     } finally {
       setIsLoading(null)
     }
@@ -565,6 +627,36 @@ export function SettingsPage() {
     }
   }
 
+  const handleTestMqttConnection = async () => {
+    if (!mqttConfig.broker) {
+      toast.error('Please enter a broker address')
+      return
+    }
+    setIsLoading('mqttTest')
+    try {
+      const response = await fetch('/api/mqtt-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          broker: mqttConfig.broker,
+          port: mqttConfig.port || 1883,
+          username: mqttConfig.username || '',
+          password: mqttConfig.password || '',
+        }),
+      })
+      const data = await response.json()
+      if (data.success) {
+        toast.success('MQTT connection successful!')
+      } else {
+        toast.error(data.error || 'Connection failed')
+      }
+    } catch (error) {
+      toast.error('Failed to test MQTT connection')
+    } finally {
+      setIsLoading(null)
+    }
+  }
+
   const handleSaveMachineSettings = async () => {
     setIsLoading('machine')
     try {
@@ -620,7 +712,8 @@ export function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           patterns: {
-            clear_pattern_speed: settings.clear_pattern_speed || null,
+            // Send 0 to indicate "reset to default" - backend interprets 0 or negative as None
+            clear_pattern_speed: settings.clear_pattern_speed ?? 0,
             custom_clear_from_in: settings.custom_clear_from_in || null,
             custom_clear_from_out: settings.custom_clear_from_out || null,
           },
@@ -799,6 +892,48 @@ export function SettingsPage() {
                 Select a port and click 'Connect' to establish a connection.
               </p>
             </div>
+
+            <Separator />
+
+            {/* Preferred Port for Auto-Connect */}
+            <div className="space-y-3">
+              <Label>Preferred Port (Auto-Connect)</Label>
+              <div className="flex gap-3">
+                <Select
+                  value={settings.preferred_port || '__none__'}
+                  onValueChange={(value) =>
+                    setSettings({ ...settings, preferred_port: value === '__none__' ? undefined : value })
+                  }
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Select preferred port..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ports.map((port) => (
+                      <SelectItem key={port} value={port}>
+                        {port}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="__none__">None (Disable auto-connect)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={handleSavePreferredPort}
+                  disabled={isLoading === 'preferredPort'}
+                  className="gap-2"
+                >
+                  {isLoading === 'preferredPort' ? (
+                    <span className="material-icons-outlined animate-spin">sync</span>
+                  ) : (
+                    <span className="material-icons-outlined">save</span>
+                  )}
+                  Save
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                When set, the system will automatically connect to this port on startup. Set to "None" to disable auto-connect.
+              </p>
+            </div>
           </AccordionContent>
         </AccordionItem>
 
@@ -818,15 +953,24 @@ export function SettingsPage() {
             </div>
           </AccordionTrigger>
           <AccordionContent className="pt-4 pb-6 space-y-6">
-            {/* Detected Table Type */}
-            <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg">
-              <span className="material-icons-outlined text-muted-foreground">info</span>
-              <span className="text-sm">
-                Detected:{' '}
-                <span className="font-medium">
-                  {settings.detected_table_type || 'Unknown'}
-                </span>
-              </span>
+            {/* Hardware Parameters */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="p-3 bg-muted/50 rounded-lg">
+                <p className="text-xs text-muted-foreground">Detected Type</p>
+                <p className="font-medium text-sm">{settings.detected_table_type || 'Unknown'}</p>
+              </div>
+              <div className="p-3 bg-muted/50 rounded-lg">
+                <p className="text-xs text-muted-foreground">Gear Ratio</p>
+                <p className="font-medium text-sm">{settings.gear_ratio ?? '—'}</p>
+              </div>
+              <div className="p-3 bg-muted/50 rounded-lg">
+                <p className="text-xs text-muted-foreground">X Steps/mm</p>
+                <p className="font-medium text-sm">{settings.x_steps_per_mm ?? '—'}</p>
+              </div>
+              <div className="p-3 bg-muted/50 rounded-lg">
+                <p className="text-xs text-muted-foreground">Y Steps/mm</p>
+                <p className="font-medium text-sm">{settings.y_steps_per_mm ?? '—'}</p>
+              </div>
             </div>
 
             {/* Table Type Override */}
@@ -939,9 +1083,12 @@ export function SettingsPage() {
                   min="0"
                   max="360"
                   step="0.1"
-                  value={settings.angular_offset || 0}
+                  value={settings.angular_offset ?? ''}
                   onChange={(e) =>
-                    setSettings({ ...settings, angular_offset: parseFloat(e.target.value) || 0 })
+                    setSettings({
+                      ...settings,
+                      angular_offset: e.target.value === '' ? undefined : parseFloat(e.target.value),
+                    })
                   }
                   placeholder="0.0"
                 />
@@ -988,7 +1135,7 @@ export function SettingsPage() {
                     }
                   />
                   <p className="text-xs text-muted-foreground">
-                    Homing occurs after the clear pattern completes, before the next pattern.
+                    Homing occurs after each main pattern completes (clear patterns don't count).
                   </p>
                 </div>
               )}
@@ -1192,24 +1339,19 @@ export function SettingsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="clear-from-in">Clear From Center Pattern</Label>
-                  <Select
+                  <SearchableSelect
                     value={settings.custom_clear_from_in || '__default__'}
                     onValueChange={(value) =>
                       setSettings({ ...settings, custom_clear_from_in: value === '__default__' ? undefined : value })
                     }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Default (built-in)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__default__">Default (built-in)</SelectItem>
-                      {patternFiles.map((file) => (
-                        <SelectItem key={file} value={file}>
-                          {file}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={[
+                      { value: '__default__', label: 'Default (built-in)' },
+                      ...patternFiles.map((file) => ({ value: file, label: file })),
+                    ]}
+                    placeholder="Default (built-in)"
+                    searchPlaceholder="Search patterns..."
+                    emptyMessage="No patterns found"
+                  />
                   <p className="text-xs text-muted-foreground">
                     Pattern used when clearing from center outward.
                   </p>
@@ -1217,24 +1359,19 @@ export function SettingsPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="clear-from-out">Clear From Perimeter Pattern</Label>
-                  <Select
+                  <SearchableSelect
                     value={settings.custom_clear_from_out || '__default__'}
                     onValueChange={(value) =>
                       setSettings({ ...settings, custom_clear_from_out: value === '__default__' ? undefined : value })
                     }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Default (built-in)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__default__">Default (built-in)</SelectItem>
-                      {patternFiles.map((file) => (
-                        <SelectItem key={file} value={file}>
-                          {file}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={[
+                      { value: '__default__', label: 'Default (built-in)' },
+                      ...patternFiles.map((file) => ({ value: file, label: file })),
+                    ]}
+                    placeholder="Default (built-in)"
+                    searchPlaceholder="Search patterns..."
+                    emptyMessage="No patterns found"
+                  />
                   <p className="text-xs text-muted-foreground">
                     Pattern used when clearing from perimeter inward.
                   </p>
@@ -1523,18 +1660,35 @@ export function SettingsPage() {
               </div>
             )}
 
-            <Button
-              onClick={handleSaveMqttConfig}
-              disabled={isLoading === 'mqtt'}
-              className="gap-2"
-            >
-              {isLoading === 'mqtt' ? (
-                <span className="material-icons-outlined animate-spin">sync</span>
-              ) : (
-                <span className="material-icons-outlined">save</span>
+            <div className="flex gap-3">
+              <Button
+                onClick={handleSaveMqttConfig}
+                disabled={isLoading === 'mqtt'}
+                className="gap-2"
+              >
+                {isLoading === 'mqtt' ? (
+                  <span className="material-icons-outlined animate-spin">sync</span>
+                ) : (
+                  <span className="material-icons-outlined">save</span>
+                )}
+                Save MQTT Configuration
+              </Button>
+              {mqttConfig.enabled && mqttConfig.broker && (
+                <Button
+                  variant="outline"
+                  onClick={handleTestMqttConnection}
+                  disabled={isLoading === 'mqttTest'}
+                  className="gap-2"
+                >
+                  {isLoading === 'mqttTest' ? (
+                    <span className="material-icons-outlined animate-spin">sync</span>
+                  ) : (
+                    <span className="material-icons-outlined">wifi_tethering</span>
+                  )}
+                  Test Connection
+                </Button>
               )}
-              Save MQTT Configuration
-            </Button>
+            </div>
           </AccordionContent>
         </AccordionItem>
 
@@ -1574,7 +1728,7 @@ export function SettingsPage() {
                 <div className="space-y-2">
                   <Label>Startup Playlist</Label>
                   <Select
-                    value={autoPlaySettings.playlist}
+                    value={autoPlaySettings.playlist || undefined}
                     onValueChange={(value) =>
                       setAutoPlaySettings({ ...autoPlaySettings, playlist: value })
                     }
@@ -1583,11 +1737,17 @@ export function SettingsPage() {
                       <SelectValue placeholder="Select a playlist..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {playlists.map((playlist) => (
-                        <SelectItem key={playlist} value={playlist}>
-                          {playlist}
-                        </SelectItem>
-                      ))}
+                      {playlists.length === 0 ? (
+                        <div className="py-6 text-center text-sm text-muted-foreground">
+                          No playlists found
+                        </div>
+                      ) : (
+                        playlists.map((playlist) => (
+                          <SelectItem key={playlist} value={playlist}>
+                            {playlist}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
@@ -1755,9 +1915,9 @@ export function SettingsPage() {
                         lightbulb
                       </span>
                       <div>
-                        <p className="text-sm font-medium">Control WLED Lights</p>
+                        <p className="text-sm font-medium">Control LED Lights</p>
                         <p className="text-xs text-muted-foreground">
-                          Turn off WLED lights during still periods
+                          Turn off LED lights during still periods
                         </p>
                       </div>
                     </div>
@@ -1964,12 +2124,17 @@ export function SettingsPage() {
                 </p>
               </div>
               <Button
-                variant={versionInfo?.update_available ? 'default' : 'secondary'}
+                variant={versionInfo?.update_available ? 'default' : 'outline'}
                 size="sm"
-                disabled={!versionInfo?.update_available}
+                disabled={isLoading === 'update'}
+                onClick={handleTriggerUpdate}
               >
-                <span className="material-icons-outlined text-base mr-1">download</span>
-                Update
+                {isLoading === 'update' ? (
+                  <span className="material-icons-outlined text-base mr-1 animate-spin">sync</span>
+                ) : (
+                  <span className="material-icons-outlined text-base mr-1">download</span>
+                )}
+                {isLoading === 'update' ? 'Updating...' : 'Update'}
               </Button>
             </div>
           </AccordionContent>
