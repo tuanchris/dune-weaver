@@ -97,7 +97,7 @@ async def generate_preview_image(pattern_file, format='WEBP'):
     Runs in a separate process via ProcessPoolExecutor to completely
     eliminate GIL contention with the motion control thread.
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     pool = pool_module.get_pool()
     
     try:

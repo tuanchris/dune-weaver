@@ -462,7 +462,7 @@ async def generate_image_preview(pattern_file):
             pattern_path = os.path.join(THETA_RHO_DIR, pattern_file)
             
             try:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 coordinates = await loop.run_in_executor(
                     _get_process_pool(),
                     _parse_file_in_process,
@@ -638,7 +638,7 @@ async def generate_metadata_cache():
                 
                 try:
                     # Parse file in separate process to avoid GIL contention with motion thread
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     coordinates = await loop.run_in_executor(
                         _get_process_pool(),
                         _parse_file_in_process,
