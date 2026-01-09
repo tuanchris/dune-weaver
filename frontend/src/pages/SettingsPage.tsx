@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
+import { useOnBackendConnected } from '@/hooks/useBackendConnection'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -92,6 +93,13 @@ export function SettingsPage() {
   // Still Sands state
   const [stillSandsEnabled, setStillSandsEnabled] = useState(false)
 
+  // Version state
+  const [versionInfo, setVersionInfo] = useState<{
+    current: string
+    latest: string
+    update_available: boolean
+  } | null>(null)
+
   // Scroll to section and clear URL param after navigation
   useEffect(() => {
     if (sectionParam) {
@@ -134,6 +142,19 @@ export function SettingsPage() {
       case 'led':
         await fetchLedConfig()
         break
+      case 'version':
+        await fetchVersionInfo()
+        break
+    }
+  }
+
+  const fetchVersionInfo = async () => {
+    try {
+      const response = await fetch('/api/version')
+      const data = await response.json()
+      setVersionInfo(data)
+    } catch (error) {
+      console.error('Failed to fetch version info:', error)
     }
   }
 
@@ -193,6 +214,11 @@ export function SettingsPage() {
   useEffect(() => {
     fetchPorts()
   }, [])
+
+  // Refetch when backend reconnects
+  useOnBackendConnected(() => {
+    fetchPorts()
+  })
 
   const fetchSettings = async () => {
     try {
@@ -1092,7 +1118,9 @@ export function SettingsPage() {
               </div>
               <div className="flex-1">
                 <p className="font-medium">Current Version</p>
-                <p className="text-sm text-muted-foreground">v1.0.0</p>
+                <p className="text-sm text-muted-foreground">
+                  {versionInfo?.current ? `v${versionInfo.current}` : 'Loading...'}
+                </p>
               </div>
             </div>
 
@@ -1102,9 +1130,16 @@ export function SettingsPage() {
               </div>
               <div className="flex-1">
                 <p className="font-medium">Latest Version</p>
-                <p className="text-sm text-muted-foreground">Checking...</p>
+                <p className={`text-sm ${versionInfo?.update_available ? 'text-green-600 dark:text-green-400 font-medium' : 'text-muted-foreground'}`}>
+                  {versionInfo?.latest ? `v${versionInfo.latest}` : 'Checking...'}
+                  {versionInfo?.update_available && ' (Update available!)'}
+                </p>
               </div>
-              <Button variant="secondary" size="sm" disabled>
+              <Button
+                variant={versionInfo?.update_available ? 'default' : 'secondary'}
+                size="sm"
+                disabled={!versionInfo?.update_available}
+              >
                 <span className="material-icons-outlined text-base mr-1">download</span>
                 Update
               </Button>

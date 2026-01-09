@@ -68,6 +68,7 @@ export function Layout() {
 
   // Now Playing bar state
   const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(false)
+  const [openNowPlayingExpanded, setOpenNowPlayingExpanded] = useState(false)
   const wasPlayingRef = useRef(false) // Track previous playing state to detect start
   const [logs, setLogs] = useState<Array<{ timestamp: string; level: string; logger: string; message: string }>>([])
   const [logLevelFilter, setLogLevelFilter] = useState<string>('ALL')
@@ -83,21 +84,34 @@ export function Layout() {
       ws.onopen = () => {
         setIsBackendConnected(true)
         setConnectionAttempts(0)
+        // Dispatch event so pages can refetch data
+        window.dispatchEvent(new CustomEvent('backend-connected'))
       }
 
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
-          // Use device connection status from the status message
-          if (data.connected !== undefined) {
-            setIsConnected(data.connected)
-          }
-          // Auto-open Now Playing bar when playback starts
+          // Handle status updates
           if (data.type === 'status_update' && data.data) {
+            // Update device connection status from the status message
+            if (data.data.connection_status !== undefined) {
+              setIsConnected(data.data.connection_status)
+            }
+            // Auto-open/close Now Playing bar based on playback state
             const isPlaying = data.data.is_running || data.data.is_paused
             if (isPlaying && !wasPlayingRef.current) {
-              // Playback just started - open the Now Playing bar
+              // Playback just started - open the Now Playing bar in expanded mode
               setIsNowPlayingOpen(true)
+              setOpenNowPlayingExpanded(true)
+              // Close the logs drawer if open
+              setIsLogsOpen(false)
+              // Reset the expanded flag after a short delay
+              setTimeout(() => setOpenNowPlayingExpanded(false), 500)
+              // Dispatch event so pages can close their sidebars/panels
+              window.dispatchEvent(new CustomEvent('playback-started'))
+            } else if (!isPlaying && wasPlayingRef.current) {
+              // Playback just stopped - close the Now Playing bar
+              setIsNowPlayingOpen(false)
             }
             wasPlayingRef.current = isPlaying
           }
@@ -299,6 +313,21 @@ export function Layout() {
     }
   }
 
+  const handleShutdown = async () => {
+    if (!confirm('Are you sure you want to shutdown the system?')) return
+
+    try {
+      const response = await fetch('/shutdown', { method: 'POST' })
+      if (response.ok) {
+        toast.success('System is shutting down...')
+      } else {
+        throw new Error('Shutdown failed')
+      }
+    } catch {
+      toast.error('Failed to shutdown system')
+    }
+  }
+
   // Update document title based on current page
   useEffect(() => {
     const currentNav = navItems.find((item) => item.path === location.pathname)
@@ -453,14 +482,14 @@ export function Layout() {
           </Link>
           <div className="flex items-center gap-1">
             <button
-              onClick={() => setIsNowPlayingOpen(!isNowPlayingOpen)}
-              className={`rounded-full w-10 h-10 flex items-center justify-center hover:bg-accent ${
-                isNowPlayingOpen ? 'text-primary' : ''
-              }`}
-              aria-label="Now playing"
-              title="Now Playing"
+              onClick={() => setIsDark(!isDark)}
+              className="rounded-full w-10 h-10 flex items-center justify-center hover:bg-accent"
+              aria-label="Toggle dark mode"
+              title="Toggle Theme"
             >
-              <span className="material-icons-outlined">play_circle</span>
+              <span className="material-icons-outlined">
+                {isDark ? 'light_mode' : 'dark_mode'}
+              </span>
             </button>
             <button
               onClick={handleOpenLogs}
@@ -472,27 +501,31 @@ export function Layout() {
             </button>
             <button
               onClick={handleRestart}
-              className="rounded-full w-10 h-10 flex items-center justify-center hover:bg-accent hover:text-amber-500"
+              className="rounded-full w-10 h-10 flex items-center justify-center hover:bg-accent text-amber-500"
               aria-label="Restart system"
               title="Restart System"
             >
               <span className="material-icons-outlined">restart_alt</span>
             </button>
             <button
-              onClick={() => setIsDark(!isDark)}
-              className="rounded-full w-10 h-10 flex items-center justify-center hover:bg-accent"
-              aria-label="Toggle dark mode"
+              onClick={handleShutdown}
+              className="rounded-full w-10 h-10 flex items-center justify-center hover:bg-accent text-red-500"
+              aria-label="Shutdown system"
+              title="Shutdown System"
             >
-              <span className="material-icons-outlined">
-                {isDark ? 'light_mode' : 'dark_mode'}
-              </span>
+              <span className="material-icons-outlined">power_settings_new</span>
             </button>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className={`container mx-auto px-4 transition-all duration-300 ${isLogsOpen ? 'pb-80' : 'pb-20'}`}>
+      <main className={`container mx-auto px-4 transition-all duration-300 ${
+        isLogsOpen && isNowPlayingOpen ? 'pb-[576px]' :
+        isLogsOpen ? 'pb-80' :
+        isNowPlayingOpen ? 'pb-80' :
+        'pb-20'
+      }`}>
         <Outlet />
       </main>
 
@@ -500,8 +533,20 @@ export function Layout() {
       <NowPlayingBar
         isLogsOpen={isLogsOpen}
         isVisible={isNowPlayingOpen}
+        openExpanded={openNowPlayingExpanded}
         onClose={() => setIsNowPlayingOpen(false)}
       />
+
+      {/* Floating Now Playing Button */}
+      {!isNowPlayingOpen && (
+        <button
+          onClick={() => setIsNowPlayingOpen(true)}
+          className="fixed right-4 bottom-20 z-30 w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 transition-all"
+          title="Now Playing"
+        >
+          <span className="material-icons">play_circle</span>
+        </button>
+      )}
 
       {/* Logs Drawer */}
       <div

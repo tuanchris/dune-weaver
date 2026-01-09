@@ -5,6 +5,7 @@ import {
   getPreviewsFromCache,
   savePreviewToCache,
 } from '@/lib/previewCache'
+import { useOnBackendConnected } from '@/hooks/useBackendConnection'
 import type { PatternMetadata, PreviewData, SortOption, PreExecution, RunMode } from '@/lib/types'
 import { preExecutionOptions } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -30,7 +31,9 @@ import {
 export function PlaylistsPage() {
   // Playlists state
   const [playlists, setPlaylists] = useState<string[]>([])
-  const [selectedPlaylist, setSelectedPlaylist] = useState<string | null>(null)
+  const [selectedPlaylist, setSelectedPlaylist] = useState<string | null>(() => {
+    return localStorage.getItem('playlist-selected')
+  })
   const [playlistPatterns, setPlaylistPatterns] = useState<string[]>([])
   const [isLoadingPlaylists, setIsLoadingPlaylists] = useState(true)
 
@@ -52,12 +55,82 @@ export function PlaylistsPage() {
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [playlistToRename, setPlaylistToRename] = useState<string | null>(null)
 
-  // Playback settings
-  const [runMode, setRunMode] = useState<RunMode>('single')
-  const [shuffle, setShuffle] = useState(false)
-  const [pauseTime, setPauseTime] = useState(5)
-  const [pauseUnit, setPauseUnit] = useState<'sec' | 'min' | 'hr'>('min')
-  const [clearPattern, setClearPattern] = useState<PreExecution>('adaptive')
+  // Playback settings - initialized from localStorage
+  const [runMode, setRunMode] = useState<RunMode>(() => {
+    const cached = localStorage.getItem('playlist-runMode')
+    return (cached === 'single' || cached === 'indefinite') ? cached : 'single'
+  })
+  const [shuffle, setShuffle] = useState(() => {
+    return localStorage.getItem('playlist-shuffle') === 'true'
+  })
+  const [pauseTime, setPauseTime] = useState(() => {
+    const cached = localStorage.getItem('playlist-pauseTime')
+    return cached ? Number(cached) : 5
+  })
+  const [pauseUnit, setPauseUnit] = useState<'sec' | 'min' | 'hr'>(() => {
+    const cached = localStorage.getItem('playlist-pauseUnit')
+    return (cached === 'sec' || cached === 'min' || cached === 'hr') ? cached : 'min'
+  })
+  const [clearPattern, setClearPattern] = useState<PreExecution>(() => {
+    const cached = localStorage.getItem('playlist-clearPattern')
+    return (cached as PreExecution) || 'adaptive'
+  })
+
+  // Persist playback settings to localStorage
+  useEffect(() => {
+    localStorage.setItem('playlist-runMode', runMode)
+  }, [runMode])
+  useEffect(() => {
+    localStorage.setItem('playlist-shuffle', String(shuffle))
+  }, [shuffle])
+  useEffect(() => {
+    localStorage.setItem('playlist-pauseTime', String(pauseTime))
+  }, [pauseTime])
+  useEffect(() => {
+    localStorage.setItem('playlist-pauseUnit', pauseUnit)
+  }, [pauseUnit])
+  useEffect(() => {
+    localStorage.setItem('playlist-clearPattern', clearPattern)
+  }, [clearPattern])
+
+  // Persist selected playlist to localStorage
+  useEffect(() => {
+    if (selectedPlaylist) {
+      localStorage.setItem('playlist-selected', selectedPlaylist)
+    } else {
+      localStorage.removeItem('playlist-selected')
+    }
+  }, [selectedPlaylist])
+
+  // Validate cached playlist exists and load its patterns after playlists load
+  const initialLoadDoneRef = useRef(false)
+  useEffect(() => {
+    if (isLoadingPlaylists) return
+
+    if (selectedPlaylist) {
+      if (playlists.includes(selectedPlaylist)) {
+        // Load patterns for cached playlist on initial load only
+        if (!initialLoadDoneRef.current) {
+          initialLoadDoneRef.current = true
+          fetchPlaylistPatterns(selectedPlaylist)
+        }
+      } else {
+        // Cached playlist no longer exists
+        setSelectedPlaylist(null)
+      }
+    }
+  }, [isLoadingPlaylists, playlists, selectedPlaylist])
+
+  // Close modals when playback starts
+  useEffect(() => {
+    const handlePlaybackStarted = () => {
+      setIsPickerOpen(false)
+      setIsCreateModalOpen(false)
+      setIsRenameModalOpen(false)
+    }
+    window.addEventListener('playback-started', handlePlaybackStarted)
+    return () => window.removeEventListener('playback-started', handlePlaybackStarted)
+  }, [])
   const [isRunning, setIsRunning] = useState(false)
 
   // Convert pause time to seconds based on unit
@@ -82,6 +155,12 @@ export function PlaylistsPage() {
     fetchPlaylists()
     fetchAllPatterns()
   }, [])
+
+  // Refetch when backend reconnects
+  useOnBackendConnected(() => {
+    fetchPlaylists()
+    fetchAllPatterns()
+  })
 
   const fetchPlaylists = async () => {
     setIsLoadingPlaylists(true)

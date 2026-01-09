@@ -5,6 +5,7 @@ import {
   getPreviewsFromCache,
   savePreviewToCache,
 } from '@/lib/previewCache'
+import { useOnBackendConnected } from '@/hooks/useBackendConnection'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -100,6 +101,15 @@ export function BrowsePage() {
   // Favorites state
   const [favorites, setFavorites] = useState<Set<string>>(new Set())
 
+  // Close panel when playback starts
+  useEffect(() => {
+    const handlePlaybackStarted = () => {
+      setIsPanelOpen(false)
+    }
+    window.addEventListener('playback-started', handlePlaybackStarted)
+    return () => window.removeEventListener('playback-started', handlePlaybackStarted)
+  }, [])
+
   // Initialize IndexedDB cache and fetch patterns on mount
   useEffect(() => {
     initPreviewCacheDB().then(() => {
@@ -110,6 +120,12 @@ export function BrowsePage() {
     })
     loadFavorites()
   }, [])
+
+  // Refetch when backend reconnects
+  useOnBackendConnected(() => {
+    fetchPatterns()
+    loadFavorites()
+  })
 
   // Load favorites from "Favorites" playlist
   const loadFavorites = async () => {
@@ -537,6 +553,24 @@ export function BrowsePage() {
     setIsPanelOpen(false)
   }
 
+  // Swipe to close panel handling
+  const panelRef = useRef<HTMLDivElement>(null)
+  const panelTouchStartX = useRef<number | null>(null)
+
+  const handlePanelTouchStart = (e: React.TouchEvent) => {
+    panelTouchStartX.current = e.touches[0].clientX
+  }
+  const handlePanelTouchEnd = (e: React.TouchEvent) => {
+    if (panelTouchStartX.current === null) return
+    const touchEndX = e.changedTouches[0].clientX
+    const deltaX = touchEndX - panelTouchStartX.current
+    // Swipe right more than 50px to close
+    if (deltaX > 50) {
+      handleClosePanel()
+    }
+    panelTouchStartX.current = null
+  }
+
   const handleOpenAnimatedPreview = async () => {
     if (!selectedPattern) return
     setIsAnimatedPreviewOpen(true)
@@ -944,6 +978,9 @@ export function BrowsePage() {
         className={`fixed top-0 bottom-0 right-0 w-full max-w-md transform transition-transform duration-300 ease-in-out z-40 ${
           isPanelOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
+        ref={panelRef}
+        onTouchStart={handlePanelTouchStart}
+        onTouchEnd={handlePanelTouchEnd}
       >
         <div className="h-full bg-background border-l shadow-xl flex flex-col">
           <header className="flex h-14 items-center justify-between border-b px-4 shrink-0">

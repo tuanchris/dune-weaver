@@ -17,19 +17,40 @@ export default defineConfig({
       '/ws': {
         target: 'ws://localhost:8080',
         ws: true,
-        // Suppress connection reset errors (common during backend restarts)
+        // Suppress connection errors (common during backend restarts)
         configure: (proxy, _options) => {
           // Handle proxy errors silently for expected connection issues
-          const handleError = (err: Error) => {
+          const isConnectionError = (err: Error & { code?: string }) => {
             const msg = err.message || ''
-            if (msg.includes('ECONNRESET') || msg.includes('ECONNREFUSED') || msg.includes('EPIPE')) {
-              return // Silently ignore
+            const code = err.code || ''
+            // Check error code (most reliable for AggregateError)
+            if (['ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'ETIMEDOUT'].includes(code)) {
+              return true
             }
-            console.error('WebSocket proxy error:', msg)
+            // Check message as fallback
+            if (msg.includes('ECONNRESET') || msg.includes('ECONNREFUSED') ||
+                msg.includes('EPIPE') || msg.includes('ETIMEDOUT') ||
+                msg.includes('AggregateError')) {
+              return true
+            }
+            return false
           }
+
+          const handleError = (err: Error) => {
+            if (isConnectionError(err)) {
+              return // Silently ignore connection errors
+            }
+            // Only log unexpected errors
+            console.error('WebSocket proxy error:', err.message)
+          }
+
           proxy.on('error', handleError)
           proxy.on('proxyReqWs', (_proxyReq, _req, socket) => {
-            socket.on('error', handleError)
+            socket.on('error', (err) => {
+              if (!isConnectionError(err)) {
+                console.error('WebSocket socket error:', err.message)
+              }
+            })
           })
         },
       },

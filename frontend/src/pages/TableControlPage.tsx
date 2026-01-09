@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -33,6 +33,29 @@ export function TableControlPage() {
   const [currentSpeed, setCurrentSpeed] = useState<number | null>(null)
   const [currentTheta, setCurrentTheta] = useState(0)
   const [isLoading, setIsLoading] = useState<string | null>(null)
+
+  // Connect to status WebSocket to get current speed
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/status`)
+
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data)
+        if (message.type === 'status_update' && message.data) {
+          if (message.data.speed !== null && message.data.speed !== undefined) {
+            setCurrentSpeed(message.data.speed)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to parse status:', error)
+      }
+    }
+
+    return () => {
+      ws.close()
+    }
+  }, [])
 
   const handleAction = async (
     action: string,
@@ -152,188 +175,52 @@ export function TableControlPage() {
 
         <Separator />
 
-        {/* Main Controls Grid */}
+        {/* Main Controls Grid - 2x2 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Movement Controls */}
-          <Card className="lg:row-span-2">
+          {/* Primary Actions */}
+          <Card>
             <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-lg">Movement</CardTitle>
-                  <CardDescription>Control ball position</CardDescription>
-                </div>
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <span className="material-icons-outlined text-lg">help_outline</span>
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Pattern Orientation Alignment</DialogTitle>
-                      <DialogDescription>
-                        Follow these steps to align your patterns with their previews
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                      <ol className="space-y-3 text-sm">
-                        {[
-                          'Home the table then select move to perimeter. Look at your pattern preview and decide where the "bottom" should be.',
-                          'Manually move the radial arm or use the rotation buttons below to point 90° to the right of where you want the pattern bottom.',
-                          'Click the "Home" button to establish this as the reference position.',
-                          'All patterns will now be oriented according to their previews!',
-                        ].map((step, i) => (
-                          <li key={i} className="flex gap-3">
-                            <Badge
-                              variant="outline"
-                              className="h-6 w-6 shrink-0 items-center justify-center rounded-full p-0"
-                            >
-                              {i + 1}
-                            </Badge>
-                            <span className="text-muted-foreground">{step}</span>
-                          </li>
-                        ))}
-                      </ol>
-
-                      <Separator />
-
-                      <Alert className="flex items-start border-amber-500/50">
-                        <span className="material-icons-outlined text-amber-500 text-base mr-2 shrink-0">
-                          warning
-                        </span>
-                        <AlertDescription className="text-amber-600 dark:text-amber-400">
-                          Only perform this when you want to change the orientation reference.
-                        </AlertDescription>
-                      </Alert>
-
-                      <div className="space-y-3">
-                        <p className="text-sm font-medium text-center">Fine Adjustment</p>
-                        <div className="flex justify-center gap-2">
-                          <Button
-                            variant="outline"
-                            onClick={() => handleRotate(-10)}
-                            disabled={isLoading === 'rotate'}
-                          >
-                            <span className="material-icons text-lg mr-1">rotate_left</span>
-                            CCW 10°
-                          </Button>
-                          <Button
-                            variant="outline"
-                            onClick={() => handleRotate(10)}
-                            disabled={isLoading === 'rotate'}
-                          >
-                            CW 10°
-                            <span className="material-icons text-lg ml-1">rotate_right</span>
-                          </Button>
-                        </div>
-                        <p className="text-xs text-muted-foreground text-center">
-                          Each click rotates 10 degrees
-                        </p>
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <DialogTrigger asChild>
-                        <Button>Got it</Button>
-                      </DialogTrigger>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </div>
+              <CardTitle className="text-lg">Primary Actions</CardTitle>
+              <CardDescription>Calibrate or stop the table</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Primary Actions */}
-              <div className="space-y-3">
-                <div>
-                  <p className="text-sm font-medium">Primary Actions</p>
-                  <p className="text-xs text-muted-foreground">Calibrate or stop the table</p>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={handleHome}
-                        disabled={isLoading === 'home'}
-                        className="h-16 gap-1 flex-col items-center justify-center"
-                      >
-                        {isLoading === 'home' ? (
-                          <span className="material-icons-outlined animate-spin text-2xl">sync</span>
-                        ) : (
-                          <span className="material-icons-outlined text-2xl">home</span>
-                        )}
-                        <span className="text-xs">Home</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Return to home position</TooltipContent>
-                  </Tooltip>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-3">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={handleHome}
+                      disabled={isLoading === 'home'}
+                      className="h-16 gap-1 flex-col items-center justify-center"
+                    >
+                      {isLoading === 'home' ? (
+                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                      ) : (
+                        <span className="material-icons-outlined text-2xl">home</span>
+                      )}
+                      <span className="text-xs">Home</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Return to home position</TooltipContent>
+                </Tooltip>
 
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={handleStop}
-                        disabled={isLoading === 'stop'}
-                        variant="destructive"
-                        className="h-16 gap-1 flex-col items-center justify-center"
-                      >
-                        {isLoading === 'stop' ? (
-                          <span className="material-icons-outlined animate-spin text-2xl">sync</span>
-                        ) : (
-                          <span className="material-icons-outlined text-2xl">stop_circle</span>
-                        )}
-                        <span className="text-xs">Stop</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Emergency stop</TooltipContent>
-                  </Tooltip>
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Position Controls */}
-              <div className="space-y-3">
-                <div>
-                  <p className="text-sm font-medium">Position</p>
-                  <p className="text-xs text-muted-foreground">Move ball to a specific location</p>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={handleMoveToCenter}
-                        disabled={isLoading === 'center'}
-                        variant="secondary"
-                        className="h-16 gap-1 flex-col items-center justify-center"
-                      >
-                        {isLoading === 'center' ? (
-                          <span className="material-icons-outlined animate-spin text-2xl">sync</span>
-                        ) : (
-                          <span className="material-icons-outlined text-2xl">filter_center_focus</span>
-                        )}
-                        <span className="text-xs">Center</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Move ball to center</TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={handleMoveToPerimeter}
-                        disabled={isLoading === 'perimeter'}
-                        variant="secondary"
-                        className="h-16 gap-1 flex-col items-center justify-center"
-                      >
-                        {isLoading === 'perimeter' ? (
-                          <span className="material-icons-outlined animate-spin text-2xl">sync</span>
-                        ) : (
-                          <span className="material-icons-outlined text-2xl">all_out</span>
-                        )}
-                        <span className="text-xs">Perimeter</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Move ball to edge</TooltipContent>
-                  </Tooltip>
-                </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={handleStop}
+                      disabled={isLoading === 'stop'}
+                      variant="destructive"
+                      className="h-16 gap-1 flex-col items-center justify-center"
+                    >
+                      {isLoading === 'stop' ? (
+                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                      ) : (
+                        <span className="material-icons-outlined text-2xl">stop_circle</span>
+                      )}
+                      <span className="text-xs">Stop</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Emergency stop</TooltipContent>
+                </Tooltip>
               </div>
             </CardContent>
           </Card>
@@ -375,6 +262,141 @@ export function TableControlPage() {
                   )}
                   Set
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Position */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Position</CardTitle>
+              <CardDescription>Move ball to a specific location</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-3">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={handleMoveToCenter}
+                      disabled={isLoading === 'center'}
+                      variant="outline"
+                      className="h-16 gap-1 flex-col items-center justify-center"
+                    >
+                      {isLoading === 'center' ? (
+                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                      ) : (
+                        <span className="material-icons-outlined text-2xl">center_focus_strong</span>
+                      )}
+                      <span className="text-xs">Center</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Move ball to center</TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={handleMoveToPerimeter}
+                      disabled={isLoading === 'perimeter'}
+                      variant="outline"
+                      className="h-16 gap-1 flex-col items-center justify-center"
+                    >
+                      {isLoading === 'perimeter' ? (
+                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                      ) : (
+                        <span className="material-icons-outlined text-2xl">trip_origin</span>
+                      )}
+                      <span className="text-xs">Perimeter</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Move ball to edge</TooltipContent>
+                </Tooltip>
+
+                <Dialog>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <DialogTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="h-16 gap-1 flex-col items-center justify-center"
+                        >
+                          <span className="material-icons-outlined text-2xl">screen_rotation</span>
+                          <span className="text-xs">Align</span>
+                        </Button>
+                      </DialogTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>Align pattern orientation</TooltipContent>
+                  </Tooltip>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Pattern Orientation Alignment</DialogTitle>
+                    <DialogDescription>
+                      Follow these steps to align your patterns with their previews
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <ol className="space-y-3 text-sm">
+                      {[
+                        'Home the table then select move to perimeter. Look at your pattern preview and decide where the "bottom" should be.',
+                        'Manually move the radial arm or use the rotation buttons below to point 90° to the right of where you want the pattern bottom.',
+                        'Click the "Home" button to establish this as the reference position.',
+                        'All patterns will now be oriented according to their previews!',
+                      ].map((step, i) => (
+                        <li key={i} className="flex gap-3">
+                          <Badge
+                            variant="outline"
+                            className="h-6 w-6 shrink-0 items-center justify-center rounded-full p-0"
+                          >
+                            {i + 1}
+                          </Badge>
+                          <span className="text-muted-foreground">{step}</span>
+                        </li>
+                      ))}
+                    </ol>
+
+                    <Separator />
+
+                    <Alert className="flex items-start border-amber-500/50">
+                      <span className="material-icons-outlined text-amber-500 text-base mr-2 shrink-0">
+                        warning
+                      </span>
+                      <AlertDescription className="text-amber-600 dark:text-amber-400">
+                        Only perform this when you want to change the orientation reference.
+                      </AlertDescription>
+                    </Alert>
+
+                    <div className="space-y-3">
+                      <p className="text-sm font-medium text-center">Fine Adjustment</p>
+                      <div className="flex justify-center gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => handleRotate(-10)}
+                          disabled={isLoading === 'rotate'}
+                        >
+                          <span className="material-icons text-lg mr-1">rotate_left</span>
+                          CCW 10°
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => handleRotate(10)}
+                          disabled={isLoading === 'rotate'}
+                        >
+                          CW 10°
+                          <span className="material-icons text-lg ml-1">rotate_right</span>
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground text-center">
+                        Each click rotates 10 degrees
+                      </p>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <DialogTrigger asChild>
+                      <Button>Got it</Button>
+                    </DialogTrigger>
+                  </DialogFooter>
+                </DialogContent>
+                </Dialog>
               </div>
             </CardContent>
           </Card>

@@ -112,3 +112,31 @@ body {
 .dark .pattern-preview {
   filter: invert(1);
 }
+
+/* Marquee animation for scrolling text */
+@keyframes marquee {
+  0%, 10% {
+    transform: translateX(calc(-100% + 100cqw));
+  }
+  45%, 55% {
+    transform: translateX(0);
+  }
+  90%, 100% {
+    transform: translateX(calc(-100% + 100cqw));
+  }
+}
+
+.marquee-container {
+  container-type: inline-size;
+  overflow: hidden;
+}
+
+.animate-marquee {
+  display: inline-block;
+  animation: marquee 8s ease-in-out infinite;
+  animation-play-state: running;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}

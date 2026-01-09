@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Input } from '@/components/ui/input'
+
+type Coordinate = [number, number]
 
 interface PlaybackStatus {
   current_file: string | null
@@ -48,14 +50,86 @@ function formatPatternName(path: string | null): string {
 interface NowPlayingBarProps {
   isLogsOpen?: boolean
   isVisible: boolean
+  openExpanded?: boolean
   onClose: () => void
 }
 
-export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPlayingBarProps) {
+export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = false, onClose }: NowPlayingBarProps) {
   const [status, setStatus] = useState<PlaybackStatus | null>(null)
-  const [isExpanded, setIsExpanded] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
+
+  // Expanded state for slide-up view
+  const [isExpanded, setIsExpanded] = useState(false)
+
+  // Swipe gesture handling
+  const touchStartY = useRef<number | null>(null)
+  const barRef = useRef<HTMLDivElement>(null)
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY
+  }
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartY.current === null) return
+    const touchEndY = e.changedTouches[0].clientY
+    const deltaY = touchEndY - touchStartY.current
+
+    if (deltaY > 50) {
+      // Swipe down
+      if (isExpanded) {
+        setIsExpanded(false) // Collapse to mini
+      } else {
+        onClose() // Hide the bar
+      }
+    } else if (deltaY < -50 && isPlaying) {
+      // Swipe up - expand (only if playing)
+      setIsExpanded(true)
+    }
+    touchStartY.current = null
+  }
+
+  // Use native event listener for touchmove to prevent background scroll
+  useEffect(() => {
+    const bar = barRef.current
+    if (!bar) return
+
+    const handleTouchMove = (e: TouchEvent) => {
+      e.preventDefault()
+    }
+
+    bar.addEventListener('touchmove', handleTouchMove, { passive: false })
+    return () => {
+      bar.removeEventListener('touchmove', handleTouchMove)
+    }
+  }, [])
+
+  // Open in expanded mode when openExpanded prop changes to true
+  useEffect(() => {
+    if (openExpanded && isVisible) {
+      setIsExpanded(true)
+    }
+  }, [openExpanded, isVisible])
+
+  // Auto-collapse when nothing is playing
+  const isPlaying = status?.is_running || status?.is_paused
+  useEffect(() => {
+    if (!isPlaying && isExpanded) {
+      setIsExpanded(false)
+    }
+  }, [isPlaying, isExpanded])
+
+  const [coordinates, setCoordinates] = useState<Coordinate[]>([])
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const lastDrawnIndexRef = useRef<number>(-1)
+  const lastFileRef = useRef<string | null>(null)
+  const lastThemeRef = useRef<boolean | null>(null)
+
+  // Smooth animation refs
+  const animationFrameRef = useRef<number | null>(null)
+  const lastProgressRef = useRef<number>(0)
+  const lastProgressTimeRef = useRef<number>(0)
+  const smoothProgressRef = useRef<number>(0)
 
   // Connect to status WebSocket
   useEffect(() => {
@@ -129,6 +203,255 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
     }
   }, [status?.current_file, status?.playlist?.next_file])
 
+  // Canvas drawing functions for real-time preview
+  const polarToCartesian = useCallback((theta: number, rho: number, size: number) => {
+    const centerX = size / 2
+    const centerY = size / 2
+    const radius = (size / 2) * 0.9 * rho
+    const x = centerX + radius * Math.cos(theta)
+    const y = centerY + radius * Math.sin(theta)
+    return { x, y }
+  }, [])
+
+  const getThemeColors = useCallback(() => {
+    const isDark = document.documentElement.classList.contains('dark')
+    return {
+      isDark,
+      bgOuter: isDark ? '#1a1a1a' : '#f5f5f5',
+      bgInner: isDark ? '#262626' : '#ffffff',
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(128, 128, 128, 0.3)',
+      lineColor: isDark ? '#e5e5e5' : '#333333',
+      markerBorder: isDark ? '#333333' : '#ffffff',
+    }
+  }, [])
+
+  const initOffscreenCanvas = useCallback((size: number, coords: Coordinate[]) => {
+    const colors = getThemeColors()
+
+    if (!offscreenCanvasRef.current) {
+      offscreenCanvasRef.current = document.createElement('canvas')
+    }
+
+    const offscreen = offscreenCanvasRef.current
+    offscreen.width = size
+    offscreen.height = size
+
+    const ctx = offscreen.getContext('2d')
+    if (!ctx) return
+
+    ctx.fillStyle = colors.bgOuter
+    ctx.fillRect(0, 0, size, size)
+
+    ctx.beginPath()
+    ctx.arc(size / 2, size / 2, (size / 2) * 0.95, 0, Math.PI * 2)
+    ctx.fillStyle = colors.bgInner
+    ctx.fill()
+    ctx.strokeStyle = colors.borderColor
+    ctx.lineWidth = 1
+    ctx.stroke()
+
+    ctx.strokeStyle = colors.lineColor
+    ctx.lineWidth = 1.5
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+
+    if (coords.length > 0) {
+      const firstPoint = polarToCartesian(coords[0][0], coords[0][1], size)
+      ctx.beginPath()
+      ctx.moveTo(firstPoint.x, firstPoint.y)
+      ctx.stroke()
+    }
+
+    lastDrawnIndexRef.current = 0
+    lastThemeRef.current = colors.isDark
+  }, [getThemeColors, polarToCartesian])
+
+  const drawPattern = useCallback((ctx: CanvasRenderingContext2D, coords: Coordinate[], smoothIndex: number, forceRedraw = false) => {
+    const canvas = ctx.canvas
+    const size = canvas.width
+    const colors = getThemeColors()
+
+    // Apply 16 coordinate offset for physical latency
+    const adjustedSmoothIndex = Math.max(0, smoothIndex - 16)
+    const adjustedIndex = Math.floor(adjustedSmoothIndex)
+
+    const needsReinit = forceRedraw ||
+      !offscreenCanvasRef.current ||
+      lastThemeRef.current !== colors.isDark ||
+      adjustedIndex < lastDrawnIndexRef.current
+
+    if (needsReinit) {
+      initOffscreenCanvas(size, coords)
+    }
+
+    const offscreen = offscreenCanvasRef.current
+    if (!offscreen) return
+
+    const offCtx = offscreen.getContext('2d')
+    if (!offCtx) return
+
+    if (coords.length > 0 && adjustedIndex > lastDrawnIndexRef.current) {
+      offCtx.strokeStyle = colors.lineColor
+      offCtx.lineWidth = 1.5
+      offCtx.lineCap = 'round'
+      offCtx.lineJoin = 'round'
+
+      offCtx.beginPath()
+      const startPoint = polarToCartesian(
+        coords[lastDrawnIndexRef.current][0],
+        coords[lastDrawnIndexRef.current][1],
+        size
+      )
+      offCtx.moveTo(startPoint.x, startPoint.y)
+
+      for (let i = lastDrawnIndexRef.current + 1; i <= adjustedIndex && i < coords.length; i++) {
+        const point = polarToCartesian(coords[i][0], coords[i][1], size)
+        offCtx.lineTo(point.x, point.y)
+      }
+      offCtx.stroke()
+
+      lastDrawnIndexRef.current = adjustedIndex
+    }
+
+    ctx.drawImage(offscreen, 0, 0)
+
+    // Draw current position marker with smooth interpolation between coordinates
+    if (coords.length > 0 && adjustedIndex < coords.length - 1) {
+      const fraction = adjustedSmoothIndex - adjustedIndex
+      const currentCoord = coords[adjustedIndex]
+      const nextCoord = coords[Math.min(adjustedIndex + 1, coords.length - 1)]
+
+      // Interpolate theta and rho
+      const interpTheta = currentCoord[0] + (nextCoord[0] - currentCoord[0]) * fraction
+      const interpRho = currentCoord[1] + (nextCoord[1] - currentCoord[1]) * fraction
+
+      const currentPoint = polarToCartesian(interpTheta, interpRho, size)
+      ctx.beginPath()
+      ctx.arc(currentPoint.x, currentPoint.y, 8, 0, Math.PI * 2)
+      ctx.fillStyle = '#0b80ee'
+      ctx.fill()
+      ctx.strokeStyle = colors.markerBorder
+      ctx.lineWidth = 2
+      ctx.stroke()
+    } else if (coords.length > 0 && adjustedIndex < coords.length) {
+      // At the last coordinate, just draw without interpolation
+      const currentPoint = polarToCartesian(coords[adjustedIndex][0], coords[adjustedIndex][1], size)
+      ctx.beginPath()
+      ctx.arc(currentPoint.x, currentPoint.y, 8, 0, Math.PI * 2)
+      ctx.fillStyle = '#0b80ee'
+      ctx.fill()
+      ctx.strokeStyle = colors.markerBorder
+      ctx.lineWidth = 2
+      ctx.stroke()
+    }
+  }, [getThemeColors, initOffscreenCanvas, polarToCartesian])
+
+  // Fetch coordinates when file changes or fullscreen opens
+  useEffect(() => {
+    const currentFile = status?.current_file
+    if (!currentFile) return
+
+    // Only fetch if file changed or we don't have coordinates yet
+    const needsFetch = currentFile !== lastFileRef.current || coordinates.length === 0
+
+    if (!needsFetch) return
+
+    lastFileRef.current = currentFile
+    lastDrawnIndexRef.current = -1
+
+    fetch('/get_theta_rho_coordinates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_name: currentFile }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.coordinates && Array.isArray(data.coordinates)) {
+          setCoordinates(data.coordinates)
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to fetch coordinates:', err)
+        setCoordinates([])
+      })
+  }, [status?.current_file, coordinates.length])
+
+  // Get target index from progress percentage
+  const getTargetIndex = useCallback((coords: Coordinate[]): number => {
+    if (coords.length === 0) return 0
+    const progressPercent = status?.progress?.percentage || 0
+    return (progressPercent / 100) * coords.length
+  }, [status?.progress?.percentage])
+
+  // Track progress updates for smooth interpolation
+  useEffect(() => {
+    const currentProgress = status?.progress?.percentage || 0
+    if (currentProgress !== lastProgressRef.current) {
+      lastProgressRef.current = currentProgress
+      lastProgressTimeRef.current = performance.now()
+    }
+  }, [status?.progress?.percentage])
+
+  // Smooth animation loop
+  useEffect(() => {
+    if (!isExpanded || coordinates.length === 0) return
+
+    const isPaused = status?.is_paused || false
+    const coordsPerSecond = 4.2
+
+    const animate = () => {
+      if (!canvasRef.current) return
+
+      const ctx = canvasRef.current.getContext('2d')
+      if (!ctx) return
+
+      const targetIndex = getTargetIndex(coordinates)
+      const now = performance.now()
+      const timeSinceUpdate = (now - lastProgressTimeRef.current) / 1000
+
+      let smoothIndex: number
+      if (isPaused) {
+        // When paused, just use the target index directly
+        smoothIndex = targetIndex
+      } else {
+        // Interpolate: start from where we were at last update, advance based on time
+        const baseIndex = (lastProgressRef.current / 100) * coordinates.length
+        smoothIndex = baseIndex + (timeSinceUpdate * coordsPerSecond)
+        // Don't overshoot the target too much
+        smoothIndex = Math.min(smoothIndex, targetIndex + 2)
+      }
+
+      smoothProgressRef.current = smoothIndex
+      drawPattern(ctx, coordinates, smoothIndex)
+
+      animationFrameRef.current = requestAnimationFrame(animate)
+    }
+
+    // Initial draw with force redraw
+    const timer = setTimeout(() => {
+      if (!canvasRef.current) return
+      const ctx = canvasRef.current.getContext('2d')
+      if (!ctx) return
+
+      lastDrawnIndexRef.current = -1
+      offscreenCanvasRef.current = null
+      smoothProgressRef.current = getTargetIndex(coordinates)
+      lastProgressTimeRef.current = performance.now()
+
+      drawPattern(ctx, coordinates, smoothProgressRef.current, true)
+
+      // Start animation loop
+      animationFrameRef.current = requestAnimationFrame(animate)
+    }, 50)
+
+    return () => {
+      clearTimeout(timer)
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+    }
+  }, [isExpanded, coordinates, status?.is_paused, drawPattern, getTargetIndex])
+
   const handlePause = async () => {
     try {
       const endpoint = status?.is_paused ? '/resume_execution' : '/pause_execution'
@@ -187,7 +510,6 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
     return null
   }
 
-  const isPlaying = status?.is_running || status?.is_paused
   const patternName = formatPatternName(status?.current_file ?? null)
   const progressPercent = status?.progress?.percentage || 0
   const remainingTime = status?.progress?.remaining_time || 0
@@ -203,231 +525,303 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
         />
       )}
 
-      {/* Now Playing Bar */}
+      {/* Now Playing Bar - slides up to full height on mobile, 50vh on desktop when expanded */}
       <div
-        className={`fixed left-0 right-0 z-40 bg-background border-t shadow-lg transition-all duration-300 ${
-          isExpanded ? 'rounded-t-xl' : ''
-        } ${isLogsOpen ? 'bottom-80' : 'bottom-16'}`}
+        ref={barRef}
+        className={`fixed left-0 right-0 z-40 bg-background border-t shadow-lg transition-all duration-300 ${isLogsOpen ? 'bottom-80' : isExpanded ? 'bottom-16' : 'bottom-20'}`}
+        style={{ height: isExpanded ? 'calc(100vh - 64px - 64px)' : '256px' }}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
       >
-        {/* Mini Bar (always visible) */}
-        <div className="flex gap-5 px-5 py-4">
-          {/* Current Pattern Preview - Rounded */}
-          <div
-            className="w-32 h-32 rounded-full overflow-hidden bg-muted shrink-0 border-2 cursor-pointer"
-            onClick={() => isPlaying && setIsExpanded(!isExpanded)}
-          >
-            {previewUrl && isPlaying ? (
-              <img
-                src={previewUrl}
-                alt={patternName}
-                className="w-full h-full object-cover pattern-preview"
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <span className="material-icons-outlined text-muted-foreground text-4xl">
-                  {isPlaying ? 'image' : 'hourglass_empty'}
-                </span>
-              </div>
-            )}
-          </div>
+        {/* Swipe indicator - only on mobile */}
+        <div className="md:hidden flex justify-center pt-2 pb-1">
+          <div className="w-10 h-1 bg-muted-foreground/30 rounded-full" />
+        </div>
 
-          {/* Main Content Area */}
-          {isPlaying && status ? (
-            <>
-              <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
-                {/* Top Row: Title + Controls */}
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-lg font-semibold truncate">{patternName}</p>
-                    {status.playlist && (
-                      <p className="text-xs text-muted-foreground">
-                        Pattern {status.playlist.current_index + 1} of {status.playlist.total_files}
-                      </p>
-                    )}
-                  </div>
-                  {status.is_paused && (
-                    <span className="text-xs bg-amber-500/20 text-amber-600 dark:text-amber-400 px-2 py-1 rounded font-medium">Paused</span>
-                  )}
-                  <div className="flex items-center shrink-0">
-                    <Button variant="ghost" size="icon" className="h-10 w-10" onClick={handlePause}>
-                      <span className="material-icons text-xl">
-                        {status.is_paused ? 'play_arrow' : 'pause'}
+        {/* Header with action buttons */}
+        <div className="absolute top-3 right-3 flex items-center gap-1 z-10">
+          {isPlaying && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setIsExpanded(!isExpanded)}
+              title={isExpanded ? 'Collapse' : 'Expand'}
+            >
+              <span className="material-icons-outlined text-lg">
+                {isExpanded ? 'expand_more' : 'expand_less'}
+              </span>
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={onClose}
+            title="Close"
+          >
+            <span className="material-icons-outlined text-lg">close</span>
+          </Button>
+        </div>
+
+        {/* Content container */}
+        <div className="h-full flex flex-col">
+          {/* Collapsed view - Mini Bar */}
+          {!isExpanded && (
+            <div className="flex-1 flex flex-col">
+              {/* Main row with preview and controls */}
+              <div className="flex-1 flex items-center gap-6 px-6">
+                {/* Current Pattern Preview - Rounded */}
+                <div className="w-48 h-48 rounded-full overflow-hidden bg-muted shrink-0 border-2">
+                  {previewUrl && isPlaying ? (
+                    <img
+                      src={previewUrl}
+                      alt={patternName}
+                      className="w-full h-full object-cover pattern-preview"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <span className="material-icons-outlined text-muted-foreground text-4xl">
+                        {isPlaying ? 'image' : 'hourglass_empty'}
                       </span>
-                    </Button>
-                    {status.playlist && (
-                      <Button variant="ghost" size="icon" className="h-10 w-10" onClick={handleSkip}>
-                        <span className="material-icons text-xl">skip_next</span>
-                      </Button>
-                    )}
-                    <Button variant="ghost" size="icon" className="h-10 w-10" onClick={handleStop}>
-                      <span className="material-icons text-xl">stop</span>
-                    </Button>
-                  </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* Middle Row: Progress */}
-                <div className="flex items-center gap-3">
+                {/* Main Content Area */}
+                {isPlaying && status ? (
+                  <>
+                    <div className="flex-1 min-w-0 flex flex-col justify-center gap-2 py-2">
+                      {/* Title Row */}
+                      <div className="flex items-center gap-3 pr-12 md:pr-16">
+                        <div className="flex-1 min-w-0">
+                          <div className="marquee-container">
+                            <p className="text-sm md:text-base font-semibold whitespace-nowrap animate-marquee">
+                              {patternName}
+                            </p>
+                          </div>
+                          {status.playlist && (
+                            <p className="text-xs text-muted-foreground">
+                              Pattern {status.playlist.current_index + 1} of {status.playlist.total_files}
+                            </p>
+                          )}
+                        </div>
+                        {status.is_paused && (
+                          <span className="text-xs bg-amber-500/20 text-amber-600 dark:text-amber-400 px-2 py-1 rounded font-medium shrink-0">Paused</span>
+                        )}
+                      </div>
+
+                      {/* Playback Controls - Centered */}
+                      <div className="flex items-center justify-center gap-3">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-10 w-10 rounded-full"
+                          onClick={handleStop}
+                          title="Stop"
+                        >
+                          <span className="material-icons">stop</span>
+                        </Button>
+                        <Button
+                          variant="default"
+                          size="icon"
+                          className="h-12 w-12 rounded-full"
+                          onClick={handlePause}
+                        >
+                          <span className="material-icons text-xl">
+                            {status.is_paused ? 'play_arrow' : 'pause'}
+                          </span>
+                        </Button>
+                        {status.playlist && (
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-10 w-10 rounded-full"
+                            onClick={handleSkip}
+                            title="Skip to next"
+                          >
+                            <span className="material-icons">skip_next</span>
+                          </Button>
+                        )}
+                      </div>
+
+                      {/* Speed Control */}
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="text-sm text-muted-foreground">Speed:</span>
+                        <Input
+                          type="number"
+                          placeholder={String(status.speed)}
+                          value={speedInput}
+                          onChange={(e) => setSpeedInput(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleSpeedSubmit()}
+                          className="h-7 w-20 text-sm px-2"
+                        />
+                        <span className="text-sm text-muted-foreground">mm/s</span>
+                      </div>
+                    </div>
+
+                    {/* Next Pattern Preview - hidden on mobile */}
+                    {status.playlist?.next_file && (
+                      <div className="hidden md:flex shrink-0 flex-col items-center gap-1">
+                        <p className="text-xs text-muted-foreground font-medium">Up Next</p>
+                        <div className="w-24 h-24 rounded-full overflow-hidden bg-muted border-2">
+                          {nextPreviewUrl ? (
+                            <img
+                              src={nextPreviewUrl}
+                              alt="Next pattern"
+                              className="w-full h-full object-cover pattern-preview"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <span className="material-icons-outlined text-muted-foreground text-2xl">image</span>
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground text-center max-w-24 truncate">
+                          {formatPatternName(status.playlist.next_file)}
+                        </p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex-1 flex items-center">
+                    <p className="text-lg text-muted-foreground">Not playing</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Progress Bar - Full width at bottom */}
+              {isPlaying && status && (
+                <div className="flex items-center gap-3 px-6 pb-3">
                   <span className="text-sm text-muted-foreground w-12 font-mono">{formatTime(elapsedTime)}</span>
                   <Progress value={progressPercent} className="h-2 flex-1" />
                   <span className="text-sm text-muted-foreground w-12 text-right font-mono">-{formatTime(remainingTime)}</span>
                 </div>
+              )}
+            </div>
+          )}
 
-                {/* Bottom Row: Speed */}
-                <div className="flex items-center gap-2">
+          {/* Expanded view - Real-time canvas preview */}
+          {isExpanded && isPlaying && (
+            <div className="flex-1 flex flex-col md:justify-center px-4 py-2 md:py-4 overflow-hidden">
+              <div className="w-full max-w-5xl mx-auto flex flex-col md:flex-row gap-3 md:gap-6 md:-ml-16">
+                {/* Canvas - full width on mobile */}
+                <div className="flex items-center justify-center flex-1 min-h-0">
+                  <canvas
+                    ref={canvasRef}
+                    width={600}
+                    height={600}
+                    className="w-full max-h-full rounded-full border-2 md:w-auto"
+                    style={{ aspectRatio: '1/1', maxHeight: '40vh' }}
+                  />
+                </div>
+
+                {/* Controls */}
+                <div className="md:w-80 shrink-0 flex flex-col justify-start md:justify-center gap-2 md:gap-4">
+                {/* Pattern Info */}
+                <div className="text-center md:text-left">
+                  <h2 className="text-lg md:text-xl font-semibold truncate">{patternName}</h2>
+                  {status?.playlist && (
+                    <p className="text-sm text-muted-foreground">
+                      Pattern {status.playlist.current_index + 1} of {status.playlist.total_files}
+                    </p>
+                  )}
+                </div>
+
+                {/* Progress */}
+                <div className="space-y-1 md:space-y-2">
+                  <Progress value={progressPercent} className="h-1.5 md:h-2" />
+                  <div className="flex justify-between text-xs md:text-sm text-muted-foreground font-mono">
+                    <span>{formatTime(elapsedTime)}</span>
+                    <span>{progressPercent.toFixed(0)}%</span>
+                    <span>-{formatTime(remainingTime)}</span>
+                  </div>
+                </div>
+
+                {/* Playback Controls */}
+                <div className="flex items-center justify-center gap-2 md:gap-3">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-10 w-10 md:h-12 md:w-12 rounded-full"
+                    onClick={handleStop}
+                    title="Stop"
+                  >
+                    <span className="material-icons text-lg md:text-2xl">stop</span>
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="icon"
+                    className="h-12 w-12 md:h-14 md:w-14 rounded-full"
+                    onClick={handlePause}
+                  >
+                    <span className="material-icons text-xl md:text-2xl">
+                      {status?.is_paused ? 'play_arrow' : 'pause'}
+                    </span>
+                  </Button>
+                  {status?.playlist && (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-10 w-10 md:h-12 md:w-12 rounded-full"
+                      onClick={handleSkip}
+                      title="Skip to next"
+                    >
+                      <span className="material-icons text-lg md:text-2xl">skip_next</span>
+                    </Button>
+                  )}
+                </div>
+
+                {/* Speed Control */}
+                <div className="flex items-center justify-center gap-2">
                   <span className="text-sm text-muted-foreground">Speed:</span>
                   <Input
                     type="number"
-                    placeholder={String(status.speed)}
+                    placeholder={String(status?.speed || 1000)}
                     value={speedInput}
                     onChange={(e) => setSpeedInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSpeedSubmit()}
-                    className="h-7 w-20 text-sm px-2"
-                    onClick={(e) => e.stopPropagation()}
+                    className="h-8 w-24 text-sm px-2"
                   />
                   <span className="text-sm text-muted-foreground">mm/s</span>
                 </div>
-              </div>
 
-              {/* Next Pattern Preview */}
-              {status.playlist?.next_file && (
-                <div className="shrink-0 flex flex-col items-center gap-2">
-                  <p className="text-xs text-muted-foreground">Up Next</p>
-                  <div className="w-20 h-20 rounded-full overflow-hidden bg-muted border">
-                    {nextPreviewUrl ? (
-                      <img
-                        src={nextPreviewUrl}
-                        alt="Next pattern"
-                        className="w-full h-full object-cover pattern-preview"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <span className="material-icons-outlined text-muted-foreground text-2xl">image</span>
-                      </div>
-                    )}
+                {/* Status indicators - hidden on mobile */}
+                {status?.is_paused && (
+                  <div className="hidden md:block bg-amber-500/10 border border-amber-500/20 rounded-lg p-2 text-center">
+                    <span className="text-sm text-amber-600 dark:text-amber-400 font-medium">Paused</span>
                   </div>
-                  <p className="text-xs text-muted-foreground text-center max-w-20 truncate">
-                    {formatPatternName(status.playlist.next_file)}
-                  </p>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="flex-1 flex items-center">
-              <p className="text-lg text-muted-foreground">Not playing</p>
-            </div>
-          )}
+                )}
 
-          {/* Close Button */}
-          {!isPlaying && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 self-center"
-              onClick={onClose}
-            >
-              <span className="material-icons-outlined text-lg">close</span>
-            </Button>
+                {/* Next Pattern */}
+                {status?.playlist?.next_file && (
+                  <div className="flex items-center gap-3 bg-muted/50 rounded-lg p-2 md:p-3">
+                    <div className="w-10 h-10 md:w-12 md:h-12 rounded-full overflow-hidden bg-muted border shrink-0">
+                      {nextPreviewUrl ? (
+                        <img
+                          src={nextPreviewUrl}
+                          alt="Next pattern"
+                          className="w-full h-full object-cover pattern-preview"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <span className="material-icons-outlined text-muted-foreground text-sm">image</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground">Up Next</p>
+                      <p className="text-sm font-medium truncate">
+                        {formatPatternName(status.playlist.next_file)}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              </div>
+            </div>
           )}
         </div>
-
-        {/* Expanded View */}
-        {isExpanded && isPlaying && (
-          <div className="px-4 pb-4 pt-2 border-t space-y-4">
-            {/* Time Info */}
-            <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span>{formatTime(elapsedTime)}</span>
-              <span>{progressPercent.toFixed(0)}%</span>
-              <span>-{formatTime(remainingTime)}</span>
-            </div>
-
-            {/* Playback Controls */}
-            <div className="flex items-center justify-center gap-4">
-              {status.playlist && (
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-10 w-10 rounded-full"
-                  onClick={handleSkip}
-                  title="Skip to next"
-                >
-                  <span className="material-icons">skip_next</span>
-                </Button>
-              )}
-              <Button
-                variant="default"
-                size="icon"
-                className="h-12 w-12 rounded-full"
-                onClick={handlePause}
-              >
-                <span className="material-icons text-xl">
-                  {status.is_paused ? 'play_arrow' : 'pause'}
-                </span>
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-10 w-10 rounded-full"
-                onClick={handleStop}
-                title="Stop"
-              >
-                <span className="material-icons">stop</span>
-              </Button>
-            </div>
-
-            {/* Details Grid */}
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="bg-muted/50 rounded-lg p-3">
-                <p className="text-muted-foreground text-xs">Speed</p>
-                <p className="font-medium">{status.speed} mm/s</p>
-              </div>
-              {status.playlist ? (
-                <div className="bg-muted/50 rounded-lg p-3">
-                  <p className="text-muted-foreground text-xs">Playlist</p>
-                  <p className="font-medium">
-                    {status.playlist.current_index + 1} of {status.playlist.total_files}
-                  </p>
-                </div>
-              ) : (
-                <div className="bg-muted/50 rounded-lg p-3">
-                  <p className="text-muted-foreground text-xs">Mode</p>
-                  <p className="font-medium">Single Pattern</p>
-                </div>
-              )}
-              {status.playlist?.next_file && (
-                <div className="bg-muted/50 rounded-lg p-3 col-span-2">
-                  <p className="text-muted-foreground text-xs">Next Pattern</p>
-                  <p className="font-medium truncate">
-                    {formatPatternName(status.playlist.next_file)}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Pause Time Remaining (if in pause between patterns) */}
-            {status.pause_time_remaining > 0 && (
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-center">
-                <p className="text-sm text-amber-600 dark:text-amber-400">
-                  <span className="material-icons-outlined text-base align-middle mr-1">
-                    schedule
-                  </span>
-                  Next pattern in {formatTime(status.pause_time_remaining)}
-                </p>
-              </div>
-            )}
-
-            {/* Scheduled Pause Indicator */}
-            {status.scheduled_pause && (
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-center">
-                <p className="text-sm text-blue-600 dark:text-blue-400">
-                  <span className="material-icons-outlined text-base align-middle mr-1">
-                    bedtime
-                  </span>
-                  Scheduled pause active
-                </p>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </>
   )
