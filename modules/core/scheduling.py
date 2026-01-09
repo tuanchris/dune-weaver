@@ -161,18 +161,20 @@ def pin_to_cpus(cpu_ids: set[int], tid: int | None = None) -> bool:
         return False
 
 
-def setup_realtime_thread(tid: int | None = None) -> None:
+def setup_realtime_thread(tid: int | None = None, priority: int = 50) -> None:
     """Setup for time-critical I/O threads (motion control, LED effects).
     
     Elevates priority and pins to CPU 0.
     
     Args:
         tid: Thread native_id. If None, uses current thread.
+        priority: SCHED_RR priority (1-99). Higher = more important.
+                  Motion should use higher than LED (e.g., 60 vs 40).
     """
     cpu_count = get_cpu_count()
     
     # Elevate priority (logs internally on success)
-    elevate_priority(tid)
+    elevate_priority(tid, realtime_priority=priority)
     
     # Pin to CPU 0 if multi-core
     if cpu_count > 1:
