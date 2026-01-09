@@ -14,10 +14,10 @@ logger = logging.getLogger(__name__)
 
 
 def _generate_preview_in_process(pattern_file, format='WEBP'):
-    """Generate preview entirely within a worker process.
+    """Generate preview for a pattern file, optimized for 300x300 view.
     
-    This function runs in a separate process with its own GIL,
-    so it cannot block the motion control thread's Python execution.
+    Runs in a separate process with its own GIL, avoiding contention
+    with the motion control thread.
     
     All imports are done inside the function to ensure they happen
     in the worker process, not the main process.
