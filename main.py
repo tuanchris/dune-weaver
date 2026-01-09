@@ -554,14 +554,19 @@ async def clear_logs():
     return {"status": "ok", "message": "Logs cleared"}
 
 
-# FastAPI routes
+# FastAPI routes - Redirect old frontend routes to new React frontend on port 80
+def get_redirect_response(request: Request):
+    """Return redirect page pointing users to the new frontend."""
+    host = request.headers.get("host", "localhost").split(":")[0]  # Remove port if present
+    return templates.TemplateResponse("redirect.html", {"request": request, "host": host})
+
 @app.get("/")
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
+    return get_redirect_response(request)
 
 @app.get("/settings")
-async def settings(request: Request):
-    return templates.TemplateResponse("settings.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
+async def settings_page(request: Request):
+    return get_redirect_response(request)
 
 # ============================================================================
 # Unified Settings API
@@ -2352,17 +2357,16 @@ async def preview_thr_batch(request: dict):
     return JSONResponse(content=results, headers=headers)
 
 @app.get("/playlists")
-async def playlists(request: Request):
-    logger.debug("Rendering playlists page")
-    return templates.TemplateResponse("playlists.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
+async def playlists_page(request: Request):
+    return get_redirect_response(request)
 
 @app.get("/image2sand")
-async def image2sand(request: Request):
-    return templates.TemplateResponse("image2sand.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
+async def image2sand_page(request: Request):
+    return get_redirect_response(request)
 
 @app.get("/led")
 async def led_control_page(request: Request):
-    return templates.TemplateResponse("led.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
+    return get_redirect_response(request)
 
 # DW LED control endpoints
 @app.get("/api/dw_leds/status")
@@ -2721,8 +2725,8 @@ async def dw_leds_get_idle_timeout():
     }
 
 @app.get("/table_control")
-async def table_control(request: Request):
-    return templates.TemplateResponse("table_control.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
+async def table_control_page(request: Request):
+    return get_redirect_response(request)
 
 @app.get("/cache-progress")
 async def get_cache_progress_endpoint():
