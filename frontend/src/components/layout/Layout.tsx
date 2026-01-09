@@ -797,8 +797,20 @@ export function Layout() {
             />
             <span className="font-semibold text-lg">{appName}</span>
             <span
-              className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}
-              title={isConnected ? 'Connected to table' : 'Disconnected from table'}
+              className={`w-2 h-2 rounded-full ${
+                !isBackendConnected
+                  ? 'bg-gray-400'
+                  : isConnected
+                    ? 'bg-green-500 animate-pulse'
+                    : 'bg-red-500'
+              }`}
+              title={
+                !isBackendConnected
+                  ? 'Backend not connected'
+                  : isConnected
+                    ? 'Table connected'
+                    : 'Table disconnected'
+              }
             />
           </Link>
           <div className="flex items-center gap-1">
