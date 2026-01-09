@@ -1,14 +1,25 @@
 services:
-  dune-weaver:
+  frontend:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./static/dist:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+    container_name: dune-weaver-frontend
+
+  backend:
     build: .
     image: ghcr.io/tuanchris/dune-weaver:main
     restart: always
-    command: /app/start.sh
     ports:
-      - "80:80"     # Frontend (nginx)
-      - "8080:8080" # Backend API
+      - "8080:8080"
+    command: uvicorn main:app --host 0.0.0.0 --port 8080
     volumes:
-      # Mount entire app directory for development
+      # Mount entire app directory
       - .:/app
       # Mount Docker socket for container self-restart/update
       - /var/run/docker.sock:/var/run/docker.sock
@@ -16,16 +27,16 @@ services:
       - /etc/timezone:/etc/host-timezone:ro
       # Mount systemd for host shutdown capability
       - /run/systemd/system:/run/systemd/system:ro
-      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket:ro
+      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_socket:ro
       - /sys/fs/cgroup:/sys/fs/cgroup:ro
       # Mount GPIO for DW LEDs and Desert Compass (reed switch)
       - /sys:/sys
     devices:
-      - "/dev/ttyACM0:/dev/ttyACM0"  # Serial device for stepper motors
-      - "/dev/ttyUSB0:/dev/ttyUSB0"  # Alternative serial device
-      - "/dev/ttyAMA0:/dev/ttyAMA0"  # Alternative serial device
-      - "/dev/gpiomem:/dev/gpiomem"  # GPIO memory access for DW LEDs
-      - "/dev/mem:/dev/mem"          # Direct memory access for PWM
-      - "/dev/pio0:/dev/pio0"        # PIO device for Pi 5 NeoPixel support
-    privileged: true  # Required for GPIO/PWM access
-    container_name: dune-weaver
+      - "/dev/ttyACM0:/dev/ttyACM0"
+      - "/dev/ttyUSB0:/dev/ttyUSB0"
+      - "/dev/ttyAMA0:/dev/ttyAMA0"
+      - "/dev/gpiomem:/dev/gpiomem"
+      - "/dev/mem:/dev/mem"
+      - "/dev/pio0:/dev/pio0"
+    privileged: true
+    container_name: dune-weaver-backend
