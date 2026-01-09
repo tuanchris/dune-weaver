@@ -209,9 +209,10 @@ export function SettingsPage() {
 
   const fetchPatternFiles = async () => {
     try {
-      const response = await fetch('/api/patterns')
+      const response = await fetch('/list_theta_rho_files')
       const data = await response.json()
-      setPatternFiles(data.patterns?.map((p: { file: string }) => p.file) || [])
+      // Response is a flat array of file paths
+      setPatternFiles(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error('Error fetching pattern files:', error)
     }
