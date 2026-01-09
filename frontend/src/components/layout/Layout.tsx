@@ -491,7 +491,7 @@ export function Layout() {
         cacheWsRef.current = null
       }
     }
-  }, [isBackendConnected, cacheProgress?.is_running])
+  }, [isBackendConnected]) // Only reconnect based on backend connection, not cache state
 
   // Calculate cache progress percentage
   const cachePercentage = cacheProgress?.total_files
