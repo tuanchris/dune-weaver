@@ -4,8 +4,11 @@ __pycache__/
 *.pyo
 .env
 .idea
-*.json
+# Ignore state and data JSON files, but not package.json
+state.json
 *.jsonl
+!package.json
+!package-lock.json
 .venv/
 patterns/cached_svg/
 patterns/cached_images/custom_*

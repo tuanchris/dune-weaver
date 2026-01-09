@@ -1,0 +1,16 @@
+{
+  "name": "dune-weaver",
+  "version": "1.0.0",
+  "description": "Kinetic Sand Table Web Interface",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n fe,be -c blue,green \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "python main.py",
+    "build": "cd frontend && npm run build",
+    "start": "npm run build && python main.py"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
