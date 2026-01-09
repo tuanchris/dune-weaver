@@ -630,7 +630,7 @@ async def generate_metadata_cache():
                     loop = asyncio.get_running_loop()
                     coordinates = await loop.run_in_executor(
                         _get_process_pool(),
-                        _parse_file_in_process,
+                        parse_theta_rho_file,
                         pattern_path
                     )
                     if coordinates:
