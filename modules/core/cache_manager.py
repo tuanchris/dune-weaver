@@ -9,17 +9,6 @@ from modules.core.process_pool import get_pool as _get_process_pool
 
 logger = logging.getLogger(__name__)
 
-
-def _parse_file_in_process(pattern_path):
-    """Parse a pattern file in a worker process.
-    
-    This runs in a separate process with its own GIL,
-    so it cannot block the motion control thread.
-    
-    Note: Worker CPU affinity/priority is configured once at pool init via initializer.
-    """
-    return parse_theta_rho_file(pattern_path)
-
 # Global cache progress state
 cache_progress = {
     "is_running": False,
@@ -465,7 +454,7 @@ async def generate_image_preview(pattern_file):
                 loop = asyncio.get_running_loop()
                 coordinates = await loop.run_in_executor(
                     _get_process_pool(),
-                    _parse_file_in_process,
+                    parse_theta_rho_file,
                     pattern_path
                 )
                 
