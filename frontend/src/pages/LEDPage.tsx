@@ -353,17 +353,24 @@ export function LEDPage() {
     }
   }
 
-  const saveIdleTimeout = async () => {
+  const saveIdleTimeout = async (enabled?: boolean, minutes?: number) => {
+    const finalEnabled = enabled !== undefined ? enabled : idleTimeoutEnabled
+    const finalMinutes = minutes !== undefined ? minutes : idleTimeoutMinutes
     try {
       await fetch('/api/dw_leds/idle_timeout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: idleTimeoutEnabled, minutes: idleTimeoutMinutes }),
+        body: JSON.stringify({ enabled: finalEnabled, minutes: finalMinutes }),
       })
-      toast.success(`Idle timeout ${idleTimeoutEnabled ? 'enabled' : 'disabled'}`)
+      toast.success(`Idle timeout ${finalEnabled ? 'enabled' : 'disabled'}`)
     } catch (error) {
       toast.error('Failed to save idle timeout')
     }
+  }
+
+  const handleIdleTimeoutToggle = async (checked: boolean) => {
+    setIdleTimeoutEnabled(checked)
+    await saveIdleTimeout(checked, idleTimeoutMinutes)
   }
 
   const formatEffectSettings = (settings: EffectSettings | null) => {
@@ -626,7 +633,7 @@ export function LEDPage() {
                 <span className="text-sm text-muted-foreground">Enable timeout</span>
                 <Switch
                   checked={idleTimeoutEnabled}
-                  onCheckedChange={(checked) => setIdleTimeoutEnabled(checked)}
+                  onCheckedChange={handleIdleTimeoutToggle}
                 />
               </div>
               {idleTimeoutEnabled && (
@@ -640,7 +647,7 @@ export function LEDPage() {
                     className="w-20"
                   />
                   <span className="text-sm text-muted-foreground flex-1">minutes</span>
-                  <Button size="sm" onClick={saveIdleTimeout}>
+                  <Button size="sm" onClick={() => saveIdleTimeout()}>
                     Save
                   </Button>
                 </div>
