@@ -101,6 +101,10 @@ export function BrowsePage() {
   // Favorites state
   const [favorites, setFavorites] = useState<Set<string>>(new Set())
 
+  // Upload state
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isUploading, setIsUploading] = useState(false)
+
   // Close panel when playback starts
   useEffect(() => {
     const handlePlaybackStarted = () => {
@@ -817,6 +821,52 @@ export function BrowsePage() {
     }
   }
 
+  // Handle pattern file upload
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file extension
+    if (!file.name.endsWith('.thr')) {
+      toast.error('Please select a .thr file')
+      return
+    }
+
+    setIsUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await fetch('/upload_theta_rho', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || 'Upload failed')
+      }
+
+      toast.success(`Pattern "${file.name}" uploaded successfully`)
+
+      // Refresh patterns list
+      const patternsRes = await fetch('/list_theta_rho_files')
+      if (patternsRes.ok) {
+        const data = await patternsRes.json()
+        setPatterns(data.files || [])
+      }
+    } catch (error) {
+      console.error('Upload error:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to upload pattern')
+    } finally {
+      setIsUploading(false)
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -829,12 +879,36 @@ export function BrowsePage() {
 
   return (
     <div className={`flex flex-col w-full max-w-5xl mx-auto gap-6 py-6 px-4 transition-all duration-300 ${isPanelOpen ? 'lg:mr-[28rem]' : ''}`}>
+      {/* Hidden file input for pattern upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".thr"
+        onChange={handleFileUpload}
+        className="hidden"
+      />
+
       {/* Page Header */}
-      <div className="space-y-1">
-        <h1 className="text-3xl font-bold tracking-tight">Browse Patterns</h1>
-        <p className="text-muted-foreground">
-          Explore and run patterns on your sand table · {patterns.length} patterns available
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-3xl font-bold tracking-tight">Browse Patterns</h1>
+          <p className="text-muted-foreground">
+            Explore and run patterns on your sand table · {patterns.length} patterns available
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isUploading}
+          className="gap-2 shrink-0"
+        >
+          {isUploading ? (
+            <span className="material-icons-outlined animate-spin text-lg">sync</span>
+          ) : (
+            <span className="material-icons-outlined text-lg">add</span>
+          )}
+          <span className="hidden sm:inline">Add Pattern</span>
+        </Button>
       </div>
 
       <Separator />
@@ -854,12 +928,14 @@ export function BrowsePage() {
                 className="pl-10 pr-10"
               />
               {searchQuery && (
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={() => setSearchQuery('')}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
                   <span className="material-icons-outlined text-xl">close</span>
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -987,12 +1063,14 @@ export function BrowsePage() {
             <h2 className="text-lg font-semibold truncate pr-4">
               {selectedPattern?.name || 'Pattern Details'}
             </h2>
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={handleClosePanel}
-              className="rounded-full w-10 h-10 flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              className="rounded-full text-muted-foreground"
             >
               <span className="material-icons-outlined">close</span>
-            </button>
+            </Button>
           </header>
 
           {selectedPattern && (
@@ -1131,12 +1209,14 @@ export function BrowsePage() {
               <h3 className="text-xl font-semibold">
                 {selectedPattern?.name || 'Animated Preview'}
               </h3>
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={handleCloseAnimatedPreview}
-                className="text-muted-foreground hover:text-foreground transition-colors"
+                className="rounded-full"
               >
                 <span className="material-icons text-2xl">close</span>
-              </button>
+              </Button>
             </div>
 
             {/* Modal Content */}
@@ -1267,8 +1347,8 @@ function PatternCard({ pattern, isSelected, isFavorite, onToggleFavorite, onClic
     <button
       ref={cardRef}
       onClick={onClick}
-      className={`group flex flex-col items-center gap-2 p-2 rounded-lg transition-all hover:-translate-y-1 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
-        isSelected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''
+      className={`group flex flex-col items-center gap-2 p-2 rounded-lg transition-all duration-200 ease-out hover:-translate-y-1 hover:scale-[1.02] hover:shadow-lg hover:bg-accent/30 active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+        isSelected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background bg-accent/20' : ''
       }`}
     >
       <div className="relative w-full aspect-square">

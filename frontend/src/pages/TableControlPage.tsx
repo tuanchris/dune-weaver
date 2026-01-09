@@ -178,7 +178,7 @@ export function TableControlPage() {
         {/* Main Controls Grid - 2x2 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Primary Actions */}
-          <Card>
+          <Card className="transition-all duration-200 hover:shadow-md hover:border-primary/20">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg">Primary Actions</CardTitle>
               <CardDescription>Calibrate or stop the table</CardDescription>
@@ -226,7 +226,7 @@ export function TableControlPage() {
           </Card>
 
           {/* Speed Control */}
-          <Card>
+          <Card className="transition-all duration-200 hover:shadow-md hover:border-primary/20">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <div>
@@ -267,7 +267,7 @@ export function TableControlPage() {
           </Card>
 
           {/* Position */}
-          <Card>
+          <Card className="transition-all duration-200 hover:shadow-md hover:border-primary/20">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg">Position</CardTitle>
               <CardDescription>Move ball to a specific location</CardDescription>
@@ -402,7 +402,7 @@ export function TableControlPage() {
           </Card>
 
           {/* Clear Patterns */}
-          <Card>
+          <Card className="transition-all duration-200 hover:shadow-md hover:border-primary/20">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg">Clear Sand</CardTitle>
               <CardDescription>Erase current pattern from the table</CardDescription>

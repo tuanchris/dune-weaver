@@ -3,10 +3,9 @@ services:
     build: .
     image: ghcr.io/tuanchris/dune-weaver:main
     restart: always
-    network_mode: "host" # Use host network for device access (serves on port 8080)
-    # Alternative: Use port mapping instead of host network
-    # ports:
-    #   - "8080:8080"
+    ports:
+      - "80:80"     # Frontend (nginx)
+      - "8080:8080" # Backend API
     volumes:
       # Persist state and patterns
       - ./state.json:/app/state.json

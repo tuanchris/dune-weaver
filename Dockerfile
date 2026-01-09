@@ -15,7 +15,7 @@ COPY frontend/ ./
 # Build frontend
 RUN npm run build
 
-# Stage 2: Python backend
+# Stage 2: Python backend with nginx
 FROM --platform=$TARGETPLATFORM python:3.11-slim-bookworm
 
 # Faster, repeatable builds
@@ -34,6 +34,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libgpiod2 libgpiod-dev \
         scons \
         systemd \
+        # Nginx for serving frontend
+        nginx \
         # Docker CLI for container self-restart/update
         ca-certificates curl gnupg \
     && pip install --upgrade pip \
@@ -48,11 +50,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get purge -y gcc g++ make scons \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy nginx configuration
+COPY nginx.conf /etc/nginx/sites-available/default
+RUN rm -f /etc/nginx/sites-enabled/default && \
+    ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
+
 # Copy backend code
 COPY . .
 
 # Copy built frontend from Stage 1
 COPY --from=frontend-builder /app/static/dist ./static/dist
 
-EXPOSE 8080
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Copy and set up startup script
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+
+# Expose ports: 80 for frontend (nginx), 8080 for backend API
+EXPOSE 80 8080
+
+CMD ["/start.sh"]
