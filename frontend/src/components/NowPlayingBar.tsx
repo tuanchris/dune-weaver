@@ -90,26 +90,44 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
     }
   }, [])
 
-  // Fetch preview image when current file changes
+  // Fetch preview images for current and next patterns
+  const [nextPreviewUrl, setNextPreviewUrl] = useState<string | null>(null)
+
   useEffect(() => {
     const currentFile = status?.current_file
-    if (currentFile) {
+    const nextFile = status?.playlist?.next_file
+
+    // Build list of files to fetch
+    const filesToFetch = [currentFile, nextFile].filter(Boolean) as string[]
+
+    if (filesToFetch.length > 0) {
       fetch('/preview_thr_batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_names: [currentFile] }),
+        body: JSON.stringify({ file_names: filesToFetch }),
       })
         .then((r) => r.json())
         .then((data) => {
-          if (data[currentFile]?.image_data) {
+          if (currentFile && data[currentFile]?.image_data) {
             setPreviewUrl(data[currentFile].image_data)
+          } else {
+            setPreviewUrl(null)
+          }
+          if (nextFile && data[nextFile]?.image_data) {
+            setNextPreviewUrl(data[nextFile].image_data)
+          } else {
+            setNextPreviewUrl(null)
           }
         })
-        .catch(() => {})
+        .catch(() => {
+          setPreviewUrl(null)
+          setNextPreviewUrl(null)
+        })
     } else {
       setPreviewUrl(null)
+      setNextPreviewUrl(null)
     }
-  }, [status?.current_file])
+  }, [status?.current_file, status?.playlist?.next_file])
 
   const handlePause = async () => {
     try {
@@ -192,10 +210,10 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
         } ${isLogsOpen ? 'bottom-80' : 'bottom-16'}`}
       >
         {/* Mini Bar (always visible) */}
-        <div className="flex gap-4 px-4 py-3">
-          {/* Pattern Preview - Large */}
+        <div className="flex gap-5 px-5 py-4">
+          {/* Current Pattern Preview - Rounded */}
           <div
-            className="w-24 h-24 rounded-lg overflow-hidden bg-muted shrink-0 border cursor-pointer"
+            className="w-32 h-32 rounded-full overflow-hidden bg-muted shrink-0 border-2 cursor-pointer"
             onClick={() => isPlaying && setIsExpanded(!isExpanded)}
           >
             {previewUrl && isPlaying ? (
@@ -206,7 +224,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
-                <span className="material-icons-outlined text-muted-foreground text-3xl">
+                <span className="material-icons-outlined text-muted-foreground text-4xl">
                   {isPlaying ? 'image' : 'hourglass_empty'}
                 </span>
               </div>
@@ -215,73 +233,87 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
 
           {/* Main Content Area */}
           {isPlaying && status ? (
-            <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
-              {/* Top Row: Title + Controls */}
-              <div className="flex items-center gap-3">
-                <p className="text-base font-medium truncate flex-1">{patternName}</p>
-                {status.is_paused && (
-                  <span className="text-xs bg-muted px-2 py-0.5 rounded">Paused</span>
-                )}
-                <div className="flex items-center shrink-0">
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handlePause}>
-                    <span className="material-icons text-lg">
-                      {status.is_paused ? 'play_arrow' : 'pause'}
-                    </span>
-                  </Button>
-                  {status.playlist && (
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleSkip}>
-                      <span className="material-icons text-lg">skip_next</span>
-                    </Button>
+            <>
+              <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
+                {/* Top Row: Title + Controls */}
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-lg font-semibold truncate">{patternName}</p>
+                    {status.playlist && (
+                      <p className="text-xs text-muted-foreground">
+                        Pattern {status.playlist.current_index + 1} of {status.playlist.total_files}
+                      </p>
+                    )}
+                  </div>
+                  {status.is_paused && (
+                    <span className="text-xs bg-amber-500/20 text-amber-600 dark:text-amber-400 px-2 py-1 rounded font-medium">Paused</span>
                   )}
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleStop}>
-                    <span className="material-icons text-lg">stop</span>
-                  </Button>
+                  <div className="flex items-center shrink-0">
+                    <Button variant="ghost" size="icon" className="h-10 w-10" onClick={handlePause}>
+                      <span className="material-icons text-xl">
+                        {status.is_paused ? 'play_arrow' : 'pause'}
+                      </span>
+                    </Button>
+                    {status.playlist && (
+                      <Button variant="ghost" size="icon" className="h-10 w-10" onClick={handleSkip}>
+                        <span className="material-icons text-xl">skip_next</span>
+                      </Button>
+                    )}
+                    <Button variant="ghost" size="icon" className="h-10 w-10" onClick={handleStop}>
+                      <span className="material-icons text-xl">stop</span>
+                    </Button>
+                  </div>
                 </div>
-              </div>
 
-              {/* Middle Row: Progress */}
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-muted-foreground w-10">{formatTime(elapsedTime)}</span>
-                <Progress value={progressPercent} className="h-1.5 flex-1" />
-                <span className="text-xs text-muted-foreground w-10 text-right">-{formatTime(remainingTime)}</span>
-              </div>
+                {/* Middle Row: Progress */}
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-muted-foreground w-12 font-mono">{formatTime(elapsedTime)}</span>
+                  <Progress value={progressPercent} className="h-2 flex-1" />
+                  <span className="text-sm text-muted-foreground w-12 text-right font-mono">-{formatTime(remainingTime)}</span>
+                </div>
 
-              {/* Bottom Row: Speed + Playlist Info */}
-              <div className="flex items-center gap-4">
-                {/* Speed Input */}
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground">Speed:</span>
+                {/* Bottom Row: Speed */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Speed:</span>
                   <Input
                     type="number"
                     placeholder={String(status.speed)}
                     value={speedInput}
                     onChange={(e) => setSpeedInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSpeedSubmit()}
-                    className="h-6 w-16 text-xs px-2"
+                    className="h-7 w-20 text-sm px-2"
                     onClick={(e) => e.stopPropagation()}
                   />
-                  <span className="text-xs text-muted-foreground">mm/s</span>
+                  <span className="text-sm text-muted-foreground">mm/s</span>
                 </div>
-
-                {/* Playlist Info */}
-                {status.playlist && (
-                  <>
-                    <div className="w-px h-4 bg-border" />
-                    <span className="text-xs text-muted-foreground">
-                      {status.playlist.current_index + 1}/{status.playlist.total_files}
-                    </span>
-                    {status.playlist.next_file && (
-                      <span className="text-xs text-muted-foreground truncate">
-                        Next: {formatPatternName(status.playlist.next_file)}
-                      </span>
-                    )}
-                  </>
-                )}
               </div>
-            </div>
+
+              {/* Next Pattern Preview */}
+              {status.playlist?.next_file && (
+                <div className="shrink-0 flex flex-col items-center gap-2">
+                  <p className="text-xs text-muted-foreground">Up Next</p>
+                  <div className="w-20 h-20 rounded-full overflow-hidden bg-muted border">
+                    {nextPreviewUrl ? (
+                      <img
+                        src={nextPreviewUrl}
+                        alt="Next pattern"
+                        className="w-full h-full object-cover pattern-preview"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <span className="material-icons-outlined text-muted-foreground text-2xl">image</span>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground text-center max-w-20 truncate">
+                    {formatPatternName(status.playlist.next_file)}
+                  </p>
+                </div>
+              )}
+            </>
           ) : (
             <div className="flex-1 flex items-center">
-              <p className="text-base text-muted-foreground">Not playing</p>
+              <p className="text-lg text-muted-foreground">Not playing</p>
             </div>
           )}
 
