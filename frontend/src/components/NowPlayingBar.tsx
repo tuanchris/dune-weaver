@@ -170,11 +170,11 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
       >
         {/* Mini Bar (always visible) */}
         <div
-          className="flex items-center gap-3 px-4 py-2 cursor-pointer"
+          className="flex items-center gap-6 px-6 py-6 cursor-pointer"
           onClick={() => isPlaying && setIsExpanded(!isExpanded)}
         >
           {/* Pattern Preview */}
-          <div className="w-10 h-10 rounded-full overflow-hidden bg-muted shrink-0 border">
+          <div className="w-32 h-32 rounded-xl overflow-hidden bg-muted shrink-0 border-2">
             {previewUrl && isPlaying ? (
               <img
                 src={previewUrl}
@@ -183,7 +183,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
-                <span className="material-icons-outlined text-muted-foreground text-lg">
+                <span className="material-icons-outlined text-muted-foreground text-5xl">
                   {isPlaying ? 'image' : 'hourglass_empty'}
                 </span>
               </div>
@@ -194,32 +194,32 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
           <div className="flex-1 min-w-0">
             {isPlaying ? (
               <>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium truncate">{patternName}</p>
+                <div className="flex items-center gap-3">
+                  <p className="text-2xl font-medium truncate">{patternName}</p>
                   {status?.is_paused && (
-                    <span className="text-xs text-muted-foreground">(Paused)</span>
+                    <span className="text-base text-muted-foreground">(Paused)</span>
                   )}
                 </div>
-                <Progress value={progressPercent} className="h-1 mt-1" />
+                <Progress value={progressPercent} className="h-3 mt-3" />
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">Not playing</p>
+              <p className="text-2xl text-muted-foreground">Not playing</p>
             )}
           </div>
 
           {/* Quick Controls */}
           {isPlaying && (
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="flex items-center gap-3 shrink-0">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className="h-14 w-14"
                 onClick={(e) => {
                   e.stopPropagation()
                   handlePause()
                 }}
               >
-                <span className="material-icons text-lg">
+                <span className="material-icons text-4xl">
                   {status?.is_paused ? 'play_arrow' : 'pause'}
                 </span>
               </Button>
@@ -227,25 +227,25 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8"
+                  className="h-14 w-14"
                   onClick={(e) => {
                     e.stopPropagation()
                     handleSkip()
                   }}
                 >
-                  <span className="material-icons text-lg">skip_next</span>
+                  <span className="material-icons text-4xl">skip_next</span>
                 </Button>
               )}
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className="h-14 w-14"
                 onClick={(e) => {
                   e.stopPropagation()
                   handleStop()
                 }}
               >
-                <span className="material-icons text-lg">stop</span>
+                <span className="material-icons text-4xl">stop</span>
               </Button>
             </div>
           )}
@@ -278,17 +278,11 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
         {isExpanded && isPlaying && (
           <div className="px-4 pb-4 pt-2 border-t space-y-4">
             {/* Time Info */}
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">
-                {formatTime(elapsedTime)}
-              </span>
-              <span className="text-muted-foreground">
-                -{formatTime(remainingTime)}
-              </span>
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>{formatTime(elapsedTime)}</span>
+              <span>{progressPercent.toFixed(0)}%</span>
+              <span>-{formatTime(remainingTime)}</span>
             </div>
-
-            {/* Progress Bar */}
-            <Progress value={progressPercent} className="h-2" />
 
             {/* Playback Controls */}
             <div className="flex items-center justify-center gap-4">
@@ -330,27 +324,26 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
                 <p className="text-muted-foreground text-xs">Speed</p>
                 <p className="font-medium">{status.speed} mm/s</p>
               </div>
-              <div className="bg-muted/50 rounded-lg p-3">
-                <p className="text-muted-foreground text-xs">Progress</p>
-                <p className="font-medium">{progressPercent.toFixed(0)}%</p>
-              </div>
-              {status.playlist && (
-                <>
-                  <div className="bg-muted/50 rounded-lg p-3">
-                    <p className="text-muted-foreground text-xs">Playlist</p>
-                    <p className="font-medium">
-                      {status.playlist.current_index + 1} of {status.playlist.total_files}
-                    </p>
-                  </div>
-                  <div className="bg-muted/50 rounded-lg p-3">
-                    <p className="text-muted-foreground text-xs">Next</p>
-                    <p className="font-medium truncate">
-                      {status.playlist.next_file
-                        ? formatPatternName(status.playlist.next_file)
-                        : 'None'}
-                    </p>
-                  </div>
-                </>
+              {status.playlist ? (
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-muted-foreground text-xs">Playlist</p>
+                  <p className="font-medium">
+                    {status.playlist.current_index + 1} of {status.playlist.total_files}
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-muted-foreground text-xs">Mode</p>
+                  <p className="font-medium">Single Pattern</p>
+                </div>
+              )}
+              {status.playlist?.next_file && (
+                <div className="bg-muted/50 rounded-lg p-3 col-span-2">
+                  <p className="text-muted-foreground text-xs">Next Pattern</p>
+                  <p className="font-medium truncate">
+                    {formatPatternName(status.playlist.next_file)}
+                  </p>
+                </div>
               )}
             </div>
 
