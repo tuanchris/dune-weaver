@@ -139,6 +139,10 @@ class DWLEDController:
 
     def _effect_loop(self):
         """Background thread that runs the current effect"""
+        # Elevate priority and pin to CPU 0 for consistent timing
+        from modules.core import scheduling
+        scheduling.setup_realtime_thread()
+        
         while not self._stop_thread.is_set():
             try:
                 with self._lock:

@@ -49,12 +49,12 @@ def _generate_preview_in_process(pattern_file, format='WEBP'):
         coordinates = []
     
     # Image generation parameters
-    RENDER_SIZE = 2048
-    DISPLAY_SIZE = 512
+    RENDER_SIZE = 2048  # Use 2048x2048 for high quality rendering
+    DISPLAY_SIZE = 512  # Final display size
     
     if not coordinates:
         # Create an image with "No pattern data" text
-        img = Image.new('RGBA', (DISPLAY_SIZE, DISPLAY_SIZE), (255, 255, 255, 0))
+        img = Image.new('RGBA', (DISPLAY_SIZE, DISPLAY_SIZE), (255, 255, 255, 0))  # Transparent background
         draw = ImageDraw.Draw(img)
         text = "No pattern data"
         try:
@@ -74,13 +74,14 @@ def _generate_preview_in_process(pattern_file, format='WEBP'):
         return img_byte_arr.getvalue()
 
     # Create image and draw pattern
-    img = Image.new('RGBA', (RENDER_SIZE, RENDER_SIZE), (255, 255, 255, 0))
+    img = Image.new('RGBA', (RENDER_SIZE, RENDER_SIZE), (255, 255, 255, 0))  # Transparent background
     draw = ImageDraw.Draw(img)
     
+    # Image drawing parameters
     CENTER = RENDER_SIZE / 2.0
     SCALE_FACTOR = (RENDER_SIZE / 2.0) - 10.0 
     LINE_COLOR = "black" 
-    STROKE_WIDTH = 2
+    STROKE_WIDTH = 2  # Increased stroke width for better visibility after scaling
 
     points_to_draw = []
     for theta, rho in coordinates:
@@ -91,12 +92,13 @@ def _generate_preview_in_process(pattern_file, format='WEBP'):
     if len(points_to_draw) > 1:
         draw.line(points_to_draw, fill=LINE_COLOR, width=STROKE_WIDTH, joint="curve")
     elif len(points_to_draw) == 1:
-        r = 4
+        r = 4  # Larger radius for single point to remain visible after scaling
         x, y = points_to_draw[0]
         draw.ellipse([(x-r, y-r), (x+r, y+r)], fill=LINE_COLOR)
 
-    # Scale down and rotate
+    # Scale down to display size with high-quality resampling
     img = img.resize((DISPLAY_SIZE, DISPLAY_SIZE), Image.Resampling.LANCZOS)
+    # Rotate the image 180 degrees
     img = img.rotate(180)
 
     # Save to bytes

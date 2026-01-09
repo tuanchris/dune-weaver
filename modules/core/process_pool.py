@@ -5,19 +5,13 @@ Provides a single ProcessPoolExecutor shared across modules to:
 - Manage worker count based on available CPUs
 - Configure CPU affinity to keep workers off CPU 0 (reserved for motion)
 """
-import os
-import sys
 import logging
 from concurrent.futures import ProcessPoolExecutor
+from modules.core import scheduling
 
 logger = logging.getLogger(__name__)
 
 _pool: ProcessPoolExecutor | None = None
-
-
-def _get_cpu_count() -> int:
-    """Get available CPU cores."""
-    return os.cpu_count() or 1
 
 
 def _get_worker_count() -> int:
@@ -27,18 +21,7 @@ def _get_worker_count() -> int:
     - Max 3 workers (diminishing returns beyond)
     - Min 1 worker
     """
-    return min(3, max(1, _get_cpu_count() - 1))
-
-
-def get_worker_cpu_affinity() -> set[int] | None:
-    """Get CPU set for worker processes (excludes CPU 0).
-    
-    Returns None on single-core systems.
-    """
-    cpu_count = _get_cpu_count()
-    if cpu_count <= 1:
-        return None
-    return set(range(1, cpu_count))
+    return min(3, max(1, scheduling.get_cpu_count() - 1))
 
 
 def setup_worker_process():
@@ -46,20 +29,7 @@ def setup_worker_process():
     
     Sets CPU affinity and lowers priority.
     """
-    if sys.platform != 'linux':
-        return
-    
-    worker_cpus = get_worker_cpu_affinity()
-    if worker_cpus:
-        try:
-            os.sched_setaffinity(0, worker_cpus)
-        except Exception:
-            pass
-    
-    try:
-        os.nice(10)  # Lower priority
-    except Exception:
-        pass
+    scheduling.setup_background_worker()
 
 
 def init_pool() -> ProcessPoolExecutor:
@@ -69,7 +39,7 @@ def init_pool() -> ProcessPoolExecutor:
         return _pool
     
     worker_count = _get_worker_count()
-    cpu_count = _get_cpu_count()
+    cpu_count = scheduling.get_cpu_count()
     _pool = ProcessPoolExecutor(max_workers=worker_count)
     logger.info(f"Process pool initialized: {worker_count} workers, {cpu_count} CPUs")
     return _pool

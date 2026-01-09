@@ -5,7 +5,8 @@ import asyncio
 import logging
 from pathlib import Path
 from modules.core.pattern_manager import list_theta_rho_files, THETA_RHO_DIR, parse_theta_rho_file
-from modules.core.preview import _get_process_pool
+from modules.core.process_pool import get_pool as _get_process_pool
+from modules.core import scheduling
 
 logger = logging.getLogger(__name__)
 
@@ -16,37 +17,13 @@ def _is_pattern_running() -> bool:
     return bool(state.current_playing_file and not state.pause_requested)
 
 
-def _setup_worker_process():
-    """Setup worker process with CPU affinity and lower priority.
-    
-    Dynamically determines available CPUs and pins to all except CPU 0.
-    """
-    import sys
-    if sys.platform != 'linux':
-        return
-    
-    try:
-        cpu_count = os.cpu_count() or 1
-        if cpu_count > 1:
-            # Use all CPUs except CPU 0 (reserved for motion control)
-            worker_cpus = set(range(1, cpu_count))
-            os.sched_setaffinity(0, worker_cpus)
-    except Exception:
-        pass
-    
-    try:
-        os.nice(10)
-    except Exception:
-        pass
-
-
 def _parse_file_in_process(pattern_path):
     """Parse a pattern file in a worker process.
     
     This runs in a separate process with its own GIL,
     so it cannot block the motion control thread.
     """
-    _setup_worker_process()
+    scheduling.setup_background_worker()
     return parse_theta_rho_file(pattern_path)
 
 
