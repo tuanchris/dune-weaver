@@ -3,6 +3,7 @@ services:
     build: .
     image: ghcr.io/tuanchris/dune-weaver:main
     restart: always
+    command: /app/start.sh
     ports:
       - "80:80"     # Frontend (nginx)
       - "8080:8080" # Backend API
