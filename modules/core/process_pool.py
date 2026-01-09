@@ -1,9 +1,9 @@
 """Shared process pool for CPU-intensive tasks.
 
 Provides a single ProcessPoolExecutor shared across modules to:
-- Isolate CPU-intensive work from the motion control thread (separate GILs)
+- Isolate CPU-intensive work from real-time threads (separate GILs)
 - Manage worker count based on available CPUs
-- Configure CPU affinity to keep workers off CPU 0 (reserved for motion)
+- Configure CPU affinity to keep workers off CPU 0 (reserved for motion/LED)
 """
 import logging
 from concurrent.futures import ProcessPoolExecutor
