@@ -1143,7 +1143,7 @@ async def list_theta_rho_files_with_metadata():
         logger.error(f"Failed to load metadata cache, falling back to slow method: {e}")
         # Fallback to original method if cache loading fails
         # Create tasks only when needed
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         tasks = [loop.run_in_executor(executor, process_file, file_path) for file_path in files]
 
         for task in asyncio.as_completed(tasks):
@@ -1223,7 +1223,7 @@ async def get_theta_rho_coordinates(request: GetCoordinatesRequest):
 
         # Parse the theta-rho file in a separate process for CPU-intensive work
         # This prevents blocking the motion control thread
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         coordinates = await loop.run_in_executor(pool_module.get_pool(), parse_theta_rho_file, file_path)
         
         if not coordinates:
@@ -2308,7 +2308,7 @@ async def preview_thr_batch(request: dict):
             else:
                 logger.debug(f"Metadata cache miss for {file_name}, parsing file")
                 # Use process pool for CPU-intensive parsing
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 coordinates = await loop.run_in_executor(pool_module.get_pool(), parse_theta_rho_file, pattern_file_path)
                 first_coord = coordinates[0] if coordinates else None
                 last_coord = coordinates[-1] if coordinates else None
