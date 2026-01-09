@@ -29,23 +29,7 @@ def _generate_preview_in_process(pattern_file, format='WEBP'):
     from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR
     
     file_path = os.path.join(THETA_RHO_DIR, pattern_file)
-    
-    # Parse the pattern file
-    coordinates = []
-    try:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            for line in file:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                try:
-                    theta, rho = map(float, line.split())
-                    coordinates.append((theta, rho))
-                except ValueError:
-                    continue
-    except Exception as e:
-        logger.error(f"Error reading file {file_path}: {e}")
-        coordinates = []
+    coordinates = parse_theta_rho_file(file_path)
     
     # Image generation parameters
     RENDER_SIZE = 2048  # Use 2048x2048 for high quality rendering
