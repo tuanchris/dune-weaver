@@ -61,11 +61,10 @@ COPY . .
 # Copy built frontend from Stage 1
 COPY --from=frontend-builder /app/static/dist ./static/dist
 
-# Copy and set up startup script
-COPY start.sh /start.sh
-RUN chmod +x /start.sh
+# Ensure startup script is executable
+RUN chmod +x /app/start.sh
 
 # Expose ports: 80 for frontend (nginx), 8080 for backend API
 EXPOSE 80 8080
 
-CMD ["/start.sh"]
+CMD ["/app/start.sh"]
