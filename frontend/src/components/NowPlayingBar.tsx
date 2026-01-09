@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
+import { Slider } from '@/components/ui/slider'
 
 interface PlaybackStatus {
   current_file: string | null
@@ -141,6 +142,19 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
     }
   }
 
+  const handleSpeedChange = async (value: number[]) => {
+    try {
+      const response = await fetch('/set_speed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ speed: value[0] }),
+      })
+      if (!response.ok) throw new Error()
+    } catch {
+      toast.error('Failed to set speed')
+    }
+  }
+
   // Don't render if not visible
   if (!isVisible) {
     return null
@@ -170,11 +184,13 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
       >
         {/* Mini Bar (always visible) */}
         <div
-          className="flex items-center gap-4 px-4 py-3 cursor-pointer"
-          onClick={() => isPlaying && setIsExpanded(!isExpanded)}
+          className="flex items-start gap-4 px-4 py-3"
         >
           {/* Pattern Preview - Large */}
-          <div className="w-28 h-28 rounded-xl overflow-hidden bg-muted shrink-0 border">
+          <div
+            className="w-28 h-28 rounded-xl overflow-hidden bg-muted shrink-0 border cursor-pointer"
+            onClick={() => isPlaying && setIsExpanded(!isExpanded)}
+          >
             {previewUrl && isPlaying ? (
               <img
                 src={previewUrl}
@@ -190,17 +206,56 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
             )}
           </div>
 
-          {/* Pattern Info */}
-          <div className="flex-1 min-w-0">
-            {isPlaying ? (
+          {/* Pattern Info & Details */}
+          <div className="flex-1 min-w-0 space-y-2">
+            {isPlaying && status ? (
               <>
-                <div className="flex items-center gap-2">
+                {/* Title Row */}
+                <div className="flex items-center justify-between gap-2">
                   <p className="text-lg font-medium truncate">{patternName}</p>
-                  {status?.is_paused && (
-                    <span className="text-sm text-muted-foreground">(Paused)</span>
+                  {status.is_paused && (
+                    <span className="text-sm text-muted-foreground shrink-0">(Paused)</span>
                   )}
                 </div>
-                <Progress value={progressPercent} className="h-2 mt-2" />
+
+                {/* Time & Progress Row */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{formatTime(elapsedTime)}</span>
+                    <span>{progressPercent.toFixed(0)}%</span>
+                    <span>-{formatTime(remainingTime)}</span>
+                  </div>
+                  <Progress value={progressPercent} className="h-2" />
+                </div>
+
+                {/* Speed Slider */}
+                <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                  <span className="material-icons-outlined text-muted-foreground text-sm">speed</span>
+                  <Slider
+                    value={[status.speed]}
+                    onValueChange={handleSpeedChange}
+                    min={100}
+                    max={6000}
+                    step={100}
+                    className="flex-1"
+                  />
+                  <span className="text-xs text-muted-foreground w-16 text-right">{status.speed} mm/s</span>
+                </div>
+
+                {/* Playlist Info */}
+                {status.playlist && (
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <span className="material-icons-outlined text-sm">queue_music</span>
+                      {status.playlist.current_index + 1} / {status.playlist.total_files}
+                    </span>
+                    {status.playlist.next_file && (
+                      <span className="truncate">
+                        Next: {formatPatternName(status.playlist.next_file)}
+                      </span>
+                    )}
+                  </div>
+                )}
               </>
             ) : (
               <p className="text-lg text-muted-foreground">Not playing</p>
@@ -209,7 +264,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
 
           {/* Quick Controls */}
           {isPlaying && (
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="flex flex-col items-center gap-1 shrink-0">
               <Button
                 variant="ghost"
                 size="icon"
