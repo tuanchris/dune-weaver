@@ -12,6 +12,14 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Linux scheduling constants
+SCHED_RR = 2
+
+
+class _SchedParam(ctypes.Structure):
+    """Linux sched_param structure for real-time scheduling."""
+    _fields_ = [('sched_priority', ctypes.c_int)]
+
 
 def get_cpu_count() -> int:
     """Get available CPU cores."""
@@ -51,13 +59,7 @@ def elevate_priority(tid: int | None = None, realtime_priority: int = 50) -> boo
     # Try SCHED_RR (real-time round-robin)
     try:
         libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
-        
-        SCHED_RR = 2
-        
-        class sched_param(ctypes.Structure):
-            _fields_ = [('sched_priority', ctypes.c_int)]
-        
-        param = sched_param(realtime_priority)
+        param = _SchedParam(realtime_priority)
         result = libc.sched_setscheduler(target_id, SCHED_RR, ctypes.byref(param))
         
         if result == 0:
