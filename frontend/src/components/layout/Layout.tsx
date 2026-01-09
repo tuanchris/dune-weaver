@@ -421,24 +421,11 @@ export function Layout() {
     return () => clearInterval(interval)
   }, [isBackendConnected])
 
-  // Cache progress WebSocket connection
+  // Cache progress WebSocket connection - always connected to monitor cache generation
   useEffect(() => {
     if (!isBackendConnected) return
 
-    // Check initial cache progress
-    const checkCacheProgress = () => {
-      fetch('/cache-progress')
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.is_running) {
-            setCacheProgress(data)
-            connectCacheWebSocket()
-          } else if (data.stage === 'complete' || !data.is_running) {
-            setCacheProgress(null)
-          }
-        })
-        .catch(() => {})
-    }
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
 
     const connectCacheWebSocket = () => {
       if (cacheWsRef.current) return
@@ -451,19 +438,22 @@ export function Layout() {
           const message = JSON.parse(event.data)
           if (message.type === 'cache_progress') {
             const data = message.data
-            if (!data.is_running && (data.stage === 'complete' || data.stage === 'error')) {
-              setCacheProgress(null)
-              ws.close()
-              cacheWsRef.current = null
-              // Show cache all prompt if not already shown
-              if (data.stage === 'complete') {
+            if (data.is_running) {
+              // Cache generation is running - show splash screen
+              setCacheProgress(data)
+            } else if (data.stage === 'complete') {
+              // Cache generation just completed
+              if (cacheProgress?.is_running) {
+                // Was running before, now complete - show cache all prompt
                 const promptShown = localStorage.getItem('cacheAllPromptShown')
                 if (!promptShown) {
                   setTimeout(() => setShowCacheAllPrompt(true), 500)
                 }
               }
+              setCacheProgress(null)
             } else {
-              setCacheProgress(data)
+              // Not running and not complete (idle state)
+              setCacheProgress(null)
             }
           }
         } catch {
@@ -473,37 +463,31 @@ export function Layout() {
 
       ws.onclose = () => {
         cacheWsRef.current = null
+        // Reconnect after 3 seconds
+        if (isBackendConnected) {
+          reconnectTimeout = setTimeout(connectCacheWebSocket, 3000)
+        }
       }
 
       ws.onerror = () => {
-        // Fallback to polling
-        const pollInterval = setInterval(() => {
-          fetch('/cache-progress')
-            .then((r) => r.json())
-            .then((data) => {
-              if (!data.is_running) {
-                setCacheProgress(null)
-                clearInterval(pollInterval)
-              } else {
-                setCacheProgress(data)
-              }
-            })
-            .catch(() => {})
-        }, 1000)
+        // Will trigger onclose
       }
 
       cacheWsRef.current = ws
     }
 
-    checkCacheProgress()
+    connectCacheWebSocket()
 
     return () => {
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout)
+      }
       if (cacheWsRef.current) {
         cacheWsRef.current.close()
         cacheWsRef.current = null
       }
     }
-  }, [isBackendConnected])
+  }, [isBackendConnected, cacheProgress?.is_running])
 
   // Calculate cache progress percentage
   const cachePercentage = cacheProgress?.total_files
