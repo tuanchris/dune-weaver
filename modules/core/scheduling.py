@@ -169,17 +169,13 @@ def setup_realtime_thread(tid: int | None = None) -> None:
     """
     cpu_count = get_cpu_count()
     
-    # Elevate priority
-    elevated = elevate_priority(tid)
+    # Elevate priority (logs internally on success)
+    elevate_priority(tid)
     
     # Pin to CPU 0 if multi-core
     if cpu_count > 1:
-        pinned = pin_to_cpu(0, tid)
-        if pinned:
+        if pin_to_cpu(0, tid):
             logger.info(f"Real-time thread pinned to CPU 0 ({cpu_count} CPUs detected)")
-    
-    if elevated:
-        logger.info("Real-time thread priority elevated")
 
 
 def setup_background_worker() -> None:
