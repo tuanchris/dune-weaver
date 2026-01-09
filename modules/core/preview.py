@@ -21,10 +21,9 @@ def _generate_preview_in_process(pattern_file, format='WEBP'):
     
     All imports are done inside the function to ensure they happen
     in the worker process, not the main process.
-    """
-    # Setup worker process (CPU affinity + nice)
-    pool_module.setup_worker_process()
     
+    Note: Worker CPU affinity/priority is configured once at pool init via initializer.
+    """
     # Import dependencies in the worker process
     from PIL import Image, ImageDraw
     from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR

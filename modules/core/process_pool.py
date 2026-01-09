@@ -40,7 +40,10 @@ def init_pool() -> ProcessPoolExecutor:
     
     worker_count = _get_worker_count()
     cpu_count = scheduling.get_cpu_count()
-    _pool = ProcessPoolExecutor(max_workers=worker_count)
+    _pool = ProcessPoolExecutor(
+        max_workers=worker_count,
+        initializer=setup_worker_process
+    )
     logger.info(f"Process pool initialized: {worker_count} workers, {cpu_count} CPUs")
     return _pool
 

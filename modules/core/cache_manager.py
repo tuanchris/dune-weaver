@@ -6,7 +6,6 @@ import logging
 from pathlib import Path
 from modules.core.pattern_manager import list_theta_rho_files, THETA_RHO_DIR, parse_theta_rho_file
 from modules.core.process_pool import get_pool as _get_process_pool
-from modules.core import scheduling
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +15,9 @@ def _parse_file_in_process(pattern_path):
     
     This runs in a separate process with its own GIL,
     so it cannot block the motion control thread.
+    
+    Note: Worker CPU affinity/priority is configured once at pool init via initializer.
     """
-    scheduling.setup_background_worker()
     return parse_theta_rho_file(pattern_path)
 
 # Global cache progress state
