@@ -776,12 +776,6 @@ async def is_cache_generation_needed_async():
         
         if pattern_set != metadata_keys:
             # Metadata is missing some patterns
-            missing_metadata = pattern_set - metadata_keys
-            extra_metadata = metadata_keys - pattern_set
-            if missing_metadata:
-                logger.info(f"Cache needed: {len(missing_metadata)} patterns missing from metadata cache")
-            if extra_metadata:
-                logger.info(f"Cache needed: {len(extra_metadata)} patterns in metadata but not on disk")
             return True
         
         # Step 3: Check image cache
@@ -799,15 +793,8 @@ async def is_cache_generation_needed_async():
         
         if pattern_set != cached_images:
             # Some patterns missing image cache
-            missing_images = pattern_set - cached_images
-            extra_images = cached_images - pattern_set
-            if missing_images:
-                logger.info(f"Cache needed: {len(missing_images)} patterns missing image cache")
-            if extra_images:
-                logger.info(f"Cache needed: {len(extra_images)} cached images without patterns")
             return True
 
-        logger.info(f"Cache is up to date ({len(pattern_set)} patterns)")
         return False
 
     except Exception as e:

@@ -100,7 +100,7 @@ export function SettingsPage() {
 
   // Settings state
   const [settings, setSettings] = useState<Settings>({})
-  const [ledConfig, setLedConfig] = useState<LedConfig>({ provider: 'none' })
+  const [ledConfig, setLedConfig] = useState<LedConfig>({ provider: 'none', gpio_pin: 18 })
   const [mqttConfig, setMqttConfig] = useState<MqttConfig>({ enabled: false })
 
   // UI state
