@@ -70,7 +70,7 @@ export function Layout() {
   // Now Playing bar state
   const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(false)
   const [openNowPlayingExpanded, setOpenNowPlayingExpanded] = useState(false)
-  const wasPlayingRef = useRef(false) // Track previous playing state to detect start
+  const wasPlayingRef = useRef<boolean | null>(null) // Track previous playing state (null = first message)
   const [logs, setLogs] = useState<Array<{ timestamp: string; level: string; logger: string; message: string }>>([])
   const [logLevelFilter, setLogLevelFilter] = useState<string>('ALL')
   const logsWsRef = useRef<WebSocket | null>(null)
@@ -100,19 +100,22 @@ export function Layout() {
             }
             // Auto-open/close Now Playing bar based on playback state
             const isPlaying = data.data.is_running || data.data.is_paused
-            if (isPlaying && !wasPlayingRef.current) {
-              // Playback just started - open the Now Playing bar in expanded mode
-              setIsNowPlayingOpen(true)
-              setOpenNowPlayingExpanded(true)
-              // Close the logs drawer if open
-              setIsLogsOpen(false)
-              // Reset the expanded flag after a short delay
-              setTimeout(() => setOpenNowPlayingExpanded(false), 500)
-              // Dispatch event so pages can close their sidebars/panels
-              window.dispatchEvent(new CustomEvent('playback-started'))
-            } else if (!isPlaying && wasPlayingRef.current) {
-              // Playback just stopped - close the Now Playing bar
-              setIsNowPlayingOpen(false)
+            // Skip auto-open on first message (page refresh) - only react to state changes
+            if (wasPlayingRef.current !== null) {
+              if (isPlaying && !wasPlayingRef.current) {
+                // Playback just started - open the Now Playing bar in expanded mode
+                setIsNowPlayingOpen(true)
+                setOpenNowPlayingExpanded(true)
+                // Close the logs drawer if open
+                setIsLogsOpen(false)
+                // Reset the expanded flag after a short delay
+                setTimeout(() => setOpenNowPlayingExpanded(false), 500)
+                // Dispatch event so pages can close their sidebars/panels
+                window.dispatchEvent(new CustomEvent('playback-started'))
+              } else if (!isPlaying && wasPlayingRef.current) {
+                // Playback just stopped - close the Now Playing bar
+                setIsNowPlayingOpen(false)
+              }
             }
             wasPlayingRef.current = isPlaying
           }
@@ -353,6 +356,26 @@ export function Layout() {
   const [connectionLogs, setConnectionLogs] = useState<Array<{ timestamp: string; level: string; message: string }>>([])
   const blockingLogsRef = useRef<HTMLDivElement>(null)
 
+  // Cache progress state
+  const [cacheProgress, setCacheProgress] = useState<{
+    is_running: boolean
+    stage: string
+    processed_files: number
+    total_files: number
+    current_file: string
+    error?: string
+  } | null>(null)
+  const cacheWsRef = useRef<WebSocket | null>(null)
+
+  // Cache All Previews prompt state
+  const [showCacheAllPrompt, setShowCacheAllPrompt] = useState(false)
+  const [cacheAllProgress, setCacheAllProgress] = useState<{
+    inProgress: boolean
+    completed: number
+    total: number
+    done: boolean
+  } | null>(null)
+
   // Add connection attempt logs when backend is disconnected
   useEffect(() => {
     if (isBackendConnected) {
@@ -398,8 +421,307 @@ export function Layout() {
     return () => clearInterval(interval)
   }, [isBackendConnected])
 
+  // Cache progress WebSocket connection
+  useEffect(() => {
+    if (!isBackendConnected) return
+
+    // Check initial cache progress
+    const checkCacheProgress = () => {
+      fetch('/cache-progress')
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.is_running) {
+            setCacheProgress(data)
+            connectCacheWebSocket()
+          } else if (data.stage === 'complete' || !data.is_running) {
+            setCacheProgress(null)
+          }
+        })
+        .catch(() => {})
+    }
+
+    const connectCacheWebSocket = () => {
+      if (cacheWsRef.current) return
+
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const ws = new WebSocket(`${protocol}//${window.location.host}/ws/cache-progress`)
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data)
+          if (message.type === 'cache_progress') {
+            const data = message.data
+            if (!data.is_running && (data.stage === 'complete' || data.stage === 'error')) {
+              setCacheProgress(null)
+              ws.close()
+              cacheWsRef.current = null
+              // Show cache all prompt if not already shown
+              if (data.stage === 'complete') {
+                const promptShown = localStorage.getItem('cacheAllPromptShown')
+                if (!promptShown) {
+                  setTimeout(() => setShowCacheAllPrompt(true), 500)
+                }
+              }
+            } else {
+              setCacheProgress(data)
+            }
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
+      ws.onclose = () => {
+        cacheWsRef.current = null
+      }
+
+      ws.onerror = () => {
+        // Fallback to polling
+        const pollInterval = setInterval(() => {
+          fetch('/cache-progress')
+            .then((r) => r.json())
+            .then((data) => {
+              if (!data.is_running) {
+                setCacheProgress(null)
+                clearInterval(pollInterval)
+              } else {
+                setCacheProgress(data)
+              }
+            })
+            .catch(() => {})
+        }, 1000)
+      }
+
+      cacheWsRef.current = ws
+    }
+
+    checkCacheProgress()
+
+    return () => {
+      if (cacheWsRef.current) {
+        cacheWsRef.current.close()
+        cacheWsRef.current = null
+      }
+    }
+  }, [isBackendConnected])
+
+  // Calculate cache progress percentage
+  const cachePercentage = cacheProgress?.total_files
+    ? Math.round((cacheProgress.processed_files / cacheProgress.total_files) * 100)
+    : 0
+
+  const getCacheStageText = () => {
+    if (!cacheProgress) return ''
+    switch (cacheProgress.stage) {
+      case 'starting':
+        return 'Initializing...'
+      case 'metadata':
+        return 'Processing pattern metadata'
+      case 'images':
+        return 'Generating pattern previews'
+      default:
+        return 'Processing...'
+    }
+  }
+
+  // Cache all previews in browser
+  const handleCacheAllPreviews = async () => {
+    setCacheAllProgress({ inProgress: true, completed: 0, total: 0, done: false })
+
+    try {
+      // Fetch all patterns
+      const response = await fetch('/api/patterns')
+      const data = await response.json()
+      const patterns = data.patterns || []
+
+      setCacheAllProgress({ inProgress: true, completed: 0, total: patterns.length, done: false })
+
+      // Process in batches of 5
+      const batchSize = 5
+      let completed = 0
+
+      for (let i = 0; i < patterns.length; i += batchSize) {
+        const batch = patterns.slice(i, i + batchSize)
+
+        const batchPromises = batch.map(async (pattern: { file: string }) => {
+          try {
+            // Fetch preview URL
+            const previewResponse = await fetch(
+              `/api/pattern/${encodeURIComponent(pattern.file)}/preview`
+            )
+            if (previewResponse.ok) {
+              const previewData = await previewResponse.json()
+              if (previewData.preview_url) {
+                // Pre-load image to cache it
+                return new Promise<void>((resolve) => {
+                  const img = new Image()
+                  img.onload = () => resolve()
+                  img.onerror = () => resolve()
+                  img.src = previewData.preview_url
+                })
+              }
+            }
+          } catch {
+            // Continue even if one fails
+          }
+        })
+
+        await Promise.all(batchPromises)
+        completed += batch.length
+        setCacheAllProgress({ inProgress: true, completed, total: patterns.length, done: false })
+
+        // Small delay between batches
+        if (i + batchSize < patterns.length) {
+          await new Promise((resolve) => setTimeout(resolve, 100))
+        }
+      }
+
+      setCacheAllProgress({ inProgress: false, completed: patterns.length, total: patterns.length, done: true })
+    } catch (error) {
+      console.error('Error caching previews:', error)
+      setCacheAllProgress(null)
+      toast.error('Failed to cache previews')
+    }
+  }
+
+  const handleSkipCacheAll = () => {
+    localStorage.setItem('cacheAllPromptShown', 'true')
+    setShowCacheAllPrompt(false)
+    setCacheAllProgress(null)
+  }
+
+  const handleCloseCacheAllDone = () => {
+    localStorage.setItem('cacheAllPromptShown', 'true')
+    setShowCacheAllPrompt(false)
+    setCacheAllProgress(null)
+  }
+
+  const cacheAllPercentage = cacheAllProgress?.total
+    ? Math.round((cacheAllProgress.completed / cacheAllProgress.total) * 100)
+    : 0
+
   return (
     <div className="min-h-screen bg-background">
+      {/* Cache Progress Blocking Overlay */}
+      {cacheProgress?.is_running && (
+        <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center p-4">
+          <div className="w-full max-w-md space-y-6">
+            <div className="text-center space-y-4">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-2">
+                <span className="material-icons-outlined text-4xl text-primary animate-pulse">
+                  cached
+                </span>
+              </div>
+              <h2 className="text-2xl font-bold">Initializing Pattern Cache</h2>
+              <p className="text-muted-foreground">
+                Preparing your pattern previews...
+              </p>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="space-y-2">
+              <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-primary h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${cachePercentage}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>
+                  {cacheProgress.processed_files} of {cacheProgress.total_files} patterns
+                </span>
+                <span>{cachePercentage}%</span>
+              </div>
+            </div>
+
+            {/* Stage Info */}
+            <div className="text-center space-y-1">
+              <p className="text-sm font-medium">{getCacheStageText()}</p>
+              {cacheProgress.current_file && (
+                <p className="text-xs text-muted-foreground truncate max-w-full">
+                  {cacheProgress.current_file}
+                </p>
+              )}
+            </div>
+
+            {/* Hint */}
+            <p className="text-center text-xs text-muted-foreground">
+              This only happens once after updates or when new patterns are added
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Cache All Previews Prompt Modal */}
+      {showCacheAllPrompt && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-background rounded-lg shadow-xl w-full max-w-md">
+            <div className="p-6">
+              <div className="text-center space-y-4">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-2">
+                  <span className="material-icons-outlined text-2xl text-primary">
+                    download_for_offline
+                  </span>
+                </div>
+                <h2 className="text-xl font-semibold">Cache All Pattern Previews?</h2>
+                <p className="text-muted-foreground text-sm">
+                  Would you like to cache all pattern previews for faster browsing? This will download and store preview images in your browser for instant loading.
+                </p>
+
+                <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-lg text-sm">
+                  <p className="text-amber-600 dark:text-amber-400">
+                    <strong>Note:</strong> This cache is browser-specific. You'll need to repeat this for each browser you use.
+                  </p>
+                </div>
+
+                {/* Progress section */}
+                {cacheAllProgress?.inProgress && (
+                  <div className="space-y-2">
+                    <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-primary h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${cacheAllPercentage}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-sm text-muted-foreground">
+                      <span>
+                        {cacheAllProgress.completed} of {cacheAllProgress.total} previews
+                      </span>
+                      <span>{cacheAllPercentage}%</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Completion message */}
+                {cacheAllProgress?.done && (
+                  <div className="space-y-4">
+                    <p className="text-green-600 dark:text-green-400 flex items-center justify-center gap-2">
+                      <span className="material-icons text-base">check_circle</span>
+                      All previews cached successfully!
+                    </p>
+                    <Button onClick={handleCloseCacheAllDone} className="w-full">
+                      Done
+                    </Button>
+                  </div>
+                )}
+
+                {/* Buttons (hidden during progress or after completion) */}
+                {!cacheAllProgress && (
+                  <div className="flex gap-3 justify-center">
+                    <Button variant="ghost" onClick={handleSkipCacheAll}>
+                      Skip for now
+                    </Button>
+                    <Button onClick={handleCacheAllPreviews}>
+                      Cache All Previews
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Backend Connection Blocking Overlay */}
       {!isBackendConnected && (
         <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center p-4">

@@ -145,15 +145,22 @@ export function SettingsPage() {
     update_available: boolean
   } | null>(null)
 
+  // Helper to scroll to element with header offset
+  const scrollToSection = (sectionId: string) => {
+    const element = document.getElementById(`section-${sectionId}`)
+    if (element) {
+      const headerHeight = 80 // Header height + some padding
+      const elementTop = element.getBoundingClientRect().top + window.scrollY
+      window.scrollTo({ top: elementTop - headerHeight, behavior: 'smooth' })
+    }
+  }
+
   // Scroll to section and clear URL param after navigation
   useEffect(() => {
     if (sectionParam) {
       // Scroll to the section after a short delay to allow render
       setTimeout(() => {
-        const element = document.getElementById(`section-${sectionParam}`)
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'start' })
-        }
+        scrollToSection(sectionParam)
         // Clear the search param from URL
         setSearchParams({}, { replace: true })
       }, 100)
@@ -237,10 +244,7 @@ export function SettingsPage() {
     // Scroll newly opened section into view
     if (newlyOpened) {
       setTimeout(() => {
-        const element = document.getElementById(`section-${newlyOpened}`)
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'start' })
-        }
+        scrollToSection(newlyOpened)
       }, 100)
     }
   }
@@ -829,16 +833,16 @@ export function SettingsPage() {
               <Label>Table Type Override</Label>
               <div className="flex gap-3">
                 <Select
-                  value={settings.table_type_override || ''}
+                  value={settings.table_type_override || 'auto'}
                   onValueChange={(value) =>
-                    setSettings({ ...settings, table_type_override: value || undefined })
+                    setSettings({ ...settings, table_type_override: value === 'auto' ? undefined : value })
                   }
                 >
                   <SelectTrigger className="flex-1">
                     <SelectValue placeholder="Auto-detect (use detected type)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Auto-detect (use detected type)</SelectItem>
+                    <SelectItem value="auto">Auto-detect (use detected type)</SelectItem>
                     {settings.available_table_types?.map((type) => (
                       <SelectItem key={type.value} value={type.value}>
                         {type.label}
@@ -1188,16 +1192,16 @@ export function SettingsPage() {
                 <div className="space-y-2">
                   <Label htmlFor="clear-from-in">Clear From Center Pattern</Label>
                   <Select
-                    value={settings.custom_clear_from_in || ''}
+                    value={settings.custom_clear_from_in || '__default__'}
                     onValueChange={(value) =>
-                      setSettings({ ...settings, custom_clear_from_in: value || undefined })
+                      setSettings({ ...settings, custom_clear_from_in: value === '__default__' ? undefined : value })
                     }
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Default (built-in)" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Default (built-in)</SelectItem>
+                      <SelectItem value="__default__">Default (built-in)</SelectItem>
                       {patternFiles.map((file) => (
                         <SelectItem key={file} value={file}>
                           {file}
@@ -1213,16 +1217,16 @@ export function SettingsPage() {
                 <div className="space-y-2">
                   <Label htmlFor="clear-from-out">Clear From Perimeter Pattern</Label>
                   <Select
-                    value={settings.custom_clear_from_out || ''}
+                    value={settings.custom_clear_from_out || '__default__'}
                     onValueChange={(value) =>
-                      setSettings({ ...settings, custom_clear_from_out: value || undefined })
+                      setSettings({ ...settings, custom_clear_from_out: value === '__default__' ? undefined : value })
                     }
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Default (built-in)" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Default (built-in)</SelectItem>
+                      <SelectItem value="__default__">Default (built-in)</SelectItem>
                       {patternFiles.map((file) => (
                         <SelectItem key={file} value={file}>
                           {file}
@@ -1779,16 +1783,16 @@ export function SettingsPage() {
                       </div>
                     </div>
                     <Select
-                      value={stillSandsSettings.timezone}
+                      value={stillSandsSettings.timezone || '__system__'}
                       onValueChange={(value) =>
-                        setStillSandsSettings({ ...stillSandsSettings, timezone: value })
+                        setStillSandsSettings({ ...stillSandsSettings, timezone: value === '__system__' ? '' : value })
                       }
                     >
                       <SelectTrigger className="w-[200px]">
                         <SelectValue placeholder="System Default" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">System Default</SelectItem>
+                        <SelectItem value="__system__">System Default</SelectItem>
                         <SelectItem value="America/New_York">Eastern Time</SelectItem>
                         <SelectItem value="America/Chicago">Central Time</SelectItem>
                         <SelectItem value="America/Denver">Mountain Time</SelectItem>
