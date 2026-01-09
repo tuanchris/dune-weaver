@@ -24,6 +24,7 @@ services:
       - ./patterns:/app/patterns
       - ./playlists:/app/playlists
       - ./state.json:/app/state.json
+      - ./metadata_cache.json:/app/metadata_cache.json
       - ./static/custom:/app/static/custom
       # Mount Docker socket for container self-restart/update
       - /var/run/docker.sock:/var/run/docker.sock
