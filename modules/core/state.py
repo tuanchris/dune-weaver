@@ -44,6 +44,9 @@ class AppState:
         self.homed_x = False  # Set to True when [MSG:Homed:X] is received
         self.homed_y = False  # Set to True when [MSG:Homed:Y] is received
 
+        # Homing in progress flag - blocks other movement operations
+        self.is_homing = False
+
         # Angular homing compass reference point
         # This is the angular offset in degrees where the sensor is placed
         # After homing, theta will be set to this value

@@ -78,6 +78,12 @@ def _start_idle_led_timeout():
     )
 
 
+def check_homing_in_progress():
+    """Check if homing is in progress and raise exception if so."""
+    if state.is_homing:
+        raise HTTPException(status_code=409, detail="Cannot perform this action while homing is in progress")
+
+
 def normalize_file_path(file_path: str) -> str:
     """Normalize file path separators for consistent cross-platform handling."""
     if not file_path:
@@ -1279,7 +1285,9 @@ async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTa
         if not (state.conn.is_connected() if state.conn else False):
             logger.warning("Attempted to run a pattern without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
-        
+
+        check_homing_in_progress()
+
         if pattern_manager.get_pattern_lock().locked():
             logger.info("Another pattern is running, stopping it first...")
             await pattern_manager.stop_actions()
@@ -1320,14 +1328,26 @@ async def send_home():
         if not (state.conn.is_connected() if state.conn else False):
             logger.warning("Attempted to move to home without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
-        
-        # Run homing with 15 second timeout
-        success = await asyncio.to_thread(connection_manager.home)
-        if not success:
-            logger.error("Homing failed or timed out")
-            raise HTTPException(status_code=500, detail="Homing failed or timed out after 15 seconds")
-        
-        return {"success": True}
+
+        if state.is_homing:
+            raise HTTPException(status_code=409, detail="Homing already in progress")
+
+        # Set homing flag to block other movement operations
+        state.is_homing = True
+        logger.info("Homing started - blocking other movement operations")
+
+        try:
+            # Run homing with 15 second timeout
+            success = await asyncio.to_thread(connection_manager.home)
+            if not success:
+                logger.error("Homing failed or timed out")
+                raise HTTPException(status_code=500, detail="Homing failed or timed out after 15 seconds")
+
+            return {"success": True}
+        finally:
+            # Always clear homing flag when done (success or failure)
+            state.is_homing = False
+            logger.info("Homing completed - movement operations unblocked")
     except HTTPException:
         raise
     except Exception as e:
@@ -1339,10 +1359,12 @@ async def run_specific_theta_rho_file(file_name: str):
     file_path = os.path.join(pattern_manager.THETA_RHO_DIR, file_name)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
-        
+
     if not (state.conn.is_connected() if state.conn else False):
         logger.warning("Attempted to run a pattern without a connection")
         raise HTTPException(status_code=400, detail="Connection not established")
+
+    check_homing_in_progress()
 
     pattern_manager.run_theta_rho_file(file_path)
     return {"success": True}
@@ -1391,10 +1413,14 @@ async def move_to_center():
             logger.warning("Attempted to move to center without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
 
+        check_homing_in_progress()
+
         logger.info("Moving device to center position")
         await pattern_manager.reset_theta()
         await pattern_manager.move_polar(0, 0)
         return {"success": True}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to move to center: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1405,9 +1431,14 @@ async def move_to_perimeter():
         if not (state.conn.is_connected() if state.conn else False):
             logger.warning("Attempted to move to perimeter without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
+
+        check_homing_in_progress()
+
         await pattern_manager.reset_theta()
         await pattern_manager.move_polar(0, 1)
         return {"success": True}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to move to perimeter: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1518,6 +1549,8 @@ async def send_coordinate(request: CoordinateRequest):
     if not (state.conn.is_connected() if state.conn else False):
         logger.warning("Attempted to send coordinate without a connection")
         raise HTTPException(status_code=400, detail="Connection not established")
+
+    check_homing_in_progress()
 
     try:
         logger.debug(f"Sending coordinate: theta={request.theta}, rho={request.rho}")
@@ -1664,7 +1697,9 @@ async def run_playlist_endpoint(request: PlaylistRequest):
         if not (state.conn.is_connected() if state.conn else False):
             logger.warning("Attempted to run a playlist without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
-        
+
+        check_homing_in_progress()
+
         if not os.path.exists(playlist_manager.PLAYLISTS_FILE):
             raise HTTPException(status_code=404, detail=f"Playlist '{request.playlist_name}' not found")
 
