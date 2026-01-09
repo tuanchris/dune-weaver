@@ -35,12 +35,7 @@ services:
       - /sys/fs/cgroup:/sys/fs/cgroup:ro
       # Mount GPIO for DW LEDs and Desert Compass (reed switch)
       - /sys:/sys
-    devices:
-      - "/dev/ttyACM0:/dev/ttyACM0"
-      - "/dev/ttyUSB0:/dev/ttyUSB0"
-      - "/dev/ttyAMA0:/dev/ttyAMA0"
-      - "/dev/gpiomem:/dev/gpiomem"
-      - "/dev/mem:/dev/mem"
-      - "/dev/pio0:/dev/pio0"
+      # Mount /dev for serial port access (devices may not exist at start time)
+      - /dev:/dev
     privileged: true
     container_name: dune-weaver-backend
