@@ -20,19 +20,15 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      # Persistent data directories
-      - ./patterns:/app/patterns
-      - ./playlists:/app/playlists
-      - ./state.json:/app/state.json
-      - ./metadata_cache.json:/app/metadata_cache.json
-      - ./static/custom:/app/static/custom
+      # Mount entire app directory for persistence
+      - .:/app
       # Mount Docker socket for container self-restart/update
       - /var/run/docker.sock:/var/run/docker.sock
       # Mount timezone file from host for scheduling features
       - /etc/timezone:/etc/host-timezone:ro
       # Mount systemd for host shutdown capability
       - /run/systemd/system:/run/systemd/system:ro
-      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_socket:ro
+      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket:ro
       - /sys/fs/cgroup:/sys/fs/cgroup:ro
       # Mount GPIO for DW LEDs and Desert Compass (reed switch)
       - /sys:/sys
