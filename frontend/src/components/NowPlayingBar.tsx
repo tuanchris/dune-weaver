@@ -170,11 +170,11 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
       >
         {/* Mini Bar (always visible) */}
         <div
-          className="flex items-center gap-6 px-6 py-6 cursor-pointer"
+          className="flex items-center gap-4 px-4 py-3 cursor-pointer"
           onClick={() => isPlaying && setIsExpanded(!isExpanded)}
         >
-          {/* Pattern Preview */}
-          <div className="w-32 h-32 rounded-xl overflow-hidden bg-muted shrink-0 border-2">
+          {/* Pattern Preview - Large */}
+          <div className="w-28 h-28 rounded-xl overflow-hidden bg-muted shrink-0 border">
             {previewUrl && isPlaying ? (
               <img
                 src={previewUrl}
@@ -183,7 +183,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
-                <span className="material-icons-outlined text-muted-foreground text-5xl">
+                <span className="material-icons-outlined text-muted-foreground text-4xl">
                   {isPlaying ? 'image' : 'hourglass_empty'}
                 </span>
               </div>
@@ -194,32 +194,32 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
           <div className="flex-1 min-w-0">
             {isPlaying ? (
               <>
-                <div className="flex items-center gap-3">
-                  <p className="text-2xl font-medium truncate">{patternName}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium truncate">{patternName}</p>
                   {status?.is_paused && (
-                    <span className="text-base text-muted-foreground">(Paused)</span>
+                    <span className="text-xs text-muted-foreground">(Paused)</span>
                   )}
                 </div>
-                <Progress value={progressPercent} className="h-3 mt-3" />
+                <Progress value={progressPercent} className="h-1 mt-1" />
               </>
             ) : (
-              <p className="text-2xl text-muted-foreground">Not playing</p>
+              <p className="text-sm text-muted-foreground">Not playing</p>
             )}
           </div>
 
           {/* Quick Controls */}
           {isPlaying && (
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-1 shrink-0">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-14 w-14"
+                className="h-8 w-8"
                 onClick={(e) => {
                   e.stopPropagation()
                   handlePause()
                 }}
               >
-                <span className="material-icons text-4xl">
+                <span className="material-icons text-lg">
                   {status?.is_paused ? 'play_arrow' : 'pause'}
                 </span>
               </Button>
@@ -227,25 +227,25 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, onClose }: NowPla
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-14 w-14"
+                  className="h-8 w-8"
                   onClick={(e) => {
                     e.stopPropagation()
                     handleSkip()
                   }}
                 >
-                  <span className="material-icons text-4xl">skip_next</span>
+                  <span className="material-icons text-lg">skip_next</span>
                 </Button>
               )}
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-14 w-14"
+                className="h-8 w-8"
                 onClick={(e) => {
                   e.stopPropagation()
                   handleStop()
                 }}
               >
-                <span className="material-icons text-4xl">stop</span>
+                <span className="material-icons text-lg">stop</span>
               </Button>
             </div>
           )}
