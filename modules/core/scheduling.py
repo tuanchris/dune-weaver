@@ -15,10 +15,21 @@ logger = logging.getLogger(__name__)
 # Linux scheduling constants
 SCHED_RR = 2
 
+# Cached libc handle (lazy-loaded)
+_libc = None
+
 
 class _SchedParam(ctypes.Structure):
     """Linux sched_param structure for real-time scheduling."""
     _fields_ = [('sched_priority', ctypes.c_int)]
+
+
+def _get_libc():
+    """Get cached libc handle."""
+    global _libc
+    if _libc is None:
+        _libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
+    return _libc
 
 
 def get_cpu_count() -> int:
@@ -58,7 +69,7 @@ def elevate_priority(tid: int | None = None, realtime_priority: int = 50) -> boo
     
     # Try SCHED_RR (real-time round-robin)
     try:
-        libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
+        libc = _get_libc()
         param = _SchedParam(realtime_priority)
         result = libc.sched_setscheduler(target_id, SCHED_RR, ctypes.byref(param))
         
