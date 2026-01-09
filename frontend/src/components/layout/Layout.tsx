@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { toast } from 'sonner'
 import { NowPlayingBar } from '@/components/NowPlayingBar'
 import { Button } from '@/components/ui/button'
+import { initPreviewCacheDB, getPreviewsFromCache, savePreviewToCache } from '@/lib/previewCache'
 
 const navItems = [
   { path: '/', label: 'Browse', icon: 'grid_view', title: 'Browse Patterns' },
@@ -447,7 +448,10 @@ export function Layout() {
                 // Was running before, now complete - show cache all prompt
                 const promptShown = localStorage.getItem('cacheAllPromptShown')
                 if (!promptShown) {
-                  setTimeout(() => setShowCacheAllPrompt(true), 500)
+                  setTimeout(() => {
+                    setCacheAllProgress(null) // Reset to clean state
+                    setShowCacheAllPrompt(true)
+                  }, 500)
                 }
               }
               setCacheProgress(null)
@@ -508,41 +512,50 @@ export function Layout() {
     }
   }
 
-  // Cache all previews in browser
+  // Cache all previews in browser using IndexedDB
   const handleCacheAllPreviews = async () => {
     setCacheAllProgress({ inProgress: true, completed: 0, total: 0, done: false })
 
     try {
+      // Initialize IndexedDB
+      await initPreviewCacheDB()
+
       // Fetch all patterns
       const response = await fetch('/api/patterns')
       const data = await response.json()
-      const patterns = data.patterns || []
+      const patterns: { file: string }[] = data.patterns || []
+      const allPaths = patterns.map((p) => p.file)
 
-      setCacheAllProgress({ inProgress: true, completed: 0, total: patterns.length, done: false })
+      // Check which patterns are already cached
+      const cachedPreviews = await getPreviewsFromCache(allPaths)
+      const uncachedPatterns = allPaths.filter((path) => !cachedPreviews.has(path))
+
+      if (uncachedPatterns.length === 0) {
+        toast.success('All patterns are already cached!')
+        setCacheAllProgress({ inProgress: false, completed: patterns.length, total: patterns.length, done: true })
+        return
+      }
+
+      setCacheAllProgress({ inProgress: true, completed: 0, total: uncachedPatterns.length, done: false })
 
       // Process in batches of 5
       const batchSize = 5
       let completed = 0
 
-      for (let i = 0; i < patterns.length; i += batchSize) {
-        const batch = patterns.slice(i, i + batchSize)
+      for (let i = 0; i < uncachedPatterns.length; i += batchSize) {
+        const batch = uncachedPatterns.slice(i, i + batchSize)
 
-        const batchPromises = batch.map(async (pattern: { file: string }) => {
+        const batchPromises = batch.map(async (patternPath: string) => {
           try {
-            // Fetch preview URL
+            // Fetch preview data
             const previewResponse = await fetch(
-              `/api/pattern/${encodeURIComponent(pattern.file)}/preview`
+              `/api/pattern/${encodeURIComponent(patternPath)}/preview`
             )
             if (previewResponse.ok) {
               const previewData = await previewResponse.json()
-              if (previewData.preview_url) {
-                // Pre-load image to cache it
-                return new Promise<void>((resolve) => {
-                  const img = new Image()
-                  img.onload = () => resolve()
-                  img.onerror = () => resolve()
-                  img.src = previewData.preview_url
-                })
+              if (previewData.image_data) {
+                // Save to IndexedDB cache
+                await savePreviewToCache(patternPath, previewData)
               }
             }
           } catch {
@@ -552,15 +565,16 @@ export function Layout() {
 
         await Promise.all(batchPromises)
         completed += batch.length
-        setCacheAllProgress({ inProgress: true, completed, total: patterns.length, done: false })
+        setCacheAllProgress({ inProgress: true, completed, total: uncachedPatterns.length, done: false })
 
         // Small delay between batches
-        if (i + batchSize < patterns.length) {
+        if (i + batchSize < uncachedPatterns.length) {
           await new Promise((resolve) => setTimeout(resolve, 100))
         }
       }
 
-      setCacheAllProgress({ inProgress: false, completed: patterns.length, total: patterns.length, done: true })
+      setCacheAllProgress({ inProgress: false, completed: uncachedPatterns.length, total: uncachedPatterns.length, done: true })
+      toast.success(`Cached ${uncachedPatterns.length} pattern previews`)
     } catch (error) {
       console.error('Error caching previews:', error)
       setCacheAllProgress(null)
@@ -658,8 +672,20 @@ export function Layout() {
                   </p>
                 </div>
 
+                {/* Initial state - show buttons */}
+                {!cacheAllProgress && (
+                  <div className="flex gap-3 justify-center">
+                    <Button variant="ghost" onClick={handleSkipCacheAll}>
+                      Skip for now
+                    </Button>
+                    <Button onClick={handleCacheAllPreviews}>
+                      Cache All Previews
+                    </Button>
+                  </div>
+                )}
+
                 {/* Progress section */}
-                {cacheAllProgress?.inProgress && (
+                {cacheAllProgress && !cacheAllProgress.done && (
                   <div className="space-y-2">
                     <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
                       <div
@@ -681,22 +707,10 @@ export function Layout() {
                   <div className="space-y-4">
                     <p className="text-green-600 dark:text-green-400 flex items-center justify-center gap-2">
                       <span className="material-icons text-base">check_circle</span>
-                      All previews cached successfully!
+                      All {cacheAllProgress.total} previews cached successfully!
                     </p>
                     <Button onClick={handleCloseCacheAllDone} className="w-full">
                       Done
-                    </Button>
-                  </div>
-                )}
-
-                {/* Buttons (hidden during progress or after completion) */}
-                {!cacheAllProgress && (
-                  <div className="flex gap-3 justify-center">
-                    <Button variant="ghost" onClick={handleSkipCacheAll}>
-                      Skip for now
-                    </Button>
-                    <Button onClick={handleCacheAllPreviews}>
-                      Cache All Previews
                     </Button>
                   </div>
                 )}
