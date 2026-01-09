@@ -7,9 +7,8 @@ services:
       - "80:80"     # Frontend (nginx)
       - "8080:8080" # Backend API
     volumes:
-      # Persist state and patterns
-      - ./state.json:/app/state.json
-      - ./patterns:/app/patterns
+      # Mount entire app directory for development
+      - .:/app
       # Mount Docker socket for container self-restart/update
       - /var/run/docker.sock:/var/run/docker.sock
       # Mount timezone file from host for scheduling features
