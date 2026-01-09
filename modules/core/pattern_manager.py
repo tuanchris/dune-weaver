@@ -239,19 +239,12 @@ class MotionControlThread:
 
     def start(self):
         """Start the motion control thread with elevated priority."""
-        from modules.core import scheduling
-        
         if self.thread and self.thread.is_alive():
             return
 
         self.running = True
         self.thread = threading.Thread(target=self._motion_loop, daemon=True)
         self.thread.start()
-        
-        # Elevate thread priority and pin to CPU 0
-        tid = self.thread.native_id
-        if tid:
-            scheduling.setup_realtime_thread(tid)
         logger.info("Motion control thread started")
 
     def stop(self):
@@ -269,6 +262,10 @@ class MotionControlThread:
 
     def _motion_loop(self):
         """Main loop for the motion control thread."""
+        # Setup realtime priority from within thread to avoid native_id race
+        from modules.core import scheduling
+        scheduling.setup_realtime_thread()
+        
         logger.info("Motion control thread loop started")
 
         while self.running:
