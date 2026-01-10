@@ -448,20 +448,26 @@ async def generate_image_preview(pattern_file):
             # Parse file to get metadata (this is the only time we need to parse)
             logger.debug(f"Parsing {pattern_file} for metadata cache")
             pattern_path = os.path.join(THETA_RHO_DIR, pattern_file)
-            
+
             try:
-                coordinates = await asyncio.to_thread(parse_theta_rho_file, pattern_path)
-                
+                # Add timeout protection to prevent hanging on problematic files
+                coordinates = await asyncio.wait_for(
+                    asyncio.to_thread(parse_theta_rho_file, pattern_path),
+                    timeout=30.0  # 30 second timeout per file
+                )
+
                 if coordinates:
                     first_coord = {"x": coordinates[0][0], "y": coordinates[0][1]}
                     last_coord = {"x": coordinates[-1][0], "y": coordinates[-1][1]}
                     total_coords = len(coordinates)
-                    
+
                     # Cache the metadata for future use
                     cache_pattern_metadata(pattern_file, first_coord, last_coord, total_coords)
                     logger.debug(f"Metadata cached for {pattern_file}: {total_coords} coordinates")
                 else:
                     logger.warning(f"No coordinates found in {pattern_file}")
+            except asyncio.TimeoutError:
+                logger.error(f"Timeout parsing {pattern_file} for metadata - skipping")
             except Exception as e:
                 logger.error(f"Failed to parse {pattern_file} for metadata: {str(e)}")
                 # Continue with image generation even if metadata fails
@@ -620,21 +626,29 @@ async def generate_metadata_cache():
                 cache_progress["current_file"] = file_name
                 
                 try:
-                    # Parse file to get metadata
-                    coordinates = await asyncio.to_thread(parse_theta_rho_file, pattern_path)
+                    # Parse file to get metadata with timeout protection
+                    try:
+                        coordinates = await asyncio.wait_for(
+                            asyncio.to_thread(parse_theta_rho_file, pattern_path),
+                            timeout=30.0  # 30 second timeout per file
+                        )
+                    except asyncio.TimeoutError:
+                        logger.error(f"Timeout parsing {file_name} - skipping (file may be too large or corrupted)")
+                        continue
+
                     if coordinates:
                         first_coord = {"x": coordinates[0][0], "y": coordinates[0][1]}
                         last_coord = {"x": coordinates[-1][0], "y": coordinates[-1][1]}
                         total_coords = len(coordinates)
-                        
+
                         # Cache the metadata
                         cache_pattern_metadata(file_name, first_coord, last_coord, total_coords)
                         successful += 1
                         logger.debug(f"Generated metadata for {file_name}")
-                        
+
                     # Small delay to reduce I/O pressure
                     await asyncio.sleep(0.05)
-                    
+
                 except Exception as e:
                     logger.error(f"Failed to generate metadata for {file_name}: {str(e)}")
             
