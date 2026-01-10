@@ -2272,6 +2272,16 @@ async def test_mqtt_connection(request: dict):
             status_code=500
         )
 
+def _read_and_encode_preview(cache_path: str) -> str:
+    """Read preview image from disk and encode as base64.
+    
+    Combines file I/O and base64 encoding in a single function
+    to be run in executor, reducing context switches.
+    """
+    with open(cache_path, 'rb') as f:
+        image_data = f.read()
+    return base64.b64encode(image_data).decode('utf-8')
+
 @app.post("/preview_thr_batch")
 async def preview_thr_batch(request: dict):
     start = time.time()
