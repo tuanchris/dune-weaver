@@ -236,7 +236,10 @@ export function PlaylistsPage() {
       const newPreviews: Record<string, PreviewData> = {}
       for (const [path, previewData] of Object.entries(data)) {
         newPreviews[path] = previewData as PreviewData
-        savePreviewToCache(path, previewData as PreviewData)
+        // Only cache valid previews (with image_data and no error)
+        if (previewData && !(previewData as PreviewData).error) {
+          savePreviewToCache(path, previewData as PreviewData)
+        }
       }
       setPreviews(prev => ({ ...prev, ...newPreviews }))
     } catch (error) {

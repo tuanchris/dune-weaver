@@ -4,6 +4,7 @@ import {
   initPreviewCacheDB,
   getPreviewsFromCache,
   savePreviewToCache,
+  cacheAllPreviews,
 } from '@/lib/previewCache'
 import { fuzzyMatch } from '@/lib/utils'
 import { useOnBackendConnected } from '@/hooks/useBackendConnection'
@@ -97,7 +98,6 @@ export function BrowsePage() {
   const [isCaching, setIsCaching] = useState(false)
   const [cacheProgress, setCacheProgress] = useState(0)
   const [allCached, setAllCached] = useState(false)
-  const cacheAbortRef = useRef(false)
 
   // Favorites state
   const [favorites, setFavorites] = useState<Set<string>>(new Set())
@@ -707,118 +707,31 @@ export function BrowsePage() {
 
   // Cache all previews handler
   const handleCacheAllPreviews = async () => {
-    if (isCaching) {
-      // Cancel caching
-      cacheAbortRef.current = true
-      return
-    }
-
-    const BATCH_SIZE = 10
-    const CACHE_PROGRESS_KEY = 'dune_weaver_cache_progress'
-    const CACHE_TIMESTAMP_KEY = 'dune_weaver_cache_timestamp'
-    const CACHE_PROGRESS_EXPIRY = 24 * 60 * 60 * 1000 // 24 hours
+    if (isCaching) return
 
     setIsCaching(true)
     setCacheProgress(0)
-    cacheAbortRef.current = false
 
-    try {
-      // Check IndexedDB cache for all patterns to find uncached ones
-      const allPaths = patterns.map((p) => p.path)
-      const cachedPreviews = await getPreviewsFromCache(allPaths)
-      const uncachedPatterns = allPaths.filter((path) => !cachedPreviews.has(path))
+    const result = await cacheAllPreviews((progress) => {
+      const percentage = progress.total > 0
+        ? Math.round((progress.completed / progress.total) * 100)
+        : 0
+      setCacheProgress(percentage)
+    })
 
-      if (uncachedPatterns.length === 0) {
+    if (result.success) {
+      setAllCached(true)
+      if (result.cached === 0) {
         toast.success('All patterns are already cached!')
-        setAllCached(true)
-        setIsCaching(false)
-        return
-      }
-
-      // Check for existing progress
-      let startIndex = 0
-      const savedProgress = localStorage.getItem(CACHE_PROGRESS_KEY)
-      const savedTimestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY)
-
-      if (savedProgress && savedTimestamp) {
-        const progressAge = Date.now() - parseInt(savedTimestamp)
-        if (progressAge < CACHE_PROGRESS_EXPIRY) {
-          const lastIndex = uncachedPatterns.findIndex((p) => p === savedProgress)
-          if (lastIndex !== -1) {
-            startIndex = lastIndex + 1
-            toast.info('Resuming from previous progress...')
-          }
-        } else {
-          localStorage.removeItem(CACHE_PROGRESS_KEY)
-          localStorage.removeItem(CACHE_TIMESTAMP_KEY)
-        }
-      }
-
-      const remainingPatterns = uncachedPatterns.slice(startIndex)
-      const totalBatches = Math.ceil(remainingPatterns.length / BATCH_SIZE)
-
-      for (let i = 0; i < totalBatches; i++) {
-        if (cacheAbortRef.current) {
-          toast.info('Caching cancelled')
-          break
-        }
-
-        const batchStart = i * BATCH_SIZE
-        const batchEnd = Math.min(batchStart + BATCH_SIZE, remainingPatterns.length)
-        const batchPatterns = remainingPatterns.slice(batchStart, batchEnd)
-
-        // Update progress
-        const overallProgress = Math.round(
-          ((startIndex + batchEnd) / uncachedPatterns.length) * 100
-        )
-        setCacheProgress(overallProgress)
-
-        try {
-          const response = await fetch('/preview_thr_batch', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ file_names: batchPatterns }),
-          })
-
-          if (response.ok) {
-            const results = await response.json()
-
-            // Cache each preview and update state
-            for (const [path, data] of Object.entries(results)) {
-              if (data && !(data as PreviewData).error) {
-                await savePreviewToCache(path, data as PreviewData)
-
-                // Save progress after each successful pattern
-                localStorage.setItem(CACHE_PROGRESS_KEY, path)
-                localStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString())
-              }
-            }
-
-            // Update previews state
-            setPreviews((prev) => ({ ...prev, ...results }))
-          }
-        } catch (error) {
-          console.error(`Error caching batch ${i + 1}:`, error)
-        }
-
-        // Small delay between batches
-        await new Promise((resolve) => setTimeout(resolve, 100))
-      }
-
-      if (!cacheAbortRef.current) {
-        // Clear progress after successful completion
-        localStorage.removeItem(CACHE_PROGRESS_KEY)
-        localStorage.removeItem(CACHE_TIMESTAMP_KEY)
-        setAllCached(true)
+      } else {
         toast.success('All pattern previews have been cached!')
       }
-    } catch (error) {
-      console.error('Error caching previews:', error)
-      toast.error('Failed to cache previews. Click again to resume.')
-    } finally {
-      setIsCaching(false)
-      setCacheProgress(0)
+    } else {
+      toast.error('Failed to cache previews')
     }
+
+    setIsCaching(false)
+    setCacheProgress(0)
   }
 
   // Handle pattern file upload

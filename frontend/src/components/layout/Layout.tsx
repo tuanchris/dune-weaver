@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { toast } from 'sonner'
 import { NowPlayingBar } from '@/components/NowPlayingBar'
 import { Button } from '@/components/ui/button'
-import { initPreviewCacheDB, getPreviewsFromCache, savePreviewToCache } from '@/lib/previewCache'
+import { cacheAllPreviews } from '@/lib/previewCache'
 
 const navItems = [
   { path: '/', label: 'Browse', icon: 'grid_view', title: 'Browse Patterns' },
@@ -516,67 +516,17 @@ export function Layout() {
   const handleCacheAllPreviews = async () => {
     setCacheAllProgress({ inProgress: true, completed: 0, total: 0, done: false })
 
-    try {
-      // Initialize IndexedDB
-      await initPreviewCacheDB()
+    const result = await cacheAllPreviews((progress) => {
+      setCacheAllProgress({ inProgress: !progress.done, ...progress })
+    })
 
-      // Fetch all patterns
-      const response = await fetch('/api/patterns')
-      const data = await response.json()
-      const patterns: { file: string }[] = data.patterns || []
-      const allPaths = patterns.map((p) => p.file)
-
-      // Check which patterns are already cached
-      const cachedPreviews = await getPreviewsFromCache(allPaths)
-      const uncachedPatterns = allPaths.filter((path) => !cachedPreviews.has(path))
-
-      if (uncachedPatterns.length === 0) {
+    if (result.success) {
+      if (result.cached === 0) {
         toast.success('All patterns are already cached!')
-        setCacheAllProgress({ inProgress: false, completed: patterns.length, total: patterns.length, done: true })
-        return
+      } else {
+        toast.success(`Cached ${result.cached} pattern previews`)
       }
-
-      setCacheAllProgress({ inProgress: true, completed: 0, total: uncachedPatterns.length, done: false })
-
-      // Process in batches of 5
-      const batchSize = 5
-      let completed = 0
-
-      for (let i = 0; i < uncachedPatterns.length; i += batchSize) {
-        const batch = uncachedPatterns.slice(i, i + batchSize)
-
-        const batchPromises = batch.map(async (patternPath: string) => {
-          try {
-            // Fetch preview data
-            const previewResponse = await fetch(
-              `/api/pattern/${encodeURIComponent(patternPath)}/preview`
-            )
-            if (previewResponse.ok) {
-              const previewData = await previewResponse.json()
-              if (previewData.image_data) {
-                // Save to IndexedDB cache
-                await savePreviewToCache(patternPath, previewData)
-              }
-            }
-          } catch {
-            // Continue even if one fails
-          }
-        })
-
-        await Promise.all(batchPromises)
-        completed += batch.length
-        setCacheAllProgress({ inProgress: true, completed, total: uncachedPatterns.length, done: false })
-
-        // Small delay between batches
-        if (i + batchSize < uncachedPatterns.length) {
-          await new Promise((resolve) => setTimeout(resolve, 100))
-        }
-      }
-
-      setCacheAllProgress({ inProgress: false, completed: uncachedPatterns.length, total: uncachedPatterns.length, done: true })
-      toast.success(`Cached ${uncachedPatterns.length} pattern previews`)
-    } catch (error) {
-      console.error('Error caching previews:', error)
+    } else {
       setCacheAllProgress(null)
       toast.error('Failed to cache previews')
     }
@@ -678,8 +628,9 @@ export function Layout() {
                     <Button variant="ghost" onClick={handleSkipCacheAll}>
                       Skip for now
                     </Button>
-                    <Button onClick={handleCacheAllPreviews}>
-                      Cache All Previews
+                    <Button variant="outline" onClick={handleCacheAllPreviews} className="gap-2">
+                      <span className="material-icons-outlined text-lg">cached</span>
+                      Cache All
                     </Button>
                   </div>
                 )}

@@ -2933,7 +2933,7 @@ async def restart_system():
             try:
                 # Use docker restart directly with container name
                 # This is simpler and doesn't require the compose file path
-                subprocess.run(["docker", "restart", "dune-weaver"], check=True)
+                subprocess.run(["docker", "restart", "dune-weaver-backend"], check=True)
                 logger.info("Docker restart command executed successfully")
             except FileNotFoundError:
                 logger.error("docker command not found")

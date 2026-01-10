@@ -311,3 +311,77 @@ export async function getPreviewsFromCache(
 
   return results
 }
+
+// Shared function to cache all previews - used by both BrowsePage and Layout modal
+export interface CacheAllProgress {
+  completed: number
+  total: number
+  done: boolean
+}
+
+export async function cacheAllPreviews(
+  onProgress: (progress: CacheAllProgress) => void
+): Promise<{ success: boolean; cached: number }> {
+  const BATCH_SIZE = 10
+
+  try {
+    await initPreviewCacheDB()
+
+    // Fetch all patterns
+    const response = await fetch('/list_theta_rho_files_with_metadata')
+    const patterns: { path: string }[] = await response.json()
+    const allPaths = patterns.map((p) => p.path)
+
+    // Check which patterns are already cached
+    const cachedPreviews = await getPreviewsFromCache(allPaths)
+    const uncachedPatterns = allPaths.filter((path) => !cachedPreviews.has(path))
+
+    if (uncachedPatterns.length === 0) {
+      onProgress({ completed: patterns.length, total: patterns.length, done: true })
+      return { success: true, cached: 0 }
+    }
+
+    onProgress({ completed: 0, total: uncachedPatterns.length, done: false })
+
+    const totalBatches = Math.ceil(uncachedPatterns.length / BATCH_SIZE)
+
+    for (let i = 0; i < totalBatches; i++) {
+      const batchStart = i * BATCH_SIZE
+      const batchEnd = Math.min(batchStart + BATCH_SIZE, uncachedPatterns.length)
+      const batchPatterns = uncachedPatterns.slice(batchStart, batchEnd)
+
+      try {
+        const batchResponse = await fetch('/preview_thr_batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_names: batchPatterns }),
+        })
+
+        if (batchResponse.ok) {
+          const results = await batchResponse.json()
+
+          for (const [path, data] of Object.entries(results)) {
+            if (data && !(data as { error?: string }).error) {
+              await savePreviewToCache(path, data as PreviewData)
+            }
+          }
+        }
+      } catch {
+        // Continue even if batch fails
+      }
+
+      onProgress({ completed: batchEnd, total: uncachedPatterns.length, done: false })
+
+      // Small delay between batches
+      if (i + 1 < totalBatches) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+    }
+
+    onProgress({ completed: uncachedPatterns.length, total: uncachedPatterns.length, done: true })
+    return { success: true, cached: uncachedPatterns.length }
+  } catch (error) {
+    console.error('Error caching previews:', error)
+    return { success: false, cached: 0 }
+  }
+}
