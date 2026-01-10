@@ -2300,57 +2300,59 @@ async def preview_thr_batch(request: dict):
 
     async def process_single_file(file_name):
         """Process a single file and return its preview data."""
-        t1 = time.time()
-        try:
-            # Normalize file path for cross-platform compatibility
-            normalized_file_name = normalize_file_path(file_name)
-            pattern_file_path = os.path.join(pattern_manager.THETA_RHO_DIR, normalized_file_name)
+        # Acquire semaphore to limit concurrent processing
+        async with preview_semaphore:
+            t1 = time.time()
+            try:
+                # Normalize file path for cross-platform compatibility
+                normalized_file_name = normalize_file_path(file_name)
+                pattern_file_path = os.path.join(pattern_manager.THETA_RHO_DIR, normalized_file_name)
 
-            # Check file existence asynchronously
-            exists = await asyncio.to_thread(os.path.exists, pattern_file_path)
-            if not exists:
-                logger.warning(f"Pattern file not found: {pattern_file_path}")
-                return file_name, {"error": "Pattern file not found"}
+                # Check file existence asynchronously
+                exists = await asyncio.to_thread(os.path.exists, pattern_file_path)
+                if not exists:
+                    logger.warning(f"Pattern file not found: {pattern_file_path}")
+                    return file_name, {"error": "Pattern file not found"}
 
-            cache_path = get_cache_path(normalized_file_name)
+                cache_path = get_cache_path(normalized_file_name)
 
-            # Check cache existence asynchronously
-            cache_exists = await asyncio.to_thread(os.path.exists, cache_path)
-            if not cache_exists:
-                logger.info(f"Cache miss for {file_name}. Generating preview...")
-                success = await generate_image_preview(normalized_file_name)
-                cache_exists_after = await asyncio.to_thread(os.path.exists, cache_path)
-                if not success or not cache_exists_after:
-                    logger.error(f"Failed to generate or find preview for {file_name}")
-                    return file_name, {"error": "Failed to generate preview"}
+                # Check cache existence asynchronously
+                cache_exists = await asyncio.to_thread(os.path.exists, cache_path)
+                if not cache_exists:
+                    logger.info(f"Cache miss for {file_name}. Generating preview...")
+                    success = await generate_image_preview(normalized_file_name)
+                    cache_exists_after = await asyncio.to_thread(os.path.exists, cache_path)
+                    if not success or not cache_exists_after:
+                        logger.error(f"Failed to generate or find preview for {file_name}")
+                        return file_name, {"error": "Failed to generate preview"}
 
-            metadata = get_pattern_metadata(normalized_file_name)
-            if metadata:
-                first_coord_obj = metadata.get('first_coordinate')
-                last_coord_obj = metadata.get('last_coordinate')
-            else:
-                logger.debug(f"Metadata cache miss for {file_name}, parsing file")
-                # Use process pool for CPU-intensive parsing
+                metadata = get_pattern_metadata(normalized_file_name)
+                if metadata:
+                    first_coord_obj = metadata.get('first_coordinate')
+                    last_coord_obj = metadata.get('last_coordinate')
+                else:
+                    logger.debug(f"Metadata cache miss for {file_name}, parsing file")
+                    # Use process pool for CPU-intensive parsing
+                    loop = asyncio.get_running_loop()
+                    coordinates = await loop.run_in_executor(pool_module.get_pool(), parse_theta_rho_file, pattern_file_path)
+                    first_coord = coordinates[0] if coordinates else None
+                    last_coord = coordinates[-1] if coordinates else None
+                    first_coord_obj = {"x": first_coord[0], "y": first_coord[1]} if first_coord else None
+                    last_coord_obj = {"x": last_coord[0], "y": last_coord[1]} if last_coord else None
+
+                # Read image file and encode in executor to avoid blocking event loop
                 loop = asyncio.get_running_loop()
-                coordinates = await loop.run_in_executor(pool_module.get_pool(), parse_theta_rho_file, pattern_file_path)
-                first_coord = coordinates[0] if coordinates else None
-                last_coord = coordinates[-1] if coordinates else None
-                first_coord_obj = {"x": first_coord[0], "y": first_coord[1]} if first_coord else None
-                last_coord_obj = {"x": last_coord[0], "y": last_coord[1]} if last_coord else None
-
-            # Read image file asynchronously
-            image_data = await asyncio.to_thread(lambda: open(cache_path, 'rb').read())
-            image_b64 = base64.b64encode(image_data).decode('utf-8')
-            result = {
-                "image_data": f"data:image/webp;base64,{image_b64}",
-                "first_coordinate": first_coord_obj,
-                "last_coordinate": last_coord_obj
-            }
-            logger.debug(f"Processed {file_name} in {time.time() - t1:.2f}s")
-            return file_name, result
-        except Exception as e:
-            logger.error(f"Error processing {file_name}: {str(e)}")
-            return file_name, {"error": str(e)}
+                image_b64 = await loop.run_in_executor(None, _read_and_encode_preview, cache_path)
+                result = {
+                    "image_data": f"data:image/webp;base64,{image_b64}",
+                    "first_coordinate": first_coord_obj,
+                    "last_coordinate": last_coord_obj
+                }
+                logger.debug(f"Processed {file_name} in {time.time() - t1:.2f}s")
+                return file_name, result
+            except Exception as e:
+                logger.error(f"Error processing {file_name}: {str(e)}")
+                return file_name, {"error": str(e)}
 
     # Process all files concurrently
     tasks = [process_single_file(file_name) for file_name in file_names]
