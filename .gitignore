@@ -9,6 +9,8 @@ __pycache__/
 .venv/
 patterns/cached_svg/
 patterns/cached_images/custom_*
+# macOS files
+.DS_Store
 # Node.js and build files
 node_modules/
 *.log

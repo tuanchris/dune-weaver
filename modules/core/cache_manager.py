@@ -5,6 +5,7 @@ import asyncio
 import logging
 from pathlib import Path
 from modules.core.pattern_manager import list_theta_rho_files, THETA_RHO_DIR, parse_theta_rho_file
+from modules.core.process_pool import get_pool as _get_process_pool
 
 logger = logging.getLogger(__name__)
 
@@ -450,7 +451,12 @@ async def generate_image_preview(pattern_file):
             pattern_path = os.path.join(THETA_RHO_DIR, pattern_file)
             
             try:
-                coordinates = await asyncio.to_thread(parse_theta_rho_file, pattern_path)
+                loop = asyncio.get_running_loop()
+                coordinates = await loop.run_in_executor(
+                    _get_process_pool(),
+                    parse_theta_rho_file,
+                    pattern_path
+                )
                 
                 if coordinates:
                     first_coord = {"x": coordinates[0][0], "y": coordinates[0][1]}
@@ -620,8 +626,13 @@ async def generate_metadata_cache():
                 cache_progress["current_file"] = file_name
                 
                 try:
-                    # Parse file to get metadata
-                    coordinates = await asyncio.to_thread(parse_theta_rho_file, pattern_path)
+                    # Parse file in separate process to avoid GIL contention with motion thread
+                    loop = asyncio.get_running_loop()
+                    coordinates = await loop.run_in_executor(
+                        _get_process_pool(),
+                        parse_theta_rho_file,
+                        pattern_path
+                    )
                     if coordinates:
                         first_coord = {"x": coordinates[0][0], "y": coordinates[0][1]}
                         last_coord = {"x": coordinates[-1][0], "y": coordinates[-1][1]}

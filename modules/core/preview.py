@@ -1,25 +1,43 @@
-"""Preview module for generating image previews of patterns."""
+"""Preview module for generating image previews of patterns.
+
+Uses ProcessPoolExecutor to run CPU-intensive preview generation in separate
+processes, completely eliminating Python GIL contention with the motion control thread.
+"""
 import os
 import math
 import asyncio
+import logging
 from io import BytesIO
-from PIL import Image, ImageDraw
-from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR
+from modules.core import process_pool as pool_module
 
-async def generate_preview_image(pattern_file, format='WEBP'):
-    """Generate a preview for a pattern file, optimized for a 300x300 view."""
-    file_path = os.path.join(THETA_RHO_DIR, pattern_file)
-    # Use asyncio.to_thread to prevent blocking the event loop
-    coordinates = await asyncio.to_thread(parse_theta_rho_file, file_path)
+logger = logging.getLogger(__name__)
+
+
+def _generate_preview_in_process(pattern_file, format='WEBP'):
+    """Generate preview for a pattern file, optimized for 300x300 view.
     
-    # Use 1000x1000 for high quality rendering
-    RENDER_SIZE = 2048
-    # Final display size
-    DISPLAY_SIZE = 512
+    Runs in a separate process with its own GIL, avoiding contention
+    with the motion control thread.
+    
+    All imports are done inside the function to ensure they happen
+    in the worker process, not the main process.
+    
+    Note: Worker CPU affinity/priority is configured once at pool init via initializer.
+    """
+    # Import dependencies in the worker process
+    from PIL import Image, ImageDraw
+    from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR
+    
+    file_path = os.path.join(THETA_RHO_DIR, pattern_file)
+    coordinates = parse_theta_rho_file(file_path)
+    
+    # Image generation parameters
+    RENDER_SIZE = 2048  # Use 2048x2048 for high quality rendering
+    DISPLAY_SIZE = 512  # Final display size
     
     if not coordinates:
         # Create an image with "No pattern data" text
-        img = Image.new('RGBA', (DISPLAY_SIZE, DISPLAY_SIZE), (255, 255, 255, 0)) # Transparent background
+        img = Image.new('RGBA', (DISPLAY_SIZE, DISPLAY_SIZE), (255, 255, 255, 0))  # Transparent background
         draw = ImageDraw.Draw(img)
         text = "No pattern data"
         try:
@@ -38,10 +56,11 @@ async def generate_preview_image(pattern_file, format='WEBP'):
         img_byte_arr.seek(0)
         return img_byte_arr.getvalue()
 
-    # Image drawing parameters
-    img = Image.new('RGBA', (RENDER_SIZE, RENDER_SIZE), (255, 255, 255, 0)) # Transparent background
+    # Create image and draw pattern
+    img = Image.new('RGBA', (RENDER_SIZE, RENDER_SIZE), (255, 255, 255, 0))  # Transparent background
     draw = ImageDraw.Draw(img)
     
+    # Image drawing parameters
     CENTER = RENDER_SIZE / 2.0
     SCALE_FACTOR = (RENDER_SIZE / 2.0) - 10.0 
     LINE_COLOR = "black" 
@@ -62,11 +81,34 @@ async def generate_preview_image(pattern_file, format='WEBP'):
 
     # Scale down to display size with high-quality resampling
     img = img.resize((DISPLAY_SIZE, DISPLAY_SIZE), Image.Resampling.LANCZOS)
-    
     # Rotate the image 180 degrees
     img = img.rotate(180)
 
+    # Save to bytes
     img_byte_arr = BytesIO()
     img.save(img_byte_arr, format=format, lossless=False, alpha_quality=20, method=0)
     img_byte_arr.seek(0)
     return img_byte_arr.getvalue()
+
+
+async def generate_preview_image(pattern_file, format='WEBP'):
+    """Generate a preview for a pattern file.
+    
+    Runs in a separate process via ProcessPoolExecutor to completely
+    eliminate GIL contention with the motion control thread.
+    """
+    loop = asyncio.get_running_loop()
+    pool = pool_module.get_pool()
+    
+    try:
+        # Run preview generation in a separate process (separate GIL)
+        result = await loop.run_in_executor(
+            pool,
+            _generate_preview_in_process,
+            pattern_file,
+            format
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error generating preview for {pattern_file}: {e}")
+        return None
