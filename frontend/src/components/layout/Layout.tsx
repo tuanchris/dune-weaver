@@ -304,17 +304,17 @@ export function Layout() {
   }
 
   const handleRestart = async () => {
-    if (!confirm('Are you sure you want to restart the system?')) return
+    if (!confirm('Are you sure you want to restart Docker containers?')) return
 
     try {
-      const response = await fetch('/restart', { method: 'POST' })
+      const response = await fetch('/api/system/restart', { method: 'POST' })
       if (response.ok) {
-        toast.success('System is restarting...')
+        toast.success('Docker containers are restarting...')
       } else {
         throw new Error('Restart failed')
       }
     } catch {
-      toast.error('Failed to restart system')
+      toast.error('Failed to restart Docker containers')
     }
   }
 
@@ -322,7 +322,7 @@ export function Layout() {
     if (!confirm('Are you sure you want to shutdown the system?')) return
 
     try {
-      const response = await fetch('/shutdown', { method: 'POST' })
+      const response = await fetch('/api/system/shutdown', { method: 'POST' })
       if (response.ok) {
         toast.success('System is shutting down...')
       } else {
@@ -841,8 +841,8 @@ export function Layout() {
               size="icon"
               onClick={handleRestart}
               className="rounded-full text-amber-500 hover:text-amber-600"
-              aria-label="Restart system"
-              title="Restart System"
+              aria-label="Restart Docker"
+              title="Restart Docker"
             >
               <span className="material-icons-outlined">restart_alt</span>
             </Button>

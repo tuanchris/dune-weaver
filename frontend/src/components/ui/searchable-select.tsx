@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { cn } from '@/lib/utils'
+import { cn, fuzzyMatch } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -40,14 +40,11 @@ export function SearchableSelect({
   // Find the selected option's label
   const selectedOption = options.find((opt) => opt.value === value)
 
-  // Filter options based on search
+  // Filter options based on search (fuzzy matching: spaces, underscores, hyphens are equivalent)
   const filteredOptions = React.useMemo(() => {
     if (!search) return options
-    const searchLower = search.toLowerCase()
     return options.filter(
-      (opt) =>
-        opt.label.toLowerCase().includes(searchLower) ||
-        opt.value.toLowerCase().includes(searchLower)
+      (opt) => fuzzyMatch(opt.label, search) || fuzzyMatch(opt.value, search)
     )
   }, [options, search])
 

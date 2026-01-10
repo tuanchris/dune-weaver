@@ -88,7 +88,6 @@ export default defineConfig({
       '/get_led_config': 'http://localhost:8080',
       '/set_led_config': 'http://localhost:8080',
       '/api': 'http://localhost:8080',
-      '/restart': 'http://localhost:8080',
       '/static': 'http://localhost:8080',
     },
   },

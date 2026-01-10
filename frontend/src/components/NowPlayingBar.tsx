@@ -606,9 +606,6 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                             </p>
                           )}
                         </div>
-                        {status.is_paused && (
-                          <span className="text-xs bg-amber-500/20 text-amber-600 dark:text-amber-400 px-2 py-1 rounded font-medium shrink-0">Paused</span>
-                        )}
                       </div>
 
                       {/* Progress Bar - Desktop only (inline, above controls) */}
@@ -792,13 +789,6 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                   />
                   <span className="text-sm text-muted-foreground">mm/s</span>
                 </div>
-
-                {/* Status indicators - hidden on mobile */}
-                {status?.is_paused && (
-                  <div className="hidden md:block bg-amber-500/10 border border-amber-500/20 rounded-lg p-2 text-center">
-                    <span className="text-sm text-amber-600 dark:text-amber-400 font-medium">Paused</span>
-                  </div>
-                )}
 
                 {/* Next Pattern */}
                 {status?.playlist?.next_file && (

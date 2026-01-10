@@ -506,12 +506,19 @@ def get_machine_steps(timeout=10):
                             state.y_steps_per_mm = y_steps_per_mm
                             logger.info(f"Y steps per mm: {y_steps_per_mm}")
                         elif line.startswith("$22="):
-                            # $22 reports if the homing cycle is enabled
-                            # returns 0 if disabled, 1 if enabled
-                            # Note: We only log this, we don't overwrite state.homing
-                            # because user preference (saved in state.json) should take precedence
+                            # $22 reports if the homing cycle is enabled in FluidNC
+                            # returns 0 if disabled, 1 if enabled (sensors present)
                             firmware_homing = int(line.split('=')[1])
-                            logger.info(f"Firmware homing setting ($22): {firmware_homing}, using user preference: {state.homing}")
+                            if state.homing_user_override:
+                                # User has explicitly set their preference, respect it
+                                logger.info(f"Firmware homing ($22): {firmware_homing}, using user preference: {state.homing}")
+                            elif firmware_homing == 1:
+                                # FluidNC reports homing enabled (sensors present)
+                                # Auto-set to sensor homing mode since user hasn't overridden
+                                state.homing = 1
+                                logger.info(f"Firmware homing enabled ($22=1), auto-setting to sensor homing mode")
+                            else:
+                                logger.info(f"Firmware homing disabled ($22=0), using crash homing mode")
                 
                 # Check if we've received all the settings we need
                 if x_steps_per_mm is not None and y_steps_per_mm is not None:

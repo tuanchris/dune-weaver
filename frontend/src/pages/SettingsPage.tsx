@@ -37,6 +37,7 @@ interface Settings {
   gear_ratio?: number
   x_steps_per_mm?: number
   y_steps_per_mm?: number
+  timezone?: string
   available_table_types?: { value: string; label: string }[]
   // Homing settings
   homing_mode?: number
@@ -60,7 +61,6 @@ interface StillSandsSettings {
   enabled: boolean
   finish_pattern: boolean
   control_wled: boolean
-  timezone: string
   time_slots: TimeSlot[]
 }
 
@@ -136,7 +136,6 @@ export function SettingsPage() {
     enabled: false,
     finish_pattern: false,
     control_wled: false,
-    timezone: '',
     time_slots: [],
   })
 
@@ -238,30 +237,6 @@ export function SettingsPage() {
     }
   }
 
-  const handleTriggerUpdate = async () => {
-    if (!confirm('This will update the software and restart the containers. The page will reload automatically. Continue?')) {
-      return
-    }
-    setIsLoading('update')
-    try {
-      const response = await fetch('/api/update', { method: 'POST' })
-      const data = await response.json()
-      if (data.success) {
-        toast.success('Update started! The page will reload in a few seconds...')
-        // Wait a bit for containers to restart, then reload
-        setTimeout(() => {
-          window.location.reload()
-        }, 10000)
-      } else {
-        toast.error(data.message || 'Update failed')
-      }
-    } catch (error) {
-      toast.error('Failed to trigger update')
-    } finally {
-      setIsLoading(null)
-    }
-  }
-
   // Handle accordion open/close and trigger data loading
   const handleAccordionChange = (values: string[]) => {
     // Find newly opened section
@@ -337,6 +312,7 @@ export function SettingsPage() {
         gear_ratio: data.machine?.gear_ratio,
         x_steps_per_mm: data.machine?.x_steps_per_mm,
         y_steps_per_mm: data.machine?.y_steps_per_mm,
+        timezone: data.machine?.timezone || 'UTC',
         available_table_types: data.machine?.available_table_types,
         // Homing settings
         homing_mode: data.homing?.mode,
@@ -365,7 +341,6 @@ export function SettingsPage() {
           enabled: data.scheduled_pause.enabled || false,
           finish_pattern: data.scheduled_pause.finish_pattern || false,
           control_wled: data.scheduled_pause.control_wled || false,
-          timezone: data.scheduled_pause.timezone || '',
           time_slots: data.scheduled_pause.time_slots || [],
         })
       }
@@ -666,6 +641,7 @@ export function SettingsPage() {
         body: JSON.stringify({
           machine: {
             table_type_override: settings.table_type_override || '',
+            timezone: settings.timezone || 'UTC',
           },
         }),
       })
@@ -1019,6 +995,105 @@ export function SettingsPage() {
                 Table type is normally detected automatically from GRBL settings. Use override if auto-detection is incorrect for your hardware.
               </AlertDescription>
             </Alert>
+
+            <Separator />
+
+            {/* Timezone Setting */}
+            <div className="space-y-3">
+              <Label>Timezone</Label>
+              <p className="text-sm text-muted-foreground">
+                Set the timezone for logs and scheduled features like Still Sands.
+              </p>
+              <div className="flex gap-3">
+                <Select
+                  value={settings.timezone || 'UTC'}
+                  onValueChange={(value) =>
+                    setSettings({ ...settings, timezone: value })
+                  }
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="UTC" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="UTC">UTC</SelectItem>
+                    {/* UTC Offsets */}
+                    <SelectItem value="Etc/GMT+12">UTC-12</SelectItem>
+                    <SelectItem value="Etc/GMT+11">UTC-11</SelectItem>
+                    <SelectItem value="Etc/GMT+10">UTC-10</SelectItem>
+                    <SelectItem value="Etc/GMT+9">UTC-9</SelectItem>
+                    <SelectItem value="Etc/GMT+8">UTC-8</SelectItem>
+                    <SelectItem value="Etc/GMT+7">UTC-7</SelectItem>
+                    <SelectItem value="Etc/GMT+6">UTC-6</SelectItem>
+                    <SelectItem value="Etc/GMT+5">UTC-5</SelectItem>
+                    <SelectItem value="Etc/GMT+4">UTC-4</SelectItem>
+                    <SelectItem value="Etc/GMT+3">UTC-3</SelectItem>
+                    <SelectItem value="Etc/GMT+2">UTC-2</SelectItem>
+                    <SelectItem value="Etc/GMT+1">UTC-1</SelectItem>
+                    <SelectItem value="Etc/GMT-1">UTC+1</SelectItem>
+                    <SelectItem value="Etc/GMT-2">UTC+2</SelectItem>
+                    <SelectItem value="Etc/GMT-3">UTC+3</SelectItem>
+                    <SelectItem value="Etc/GMT-4">UTC+4</SelectItem>
+                    <SelectItem value="Etc/GMT-5">UTC+5</SelectItem>
+                    <SelectItem value="Etc/GMT-6">UTC+6</SelectItem>
+                    <SelectItem value="Etc/GMT-7">UTC+7</SelectItem>
+                    <SelectItem value="Etc/GMT-8">UTC+8</SelectItem>
+                    <SelectItem value="Etc/GMT-9">UTC+9</SelectItem>
+                    <SelectItem value="Etc/GMT-10">UTC+10</SelectItem>
+                    <SelectItem value="Etc/GMT-11">UTC+11</SelectItem>
+                    <SelectItem value="Etc/GMT-12">UTC+12</SelectItem>
+                    {/* Americas */}
+                    <SelectItem value="America/New_York">US Eastern</SelectItem>
+                    <SelectItem value="America/Chicago">US Central</SelectItem>
+                    <SelectItem value="America/Denver">US Mountain</SelectItem>
+                    <SelectItem value="America/Los_Angeles">US Pacific</SelectItem>
+                    <SelectItem value="America/Anchorage">US Alaska</SelectItem>
+                    <SelectItem value="Pacific/Honolulu">US Hawaii</SelectItem>
+                    <SelectItem value="America/Toronto">Toronto</SelectItem>
+                    <SelectItem value="America/Vancouver">Vancouver</SelectItem>
+                    <SelectItem value="America/Mexico_City">Mexico City</SelectItem>
+                    <SelectItem value="America/Sao_Paulo">São Paulo</SelectItem>
+                    <SelectItem value="America/Buenos_Aires">Buenos Aires</SelectItem>
+                    {/* Europe */}
+                    <SelectItem value="Europe/London">London</SelectItem>
+                    <SelectItem value="Europe/Paris">Paris</SelectItem>
+                    <SelectItem value="Europe/Berlin">Berlin</SelectItem>
+                    <SelectItem value="Europe/Amsterdam">Amsterdam</SelectItem>
+                    <SelectItem value="Europe/Rome">Rome</SelectItem>
+                    <SelectItem value="Europe/Madrid">Madrid</SelectItem>
+                    <SelectItem value="Europe/Stockholm">Stockholm</SelectItem>
+                    <SelectItem value="Europe/Warsaw">Warsaw</SelectItem>
+                    <SelectItem value="Europe/Moscow">Moscow</SelectItem>
+                    <SelectItem value="Europe/Istanbul">Istanbul</SelectItem>
+                    {/* Asia */}
+                    <SelectItem value="Asia/Dubai">Dubai</SelectItem>
+                    <SelectItem value="Asia/Kolkata">India (Kolkata)</SelectItem>
+                    <SelectItem value="Asia/Bangkok">Bangkok</SelectItem>
+                    <SelectItem value="Asia/Singapore">Singapore</SelectItem>
+                    <SelectItem value="Asia/Hong_Kong">Hong Kong</SelectItem>
+                    <SelectItem value="Asia/Shanghai">Shanghai</SelectItem>
+                    <SelectItem value="Asia/Tokyo">Tokyo</SelectItem>
+                    <SelectItem value="Asia/Seoul">Seoul</SelectItem>
+                    {/* Oceania */}
+                    <SelectItem value="Australia/Perth">Perth</SelectItem>
+                    <SelectItem value="Australia/Sydney">Sydney</SelectItem>
+                    <SelectItem value="Australia/Melbourne">Melbourne</SelectItem>
+                    <SelectItem value="Pacific/Auckland">Auckland</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={handleSaveMachineSettings}
+                  disabled={isLoading === 'machine'}
+                  className="gap-2"
+                >
+                  {isLoading === 'machine' ? (
+                    <span className="material-icons-outlined animate-spin">sync</span>
+                  ) : (
+                    <span className="material-icons-outlined">save</span>
+                  )}
+                  Save
+                </Button>
+              </div>
+            </div>
           </AccordionContent>
         </AccordionItem>
 
@@ -1928,45 +2003,6 @@ export function SettingsPage() {
                       }
                     />
                   </div>
-
-                  <Separator />
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="material-icons-outlined text-base text-muted-foreground">
-                        schedule
-                      </span>
-                      <div>
-                        <p className="text-sm font-medium">Timezone</p>
-                        <p className="text-xs text-muted-foreground">
-                          Select a timezone for still periods
-                        </p>
-                      </div>
-                    </div>
-                    <Select
-                      value={stillSandsSettings.timezone || '__system__'}
-                      onValueChange={(value) =>
-                        setStillSandsSettings({ ...stillSandsSettings, timezone: value === '__system__' ? '' : value })
-                      }
-                    >
-                      <SelectTrigger className="w-[200px]">
-                        <SelectValue placeholder="System Default" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__system__">System Default</SelectItem>
-                        <SelectItem value="America/New_York">Eastern Time</SelectItem>
-                        <SelectItem value="America/Chicago">Central Time</SelectItem>
-                        <SelectItem value="America/Denver">Mountain Time</SelectItem>
-                        <SelectItem value="America/Los_Angeles">Pacific Time</SelectItem>
-                        <SelectItem value="Europe/London">London</SelectItem>
-                        <SelectItem value="Europe/Paris">Paris</SelectItem>
-                        <SelectItem value="Europe/Berlin">Berlin</SelectItem>
-                        <SelectItem value="Asia/Tokyo">Tokyo</SelectItem>
-                        <SelectItem value="Asia/Shanghai">Shanghai</SelectItem>
-                        <SelectItem value="Australia/Sydney">Sydney</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
                 </div>
 
                 {/* Time Slots */}
@@ -2061,9 +2097,9 @@ export function SettingsPage() {
                 <Alert className="flex items-start">
                   <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
                   <AlertDescription>
-                    Times are based on the selected timezone. Still periods that span midnight
-                    (e.g., 22:00 to 06:00) are supported. Patterns resume automatically when
-                    still periods end.
+                    Times are based on the timezone configured in Machine Settings. Still periods
+                    that span midnight (e.g., 22:00 to 06:00) are supported. Patterns resume
+                    automatically when still periods end.
                   </AlertDescription>
                 </Alert>
               </div>
@@ -2123,20 +2159,16 @@ export function SettingsPage() {
                   {versionInfo?.update_available && ' (Update available!)'}
                 </p>
               </div>
-              <Button
-                variant={versionInfo?.update_available ? 'default' : 'outline'}
-                size="sm"
-                disabled={isLoading === 'update'}
-                onClick={handleTriggerUpdate}
-              >
-                {isLoading === 'update' ? (
-                  <span className="material-icons-outlined text-base mr-1 animate-spin">sync</span>
-                ) : (
-                  <span className="material-icons-outlined text-base mr-1">download</span>
-                )}
-                {isLoading === 'update' ? 'Updating...' : 'Update'}
-              </Button>
             </div>
+
+            {versionInfo?.update_available && (
+              <Alert className="flex items-start">
+                <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
+                <AlertDescription>
+                  To update, run <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono">dw update</code> from the host machine.
+                </AlertDescription>
+              </Alert>
+            )}
           </AccordionContent>
         </AccordionItem>
       </Accordion>

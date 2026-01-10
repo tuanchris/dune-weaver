@@ -5,6 +5,7 @@ import {
   getPreviewsFromCache,
   savePreviewToCache,
 } from '@/lib/previewCache'
+import { fuzzyMatch } from '@/lib/utils'
 import { useOnBackendConnected } from '@/hooks/useBackendConnection'
 import type { PatternMetadata, PreviewData, SortOption, PreExecution, RunMode } from '@/lib/types'
 import { preExecutionOptions } from '@/lib/types'
@@ -447,8 +448,7 @@ export function PlaylistsPage() {
     let filtered = allPatterns
 
     if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(p => p.name.toLowerCase().includes(query))
+      filtered = filtered.filter(p => fuzzyMatch(p.name, searchQuery))
     }
 
     if (selectedCategory !== 'all') {

@@ -5,6 +5,7 @@ import {
   getPreviewsFromCache,
   savePreviewToCache,
 } from '@/lib/previewCache'
+import { fuzzyMatch } from '@/lib/utils'
 import { useOnBackendConnected } from '@/hooks/useBackendConnection'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -309,11 +310,10 @@ export function BrowsePage() {
     }
 
     if (searchQuery) {
-      const query = searchQuery.toLowerCase()
       result = result.filter(
         (p) =>
-          p.name.toLowerCase().includes(query) ||
-          p.category.toLowerCase().includes(query)
+          fuzzyMatch(p.name, searchQuery) ||
+          fuzzyMatch(p.category, searchQuery)
       )
     }
 

@@ -50,76 +50,76 @@ def check_git_updates():
         }
 
 def update_software():
-    """Update the software to the latest version using Docker."""
+    """Update the software to the latest version.
+
+    This runs inside the Docker container, so it:
+    1. Pulls latest code via git (mounted volume at /app)
+    2. Pulls new Docker image for the backend
+    3. Restarts the container to apply updates
+
+    Note: For a complete update including container recreation,
+    run 'dw update' from the host machine instead.
+    """
     error_log = []
     logger.info("Starting software update process")
 
-    def run_command(command, error_message, capture_output=False):
+    def run_command(command, error_message, capture_output=False, cwd=None):
         try:
             logger.debug(f"Running command: {' '.join(command)}")
-            result = subprocess.run(command, check=True, capture_output=capture_output, text=True)
-            return result.stdout if capture_output else None
+            result = subprocess.run(command, check=True, capture_output=capture_output, text=True, cwd=cwd)
+            return result.stdout if capture_output else True
         except subprocess.CalledProcessError as e:
             logger.error(f"{error_message}: {e}")
             error_log.append(error_message)
             return None
 
-    # Pull new Docker images for both frontend and backend
-    logger.info("Pulling latest Docker images...")
+    # Step 1: Pull latest code via git (works because /app is mounted from host)
+    logger.info("Pulling latest code from git...")
+    git_result = run_command(
+        ["git", "pull", "--ff-only"],
+        "Failed to pull latest code from git",
+        cwd="/app"
+    )
+    if git_result:
+        logger.info("Git pull completed successfully")
+
+    # Step 2: Pull new Docker image for the backend only
+    # Note: There is no separate frontend image - it's either bundled or built locally
+    logger.info("Pulling latest Docker image...")
     run_command(
         ["docker", "pull", "ghcr.io/tuanchris/dune-weaver:main"],
         "Failed to pull backend Docker image"
     )
-    run_command(
-        ["docker", "pull", "ghcr.io/tuanchris/dune-weaver-frontend:main"],
-        "Failed to pull frontend Docker image"
+
+    # Step 3: Restart the backend container to apply updates
+    # We can't recreate ourselves from inside the container, so we just restart
+    # For full container recreation with new images, use 'dw update' from host
+    logger.info("Restarting backend container...")
+
+    # Use docker restart which works from inside the container
+    restart_result = run_command(
+        ["docker", "restart", "dune-weaver-backend"],
+        "Failed to restart backend container"
     )
 
-    # Recreate containers with new images using docker-compose
-    # Try docker-compose first, then docker compose (v2)
-    logger.info("Recreating containers with new images...")
-    compose_success = False
-
-    # Try docker-compose (v1)
-    try:
-        subprocess.run(
-            ["docker-compose", "up", "-d", "--force-recreate"],
-            check=True,
-            cwd="/app"
-        )
-        compose_success = True
-        logger.info("Containers recreated successfully with docker-compose")
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        logger.debug("docker-compose not available, trying docker compose")
-
-    # Try docker compose (v2) if v1 failed
-    if not compose_success:
+    if not restart_result:
+        # If docker restart fails, try a graceful approach
+        logger.info("Attempting graceful restart via compose...")
         try:
+            # Just restart, don't try to recreate (which would fail)
             subprocess.run(
-                ["docker", "compose", "up", "-d", "--force-recreate"],
+                ["docker", "compose", "restart", "backend"],
                 check=True,
                 cwd="/app"
             )
-            compose_success = True
-            logger.info("Containers recreated successfully with docker compose")
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            logger.debug("docker compose not available, falling back to individual restarts")
-
-    # Fallback: restart individual containers
-    if not compose_success:
-        logger.info("Falling back to individual container restarts...")
-        run_command(
-            ["docker", "restart", "dune-weaver-frontend"],
-            "Failed to restart frontend container"
-        )
-        run_command(
-            ["docker", "restart", "dune-weaver-backend"],
-            "Failed to restart backend container"
-        )
+            logger.info("Container restarted successfully via compose")
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            logger.warning(f"Compose restart also failed: {e}")
+            error_log.append("Container restart failed - please run 'dw update' from host")
 
     if error_log:
         logger.error(f"Software update completed with errors: {error_log}")
-        return False, "Update completed with errors", error_log
+        return False, "Update completed with errors. For best results, run 'dw update' from the host machine.", error_log
 
     logger.info("Software update completed successfully")
     return True, None, None

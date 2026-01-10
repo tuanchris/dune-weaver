@@ -157,8 +157,14 @@ async def lifespan(app: FastAPI):
     if state.auto_play_enabled and state.auto_play_playlist:
         logger.info(f"auto_play mode enabled, checking for connection before auto-playing playlist: {state.auto_play_playlist}")
         try:
+            # Validate that the playlist exists before trying to run it
+            playlist_exists = playlist_manager.get_playlist(state.auto_play_playlist) is not None
+            if not playlist_exists:
+                logger.warning(f"Auto-play playlist '{state.auto_play_playlist}' not found. Clearing invalid reference.")
+                state.auto_play_playlist = None
+                state.save()
             # Check if we have a valid connection before starting playlist
-            if state.conn and hasattr(state.conn, 'is_connected') and state.conn.is_connected():
+            elif state.conn and hasattr(state.conn, 'is_connected') and state.conn.is_connected():
                 logger.info(f"Connection available, starting auto-play playlist: {state.auto_play_playlist} with options: run_mode={state.auto_play_run_mode}, pause_time={state.auto_play_pause_time}, clear_pattern={state.auto_play_clear_pattern}, shuffle={state.auto_play_shuffle}")
                 asyncio.create_task(playlist_manager.run_playlist(
                     state.auto_play_playlist,
@@ -399,6 +405,7 @@ class MqttSettingsUpdate(BaseModel):
 
 class MachineSettingsUpdate(BaseModel):
     table_type_override: Optional[str] = None  # Override detected table type, or empty string/"auto" to clear
+    timezone: Optional[str] = None  # IANA timezone (e.g., "America/New_York", "UTC")
 
 class SettingsUpdate(BaseModel):
     """Request model for PATCH /api/settings - all fields optional for partial updates"""
@@ -616,6 +623,7 @@ async def get_all_settings():
         },
         "homing": {
             "mode": state.homing,
+            "user_override": state.homing_user_override,  # True if user explicitly set, False if auto-detected
             "angular_offset_degrees": state.angular_homing_offset_degrees,
             "auto_home_enabled": state.auto_home_enabled,
             "auto_home_after_patterns": state.auto_home_after_patterns
@@ -654,6 +662,7 @@ async def get_all_settings():
             "gear_ratio": state.gear_ratio,
             "x_steps_per_mm": state.x_steps_per_mm,
             "y_steps_per_mm": state.y_steps_per_mm,
+            "timezone": state.timezone,
             "available_table_types": [
                 {"value": "dune_weaver_mini", "label": "Dune Weaver Mini"},
                 {"value": "dune_weaver_mini_pro", "label": "Dune Weaver Mini Pro"},
@@ -748,6 +757,7 @@ async def update_settings(settings_update: SettingsUpdate):
         h = settings_update.homing
         if h.mode is not None:
             state.homing = h.mode
+            state.homing_user_override = True  # User explicitly set preference
         if h.angular_offset_degrees is not None:
             state.angular_homing_offset_degrees = h.angular_offset_degrees
         if h.auto_home_enabled is not None:
@@ -819,6 +829,24 @@ async def update_settings(settings_update: SettingsUpdate):
         if m.table_type_override is not None:
             # Empty string or "auto" clears the override
             state.table_type_override = None if m.table_type_override in ("", "auto") else m.table_type_override
+        if m.timezone is not None:
+            # Validate timezone by trying to create a ZoneInfo object
+            try:
+                from zoneinfo import ZoneInfo
+            except ImportError:
+                from backports.zoneinfo import ZoneInfo
+            try:
+                ZoneInfo(m.timezone)  # Validate
+                state.timezone = m.timezone
+                # Also update scheduled_pause_timezone to keep in sync
+                state.scheduled_pause_timezone = m.timezone
+                # Clear cached timezone in pattern_manager so it picks up the new setting
+                from modules.core import pattern_manager
+                pattern_manager._cached_timezone = None
+                pattern_manager._cached_zoneinfo = None
+                logger.info(f"Timezone updated to: {m.timezone}")
+            except Exception as e:
+                logger.warning(f"Invalid timezone '{m.timezone}': {e}")
         updated_categories.append("machine")
 
     # Save state
@@ -972,6 +1000,7 @@ async def set_homing_config(request: HomingConfigRequest):
             raise HTTPException(status_code=400, detail="Homing mode must be 0 (crash) or 1 (sensor)")
 
         state.homing = request.homing_mode
+        state.homing_user_override = True  # User explicitly set preference
         state.angular_homing_offset_degrees = request.angular_homing_offset_degrees
 
         # Update auto-home settings if provided

@@ -39,6 +39,9 @@ class AppState:
 
         # Homing mode: 0 = crash homing, 1 = sensor homing ($H)
         self.homing = 0
+        # Track if user has explicitly set homing preference (vs auto-detected)
+        # When False/None, homing mode can be auto-detected from firmware ($22 setting)
+        self.homing_user_override = False
 
         # Homing state tracking (for sensor mode)
         self.homed_x = False  # Set to True when [MSG:Homed:X] is received
@@ -119,6 +122,10 @@ class AppState:
 
         # Server port setting (requires restart to take effect)
         self.server_port = 8080  # Default server port
+
+        # Machine timezone setting (IANA timezone, e.g., "America/New_York", "UTC")
+        # Used for logging timestamps and scheduling features
+        self.timezone = "UTC"  # Default to UTC
 
         # MQTT settings (UI-configurable, overrides .env if set)
         self.mqtt_enabled = False  # Master enable/disable for MQTT
@@ -244,6 +251,7 @@ class AppState:
             "y_steps_per_mm": self.y_steps_per_mm,
             "gear_ratio": self.gear_ratio,
             "homing": self.homing,
+            "homing_user_override": self.homing_user_override,
             "angular_homing_offset_degrees": self.angular_homing_offset_degrees,
             "auto_home_enabled": self.auto_home_enabled,
             "auto_home_after_patterns": self.auto_home_after_patterns,
@@ -283,6 +291,7 @@ class AppState:
             "scheduled_pause_control_wled": self.scheduled_pause_control_wled,
             "scheduled_pause_finish_pattern": self.scheduled_pause_finish_pattern,
             "scheduled_pause_timezone": self.scheduled_pause_timezone,
+            "timezone": self.timezone,
             "mqtt_enabled": self.mqtt_enabled,
             "mqtt_broker": self.mqtt_broker,
             "mqtt_port": self.mqtt_port,
@@ -311,6 +320,7 @@ class AppState:
         self.y_steps_per_mm = data.get("y_steps_per_mm", 0.0)
         self.gear_ratio = data.get('gear_ratio', 10)
         self.homing = data.get('homing', 0)
+        self.homing_user_override = data.get('homing_user_override', False)
         self.angular_homing_offset_degrees = data.get('angular_homing_offset_degrees', 0.0)
         self.auto_home_enabled = data.get('auto_home_enabled', False)
         self.auto_home_after_patterns = data.get('auto_home_after_patterns', 5)
@@ -368,6 +378,7 @@ class AppState:
         self.scheduled_pause_control_wled = data.get("scheduled_pause_control_wled", False)
         self.scheduled_pause_finish_pattern = data.get("scheduled_pause_finish_pattern", False)
         self.scheduled_pause_timezone = data.get("scheduled_pause_timezone", None)
+        self.timezone = data.get("timezone", "UTC")
         self.mqtt_enabled = data.get("mqtt_enabled", False)
         self.mqtt_broker = data.get("mqtt_broker", "")
         self.mqtt_port = data.get("mqtt_port", 1883)
