@@ -248,6 +248,10 @@ app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Global semaphore to limit concurrent preview processing
+# Prevents resource exhaustion when loading many previews simultaneously
+preview_semaphore = asyncio.Semaphore(5)
+
 # Pydantic models for request/response validation
 class ConnectRequest(BaseModel):
     port: Optional[str] = None
