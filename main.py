@@ -98,6 +98,15 @@ async def lifespan(app: FastAPI):
     # Initialize shared process pool for CPU-intensive tasks
     pool_module.init_pool()
 
+    # Pin main process to CPUs 1-N to keep CPU 0 dedicated to motion/LED
+    from modules.core import scheduling
+    background_cpus = scheduling.get_background_cpus()
+    if background_cpus:
+        scheduling.pin_to_cpus(background_cpus)
+        logger.info(f"FastAPI main process pinned to CPUs {sorted(background_cpus)}")
+    else:
+        logger.info("Single-core system detected, skipping CPU pinning")
+
     try:
         connection_manager.connect_device()
     except Exception as e:
