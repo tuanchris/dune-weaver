@@ -1,9 +1,10 @@
+# TODO: Revert image tags from feature-react-ui to main before merging to main branch
 services:
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    image: ghcr.io/tuanchris/dune-weaver-frontend:main
+    image: ghcr.io/tuanchris/dune-weaver-frontend:feature-react-ui
     restart: always
     ports:
       - "80:80"
@@ -15,7 +16,7 @@ services:
 
   backend:
     build: .
-    image: ghcr.io/tuanchris/dune-weaver:main
+    image: ghcr.io/tuanchris/dune-weaver:feature-react-ui
     restart: always
     ports:
       - "8080:8080"
