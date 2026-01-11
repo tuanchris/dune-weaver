@@ -110,11 +110,36 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
     }
   }, [openExpanded, isVisible])
 
-  // Auto-collapse when nothing is playing
-  const isPlaying = status?.is_running || status?.is_paused
+  // Listen for playback-started event from Layout (more reliable than prop)
   useEffect(() => {
+    const handlePlaybackStarted = () => {
+      setIsExpanded(true)
+    }
+    window.addEventListener('playback-started', handlePlaybackStarted)
+    return () => window.removeEventListener('playback-started', handlePlaybackStarted)
+  }, [])
+
+  // Auto-collapse when nothing is playing (with delay to avoid race condition)
+  const isPlaying = status?.is_running || status?.is_paused
+  const collapseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    // Clear any pending collapse
+    if (collapseTimeoutRef.current) {
+      clearTimeout(collapseTimeoutRef.current)
+      collapseTimeoutRef.current = null
+    }
+
     if (!isPlaying && isExpanded) {
-      setIsExpanded(false)
+      // Delay collapse to avoid race condition with playback-started
+      collapseTimeoutRef.current = setTimeout(() => {
+        setIsExpanded(false)
+      }, 500)
+    }
+
+    return () => {
+      if (collapseTimeoutRef.current) {
+        clearTimeout(collapseTimeoutRef.current)
+      }
     }
   }, [isPlaying, isExpanded])
 
@@ -571,8 +596,12 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
             <div className="flex-1 flex flex-col">
               {/* Main row with preview and controls */}
               <div className="flex-1 flex items-center gap-6 px-6">
-                {/* Current Pattern Preview - Rounded */}
-                <div className="w-48 h-48 rounded-full overflow-hidden bg-muted shrink-0 border-2">
+                {/* Current Pattern Preview - Rounded (click to expand) */}
+                <div
+                  className="w-48 h-48 rounded-full overflow-hidden bg-muted shrink-0 border-2 cursor-pointer hover:border-primary transition-colors"
+                  onClick={() => isPlaying && setIsExpanded(true)}
+                  title={isPlaying ? 'Click to expand' : undefined}
+                >
                   {previewUrl && isPlaying ? (
                     <img
                       src={previewUrl}
@@ -709,13 +738,17 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
           {isExpanded && isPlaying && (
             <div className="flex-1 flex flex-col md:items-center md:justify-center px-4 py-2 md:py-4 overflow-hidden">
               <div className="w-full max-w-5xl mx-auto flex flex-col md:flex-row md:items-center md:justify-center gap-3 md:gap-6">
-                {/* Canvas - full width on mobile */}
-                <div className="flex items-center justify-center flex-1 md:flex-none min-h-0">
+                {/* Canvas - full width on mobile (click to collapse) */}
+                <div
+                  className="flex items-center justify-center flex-1 md:flex-none min-h-0 cursor-pointer"
+                  onClick={() => setIsExpanded(false)}
+                  title="Click to collapse"
+                >
                   <canvas
                     ref={canvasRef}
                     width={600}
                     height={600}
-                    className="w-full max-h-full rounded-full border-2 md:w-auto"
+                    className="w-full max-h-full rounded-full border-2 md:w-auto hover:border-primary transition-colors"
                     style={{ aspectRatio: '1/1', maxHeight: '40vh' }}
                   />
                 </div>

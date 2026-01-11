@@ -1915,33 +1915,64 @@ export function SettingsPage() {
                       <div>
                         <p className="text-sm font-medium">Timezone</p>
                         <p className="text-xs text-muted-foreground">
-                          Select a timezone for still periods
+                          Select or type a timezone (e.g., UTC+5, America/New_York)
                         </p>
                       </div>
                     </div>
-                    <Select
-                      value={stillSandsSettings.timezone || '__system__'}
-                      onValueChange={(value) =>
-                        setStillSandsSettings({ ...stillSandsSettings, timezone: value === '__system__' ? '' : value })
-                      }
-                    >
-                      <SelectTrigger className="w-[200px]">
-                        <SelectValue placeholder="System Default" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__system__">System Default</SelectItem>
-                        <SelectItem value="America/New_York">Eastern Time</SelectItem>
-                        <SelectItem value="America/Chicago">Central Time</SelectItem>
-                        <SelectItem value="America/Denver">Mountain Time</SelectItem>
-                        <SelectItem value="America/Los_Angeles">Pacific Time</SelectItem>
-                        <SelectItem value="Europe/London">London</SelectItem>
-                        <SelectItem value="Europe/Paris">Paris</SelectItem>
-                        <SelectItem value="Europe/Berlin">Berlin</SelectItem>
-                        <SelectItem value="Asia/Tokyo">Tokyo</SelectItem>
-                        <SelectItem value="Asia/Shanghai">Shanghai</SelectItem>
-                        <SelectItem value="Australia/Sydney">Sydney</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="relative">
+                      <Input
+                        list="timezone-options"
+                        value={stillSandsSettings.timezone || ''}
+                        onChange={(e) =>
+                          setStillSandsSettings({ ...stillSandsSettings, timezone: e.target.value })
+                        }
+                        placeholder="System Default"
+                        className="w-[200px]"
+                      />
+                      <datalist id="timezone-options">
+                        {/* UTC Offsets */}
+                        <option value="Etc/GMT+12">UTC-12</option>
+                        <option value="Etc/GMT+11">UTC-11</option>
+                        <option value="Etc/GMT+10">UTC-10</option>
+                        <option value="Etc/GMT+9">UTC-9</option>
+                        <option value="Etc/GMT+8">UTC-8</option>
+                        <option value="Etc/GMT+7">UTC-7</option>
+                        <option value="Etc/GMT+6">UTC-6</option>
+                        <option value="Etc/GMT+5">UTC-5</option>
+                        <option value="Etc/GMT+4">UTC-4</option>
+                        <option value="Etc/GMT+3">UTC-3</option>
+                        <option value="Etc/GMT+2">UTC-2</option>
+                        <option value="Etc/GMT+1">UTC-1</option>
+                        <option value="UTC">UTC</option>
+                        <option value="Etc/GMT-1">UTC+1</option>
+                        <option value="Etc/GMT-2">UTC+2</option>
+                        <option value="Etc/GMT-3">UTC+3</option>
+                        <option value="Etc/GMT-4">UTC+4</option>
+                        <option value="Etc/GMT-5">UTC+5</option>
+                        <option value="Etc/GMT-6">UTC+6</option>
+                        <option value="Etc/GMT-7">UTC+7</option>
+                        <option value="Etc/GMT-8">UTC+8</option>
+                        <option value="Etc/GMT-9">UTC+9</option>
+                        <option value="Etc/GMT-10">UTC+10</option>
+                        <option value="Etc/GMT-11">UTC+11</option>
+                        <option value="Etc/GMT-12">UTC+12</option>
+                        {/* Americas */}
+                        <option value="America/New_York">America/New_York (Eastern)</option>
+                        <option value="America/Chicago">America/Chicago (Central)</option>
+                        <option value="America/Denver">America/Denver (Mountain)</option>
+                        <option value="America/Los_Angeles">America/Los_Angeles (Pacific)</option>
+                        {/* Europe */}
+                        <option value="Europe/London">Europe/London</option>
+                        <option value="Europe/Paris">Europe/Paris</option>
+                        <option value="Europe/Berlin">Europe/Berlin</option>
+                        {/* Asia */}
+                        <option value="Asia/Tokyo">Asia/Tokyo</option>
+                        <option value="Asia/Shanghai">Asia/Shanghai</option>
+                        <option value="Asia/Singapore">Asia/Singapore</option>
+                        {/* Australia */}
+                        <option value="Australia/Sydney">Australia/Sydney</option>
+                      </datalist>
+                    </div>
                   </div>
                 </div>
 
