@@ -8,30 +8,10 @@ via WebSocket.
 
 import logging
 from collections import deque
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime
 from typing import List, Dict, Any
 import threading
 import asyncio
-
-try:
-    from zoneinfo import ZoneInfo
-except ImportError:
-    from backports.zoneinfo import ZoneInfo
-
-
-def _get_configured_timezone() -> ZoneInfo:
-    """
-    Get the configured timezone from state.
-
-    Returns UTC if state is not available or timezone is invalid.
-    """
-    try:
-        # Import here to avoid circular import at module load time
-        from modules.core.state import state
-        tz_name = getattr(state, 'timezone', 'UTC') or 'UTC'
-        return ZoneInfo(tz_name)
-    except Exception:
-        return ZoneInfo('UTC')
 
 
 class MemoryLogHandler(logging.Handler):
@@ -86,13 +66,8 @@ class MemoryLogHandler(logging.Handler):
         Returns:
             Dictionary containing formatted log data.
         """
-        # Convert timestamp to configured timezone
-        tz = _get_configured_timezone()
-        utc_dt = datetime.fromtimestamp(record.created, tz=dt_timezone.utc)
-        local_dt = utc_dt.astimezone(tz)
-
         return {
-            "timestamp": local_dt.isoformat(),
+            "timestamp": datetime.fromtimestamp(record.created).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "line": record.lineno,
