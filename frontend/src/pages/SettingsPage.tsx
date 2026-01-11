@@ -129,7 +129,28 @@ export function SettingsPage() {
     clear_pattern: 'adaptive',
     shuffle: false,
   })
+  const [autoPlayPauseUnit, setAutoPlayPauseUnit] = useState<'sec' | 'min' | 'hr'>('min')
+  const [autoPlayPauseValue, setAutoPlayPauseValue] = useState(5)
   const [playlists, setPlaylists] = useState<string[]>([])
+
+  // Convert pause time from seconds to value + unit for display
+  const secondsToDisplayPause = (seconds: number): { value: number; unit: 'sec' | 'min' | 'hr' } => {
+    if (seconds >= 3600 && seconds % 3600 === 0) {
+      return { value: seconds / 3600, unit: 'hr' }
+    } else if (seconds >= 60 && seconds % 60 === 0) {
+      return { value: seconds / 60, unit: 'min' }
+    }
+    return { value: seconds, unit: 'sec' }
+  }
+
+  // Convert display value + unit to seconds
+  const displayPauseToSeconds = (value: number, unit: 'sec' | 'min' | 'hr'): number => {
+    switch (unit) {
+      case 'hr': return value * 3600
+      case 'min': return value * 60
+      default: return value
+    }
+  }
 
   // Still Sands state
   const [stillSandsSettings, setStillSandsSettings] = useState<StillSandsSettings>({
@@ -326,11 +347,15 @@ export function SettingsPage() {
       })
       // Set auto-play settings
       if (data.auto_play) {
+        const pauseSeconds = data.auto_play.pause_time ?? 300 // Default 5 minutes
+        const { value, unit } = secondsToDisplayPause(pauseSeconds)
+        setAutoPlayPauseValue(value)
+        setAutoPlayPauseUnit(unit)
         setAutoPlaySettings({
           enabled: data.auto_play.enabled || false,
           playlist: data.auto_play.playlist || '',
           run_mode: data.auto_play.run_mode || 'loop',
-          pause_time: data.auto_play.pause_time ?? 5,
+          pause_time: pauseSeconds,
           clear_pattern: data.auto_play.clear_pattern || 'adaptive',
           shuffle: data.auto_play.shuffle || false,
         })
@@ -383,7 +408,8 @@ export function SettingsPage() {
     try {
       const response = await fetch('/list_all_playlists')
       const data = await response.json()
-      setPlaylists(data.playlists || [])
+      // Backend returns array directly, not { playlists: [...] }
+      setPlaylists(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error('Error fetching playlists:', error)
     }
@@ -708,11 +734,16 @@ export function SettingsPage() {
   const handleSaveAutoPlaySettings = async () => {
     setIsLoading('autoplay')
     try {
+      // Convert pause value + unit to seconds
+      const pauseTimeSeconds = displayPauseToSeconds(autoPlayPauseValue, autoPlayPauseUnit)
       const response = await fetch('/api/settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          auto_play: autoPlaySettings,
+          auto_play: {
+            ...autoPlaySettings,
+            pause_time: pauseTimeSeconds,
+          },
         }),
       })
       if (response.ok) {
@@ -1096,7 +1127,7 @@ export function SettingsPage() {
               </div>
 
               {settings.auto_home_enabled && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <Label htmlFor="auto-home-patterns">Home after every X patterns</Label>
                   <Input
                     id="auto-home-patterns"
@@ -1286,7 +1317,7 @@ export function SettingsPage() {
               <p className="text-sm text-muted-foreground">
                 Set a custom speed for clearing patterns. Leave empty to use the default pattern speed.
               </p>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <Label htmlFor="clear-speed">Speed (steps per minute)</Label>
                 <Input
                   id="clear-speed"
@@ -1314,7 +1345,7 @@ export function SettingsPage() {
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <Label htmlFor="clear-from-in">Clear From Center Pattern</Label>
                   <SearchableSelect
                     value={settings.custom_clear_from_in || '__default__'}
@@ -1334,7 +1365,7 @@ export function SettingsPage() {
                   </p>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <Label htmlFor="clear-from-out">Clear From Perimeter Pattern</Label>
                   <SearchableSelect
                     value={settings.custom_clear_from_out || '__default__'}
@@ -1441,7 +1472,7 @@ export function SettingsPage() {
                 </Alert>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <Label htmlFor="numLeds">Number of LEDs</Label>
                     <Input
                       id="numLeds"
@@ -1454,7 +1485,7 @@ export function SettingsPage() {
                       max={1000}
                     />
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <Label htmlFor="gpioPin">GPIO Pin</Label>
                     <Select
                       value={String(ledConfig.gpio_pin || 18)}
@@ -1475,7 +1506,7 @@ export function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <Label htmlFor="pixelOrder">Pixel Color Order</Label>
                   <Select
                     value={ledConfig.pixel_order || 'GRB'}
@@ -1548,7 +1579,7 @@ export function SettingsPage() {
               <div className="space-y-4">
                 {/* Broker Settings */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <Label htmlFor="mqttBroker">
                       Broker Address <span className="text-destructive">*</span>
                     </Label>
@@ -1561,7 +1592,7 @@ export function SettingsPage() {
                       placeholder="e.g., 192.168.1.100"
                     />
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <Label htmlFor="mqttPort">Port</Label>
                     <Input
                       id="mqttPort"
@@ -1577,7 +1608,7 @@ export function SettingsPage() {
 
                 {/* Authentication */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <Label htmlFor="mqttUser">Username</Label>
                     <Input
                       id="mqttUser"
@@ -1588,7 +1619,7 @@ export function SettingsPage() {
                       placeholder="Optional"
                     />
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <Label htmlFor="mqttPass">Password</Label>
                     <Input
                       id="mqttPass"
@@ -1606,7 +1637,7 @@ export function SettingsPage() {
 
                 {/* Device Settings */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <Label htmlFor="mqttDeviceName">Device Name</Label>
                     <Input
                       id="mqttDeviceName"
@@ -1616,7 +1647,7 @@ export function SettingsPage() {
                       }
                     />
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <Label htmlFor="mqttDeviceId">Device ID</Label>
                     <Input
                       id="mqttDeviceId"
@@ -1702,7 +1733,7 @@ export function SettingsPage() {
 
             {autoPlaySettings.enabled && (
               <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <Label>Startup Playlist</Label>
                   <Select
                     value={autoPlaySettings.playlist || undefined}
@@ -1733,7 +1764,7 @@ export function SettingsPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <Label>Run Mode</Label>
                     <Select
                       value={autoPlaySettings.run_mode}
@@ -1753,25 +1784,35 @@ export function SettingsPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Pause Between Patterns (s)</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      value={autoPlaySettings.pause_time}
-                      onChange={(e) =>
-                        setAutoPlaySettings({
-                          ...autoPlaySettings,
-                          pause_time: parseFloat(e.target.value) || 0,
-                        })
-                      }
-                    />
+                  <div className="space-y-3">
+                    <Label>Pause Between Patterns</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        min="0"
+                        value={autoPlayPauseValue}
+                        onChange={(e) => setAutoPlayPauseValue(Number(e.target.value) || 0)}
+                        className="w-20"
+                      />
+                      <Select
+                        value={autoPlayPauseUnit}
+                        onValueChange={(v) => setAutoPlayPauseUnit(v as 'sec' | 'min' | 'hr')}
+                      >
+                        <SelectTrigger className="w-20">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="sec">sec</SelectItem>
+                          <SelectItem value="min">min</SelectItem>
+                          <SelectItem value="hr">hr</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <Label>Clear Pattern</Label>
                     <Select
                       value={autoPlaySettings.clear_pattern}
