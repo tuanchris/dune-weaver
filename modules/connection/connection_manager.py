@@ -743,6 +743,19 @@ def home(timeout=90):
 
                 logger.info("Crash homing completed - theta=0, rho=0")
 
+            # Update machine position from hardware after homing
+            logger.info("Updating machine position after homing...")
+            try:
+                pos = get_machine_position()
+                if pos and pos[0] is not None and pos[1] is not None:
+                    state.machine_x, state.machine_y = pos
+                    state.save()
+                    logger.info(f"Machine position updated after homing: X={state.machine_x}, Y={state.machine_y}")
+                else:
+                    logger.warning("Could not get machine position after homing")
+            except Exception as e:
+                logger.error(f"Error updating machine position after homing: {e}")
+
             homing_success = True
             homing_complete.set()
 
