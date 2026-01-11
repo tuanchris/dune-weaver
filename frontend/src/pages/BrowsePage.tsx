@@ -238,6 +238,8 @@ export function BrowsePage() {
   }
 
   const fetchPreviewsBatch = async (filePaths: string[]) => {
+    const BATCH_SIZE = 10 // Process 10 patterns at a time to avoid overwhelming the backend
+
     try {
       // First check IndexedDB cache for all patterns
       const cachedPreviews = await getPreviewsFromCache(filePaths)
@@ -254,23 +256,36 @@ export function BrowsePage() {
       // Find patterns not in cache
       const uncachedPaths = filePaths.filter((path) => !cachedPreviews.has(path))
 
-      // Only fetch uncached patterns from API
+      // Fetch uncached patterns in batches to avoid overwhelming the backend
       if (uncachedPaths.length > 0) {
-        const response = await fetch('/preview_thr_batch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ file_names: uncachedPaths }),
-        })
-        const data = await response.json()
+        for (let i = 0; i < uncachedPaths.length; i += BATCH_SIZE) {
+          const batch = uncachedPaths.slice(i, i + BATCH_SIZE)
 
-        // Save fetched previews to IndexedDB cache
-        for (const [path, previewData] of Object.entries(data)) {
-          if (previewData && !(previewData as PreviewData).error) {
-            savePreviewToCache(path, previewData as PreviewData)
+          try {
+            const response = await fetch('/preview_thr_batch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ file_names: batch }),
+            })
+            const data = await response.json()
+
+            // Save fetched previews to IndexedDB cache
+            for (const [path, previewData] of Object.entries(data)) {
+              if (previewData && !(previewData as PreviewData).error) {
+                savePreviewToCache(path, previewData as PreviewData)
+              }
+            }
+
+            setPreviews((prev) => ({ ...prev, ...data }))
+          } catch {
+            // Continue with next batch even if one fails
+          }
+
+          // Small delay between batches to reduce backend load
+          if (i + BATCH_SIZE < uncachedPaths.length) {
+            await new Promise((resolve) => setTimeout(resolve, 100))
           }
         }
-
-        setPreviews((prev) => ({ ...prev, ...data }))
       }
     } catch (error) {
       console.error('Error fetching previews:', error)

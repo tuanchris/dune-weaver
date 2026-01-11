@@ -225,25 +225,38 @@ export function PlaylistsPage() {
   }
 
   const fetchPreviewsBatch = async (paths: string[]) => {
-    try {
-      const response = await fetch('/preview_thr_batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_names: paths }),
-      })
-      const data = await response.json()
+    const BATCH_SIZE = 10 // Process 10 patterns at a time to avoid overwhelming the backend
 
-      const newPreviews: Record<string, PreviewData> = {}
-      for (const [path, previewData] of Object.entries(data)) {
-        newPreviews[path] = previewData as PreviewData
-        // Only cache valid previews (with image_data and no error)
-        if (previewData && !(previewData as PreviewData).error) {
-          savePreviewToCache(path, previewData as PreviewData)
+    // Process in batches
+    for (let i = 0; i < paths.length; i += BATCH_SIZE) {
+      const batch = paths.slice(i, i + BATCH_SIZE)
+
+      try {
+        const response = await fetch('/preview_thr_batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_names: batch }),
+        })
+        const data = await response.json()
+
+        const newPreviews: Record<string, PreviewData> = {}
+        for (const [path, previewData] of Object.entries(data)) {
+          newPreviews[path] = previewData as PreviewData
+          // Only cache valid previews (with image_data and no error)
+          if (previewData && !(previewData as PreviewData).error) {
+            savePreviewToCache(path, previewData as PreviewData)
+          }
         }
+        setPreviews(prev => ({ ...prev, ...newPreviews }))
+      } catch (error) {
+        console.error('Error fetching previews batch:', error)
+        // Continue with next batch even if one fails
       }
-      setPreviews(prev => ({ ...prev, ...newPreviews }))
-    } catch (error) {
-      console.error('Error fetching previews:', error)
+
+      // Small delay between batches to reduce backend load
+      if (i + BATCH_SIZE < paths.length) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
     }
   }
 
