@@ -478,20 +478,21 @@ def get_machine_steps(timeout=10):
     try:
         logger.info("Requesting GRBL settings with $$ command")
         state.conn.send("$$\n")
-        time.sleep(0.5)  # Give GRBL a moment to process and respond
+        time.sleep(1.0)  # Give GRBL time to process and respond (ESP32/FluidNC may need longer)
     except Exception as e:
         logger.error(f"Error sending $$ command: {e}")
         return False
 
     # Wait for and process responses
     settings_complete = False
+    last_retry_time = start_time  # Track when we last sent $$ for retry logic
     while time.time() - start_time < timeout and not settings_complete:
         try:
             # Attempt to read a line from the connection
             if state.conn.in_waiting() > 0:
                 response = state.conn.readline()
                 logger.debug(f"Raw response: {response}")
-                
+
                 # Process the line
                 if response.strip():  # Only process non-empty lines
                     for line in response.splitlines():
@@ -512,19 +513,19 @@ def get_machine_steps(timeout=10):
                             # because user preference (saved in state.json) should take precedence
                             firmware_homing = int(line.split('=')[1])
                             logger.info(f"Firmware homing setting ($22): {firmware_homing}, using user preference: {state.homing}")
-                
+
                 # Check if we've received all the settings we need
                 if x_steps_per_mm is not None and y_steps_per_mm is not None:
                     settings_complete = True
             else:
                 # No data waiting, small sleep to prevent CPU thrashing
                 time.sleep(0.1)
-                
-                # If it's taking too long, try sending the command again after 3 seconds
-                elapsed = time.time() - start_time
-                if elapsed > 3 and elapsed < 4:
+
+                # Retry every 3 seconds if no response received
+                if time.time() - last_retry_time > 3:
                     logger.warning("No response yet, sending $$ command again")
                     state.conn.send("$$\n")
+                    last_retry_time = time.time()
 
         except Exception as e:
             logger.error(f"Error getting machine steps: {e}")
