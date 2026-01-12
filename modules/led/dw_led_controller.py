@@ -139,6 +139,11 @@ class DWLEDController:
 
     def _effect_loop(self):
         """Background thread that runs the current effect"""
+        # Elevate priority and pin to CPU 0 for consistent timing
+        # LED uses lower priority (40) than motion (60) since CNC is more critical
+        from modules.core import scheduling
+        scheduling.setup_realtime_thread(priority=40)
+        
         while not self._stop_thread.is_set():
             try:
                 with self._lock:

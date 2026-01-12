@@ -6,8 +6,11 @@ services:
       dockerfile: Dockerfile
     image: ghcr.io/tuanchris/dune-weaver-frontend:feature-react-ui
     restart: always
-    ports:
-      - "80:80"
+    cap_add:
+      - SYS_NICE  # Enable real-time thread priority for smooth UART communication
+    # ports:
+    #   - "8080:8080" # Map port 8080 of the container to 8080 of the host (access via http://localhost:8080)
+    network_mode: "host" # Use host network for device access
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:

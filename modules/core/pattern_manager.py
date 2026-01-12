@@ -249,7 +249,7 @@ class MotionControlThread:
         self.paused = False
 
     def start(self):
-        """Start the motion control thread."""
+        """Start the motion control thread with elevated priority."""
         if self.thread and self.thread.is_alive():
             return
 
@@ -273,6 +273,11 @@ class MotionControlThread:
 
     def _motion_loop(self):
         """Main loop for the motion control thread."""
+        # Setup realtime priority from within thread to avoid native_id race
+        # Motion uses higher priority (60) than LED (40) for CNC reliability
+        from modules.core import scheduling
+        scheduling.setup_realtime_thread(priority=60)
+        
         logger.info("Motion control thread loop started")
 
         while self.running:
