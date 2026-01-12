@@ -374,7 +374,7 @@ class MotionControlThread:
 
         while True:
             try:
-                gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 X{x} Y{y} F{speed}"
+                gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 G53 X{x} Y{y} F{speed}"
                 state.conn.send(gcode + "\n")
                 logger.debug(f"Motion thread sent command: {gcode}")
 

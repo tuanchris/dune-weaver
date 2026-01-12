@@ -393,32 +393,66 @@ def parse_machine_position(response: str):
     return None
 
 
-async def send_grbl_coordinates(x, y, speed=600, timeout=2, home=False):
+async def send_grbl_coordinates(x, y, speed=600, timeout=30, home=False):
     """
     Send a G-code command to FluidNC and wait for an 'ok' response.
-    If no response after set timeout, sets state to stop and disconnects.
+    If no response after set timeout, returns False.
+
+    Args:
+        x: X coordinate
+        y: Y coordinate
+        speed: Feed rate in mm/min
+        timeout: Maximum time in seconds to wait for 'ok' response
+        home: If True, sends jog command ($J=) instead of G1
+
+    Returns:
+        True on success, False on timeout or error
     """
     logger.debug(f"Sending G-code: X{x} Y{y} at F{speed}")
 
-    # Track overall attempt time
     overall_start_time = time.time()
+    max_retries = 3
+    retry_count = 0
 
-    while True:
+    while retry_count < max_retries:
+        # Check overall timeout
+        if time.time() - overall_start_time > timeout:
+            logger.error(f"Timeout waiting for 'ok' response after {timeout}s")
+            return False
+
         try:
-            gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 X{x} Y{y} F{speed}"
-            # Use asyncio.to_thread for both send and receive operations to avoid blocking
+            gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 G53 X{x} Y{y} F{speed}"
             await asyncio.to_thread(state.conn.send, gcode + "\n")
             logger.debug(f"Sent command: {gcode}")
-            start_time = time.time()
-            while True:
-                # Use asyncio.to_thread for blocking I/O operations
+
+            # Wait for 'ok' response with timeout
+            response_start = time.time()
+            response_timeout = min(10, timeout - (time.time() - overall_start_time))
+
+            while time.time() - response_start < response_timeout:
+                # Check overall timeout
+                if time.time() - overall_start_time > timeout:
+                    logger.error(f"Overall timeout waiting for 'ok' response")
+                    return False
+
                 response = await asyncio.to_thread(state.conn.readline)
-                logger.debug(f"Response: {response}")
-                if response.lower() == "ok":
-                    logger.debug("Command execution confirmed.")
-                    return
+                if response:
+                    logger.debug(f"Response: {response}")
+                    if response.lower().strip() == "ok":
+                        logger.debug("Command execution confirmed.")
+                        return True
+                    elif 'error' in response.lower():
+                        logger.warning(f"Got error response: {response}")
+                        # Don't immediately fail - some errors are recoverable
+                else:
+                    await asyncio.sleep(0.05)
+
+            # Response timeout for this attempt
+            logger.warning(f"No 'ok' received for {gcode}, retrying... ({retry_count + 1}/{max_retries})")
+            retry_count += 1
+            await asyncio.sleep(0.2)
+
         except Exception as e:
-            # Store the error string inside the exception block
             error_str = str(e)
             logger.warning(f"Error sending command: {error_str}")
 
@@ -431,41 +465,306 @@ async def send_grbl_coordinates(x, y, speed=600, timeout=2, home=False):
                 logger.info("Connection marked as disconnected due to device error")
                 return False
 
+            retry_count += 1
+            await asyncio.sleep(0.2)
 
-        logger.warning(f"No 'ok' received for X{x} Y{y}, speed {speed}. Retrying...")
-        await asyncio.sleep(0.1)
-    
-    # If we reach here, the timeout has occurred
-    logger.error(f"Failed to receive 'ok' response after {max_total_attempt_time} seconds. Stopping and disconnecting.")
-    
-    # Set state to stop
-    state.stop_requested = True
-    
-    # Set connection status to disconnected
-    if state.conn:
-        try:
-            state.conn.disconnect()
-        except:
-            pass
-        state.conn = None
-        
-    # Update the state connection status
-    state.is_connected = False
-    logger.info("Connection marked as disconnected due to timeout")
+    logger.error(f"Failed to receive 'ok' response after {max_retries} retries")
     return False
+
+
+def _detect_firmware():
+    """
+    Detect firmware type (FluidNC or GRBL) by sending $I command.
+    Returns tuple: (firmware_type: str, version: str or None)
+    firmware_type is 'fluidnc', 'grbl', or 'unknown'
+    """
+    if not state.conn or not state.conn.is_connected():
+        return ('unknown', None)
+
+    # Clear buffer first
+    try:
+        while state.conn.in_waiting() > 0:
+            state.conn.readline()
+    except Exception:
+        pass
+
+    try:
+        state.conn.send("$I\n")
+        time.sleep(0.3)
+
+        firmware_type = 'unknown'
+        version = None
+        start_time = time.time()
+
+        while time.time() - start_time < 2.0:
+            if state.conn.in_waiting() > 0:
+                response = state.conn.readline()
+                if response:
+                    logger.debug(f"Firmware detection response: {response}")
+                    response_lower = response.lower()
+
+                    if 'fluidnc' in response_lower:
+                        firmware_type = 'fluidnc'
+                        # Try to extract version from response like "FluidNC v3.7.2"
+                        if 'v' in response_lower:
+                            parts = response.split()
+                            for part in parts:
+                                if part.lower().startswith('v') and any(c.isdigit() for c in part):
+                                    version = part
+                                    break
+                        break
+                    elif 'grbl' in response_lower and 'fluidnc' not in response_lower:
+                        firmware_type = 'grbl'
+                        # Try to extract version like "Grbl 1.1h"
+                        parts = response.split()
+                        for i, part in enumerate(parts):
+                            if 'grbl' in part.lower() and i + 1 < len(parts):
+                                version = parts[i + 1]
+                                break
+                        break
+                    elif response.lower().strip() == 'ok':
+                        break
+            else:
+                time.sleep(0.05)
+
+        # Clear any remaining responses
+        while state.conn.in_waiting() > 0:
+            state.conn.readline()
+
+        return (firmware_type, version)
+
+    except Exception as e:
+        logger.warning(f"Firmware detection failed: {e}")
+        return ('unknown', None)
+
+
+def _get_steps_fluidnc():
+    """
+    Get steps/mm from FluidNC using individual setting queries.
+    Returns tuple: (x_steps_per_mm, y_steps_per_mm) or (None, None) on failure.
+
+    Note: Works even when device is in ALARM state (e.g., limit switch active).
+    """
+    x_steps = None
+    y_steps = None
+
+    # Clear buffer
+    try:
+        while state.conn.in_waiting() > 0:
+            state.conn.readline()
+    except Exception:
+        pass
+
+    # Query X steps/mm
+    try:
+        state.conn.send("$/axes/x/steps_per_mm\n")
+        time.sleep(0.2)
+
+        start_time = time.time()
+        while time.time() - start_time < 2.0:
+            if state.conn.in_waiting() > 0:
+                response = state.conn.readline()
+                if response:
+                    logger.debug(f"FluidNC X steps response: {response}")
+                    # Response format: "/axes/x/steps_per_mm=200.000" or similar
+                    if 'steps_per_mm=' in response:
+                        try:
+                            x_steps = float(response.split('=')[1].strip())
+                            state.x_steps_per_mm = x_steps
+                            logger.info(f"X steps per mm (FluidNC): {x_steps}")
+                        except (ValueError, IndexError) as e:
+                            logger.warning(f"Failed to parse X steps: {e}")
+                        break
+                    elif response.lower().strip() == 'ok':
+                        break
+                    elif 'error' in response.lower() or 'alarm' in response.lower():
+                        # Device may be in alarm state (e.g., limit switch active)
+                        # Log and continue - settings queries often work anyway
+                        logger.debug(f"Got error/alarm response, continuing: {response}")
+            else:
+                time.sleep(0.05)
+    except Exception as e:
+        logger.error(f"Error querying FluidNC X steps: {e}")
+
+    # Clear buffer before next query
+    try:
+        while state.conn.in_waiting() > 0:
+            state.conn.readline()
+    except Exception:
+        pass
+
+    # Query Y steps/mm
+    try:
+        state.conn.send("$/axes/y/steps_per_mm\n")
+        time.sleep(0.2)
+
+        start_time = time.time()
+        while time.time() - start_time < 2.0:
+            if state.conn.in_waiting() > 0:
+                response = state.conn.readline()
+                if response:
+                    logger.debug(f"FluidNC Y steps response: {response}")
+                    if 'steps_per_mm=' in response:
+                        try:
+                            y_steps = float(response.split('=')[1].strip())
+                            state.y_steps_per_mm = y_steps
+                            logger.info(f"Y steps per mm (FluidNC): {y_steps}")
+                        except (ValueError, IndexError) as e:
+                            logger.warning(f"Failed to parse Y steps: {e}")
+                        break
+                    elif response.lower().strip() == 'ok':
+                        break
+                    elif 'error' in response.lower() or 'alarm' in response.lower():
+                        logger.debug(f"Got error/alarm response, continuing: {response}")
+            else:
+                time.sleep(0.05)
+    except Exception as e:
+        logger.error(f"Error querying FluidNC Y steps: {e}")
+
+    # Clear buffer before homing query
+    try:
+        while state.conn.in_waiting() > 0:
+            state.conn.readline()
+    except Exception:
+        pass
+
+    # Query homing cycle setting (informational - user preference takes precedence)
+    try:
+        state.conn.send("$/axes/y/homing/cycle\n")
+        time.sleep(0.2)
+
+        start_time = time.time()
+        while time.time() - start_time < 1.5:
+            if state.conn.in_waiting() > 0:
+                response = state.conn.readline()
+                if response:
+                    logger.debug(f"FluidNC homing response: {response}")
+                    if 'homing/cycle=' in response:
+                        try:
+                            homing_cycle = int(float(response.split('=')[1].strip()))
+                            # cycle >= 1 means homing is enabled in firmware
+                            firmware_homing = 1 if homing_cycle >= 1 else 0
+                            logger.info(f"Firmware homing setting (cycle): {homing_cycle}, using user preference: {state.homing}")
+                        except (ValueError, IndexError):
+                            pass
+                        break
+                    elif response.lower().strip() == 'ok':
+                        break
+            else:
+                time.sleep(0.05)
+    except Exception as e:
+        logger.debug(f"Could not query FluidNC homing setting: {e}")
+
+    # Clear buffer
+    try:
+        while state.conn.in_waiting() > 0:
+            state.conn.readline()
+    except Exception:
+        pass
+
+    return (x_steps, y_steps)
+
+
+def _get_steps_grbl():
+    """
+    Get steps/mm from GRBL using $$ command.
+    Returns tuple: (x_steps_per_mm, y_steps_per_mm) or (None, None) on failure.
+
+    Note: Works even when device is in ALARM state (e.g., limit switch active).
+    $$ command typically responds with settings even during alarm.
+    """
+    x_steps_per_mm = None
+    y_steps_per_mm = None
+
+    max_retries = 3
+    attempt_timeout = 4
+
+    for attempt in range(max_retries):
+        logger.info(f"Requesting GRBL settings with $$ command (attempt {attempt + 1}/{max_retries})")
+
+        try:
+            state.conn.send("$$\n")
+        except Exception as e:
+            logger.error(f"Error sending $$ command: {e}")
+            continue
+
+        attempt_start = time.time()
+        got_ok = False
+
+        while time.time() - attempt_start < attempt_timeout:
+            try:
+                response = state.conn.readline()
+
+                if not response:
+                    continue
+
+                logger.debug(f"Raw response: {response}")
+
+                for line in response.splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    logger.debug(f"Config response: {line}")
+
+                    if line.startswith("$100="):
+                        x_steps_per_mm = float(line.split("=")[1])
+                        state.x_steps_per_mm = x_steps_per_mm
+                        logger.info(f"X steps per mm: {x_steps_per_mm}")
+                    elif line.startswith("$101="):
+                        y_steps_per_mm = float(line.split("=")[1])
+                        state.y_steps_per_mm = y_steps_per_mm
+                        logger.info(f"Y steps per mm: {y_steps_per_mm}")
+                    elif line.startswith("$22="):
+                        firmware_homing = int(line.split('=')[1])
+                        logger.info(f"Firmware homing setting ($22): {firmware_homing}, using user preference: {state.homing}")
+                    elif line.lower() == 'ok':
+                        got_ok = True
+                        logger.debug("Received 'ok' confirmation from GRBL")
+                    elif line.lower().startswith('error') or 'alarm' in line.lower():
+                        # Device may be in alarm state (e.g., limit switch active)
+                        # Log and continue - $$ typically works anyway
+                        logger.debug(f"Got error/alarm during settings query (proceeding): {line}")
+
+                if got_ok:
+                    if x_steps_per_mm is not None and y_steps_per_mm is not None:
+                        logger.info("Successfully received all GRBL settings")
+                        break
+                    else:
+                        logger.warning("Received 'ok' but missing some settings")
+                        break
+
+            except Exception as e:
+                logger.error(f"Error reading GRBL response: {e}")
+                break
+
+        if x_steps_per_mm is not None and y_steps_per_mm is not None:
+            break
+
+        if attempt < max_retries - 1:
+            logger.warning(f"Attempt {attempt + 1} did not get all settings, retrying...")
+            time.sleep(0.5)
+            try:
+                while state.conn.in_waiting() > 0:
+                    state.conn.readline()
+            except Exception:
+                pass
+
+    return (x_steps_per_mm, y_steps_per_mm)
+
 
 def get_machine_steps(timeout=10):
     """
-    Get machine steps/mm from the GRBL controller.
+    Get machine steps/mm from the controller (FluidNC or GRBL).
     Returns True if successful, False otherwise.
+
+    Detects firmware type first:
+    - FluidNC: Uses targeted $/axes/x/steps_per_mm queries (more reliable)
+    - GRBL: Falls back to $$ command with retries
     """
     if not state.conn or not state.conn.is_connected():
         logger.error("Cannot get machine steps: No connection available")
         return False
-
-    x_steps_per_mm = None
-    y_steps_per_mm = None
-    start_time = time.time()
 
     # Clear any pending data in the buffer
     try:
@@ -474,64 +773,62 @@ def get_machine_steps(timeout=10):
     except Exception as e:
         logger.warning(f"Error clearing buffer: {e}")
 
-    # Send the command to request all settings
+    # Verify controller is responsive before querying
     try:
-        logger.info("Requesting GRBL settings with $$ command")
-        state.conn.send("$$\n")
-        time.sleep(1.0)  # Give GRBL time to process and respond (ESP32/FluidNC may need longer)
-    except Exception as e:
-        logger.error(f"Error sending $$ command: {e}")
-        return False
-
-    # Wait for and process responses
-    settings_complete = False
-    last_retry_time = start_time  # Track when we last sent $$ for retry logic
-    while time.time() - start_time < timeout and not settings_complete:
-        try:
-            # Attempt to read a line from the connection
+        state.conn.send("?\n")
+        time.sleep(0.2)
+        ready_check_attempts = 5
+        controller_ready = False
+        in_alarm = False
+        for _ in range(ready_check_attempts):
             if state.conn.in_waiting() > 0:
                 response = state.conn.readline()
-                logger.debug(f"Raw response: {response}")
+                if response and ('<' in response or 'Idle' in response or 'Alarm' in response):
+                    controller_ready = True
+                    if 'Alarm' in response:
+                        in_alarm = True
+                        logger.info(f"Controller in ALARM state (likely limit switch active), proceeding with settings query: {response.strip()}")
+                    else:
+                        logger.debug(f"Controller ready, status: {response}")
+                    break
+            time.sleep(0.1)
 
-                # Process the line
-                if response.strip():  # Only process non-empty lines
-                    for line in response.splitlines():
-                        line = line.strip()
-                        logger.debug(f"Config response: {line}")
-                        if line.startswith("$100="):
-                            x_steps_per_mm = float(line.split("=")[1])
-                            state.x_steps_per_mm = x_steps_per_mm
-                            logger.info(f"X steps per mm: {x_steps_per_mm}")
-                        elif line.startswith("$101="):
-                            y_steps_per_mm = float(line.split("=")[1])
-                            state.y_steps_per_mm = y_steps_per_mm
-                            logger.info(f"Y steps per mm: {y_steps_per_mm}")
-                        elif line.startswith("$22="):
-                            # $22 reports if the homing cycle is enabled
-                            # returns 0 if disabled, 1 if enabled
-                            # Note: We only log this, we don't overwrite state.homing
-                            # because user preference (saved in state.json) should take precedence
-                            firmware_homing = int(line.split('=')[1])
-                            logger.info(f"Firmware homing setting ($22): {firmware_homing}, using user preference: {state.homing}")
+        if not controller_ready:
+            logger.warning("Controller not responding to status query, proceeding anyway...")
 
-                # Check if we've received all the settings we need
-                if x_steps_per_mm is not None and y_steps_per_mm is not None:
-                    settings_complete = True
+        # Clear buffer after readiness check
+        while state.conn.in_waiting() > 0:
+            state.conn.readline()
+        time.sleep(0.1)
+    except Exception as e:
+        logger.warning(f"Readiness check failed: {e}, proceeding anyway...")
+
+    # Detect firmware type
+    firmware_type, firmware_version = _detect_firmware()
+
+    if firmware_type == 'fluidnc':
+        if firmware_version:
+            logger.info(f"Detected FluidNC firmware, version: {firmware_version}")
+        else:
+            logger.info("Detected FluidNC firmware (version unknown)")
+        x_steps_per_mm, y_steps_per_mm = _get_steps_fluidnc()
+
+        # Fallback to GRBL method if FluidNC queries failed
+        if x_steps_per_mm is None or y_steps_per_mm is None:
+            logger.warning("FluidNC setting queries failed, falling back to $$ command...")
+            x_steps_per_mm, y_steps_per_mm = _get_steps_grbl()
+    else:
+        if firmware_type == 'grbl':
+            if firmware_version:
+                logger.info(f"Detected GRBL firmware, version: {firmware_version}")
             else:
-                # No data waiting, small sleep to prevent CPU thrashing
-                time.sleep(0.1)
-
-                # Retry every 3 seconds if no response received
-                if time.time() - last_retry_time > 3:
-                    logger.warning("No response yet, sending $$ command again")
-                    state.conn.send("$$\n")
-                    last_retry_time = time.time()
-
-        except Exception as e:
-            logger.error(f"Error getting machine steps: {e}")
-            time.sleep(0.5)
+                logger.info("Detected GRBL firmware (version unknown)")
+        else:
+            logger.info("Could not detect firmware type, using GRBL commands")
+        x_steps_per_mm, y_steps_per_mm = _get_steps_grbl()
     
     # Process results and determine table type
+    settings_complete = (x_steps_per_mm is not None and y_steps_per_mm is not None)
     if settings_complete:
         if y_steps_per_mm == 180 and x_steps_per_mm == 256:
             state.table_type = 'dune_weaver_mini'
