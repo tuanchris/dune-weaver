@@ -3,6 +3,7 @@ import threading
 import json
 import os
 import logging
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +101,10 @@ class AppState:
         
         # Application name setting
         self.app_name = "Dune Weaver"  # Default app name
+
+        # Multi-table identity (for network discovery)
+        self.table_id = str(uuid.uuid4())  # UUID generated on first run, persistent across restarts
+        self.table_name = "My Sand Table"  # User-customizable table name
 
         # Custom branding settings (filenames only, files stored in static/custom/)
         # Favicon is auto-generated from logo as logo-favicon.ico
@@ -279,6 +284,8 @@ class AppState:
             "dw_led_idle_timeout_enabled": self.dw_led_idle_timeout_enabled,
             "dw_led_idle_timeout_minutes": self.dw_led_idle_timeout_minutes,
             "app_name": self.app_name,
+            "table_id": self.table_id,
+            "table_name": self.table_name,
             "custom_logo": self.custom_logo,
             "auto_play_enabled": self.auto_play_enabled,
             "auto_play_playlist": self.auto_play_playlist,
@@ -366,6 +373,11 @@ class AppState:
         self.dw_led_idle_timeout_minutes = data.get('dw_led_idle_timeout_minutes', 30)
 
         self.app_name = data.get("app_name", "Dune Weaver")
+        # Load or generate table_id (UUID persisted once generated)
+        self.table_id = data.get("table_id", None)
+        if self.table_id is None:
+            self.table_id = str(uuid.uuid4())
+        self.table_name = data.get("table_name", "My Sand Table")
         self.custom_logo = data.get("custom_logo", None)
         self.auto_play_enabled = data.get("auto_play_enabled", False)
         self.auto_play_playlist = data.get("auto_play_playlist", None)

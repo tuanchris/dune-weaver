@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from typing import List, Optional, Tuple, Dict, Any, Union
@@ -33,6 +34,7 @@ import argparse
 import subprocess
 import platform
 from modules.core import process_pool as pool_module
+from modules.core import mdns
 
 # Get log level from environment variable, default to INFO
 log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -265,15 +267,38 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(idle_timeout_monitor())
 
+    # Start mDNS advertisement for multi-table discovery
+    try:
+        await mdns.start_mdns_advertisement()
+    except Exception as e:
+        logger.warning(f"Failed to start mDNS advertisement: {e}")
+
     yield  # This separates startup from shutdown code
 
     # Shutdown
     logger.info("Shutting down Dune Weaver application...")
 
+    # Stop mDNS advertisement
+    try:
+        await mdns.stop_mdns_advertisement()
+    except Exception as e:
+        logger.warning(f"Error stopping mDNS: {e}")
+
     # Shutdown process pool
     pool_module.shutdown_pool(wait=True)
 
 app = FastAPI(lifespan=lifespan)
+
+# Add CORS middleware to allow cross-origin requests from other Dune Weaver frontends
+# This enables multi-table control from a single frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for local network access
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -881,6 +906,86 @@ async def update_settings(settings_update: SettingsUpdate):
         "updated_categories": updated_categories,
         "requires_restart": requires_restart,
         "led_reinit_needed": led_reinit_needed
+    }
+
+# ============================================================================
+# Multi-Table Identity Endpoints
+# ============================================================================
+
+class TableInfoUpdate(BaseModel):
+    name: Optional[str] = None
+
+@app.get("/api/table-info", tags=["multi-table"])
+async def get_table_info():
+    """
+    Get table identity information for multi-table discovery.
+
+    Returns the table's unique ID, name, and version.
+    """
+    return {
+        "id": state.table_id,
+        "name": state.table_name,
+        "version": version_manager.get_version()
+    }
+
+@app.patch("/api/table-info", tags=["multi-table"])
+async def update_table_info(update: TableInfoUpdate):
+    """
+    Update table identity information.
+
+    Currently only the table name can be updated.
+    The table ID is immutable after generation.
+    """
+    if update.name is not None:
+        state.table_name = update.name.strip() or "My Sand Table"
+        state.save()
+        logger.info(f"Table name updated to: {state.table_name}")
+
+    return {
+        "success": True,
+        "id": state.table_id,
+        "name": state.table_name
+    }
+
+@app.get("/api/discover-tables", tags=["multi-table"])
+async def discover_tables(timeout: float = 3.0):
+    """
+    Discover other Dune Weaver tables on the local network.
+
+    Uses mDNS/Bonjour to find tables advertising the _duneweaver._tcp service.
+
+    Args:
+        timeout: Discovery timeout in seconds (default 3.0, max 10.0)
+
+    Returns:
+        List of discovered tables with their id, name, host, port, and url
+    """
+    # Clamp timeout to reasonable range
+    timeout = min(max(timeout, 0.5), 10.0)
+
+    tables = await mdns.discover_tables(timeout=timeout)
+
+    # Also include this table in the list
+    local_table = {
+        "id": state.table_id,
+        "name": state.table_name,
+        "host": "localhost",
+        "port": state.server_port or 8080,
+        "version": version_manager.get_version(),
+        "url": f"http://localhost:{state.server_port or 8080}",
+        "is_current": True
+    }
+
+    # Mark discovered tables as not current
+    for table in tables:
+        table["is_current"] = False
+
+    # Filter out self if discovered via mDNS
+    tables = [t for t in tables if t.get("id") != state.table_id]
+
+    return {
+        "tables": [local_table] + tables,
+        "count": len(tables) + 1
     }
 
 # ============================================================================

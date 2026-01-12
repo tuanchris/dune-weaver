@@ -55,40 +55,50 @@ export default defineConfig({
           })
         },
       },
-      // API endpoints - proxy all backend routes
+      // All /api endpoints
+      '/api': 'http://localhost:8080',
+      // Static assets
+      '/static': 'http://localhost:8080',
+      // Preview images
+      '/preview': 'http://localhost:8080',
+      // Legacy root-level API endpoints (for backwards compatibility)
+      // Pattern execution
       '/send_home': 'http://localhost:8080',
       '/send_coordinate': 'http://localhost:8080',
       '/stop_execution': 'http://localhost:8080',
-      '/move_to_center': 'http://localhost:8080',
-      '/move_to_perimeter': 'http://localhost:8080',
-      '/set_speed': 'http://localhost:8080',
-      '/run_theta_rho': 'http://localhost:8080',
       '/pause_execution': 'http://localhost:8080',
       '/resume_execution': 'http://localhost:8080',
       '/skip_pattern': 'http://localhost:8080',
+      '/run_theta_rho': 'http://localhost:8080',
+      '/run_playlist': 'http://localhost:8080',
+      // Movement
+      '/move_to_center': 'http://localhost:8080',
+      '/move_to_perimeter': 'http://localhost:8080',
+      // Speed
+      '/set_speed': 'http://localhost:8080',
+      '/get_speed': 'http://localhost:8080',
+      // Connection
       '/serial_status': 'http://localhost:8080',
       '/list_serial_ports': 'http://localhost:8080',
       '/connect': 'http://localhost:8080',
       '/disconnect': 'http://localhost:8080',
-      '/get_speed': 'http://localhost:8080',
+      // Patterns
       '/list_theta_rho_files': 'http://localhost:8080',
       '/list_theta_rho_files_with_metadata': 'http://localhost:8080',
+      '/preview_thr': 'http://localhost:8080',
+      '/preview_thr_batch': 'http://localhost:8080',
+      '/get_theta_rho_coordinates': 'http://localhost:8080',
+      // Playlists
       '/list_all_playlists': 'http://localhost:8080',
       '/get_playlist': 'http://localhost:8080',
       '/create_playlist': 'http://localhost:8080',
       '/modify_playlist': 'http://localhost:8080',
       '/delete_playlist': 'http://localhost:8080',
       '/rename_playlist': 'http://localhost:8080',
-      '/run_playlist': 'http://localhost:8080',
       '/add_to_playlist': 'http://localhost:8080',
-      '/preview_thr': 'http://localhost:8080',
-      '/preview_thr_batch': 'http://localhost:8080',
-      '/preview': 'http://localhost:8080',
-      '/get_theta_rho_coordinates': 'http://localhost:8080',
+      // LED
       '/get_led_config': 'http://localhost:8080',
       '/set_led_config': 'http://localhost:8080',
-      '/api': 'http://localhost:8080',
-      '/static': 'http://localhost:8080',
     },
   },
   build: {

@@ -6,10 +6,11 @@ import { TableControlPage } from '@/pages/TableControlPage'
 import { LEDPage } from '@/pages/LEDPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { Toaster } from '@/components/ui/sonner'
+import { TableProvider } from '@/contexts/TableContext'
 
 function App() {
   return (
-    <>
+    <TableProvider>
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<BrowsePage />} />
@@ -20,7 +21,7 @@ function App() {
         </Route>
       </Routes>
       <Toaster position="top-center" richColors closeButton />
-    </>
+    </TableProvider>
   )
 }
 

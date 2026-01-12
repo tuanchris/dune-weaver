@@ -4,6 +4,9 @@ import { toast } from 'sonner'
 import { NowPlayingBar } from '@/components/NowPlayingBar'
 import { Button } from '@/components/ui/button'
 import { cacheAllPreviews } from '@/lib/previewCache'
+import { TableSelector } from '@/components/TableSelector'
+import { useTable } from '@/contexts/TableContext'
+import { apiClient } from '@/lib/apiClient'
 
 const navItems = [
   { path: '/', label: 'Browse', icon: 'grid_view', title: 'Browse Patterns' },
@@ -17,6 +20,10 @@ const DEFAULT_APP_NAME = 'Dune Weaver'
 
 export function Layout() {
   const location = useLocation()
+
+  // Multi-table context - must be called before any hooks that depend on activeTable
+  const { activeTable } = useTable()
+
   const [isDark, setIsDark] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('theme')
@@ -43,8 +50,7 @@ export function Layout() {
 
   // Fetch app settings
   const fetchAppSettings = () => {
-    fetch('/api/settings')
-      .then((r) => r.json())
+    apiClient.get<{ app?: { name?: string; custom_logo?: string } }>('/api/settings')
       .then((settings) => {
         if (settings.app?.name) {
           setAppName(settings.app.name)
@@ -68,7 +74,8 @@ export function Layout() {
     return () => {
       window.removeEventListener('branding-updated', handleBrandingUpdate)
     }
-  }, [])
+    // Refetch when active table changes
+  }, [activeTable?.id])
 
   // Homing completion countdown timer
   useEffect(() => {
@@ -160,8 +167,7 @@ export function Layout() {
   // Check device connection status via WebSocket
   useEffect(() => {
     const connectWebSocket = () => {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const ws = new WebSocket(`${protocol}//${window.location.host}/ws/status`)
+      const ws = new WebSocket(apiClient.getWebSocketUrl('/ws/status'))
 
       ws.onopen = () => {
         setIsBackendConnected(true)
@@ -238,7 +244,8 @@ export function Layout() {
         wsRef.current.close()
       }
     }
-  }, [])
+    // Reconnect when active table changes
+  }, [activeTable?.id])
 
   // Connect to logs WebSocket when drawer opens
   useEffect(() => {
@@ -254,11 +261,11 @@ export function Layout() {
     // Fetch initial logs
     const fetchInitialLogs = async () => {
       try {
-        const response = await fetch('/api/logs?limit=200')
-        const data = await response.json()
+        type LogEntry = { timestamp: string; level: string; logger: string; message: string }
+        const data = await apiClient.get<{ logs: LogEntry[] }>('/api/logs?limit=200')
         // Filter out empty/invalid log entries
         const validLogs = (data.logs || []).filter(
-          (log: { message?: string }) => log && log.message && log.message.trim() !== ''
+          (log) => log && log.message && log.message.trim() !== ''
         )
         // API returns newest first, reverse to show oldest first (newest at bottom)
         setLogs(validLogs.reverse())
@@ -279,8 +286,7 @@ export function Layout() {
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
 
     const connectLogsWebSocket = () => {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const ws = new WebSocket(`${protocol}//${window.location.host}/ws/logs`)
+      const ws = new WebSocket(apiClient.getWebSocketUrl('/ws/logs'))
 
       ws.onopen = () => {
         console.log('Logs WebSocket connected')
@@ -522,12 +528,8 @@ export function Layout() {
     if (!confirm('Are you sure you want to restart Docker containers?')) return
 
     try {
-      const response = await fetch('/api/system/restart', { method: 'POST' })
-      if (response.ok) {
-        toast.success('Docker containers are restarting...')
-      } else {
-        throw new Error('Restart failed')
-      }
+      await apiClient.post('/api/system/restart')
+      toast.success('Docker containers are restarting...')
     } catch {
       toast.error('Failed to restart Docker containers')
     }
@@ -537,12 +539,8 @@ export function Layout() {
     if (!confirm('Are you sure you want to shutdown the system?')) return
 
     try {
-      const response = await fetch('/api/system/shutdown', { method: 'POST' })
-      if (response.ok) {
-        toast.success('System is shutting down...')
-      } else {
-        throw new Error('Shutdown failed')
-      }
+      await apiClient.post('/api/system/shutdown')
+      toast.success('System is shutting down...')
     } catch {
       toast.error('Failed to shutdown system')
     }
@@ -637,8 +635,7 @@ export function Layout() {
     if (isHoming && isBackendConnected) {
       addLog('INFO', 'Homing started...')
 
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const ws = new WebSocket(`${protocol}//${window.location.host}/ws/logs`)
+      const ws = new WebSocket(apiClient.getWebSocketUrl('/ws/logs'))
 
       ws.onmessage = (event) => {
         try {
@@ -711,8 +708,7 @@ export function Layout() {
     const connectCacheWebSocket = () => {
       if (cacheWsRef.current) return
 
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const ws = new WebSocket(`${protocol}//${window.location.host}/ws/cache-progress`)
+      const ws = new WebSocket(apiClient.getWebSocketUrl('/ws/cache-progress'))
 
       ws.onmessage = (event) => {
         try {
@@ -1148,6 +1144,7 @@ export function Layout() {
             />
           </Link>
           <div className="flex items-center gap-1">
+            <TableSelector />
             <Button
               variant="ghost"
               size="icon"
