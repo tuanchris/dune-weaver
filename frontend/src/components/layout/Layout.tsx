@@ -33,6 +33,11 @@ export function Layout() {
   // Connection status
   const [isConnected, setIsConnected] = useState(false)
   const [isBackendConnected, setIsBackendConnected] = useState(false)
+  const [isHoming, setIsHoming] = useState(false)
+  const [homingJustCompleted, setHomingJustCompleted] = useState(false)
+  const [homingCountdown, setHomingCountdown] = useState(0)
+  const [keepHomingLogsOpen, setKeepHomingLogsOpen] = useState(false)
+  const wasHomingRef = useRef(false)
   const [connectionAttempts, setConnectionAttempts] = useState(0)
   const wsRef = useRef<WebSocket | null>(null)
 
@@ -65,8 +70,83 @@ export function Layout() {
     }
   }, [])
 
+  // Homing completion countdown timer
+  useEffect(() => {
+    if (!homingJustCompleted || keepHomingLogsOpen) return
+
+    if (homingCountdown <= 0) {
+      // Countdown finished, dismiss the overlay
+      setHomingJustCompleted(false)
+      setKeepHomingLogsOpen(false)
+      return
+    }
+
+    const timer = setTimeout(() => {
+      setHomingCountdown((prev) => prev - 1)
+    }, 1000)
+
+    return () => clearTimeout(timer)
+  }, [homingJustCompleted, homingCountdown, keepHomingLogsOpen])
+
   // Logs drawer state
   const [isLogsOpen, setIsLogsOpen] = useState(false)
+  const [logsDrawerTab, setLogsDrawerTab] = useState<'logs' | 'terminal'>('logs')
+  const [logsDrawerHeight, setLogsDrawerHeight] = useState(256) // Default 256px (h-64)
+  const [isResizing, setIsResizing] = useState(false)
+  const isResizingRef = useRef(false)
+  const startYRef = useRef(0)
+  const startHeightRef = useRef(0)
+
+  // Handle drawer resize
+  const handleResizeStart = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault()
+    isResizingRef.current = true
+    setIsResizing(true)
+    startYRef.current = 'touches' in e ? e.touches[0].clientY : e.clientY
+    startHeightRef.current = logsDrawerHeight
+    document.body.style.cursor = 'ns-resize'
+    document.body.style.userSelect = 'none'
+  }
+
+  useEffect(() => {
+    const handleResizeMove = (e: MouseEvent | TouchEvent) => {
+      if (!isResizingRef.current) return
+      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+      const delta = startYRef.current - clientY
+      const newHeight = Math.min(Math.max(startHeightRef.current + delta, 150), window.innerHeight - 150)
+      setLogsDrawerHeight(newHeight)
+    }
+
+    const handleResizeEnd = () => {
+      if (isResizingRef.current) {
+        isResizingRef.current = false
+        setIsResizing(false)
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+      }
+    }
+
+    window.addEventListener('mousemove', handleResizeMove)
+    window.addEventListener('mouseup', handleResizeEnd)
+    window.addEventListener('touchmove', handleResizeMove)
+    window.addEventListener('touchend', handleResizeEnd)
+
+    return () => {
+      window.removeEventListener('mousemove', handleResizeMove)
+      window.removeEventListener('mouseup', handleResizeEnd)
+      window.removeEventListener('touchmove', handleResizeMove)
+      window.removeEventListener('touchend', handleResizeEnd)
+    }
+  }, [])
+
+  // Serial terminal state
+  const [serialPorts, setSerialPorts] = useState<string[]>([])
+  const [selectedSerialPort, setSelectedSerialPort] = useState('')
+  const [serialConnected, setSerialConnected] = useState(false)
+  const [serialCommand, setSerialCommand] = useState('')
+  const [serialHistory, setSerialHistory] = useState<Array<{ type: 'cmd' | 'resp' | 'error'; text: string; time: string }>>([])
+  const [serialLoading, setSerialLoading] = useState(false)
+  const serialOutputRef = useRef<HTMLDivElement>(null)
 
   // Now Playing bar state
   const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(false)
@@ -98,6 +178,18 @@ export function Layout() {
             // Update device connection status from the status message
             if (data.data.connection_status !== undefined) {
               setIsConnected(data.data.connection_status)
+            }
+            // Update homing status and detect completion
+            if (data.data.is_homing !== undefined) {
+              const newIsHoming = data.data.is_homing
+              // Detect transition from homing to not homing
+              if (wasHomingRef.current && !newIsHoming) {
+                // Homing just completed - show completion state with countdown
+                setHomingJustCompleted(true)
+                setHomingCountdown(5)
+              }
+              wasHomingRef.current = newIsHoming
+              setIsHoming(newIsHoming)
             }
             // Auto-open/close Now Playing bar based on playback state
             const isPlaying = data.data.is_running || data.data.is_paused
@@ -303,6 +395,129 @@ export function Layout() {
     URL.revokeObjectURL(url)
   }
 
+  // Serial terminal functions
+  const fetchSerialPorts = async () => {
+    try {
+      const response = await fetch('/list_serial_ports')
+      const data = await response.json()
+      // API returns array directly, not wrapped in object
+      setSerialPorts(Array.isArray(data) ? data : [])
+    } catch {
+      toast.error('Failed to fetch serial ports')
+    }
+  }
+
+  const handleSerialConnect = async () => {
+    if (!selectedSerialPort) {
+      toast.error('Please select a port')
+      return
+    }
+
+    setSerialLoading(true)
+    try {
+      const response = await fetch('/api/debug-serial/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ port: selectedSerialPort }),
+      })
+      const data = await response.json()
+      if (data.success) {
+        setSerialConnected(true)
+        addSerialHistory('resp', `Connected to ${selectedSerialPort}`)
+        toast.success(`Connected to ${selectedSerialPort}`)
+      } else {
+        throw new Error(data.detail || 'Connection failed')
+      }
+    } catch (error) {
+      addSerialHistory('error', `Failed to connect: ${error}`)
+      toast.error('Failed to connect to serial port')
+    } finally {
+      setSerialLoading(false)
+    }
+  }
+
+  const handleSerialDisconnect = async () => {
+    setSerialLoading(true)
+    try {
+      await fetch('/api/debug-serial/close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ port: selectedSerialPort }),
+      })
+      setSerialConnected(false)
+      addSerialHistory('resp', 'Disconnected')
+      toast.success('Disconnected from serial port')
+    } catch {
+      toast.error('Failed to disconnect')
+    } finally {
+      setSerialLoading(false)
+    }
+  }
+
+  const addSerialHistory = (type: 'cmd' | 'resp' | 'error', text: string) => {
+    const time = new Date().toLocaleTimeString()
+    setSerialHistory((prev) => [...prev.slice(-200), { type, text, time }])
+    setTimeout(() => {
+      if (serialOutputRef.current) {
+        serialOutputRef.current.scrollTop = serialOutputRef.current.scrollHeight
+      }
+    }, 10)
+  }
+
+  const serialInputRef = useRef<HTMLInputElement>(null)
+
+  const handleSerialSend = async () => {
+    if (!serialCommand.trim() || !serialConnected || serialLoading) return
+
+    const cmd = serialCommand.trim()
+    setSerialCommand('')
+    setSerialLoading(true)
+    addSerialHistory('cmd', cmd)
+
+    try {
+      const response = await fetch('/api/debug-serial/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ port: selectedSerialPort, command: cmd }),
+      })
+      const data = await response.json()
+      if (data.success) {
+        if (data.responses && data.responses.length > 0) {
+          data.responses.forEach((line: string) => addSerialHistory('resp', line))
+        } else {
+          addSerialHistory('resp', '(no response)')
+        }
+      } else {
+        addSerialHistory('error', data.detail || 'Command failed')
+      }
+    } catch (error) {
+      addSerialHistory('error', `Error: ${error}`)
+    } finally {
+      setSerialLoading(false)
+      // Keep focus on input after sending
+      serialInputRef.current?.focus()
+    }
+  }
+
+  const handleSerialKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      e.stopPropagation()
+      // Keep focus on the input
+      const input = e.currentTarget
+      handleSerialSend()
+      // Ensure focus stays on input
+      requestAnimationFrame(() => input.focus())
+    }
+  }
+
+  // Fetch serial ports when terminal tab is selected
+  useEffect(() => {
+    if (isLogsOpen && logsDrawerTab === 'terminal') {
+      fetchSerialPorts()
+    }
+  }, [isLogsOpen, logsDrawerTab])
+
   const handleRestart = async () => {
     if (!confirm('Are you sure you want to restart Docker containers?')) return
 
@@ -377,22 +592,37 @@ export function Layout() {
     done: boolean
   } | null>(null)
 
-  // Add connection attempt logs when backend is disconnected
+  // Blocking overlay logs WebSocket ref
+  const blockingLogsWsRef = useRef<WebSocket | null>(null)
+
+  // Add connection/homing logs when overlay is shown
   useEffect(() => {
-    if (isBackendConnected) {
+    const showOverlay = !isBackendConnected || isHoming || homingJustCompleted
+
+    if (!showOverlay) {
       setConnectionLogs([])
+      // Close WebSocket if open
+      if (blockingLogsWsRef.current) {
+        blockingLogsWsRef.current.close()
+        blockingLogsWsRef.current = null
+      }
       return
     }
 
-    // Add initial log entry
-    const addLog = (level: string, message: string) => {
+    // Don't clear logs or reconnect WebSocket during completion state
+    if (homingJustCompleted && !isHoming) {
+      return
+    }
+
+    // Add log entry helper
+    const addLog = (level: string, message: string, timestamp?: string) => {
       setConnectionLogs((prev) => {
         const newLog = {
-          timestamp: new Date().toISOString(),
+          timestamp: timestamp || new Date().toISOString(),
           level,
           message,
         }
-        const newLogs = [...prev, newLog].slice(-50) // Keep last 50 entries
+        const newLogs = [...prev, newLog].slice(-100) // Keep last 100 entries
         return newLogs
       })
       // Auto-scroll to bottom
@@ -403,24 +633,74 @@ export function Layout() {
       }, 10)
     }
 
-    addLog('INFO', `Attempting to connect to backend at ${window.location.host}...`)
+    // If homing, connect to logs WebSocket to stream real logs
+    if (isHoming && isBackendConnected) {
+      addLog('INFO', 'Homing started...')
 
-    // Log connection attempts
-    const interval = setInterval(() => {
-      addLog('INFO', `Retrying connection to WebSocket /ws/status...`)
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const ws = new WebSocket(`${protocol}//${window.location.host}/ws/logs`)
 
-      // Also try HTTP to see if backend is partially up
-      fetch('/api/settings', { method: 'GET' })
-        .then(() => {
-          addLog('INFO', 'HTTP endpoint responding, waiting for WebSocket...')
-        })
-        .catch(() => {
-          // Still down
-        })
-    }, 3000)
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data)
+          if (message.type === 'heartbeat') return
 
-    return () => clearInterval(interval)
-  }, [isBackendConnected])
+          const log = message.type === 'log_entry' ? message.data : message
+          if (!log || !log.message || log.message.trim() === '') return
+
+          // Filter for homing-related logs
+          const msg = log.message.toLowerCase()
+          const isHomingLog =
+            msg.includes('homing') ||
+            msg.includes('home') ||
+            msg.includes('$h') ||
+            msg.includes('idle') ||
+            msg.includes('unlock') ||
+            msg.includes('alarm') ||
+            msg.includes('grbl') ||
+            msg.includes('connect') ||
+            msg.includes('serial') ||
+            msg.includes('device') ||
+            msg.includes('position') ||
+            msg.includes('zeroing') ||
+            msg.includes('movement') ||
+            log.logger?.includes('connection')
+
+          if (isHomingLog) {
+            addLog(log.level, log.message, log.timestamp)
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
+      blockingLogsWsRef.current = ws
+
+      return () => {
+        ws.close()
+        blockingLogsWsRef.current = null
+      }
+    }
+
+    // If backend disconnected, show connection retry logs
+    if (!isBackendConnected) {
+      addLog('INFO', `Attempting to connect to backend at ${window.location.host}...`)
+
+      const interval = setInterval(() => {
+        addLog('INFO', `Retrying connection to WebSocket /ws/status...`)
+
+        fetch('/api/settings', { method: 'GET' })
+          .then(() => {
+            addLog('INFO', 'HTTP endpoint responding, waiting for WebSocket...')
+          })
+          .catch(() => {
+            // Still down
+          })
+      }, 3000)
+
+      return () => clearInterval(interval)
+    }
+  }, [isBackendConnected, isHoming, homingJustCompleted])
 
   // Cache progress WebSocket connection - always connected to monitor cache generation
   useEffect(() => {
@@ -671,40 +951,99 @@ export function Layout() {
         </div>
       )}
 
-      {/* Backend Connection Blocking Overlay */}
-      {!isBackendConnected && (
+      {/* Backend Connection / Homing Blocking Overlay */}
+      {(!isBackendConnected || isHoming || homingJustCompleted) && (
         <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center p-4">
           <div className="w-full max-w-2xl space-y-6">
-            {/* Connection Status */}
+            {/* Status Header */}
             <div className="text-center space-y-4">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-500/10 mb-2">
-                <span className="material-icons-outlined text-4xl text-amber-500 animate-pulse">
-                  sync
+              <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-2 ${
+                homingJustCompleted
+                  ? 'bg-green-500/10'
+                  : isHoming
+                    ? 'bg-primary/10'
+                    : 'bg-amber-500/10'
+              }`}>
+                <span className={`material-icons-outlined text-4xl ${
+                  homingJustCompleted
+                    ? 'text-green-500'
+                    : isHoming
+                      ? 'text-primary animate-spin'
+                      : 'text-amber-500 animate-pulse'
+                }`}>
+                  {homingJustCompleted ? 'check_circle' : 'sync'}
                 </span>
               </div>
-              <h2 className="text-2xl font-bold">Connecting to Backend</h2>
+              <h2 className="text-2xl font-bold">
+                {homingJustCompleted
+                  ? 'Homing Complete'
+                  : isHoming
+                    ? 'Homing in Progress'
+                    : 'Connecting to Backend'
+                }
+              </h2>
               <p className="text-muted-foreground">
-                {connectionAttempts === 0
-                  ? 'Establishing connection...'
-                  : `Reconnecting... (attempt ${connectionAttempts})`
+                {homingJustCompleted
+                  ? 'Table is ready to use'
+                  : isHoming
+                    ? 'Moving to home position... This may take up to 90 seconds.'
+                    : connectionAttempts === 0
+                      ? 'Establishing connection...'
+                      : `Reconnecting... (attempt ${connectionAttempts})`
                 }
               </p>
               <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                <span>Waiting for server at {window.location.host}</span>
+                <span className={`w-2 h-2 rounded-full ${
+                  homingJustCompleted
+                    ? 'bg-green-500'
+                    : isHoming
+                      ? 'bg-primary animate-pulse'
+                      : 'bg-amber-500 animate-pulse'
+                }`} />
+                <span>
+                  {homingJustCompleted
+                    ? keepHomingLogsOpen
+                      ? 'Viewing logs'
+                      : `Closing in ${homingCountdown}s...`
+                    : isHoming
+                      ? 'Do not interrupt the homing process'
+                      : `Waiting for server at ${window.location.host}`
+                  }
+                </span>
               </div>
             </div>
 
-            {/* Connection Logs Panel */}
+            {/* Logs Panel */}
             <div className="bg-muted/50 rounded-lg border overflow-hidden">
               <div className="flex items-center justify-between px-4 py-2 border-b bg-muted">
                 <div className="flex items-center gap-2">
                   <span className="material-icons-outlined text-base">terminal</span>
-                  <span className="text-sm font-medium">Connection Log</span>
+                  <span className="text-sm font-medium">
+                    {isHoming || homingJustCompleted ? 'Homing Log' : 'Connection Log'}
+                  </span>
                 </div>
-                <span className="text-xs text-muted-foreground">
-                  {connectionLogs.length} entries
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const logText = connectionLogs
+                        .map((log) => `[${new Date(log.timestamp).toLocaleTimeString()}] [${log.level}] ${log.message}`)
+                        .join('\n')
+                      navigator.clipboard.writeText(logText).then(() => {
+                        toast.success('Logs copied to clipboard')
+                      }).catch(() => {
+                        toast.error('Failed to copy logs')
+                      })
+                    }}
+                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+                    title="Copy logs to clipboard"
+                  >
+                    <span className="material-icons text-sm">content_copy</span>
+                    Copy
+                  </button>
+                  <span className="text-xs text-muted-foreground">
+                    {connectionLogs.length} entries
+                  </span>
+                </div>
               </div>
               <div
                 ref={blockingLogsRef}
@@ -729,10 +1068,54 @@ export function Layout() {
               </div>
             </div>
 
+            {/* Action buttons for homing completion */}
+            {homingJustCompleted && (
+              <div className="flex justify-center gap-3">
+                {!keepHomingLogsOpen ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => setKeepHomingLogsOpen(true)}
+                      className="gap-2"
+                    >
+                      <span className="material-icons text-base">visibility</span>
+                      Keep Open
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setHomingJustCompleted(false)
+                        setKeepHomingLogsOpen(false)
+                      }}
+                      className="gap-2"
+                    >
+                      <span className="material-icons text-base">close</span>
+                      Dismiss
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    onClick={() => {
+                      setHomingJustCompleted(false)
+                      setKeepHomingLogsOpen(false)
+                    }}
+                    className="gap-2"
+                  >
+                    <span className="material-icons text-base">close</span>
+                    Close Logs
+                  </Button>
+                )}
+              </div>
+            )}
+
             {/* Hint */}
-            <p className="text-center text-xs text-muted-foreground">
-              Make sure the backend server is running on port 8080
-            </p>
+            {!homingJustCompleted && (
+              <p className="text-center text-xs text-muted-foreground">
+                {isHoming
+                  ? 'The table is calibrating its position'
+                  : 'Make sure the backend server is running on port 8080'
+                }
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -812,12 +1195,19 @@ export function Layout() {
       </header>
 
       {/* Main Content */}
-      <main className={`container mx-auto px-4 transition-all duration-300 ${
-        isLogsOpen && isNowPlayingOpen ? 'pb-[576px]' :
-        isLogsOpen ? 'pb-80' :
-        isNowPlayingOpen ? 'pb-80' :
-        'pb-20'
-      }`}>
+      <main
+        className={`container mx-auto px-4 transition-all duration-300 ${
+          !isLogsOpen && !isNowPlayingOpen ? 'pb-20' :
+          !isLogsOpen && isNowPlayingOpen ? 'pb-80' : ''
+        }`}
+        style={{
+          paddingBottom: isLogsOpen
+            ? isNowPlayingOpen
+              ? logsDrawerHeight + 256 + 64 // drawer + now playing + nav
+              : logsDrawerHeight + 64 // drawer + nav
+            : undefined
+        }}
+      >
         <Outlet />
       </main>
 
@@ -842,85 +1232,264 @@ export function Layout() {
 
       {/* Logs Drawer */}
       <div
-        className={`fixed left-0 right-0 z-30 bg-background border-t border-border transition-all duration-300 ${
-          isLogsOpen ? 'bottom-16 h-64' : 'bottom-16 h-0'
+        className={`fixed left-0 right-0 z-30 bg-background border-t border-border bottom-16 ${
+          isResizing ? '' : 'transition-[height] duration-300'
         }`}
+        style={{ height: isLogsOpen ? logsDrawerHeight : 0 }}
       >
         {isLogsOpen && (
           <>
+            {/* Resize Handle */}
+            <div
+              className="absolute top-0 left-0 right-0 h-2 cursor-ns-resize flex items-center justify-center group hover:bg-primary/10 -translate-y-1/2 z-10"
+              onMouseDown={handleResizeStart}
+              onTouchStart={handleResizeStart}
+            >
+              <div className="w-12 h-1 rounded-full bg-border group-hover:bg-primary transition-colors" />
+            </div>
+
+            {/* Tab Header */}
             <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/50">
               <div className="flex items-center gap-3">
-                <h2 className="text-sm font-semibold">Logs</h2>
-                <select
-                  value={logLevelFilter}
-                  onChange={(e) => setLogLevelFilter(e.target.value)}
-                  className="text-xs bg-background border rounded px-2 py-1"
-                >
-                  <option value="ALL">All Levels</option>
-                  <option value="DEBUG">Debug</option>
-                  <option value="INFO">Info</option>
-                  <option value="WARNING">Warning</option>
-                  <option value="ERROR">Error</option>
-                </select>
-                <span className="text-xs text-muted-foreground">
-                  {filteredLogs.length} entries
-                </span>
+                {/* Tab Buttons */}
+                <div className="flex rounded-md border bg-background p-0.5">
+                  <button
+                    onClick={() => setLogsDrawerTab('logs')}
+                    className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                      logsDrawerTab === 'logs'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'hover:bg-muted'
+                    }`}
+                  >
+                    Logs
+                  </button>
+                  <button
+                    onClick={() => setLogsDrawerTab('terminal')}
+                    className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                      logsDrawerTab === 'terminal'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'hover:bg-muted'
+                    }`}
+                  >
+                    Serial Terminal
+                  </button>
+                </div>
+
+                {/* Logs tab controls */}
+                {logsDrawerTab === 'logs' && (
+                  <>
+                    <select
+                      value={logLevelFilter}
+                      onChange={(e) => setLogLevelFilter(e.target.value)}
+                      className="text-xs bg-background border rounded px-2 py-1"
+                    >
+                      <option value="ALL">All Levels</option>
+                      <option value="DEBUG">Debug</option>
+                      <option value="INFO">Info</option>
+                      <option value="WARNING">Warning</option>
+                      <option value="ERROR">Error</option>
+                    </select>
+                    <span className="text-xs text-muted-foreground">
+                      {filteredLogs.length} entries
+                    </span>
+                  </>
+                )}
+
+                {/* Serial terminal controls */}
+                {logsDrawerTab === 'terminal' && (
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={selectedSerialPort}
+                      onChange={(e) => setSelectedSerialPort(e.target.value)}
+                      disabled={serialConnected || serialLoading}
+                      className="text-xs bg-background border rounded px-2 py-1 min-w-[140px]"
+                    >
+                      <option value="">Select port...</option>
+                      {serialPorts.map((port) => (
+                        <option key={port} value={port}>{port}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={fetchSerialPorts}
+                      disabled={serialConnected || serialLoading}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                      title="Refresh ports"
+                    >
+                      <span className="material-icons text-sm">refresh</span>
+                    </button>
+                    {!serialConnected ? (
+                      <Button
+                        size="sm"
+                        onClick={handleSerialConnect}
+                        disabled={!selectedSerialPort || serialLoading}
+                        className="h-6 text-xs px-2"
+                      >
+                        Connect
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleSerialDisconnect}
+                        disabled={serialLoading}
+                        className="h-6 text-xs px-2"
+                      >
+                        Disconnect
+                      </Button>
+                    )}
+                    {serialConnected && (
+                      <span className="flex items-center gap-1 text-xs text-green-600">
+                        <span className="w-2 h-2 rounded-full bg-green-500" />
+                        Connected
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
+
               <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={handleCopyLogs}
-                  className="rounded-full"
-                  title="Copy logs"
-                >
-                  <span className="material-icons-outlined text-base">content_copy</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={handleDownloadLogs}
-                  className="rounded-full"
-                  title="Download logs"
-                >
-                  <span className="material-icons-outlined text-base">download</span>
-                </Button>
+                {logsDrawerTab === 'logs' && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={handleCopyLogs}
+                      className="rounded-full"
+                      title="Copy logs"
+                    >
+                      <span className="material-icons-outlined text-base">content_copy</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={handleDownloadLogs}
+                      className="rounded-full"
+                      title="Download logs"
+                    >
+                      <span className="material-icons-outlined text-base">download</span>
+                    </Button>
+                  </>
+                )}
+                {logsDrawerTab === 'terminal' && serialHistory.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => setSerialHistory([])}
+                    className="rounded-full"
+                    title="Clear history"
+                  >
+                    <span className="material-icons-outlined text-base">delete_sweep</span>
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="icon-sm"
                   onClick={() => setIsLogsOpen(false)}
                   className="rounded-full"
-                  title="Close logs"
+                  title="Close"
                 >
                   <span className="material-icons-outlined text-base">close</span>
                 </Button>
               </div>
             </div>
-            <div
-              ref={logsContainerRef}
-              className="h-[calc(100%-40px)] overflow-auto overscroll-contain p-3 font-mono text-xs space-y-0.5"
-            >
-              {filteredLogs.length > 0 ? (
-                filteredLogs.map((log, i) => (
-                  <div key={i} className="py-0.5 flex gap-2">
-                    <span className="text-muted-foreground shrink-0">
-                      {formatTimestamp(log.timestamp)}
-                    </span>
-                    <span className={`shrink-0 font-semibold ${
-                      log.level === 'ERROR' ? 'text-red-500' :
-                      log.level === 'WARNING' ? 'text-amber-500' :
-                      log.level === 'DEBUG' ? 'text-muted-foreground' :
-                      'text-foreground'
-                    }`}>
-                      [{log.level || 'LOG'}]
-                    </span>
-                    <span className="break-all">{log.message || ''}</span>
-                  </div>
-                ))
-              ) : (
-                <p className="text-muted-foreground text-center py-4">No logs available</p>
-              )}
-            </div>
+
+            {/* Logs Content */}
+            {logsDrawerTab === 'logs' && (
+              <div
+                ref={logsContainerRef}
+                className="h-[calc(100%-40px)] overflow-auto overscroll-contain p-3 font-mono text-xs space-y-0.5"
+              >
+                {filteredLogs.length > 0 ? (
+                  filteredLogs.map((log, i) => (
+                    <div key={i} className="py-0.5 flex gap-2">
+                      <span className="text-muted-foreground shrink-0">
+                        {formatTimestamp(log.timestamp)}
+                      </span>
+                      <span className={`shrink-0 font-semibold ${
+                        log.level === 'ERROR' ? 'text-red-500' :
+                        log.level === 'WARNING' ? 'text-amber-500' :
+                        log.level === 'DEBUG' ? 'text-muted-foreground' :
+                        'text-foreground'
+                      }`}>
+                        [{log.level || 'LOG'}]
+                      </span>
+                      <span className="break-all">{log.message || ''}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-muted-foreground text-center py-4">No logs available</p>
+                )}
+              </div>
+            )}
+
+            {/* Serial Terminal Content */}
+            {logsDrawerTab === 'terminal' && (
+              <div className="h-[calc(100%-40px)] flex flex-col">
+                {/* Output area */}
+                <div
+                  ref={serialOutputRef}
+                  className="flex-1 overflow-auto overscroll-contain p-3 font-mono text-xs space-y-0.5 bg-black/5 dark:bg-white/5"
+                >
+                  {serialHistory.length > 0 ? (
+                    serialHistory.map((entry, i) => (
+                      <div key={i} className="py-0.5 flex gap-2">
+                        <span className="text-muted-foreground shrink-0">{entry.time}</span>
+                        {entry.type === 'cmd' ? (
+                          <>
+                            <span className="text-blue-500 shrink-0">&gt;</span>
+                            <span className="text-blue-600 dark:text-blue-400">{entry.text}</span>
+                          </>
+                        ) : entry.type === 'error' ? (
+                          <>
+                            <span className="text-red-500 shrink-0">!</span>
+                            <span className="text-red-500">{entry.text}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-green-500 shrink-0">&lt;</span>
+                            <span className="text-foreground">{entry.text}</span>
+                          </>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-muted-foreground text-center py-4">
+                      {serialConnected
+                        ? 'Type a command and press Enter to send'
+                        : 'Select a port and click Connect to start'}
+                    </p>
+                  )}
+                </div>
+                {/* Command input */}
+                <div className="flex items-center gap-3 px-3 py-3 pr-5 border-t bg-muted/30">
+                  <span className="text-muted-foreground font-mono text-base">&gt;</span>
+                  <input
+                    ref={serialInputRef}
+                    type="text"
+                    value={serialCommand}
+                    onChange={(e) => setSerialCommand(e.target.value)}
+                    onKeyDown={handleSerialKeyDown}
+                    disabled={!serialConnected}
+                    readOnly={serialLoading}
+                    placeholder={serialConnected ? 'Enter command (e.g., $, $$, ?, $H)' : 'Connect to send commands'}
+                    className="flex-1 bg-transparent border-none outline-none font-mono text-base placeholder:text-muted-foreground h-8"
+                    autoComplete="off"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleSerialSend}
+                    disabled={!serialConnected || !serialCommand.trim() || serialLoading}
+                    className="h-8 px-4 shrink-0"
+                  >
+                    {serialLoading ? (
+                      <span className="material-icons animate-spin text-sm">sync</span>
+                    ) : (
+                      'Send'
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

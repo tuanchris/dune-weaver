@@ -7,11 +7,12 @@ Provides a single ProcessPoolExecutor shared across modules to:
 """
 import logging
 from concurrent.futures import ProcessPoolExecutor
+from typing import Optional
 from modules.core import scheduling
 
 logger = logging.getLogger(__name__)
 
-_pool: ProcessPoolExecutor | None = None
+_pool: Optional[ProcessPoolExecutor] = None
 
 
 def _get_worker_count() -> int:

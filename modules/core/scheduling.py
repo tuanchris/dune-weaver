@@ -9,6 +9,7 @@ import sys
 import ctypes
 import ctypes.util
 import logging
+from typing import Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ def get_cpu_count() -> int:
     return os.cpu_count() or 1
 
 
-def get_background_cpus() -> set[int] | None:
+def get_background_cpus() -> Optional[Set[int]]:
     """Get CPU set for background work (all except CPU 0).
     
     Returns None on single-core systems.
@@ -48,7 +49,7 @@ def get_background_cpus() -> set[int] | None:
     return set(range(1, cpu_count))
 
 
-def elevate_priority(tid: int | None = None, realtime_priority: int = 50) -> bool:
+def elevate_priority(tid: Optional[int] = None, realtime_priority: int = 50) -> bool:
     """Elevate thread/process to real-time priority.
     
     Attempts SCHED_RR (real-time round-robin) first, falls back to nice -10.
@@ -120,7 +121,7 @@ def lower_priority(nice_value: int = 10) -> bool:
         return False
 
 
-def pin_to_cpu(cpu_id: int, tid: int | None = None) -> bool:
+def pin_to_cpu(cpu_id: int, tid: Optional[int] = None) -> bool:
     """Pin thread/process to a specific CPU core.
     
     Args:
@@ -133,7 +134,7 @@ def pin_to_cpu(cpu_id: int, tid: int | None = None) -> bool:
     return pin_to_cpus({cpu_id}, tid)
 
 
-def pin_to_cpus(cpu_ids: set[int], tid: int | None = None) -> bool:
+def pin_to_cpus(cpu_ids: Set[int], tid: Optional[int] = None) -> bool:
     """Pin thread/process to multiple CPU cores.
     
     Args:
@@ -161,7 +162,7 @@ def pin_to_cpus(cpu_ids: set[int], tid: int | None = None) -> bool:
         return False
 
 
-def setup_realtime_thread(tid: int | None = None, priority: int = 50) -> None:
+def setup_realtime_thread(tid: Optional[int] = None, priority: int = 50) -> None:
     """Setup for time-critical I/O threads (motion control, LED effects).
     
     Elevates priority and pins to CPU 0.

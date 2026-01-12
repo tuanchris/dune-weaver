@@ -33,8 +33,9 @@ export function TableControlPage() {
   const [currentSpeed, setCurrentSpeed] = useState<number | null>(null)
   const [currentTheta, setCurrentTheta] = useState(0)
   const [isLoading, setIsLoading] = useState<string | null>(null)
+  const [isPatternRunning, setIsPatternRunning] = useState(false)
 
-  // Connect to status WebSocket to get current speed
+  // Connect to status WebSocket to get current speed and playback status
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const ws = new WebSocket(`${protocol}//${window.location.host}/ws/status`)
@@ -46,6 +47,8 @@ export function TableControlPage() {
           if (message.data.speed !== null && message.data.speed !== undefined) {
             setCurrentSpeed(message.data.speed)
           }
+          // Track if a pattern is running or paused
+          setIsPatternRunning(message.data.is_running || message.data.is_paused)
         }
       } catch (error) {
         console.error('Failed to parse status:', error)
@@ -82,7 +85,22 @@ export function TableControlPage() {
     }
   }
 
+  // Helper to check if pattern is running and show warning
+  const checkPatternRunning = (actionName: string): boolean => {
+    if (isPatternRunning) {
+      toast.error(`Cannot ${actionName} while a pattern is running. Stop the pattern first.`, {
+        action: {
+          label: 'Stop',
+          onClick: () => handleStop(),
+        },
+      })
+      return true
+    }
+    return false
+  }
+
   const handleHome = async () => {
+    if (checkPatternRunning('home')) return
     try {
       await handleAction('home', '/send_home')
       toast.success('Moving to home position...')
@@ -101,6 +119,7 @@ export function TableControlPage() {
   }
 
   const handleMoveToCenter = async () => {
+    if (checkPatternRunning('move to center')) return
     try {
       await handleAction('center', '/move_to_center')
       toast.success('Moving to center...')
@@ -110,6 +129,7 @@ export function TableControlPage() {
   }
 
   const handleMoveToPerimeter = async () => {
+    if (checkPatternRunning('move to perimeter')) return
     try {
       await handleAction('perimeter', '/move_to_perimeter')
       toast.success('Moving to perimeter...')
@@ -151,6 +171,7 @@ export function TableControlPage() {
   }
 
   const handleRotate = async (degrees: number) => {
+    if (checkPatternRunning('align')) return
     try {
       const radians = degrees * (Math.PI / 180)
       const newTheta = currentTheta + radians

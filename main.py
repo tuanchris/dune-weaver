@@ -113,10 +113,50 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Single-core system detected, skipping CPU pinning")
 
-    try:
-        connection_manager.connect_device()
-    except Exception as e:
-        logger.warning(f"Failed to auto-connect to serial port: {str(e)}")
+    # Connect device in background so the web server starts immediately
+    async def connect_and_home():
+        """Connect to device and perform homing in background."""
+        try:
+            # Connect without homing first (fast)
+            await asyncio.to_thread(connection_manager.connect_device, False)
+
+            # If connected, perform homing in background
+            if state.conn and state.conn.is_connected():
+                logger.info("Device connected, starting homing in background...")
+                state.is_homing = True
+                try:
+                    success = await asyncio.to_thread(connection_manager.home)
+                    if not success:
+                        logger.warning("Background homing failed or was skipped")
+                finally:
+                    state.is_homing = False
+                    logger.info("Background homing completed")
+
+                # After homing, check for auto_play mode
+                if state.auto_play_enabled and state.auto_play_playlist:
+                    logger.info(f"Homing complete, checking auto_play playlist: {state.auto_play_playlist}")
+                    try:
+                        playlist_exists = playlist_manager.get_playlist(state.auto_play_playlist) is not None
+                        if not playlist_exists:
+                            logger.warning(f"Auto-play playlist '{state.auto_play_playlist}' not found. Clearing invalid reference.")
+                            state.auto_play_playlist = None
+                            state.save()
+                        elif state.conn and state.conn.is_connected():
+                            logger.info(f"Starting auto-play playlist: {state.auto_play_playlist}")
+                            asyncio.create_task(playlist_manager.run_playlist(
+                                state.auto_play_playlist,
+                                pause_time=state.auto_play_pause_time,
+                                clear_pattern=state.auto_play_clear_pattern,
+                                run_mode=state.auto_play_run_mode,
+                                shuffle=state.auto_play_shuffle
+                            ))
+                    except Exception as e:
+                        logger.error(f"Failed to auto-play playlist: {str(e)}")
+        except Exception as e:
+            logger.warning(f"Failed to auto-connect to serial port: {str(e)}")
+
+    # Start connection/homing in background - doesn't block server startup
+    asyncio.create_task(connect_and_home())
 
     # Initialize LED controller based on saved configuration
     try:
@@ -152,31 +192,8 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Failed to initialize LED controller: {str(e)}")
         state.led_controller = None
 
-    # Check if auto_play mode is enabled and auto-play playlist (right after connection attempt)
-    if state.auto_play_enabled and state.auto_play_playlist:
-        logger.info(f"auto_play mode enabled, checking for connection before auto-playing playlist: {state.auto_play_playlist}")
-        try:
-            # Validate that the playlist exists before trying to run it
-            playlist_exists = playlist_manager.get_playlist(state.auto_play_playlist) is not None
-            if not playlist_exists:
-                logger.warning(f"Auto-play playlist '{state.auto_play_playlist}' not found. Clearing invalid reference.")
-                state.auto_play_playlist = None
-                state.save()
-            # Check if we have a valid connection before starting playlist
-            elif state.conn and hasattr(state.conn, 'is_connected') and state.conn.is_connected():
-                logger.info(f"Connection available, starting auto-play playlist: {state.auto_play_playlist} with options: run_mode={state.auto_play_run_mode}, pause_time={state.auto_play_pause_time}, clear_pattern={state.auto_play_clear_pattern}, shuffle={state.auto_play_shuffle}")
-                asyncio.create_task(playlist_manager.run_playlist(
-                    state.auto_play_playlist,
-                    pause_time=state.auto_play_pause_time,
-                    clear_pattern=state.auto_play_clear_pattern,
-                    run_mode=state.auto_play_run_mode,
-                    shuffle=state.auto_play_shuffle
-                ))
-            else:
-                logger.warning("No hardware connection available, skipping auto_play mode auto-play")
-        except Exception as e:
-            logger.error(f"Failed to auto-play auto_play playlist: {str(e)}")
-        
+    # Note: auto_play is now handled in connect_and_home() after homing completes
+
     try:
         mqtt_handler = mqtt.init_mqtt()
     except Exception as e:
@@ -1070,6 +1087,141 @@ async def restart(request: ConnectRequest):
     except Exception as e:
         logger.error(f"Failed to restart serial on port {request.port}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+###############################################################################
+# Debug Serial Terminal - Independent raw serial communication
+###############################################################################
+
+# Store for debug serial connections (separate from main connection)
+_debug_serial_connections: dict = {}
+_debug_serial_lock = asyncio.Lock()
+
+class DebugSerialRequest(BaseModel):
+    port: str
+    baudrate: int = 115200
+    timeout: float = 2.0
+
+class DebugSerialCommand(BaseModel):
+    port: str
+    command: str
+    timeout: float = 2.0
+
+@app.post("/api/debug-serial/open", tags=["debug-serial"])
+async def debug_serial_open(request: DebugSerialRequest):
+    """Open a debug serial connection (independent of main connection)."""
+    import serial
+
+    async with _debug_serial_lock:
+        # Close existing connection on this port if any
+        if request.port in _debug_serial_connections:
+            try:
+                _debug_serial_connections[request.port].close()
+            except:
+                pass
+            del _debug_serial_connections[request.port]
+
+        try:
+            ser = serial.Serial(
+                request.port,
+                baudrate=request.baudrate,
+                timeout=request.timeout
+            )
+            _debug_serial_connections[request.port] = ser
+            logger.info(f"Debug serial opened on {request.port}")
+            return {"success": True, "port": request.port, "baudrate": request.baudrate}
+        except Exception as e:
+            logger.error(f"Failed to open debug serial on {request.port}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/debug-serial/close", tags=["debug-serial"])
+async def debug_serial_close(request: ConnectRequest):
+    """Close a debug serial connection."""
+    async with _debug_serial_lock:
+        if request.port not in _debug_serial_connections:
+            return {"success": True, "message": "Port not open"}
+
+        try:
+            _debug_serial_connections[request.port].close()
+            del _debug_serial_connections[request.port]
+            logger.info(f"Debug serial closed on {request.port}")
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Failed to close debug serial on {request.port}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/debug-serial/send", tags=["debug-serial"])
+async def debug_serial_send(request: DebugSerialCommand):
+    """Send a command and receive response on debug serial connection."""
+    import serial
+
+    async with _debug_serial_lock:
+        if request.port not in _debug_serial_connections:
+            raise HTTPException(status_code=400, detail="Port not open. Open it first.")
+
+        ser = _debug_serial_connections[request.port]
+
+        try:
+            # Clear input buffer
+            ser.reset_input_buffer()
+
+            # Send command with newline
+            command = request.command.strip()
+            if not command.endswith('\n'):
+                command += '\n'
+
+            await asyncio.to_thread(ser.write, command.encode())
+            await asyncio.to_thread(ser.flush)
+
+            # Read response lines with timeout
+            responses = []
+            start_time = time.time()
+            original_timeout = ser.timeout
+            ser.timeout = 0.1  # Short timeout for reading
+
+            while time.time() - start_time < request.timeout:
+                try:
+                    line = await asyncio.to_thread(ser.readline)
+                    if line:
+                        decoded = line.decode('utf-8', errors='replace').strip()
+                        if decoded:
+                            responses.append(decoded)
+                            # Check for ok/error to know command completed
+                            if decoded.lower() in ['ok', 'error'] or decoded.lower().startswith('error:'):
+                                break
+                    else:
+                        # No data, small delay
+                        await asyncio.sleep(0.05)
+                except:
+                    break
+
+            ser.timeout = original_timeout
+
+            return {
+                "success": True,
+                "command": request.command.strip(),
+                "responses": responses,
+                "raw": '\n'.join(responses)
+            }
+        except Exception as e:
+            logger.error(f"Debug serial send error: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/debug-serial/status", tags=["debug-serial"])
+async def debug_serial_status():
+    """Get status of all debug serial connections."""
+    async with _debug_serial_lock:
+        status = {}
+        for port, ser in _debug_serial_connections.items():
+            try:
+                status[port] = {
+                    "open": ser.is_open,
+                    "baudrate": ser.baudrate
+                }
+            except:
+                status[port] = {"open": False}
+        return {"connections": status}
+
 
 @app.get("/list_theta_rho_files")
 async def list_theta_rho_files():
