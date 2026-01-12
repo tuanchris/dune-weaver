@@ -1509,7 +1509,7 @@ export function SettingsPage() {
                 <div className="space-y-3">
                   <Label htmlFor="pixelOrder">Pixel Color Order</Label>
                   <Select
-                    value={ledConfig.pixel_order || 'GRB'}
+                    value={ledConfig.pixel_order || 'RGB'}
                     onValueChange={(value) =>
                       setLedConfig({ ...ledConfig, pixel_order: value })
                     }
@@ -1518,8 +1518,8 @@ export function SettingsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="GRB">GRB - WS2812/WS2812B (most common)</SelectItem>
                       <SelectItem value="RGB">RGB - WS2815/WS2811</SelectItem>
+                      <SelectItem value="GRB">GRB - WS2812/WS2812B</SelectItem>
                       <SelectItem value="GRBW">GRBW - SK6812 RGBW</SelectItem>
                       <SelectItem value="RGBW">RGBW - SK6812 variant</SelectItem>
                     </SelectContent>

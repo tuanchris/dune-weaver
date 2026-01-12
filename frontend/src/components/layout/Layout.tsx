@@ -97,7 +97,6 @@ export function Layout() {
 
   // Logs drawer state
   const [isLogsOpen, setIsLogsOpen] = useState(false)
-  const [logsDrawerTab, setLogsDrawerTab] = useState<'logs' | 'terminal'>('logs')
   const [logsDrawerHeight, setLogsDrawerHeight] = useState(256) // Default 256px (h-64)
   const [isResizing, setIsResizing] = useState(false)
   const isResizingRef = useRef(false)
@@ -145,15 +144,6 @@ export function Layout() {
       window.removeEventListener('touchend', handleResizeEnd)
     }
   }, [])
-
-  // Serial terminal state
-  const [serialPorts, setSerialPorts] = useState<string[]>([])
-  const [selectedSerialPort, setSelectedSerialPort] = useState('')
-  const [serialConnected, setSerialConnected] = useState(false)
-  const [serialCommand, setSerialCommand] = useState('')
-  const [serialHistory, setSerialHistory] = useState<Array<{ type: 'cmd' | 'resp' | 'error'; text: string; time: string }>>([])
-  const [serialLoading, setSerialLoading] = useState(false)
-  const serialOutputRef = useRef<HTMLDivElement>(null)
 
   // Now Playing bar state
   const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(false)
@@ -400,129 +390,6 @@ export function Layout() {
     a.click()
     URL.revokeObjectURL(url)
   }
-
-  // Serial terminal functions
-  const fetchSerialPorts = async () => {
-    try {
-      const response = await fetch('/list_serial_ports')
-      const data = await response.json()
-      // API returns array directly, not wrapped in object
-      setSerialPorts(Array.isArray(data) ? data : [])
-    } catch {
-      toast.error('Failed to fetch serial ports')
-    }
-  }
-
-  const handleSerialConnect = async () => {
-    if (!selectedSerialPort) {
-      toast.error('Please select a port')
-      return
-    }
-
-    setSerialLoading(true)
-    try {
-      const response = await fetch('/api/debug-serial/open', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ port: selectedSerialPort }),
-      })
-      const data = await response.json()
-      if (data.success) {
-        setSerialConnected(true)
-        addSerialHistory('resp', `Connected to ${selectedSerialPort}`)
-        toast.success(`Connected to ${selectedSerialPort}`)
-      } else {
-        throw new Error(data.detail || 'Connection failed')
-      }
-    } catch (error) {
-      addSerialHistory('error', `Failed to connect: ${error}`)
-      toast.error('Failed to connect to serial port')
-    } finally {
-      setSerialLoading(false)
-    }
-  }
-
-  const handleSerialDisconnect = async () => {
-    setSerialLoading(true)
-    try {
-      await fetch('/api/debug-serial/close', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ port: selectedSerialPort }),
-      })
-      setSerialConnected(false)
-      addSerialHistory('resp', 'Disconnected')
-      toast.success('Disconnected from serial port')
-    } catch {
-      toast.error('Failed to disconnect')
-    } finally {
-      setSerialLoading(false)
-    }
-  }
-
-  const addSerialHistory = (type: 'cmd' | 'resp' | 'error', text: string) => {
-    const time = new Date().toLocaleTimeString()
-    setSerialHistory((prev) => [...prev.slice(-200), { type, text, time }])
-    setTimeout(() => {
-      if (serialOutputRef.current) {
-        serialOutputRef.current.scrollTop = serialOutputRef.current.scrollHeight
-      }
-    }, 10)
-  }
-
-  const serialInputRef = useRef<HTMLInputElement>(null)
-
-  const handleSerialSend = async () => {
-    if (!serialCommand.trim() || !serialConnected || serialLoading) return
-
-    const cmd = serialCommand.trim()
-    setSerialCommand('')
-    setSerialLoading(true)
-    addSerialHistory('cmd', cmd)
-
-    try {
-      const response = await fetch('/api/debug-serial/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ port: selectedSerialPort, command: cmd }),
-      })
-      const data = await response.json()
-      if (data.success) {
-        if (data.responses && data.responses.length > 0) {
-          data.responses.forEach((line: string) => addSerialHistory('resp', line))
-        } else {
-          addSerialHistory('resp', '(no response)')
-        }
-      } else {
-        addSerialHistory('error', data.detail || 'Command failed')
-      }
-    } catch (error) {
-      addSerialHistory('error', `Error: ${error}`)
-    } finally {
-      setSerialLoading(false)
-      // Keep focus on input after sending
-      serialInputRef.current?.focus()
-    }
-  }
-
-  const handleSerialKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      e.stopPropagation()
-      // Keep focus on the input
-      const input = e.currentTarget
-      handleSerialSend()
-      // Ensure focus stays on input
-      requestAnimationFrame(() => input.focus())
-    }
-  }
-
-  // Fetch serial ports when terminal tab is selected
-  useEffect(() => {
-    if (isLogsOpen && logsDrawerTab === 'terminal') {
-      fetchSerialPorts()
-    }
-  }, [isLogsOpen, logsDrawerTab])
 
   const handleRestart = async () => {
     if (!confirm('Are you sure you want to restart Docker containers?')) return
@@ -1245,139 +1112,45 @@ export function Layout() {
               <div className="w-12 h-1 rounded-full bg-border group-hover:bg-primary transition-colors" />
             </div>
 
-            {/* Tab Header */}
+            {/* Logs Header */}
             <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/50">
               <div className="flex items-center gap-3">
-                {/* Tab Buttons */}
-                <div className="flex rounded-md border bg-background p-0.5">
-                  <button
-                    onClick={() => setLogsDrawerTab('logs')}
-                    className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                      logsDrawerTab === 'logs'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'hover:bg-muted'
-                    }`}
-                  >
-                    Logs
-                  </button>
-                  <button
-                    onClick={() => setLogsDrawerTab('terminal')}
-                    className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                      logsDrawerTab === 'terminal'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'hover:bg-muted'
-                    }`}
-                  >
-                    Serial Terminal
-                  </button>
-                </div>
-
-                {/* Logs tab controls */}
-                {logsDrawerTab === 'logs' && (
-                  <>
-                    <select
-                      value={logLevelFilter}
-                      onChange={(e) => setLogLevelFilter(e.target.value)}
-                      className="text-xs bg-background border rounded px-2 py-1"
-                    >
-                      <option value="ALL">All Levels</option>
-                      <option value="DEBUG">Debug</option>
-                      <option value="INFO">Info</option>
-                      <option value="WARNING">Warning</option>
-                      <option value="ERROR">Error</option>
-                    </select>
-                    <span className="text-xs text-muted-foreground">
-                      {filteredLogs.length} entries
-                    </span>
-                  </>
-                )}
-
-                {/* Serial terminal controls */}
-                {logsDrawerTab === 'terminal' && (
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={selectedSerialPort}
-                      onChange={(e) => setSelectedSerialPort(e.target.value)}
-                      disabled={serialConnected || serialLoading}
-                      className="text-xs bg-background border rounded px-2 py-1 min-w-[140px]"
-                    >
-                      <option value="">Select port...</option>
-                      {serialPorts.map((port) => (
-                        <option key={port} value={port}>{port}</option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={fetchSerialPorts}
-                      disabled={serialConnected || serialLoading}
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                      title="Refresh ports"
-                    >
-                      <span className="material-icons text-sm">refresh</span>
-                    </button>
-                    {!serialConnected ? (
-                      <Button
-                        size="sm"
-                        onClick={handleSerialConnect}
-                        disabled={!selectedSerialPort || serialLoading}
-                        className="h-6 text-xs px-2"
-                      >
-                        Connect
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={handleSerialDisconnect}
-                        disabled={serialLoading}
-                        className="h-6 text-xs px-2"
-                      >
-                        Disconnect
-                      </Button>
-                    )}
-                    {serialConnected && (
-                      <span className="flex items-center gap-1 text-xs text-green-600">
-                        <span className="w-2 h-2 rounded-full bg-green-500" />
-                        Connected
-                      </span>
-                    )}
-                  </div>
-                )}
+                <span className="text-sm font-medium">Application Logs</span>
+                <select
+                  value={logLevelFilter}
+                  onChange={(e) => setLogLevelFilter(e.target.value)}
+                  className="text-xs bg-background border rounded px-2 py-1"
+                >
+                  <option value="ALL">All Levels</option>
+                  <option value="DEBUG">Debug</option>
+                  <option value="INFO">Info</option>
+                  <option value="WARNING">Warning</option>
+                  <option value="ERROR">Error</option>
+                </select>
+                <span className="text-xs text-muted-foreground">
+                  {filteredLogs.length} entries
+                </span>
               </div>
 
               <div className="flex items-center gap-1">
-                {logsDrawerTab === 'logs' && (
-                  <>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={handleCopyLogs}
-                      className="rounded-full"
-                      title="Copy logs"
-                    >
-                      <span className="material-icons-outlined text-base">content_copy</span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={handleDownloadLogs}
-                      className="rounded-full"
-                      title="Download logs"
-                    >
-                      <span className="material-icons-outlined text-base">download</span>
-                    </Button>
-                  </>
-                )}
-                {logsDrawerTab === 'terminal' && serialHistory.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() => setSerialHistory([])}
-                    className="rounded-full"
-                    title="Clear history"
-                  >
-                    <span className="material-icons-outlined text-base">delete_sweep</span>
-                  </Button>
-                )}
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={handleCopyLogs}
+                  className="rounded-full"
+                  title="Copy logs"
+                >
+                  <span className="material-icons-outlined text-base">content_copy</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={handleDownloadLogs}
+                  className="rounded-full"
+                  title="Download logs"
+                >
+                  <span className="material-icons-outlined text-base">download</span>
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -1391,102 +1164,31 @@ export function Layout() {
             </div>
 
             {/* Logs Content */}
-            {logsDrawerTab === 'logs' && (
-              <div
-                ref={logsContainerRef}
-                className="h-[calc(100%-40px)] overflow-auto overscroll-contain p-3 font-mono text-xs space-y-0.5"
-              >
-                {filteredLogs.length > 0 ? (
-                  filteredLogs.map((log, i) => (
-                    <div key={i} className="py-0.5 flex gap-2">
-                      <span className="text-muted-foreground shrink-0">
-                        {formatTimestamp(log.timestamp)}
-                      </span>
-                      <span className={`shrink-0 font-semibold ${
-                        log.level === 'ERROR' ? 'text-red-500' :
-                        log.level === 'WARNING' ? 'text-amber-500' :
-                        log.level === 'DEBUG' ? 'text-muted-foreground' :
-                        'text-foreground'
-                      }`}>
-                        [{log.level || 'LOG'}]
-                      </span>
-                      <span className="break-all">{log.message || ''}</span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-muted-foreground text-center py-4">No logs available</p>
-                )}
-              </div>
-            )}
-
-            {/* Serial Terminal Content */}
-            {logsDrawerTab === 'terminal' && (
-              <div className="h-[calc(100%-40px)] flex flex-col">
-                {/* Output area */}
-                <div
-                  ref={serialOutputRef}
-                  className="flex-1 overflow-auto overscroll-contain p-3 font-mono text-xs space-y-0.5 bg-black/5 dark:bg-white/5"
-                >
-                  {serialHistory.length > 0 ? (
-                    serialHistory.map((entry, i) => (
-                      <div key={i} className="py-0.5 flex gap-2">
-                        <span className="text-muted-foreground shrink-0">{entry.time}</span>
-                        {entry.type === 'cmd' ? (
-                          <>
-                            <span className="text-blue-500 shrink-0">&gt;</span>
-                            <span className="text-blue-600 dark:text-blue-400">{entry.text}</span>
-                          </>
-                        ) : entry.type === 'error' ? (
-                          <>
-                            <span className="text-red-500 shrink-0">!</span>
-                            <span className="text-red-500">{entry.text}</span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="text-green-500 shrink-0">&lt;</span>
-                            <span className="text-foreground">{entry.text}</span>
-                          </>
-                        )}
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-muted-foreground text-center py-4">
-                      {serialConnected
-                        ? 'Type a command and press Enter to send'
-                        : 'Select a port and click Connect to start'}
-                    </p>
-                  )}
-                </div>
-                {/* Command input */}
-                <div className="flex items-center gap-3 px-3 py-3 pr-5 border-t bg-muted/30">
-                  <span className="text-muted-foreground font-mono text-base">&gt;</span>
-                  <input
-                    ref={serialInputRef}
-                    type="text"
-                    value={serialCommand}
-                    onChange={(e) => setSerialCommand(e.target.value)}
-                    onKeyDown={handleSerialKeyDown}
-                    disabled={!serialConnected}
-                    readOnly={serialLoading}
-                    placeholder={serialConnected ? 'Enter command (e.g., $, $$, ?, $H)' : 'Connect to send commands'}
-                    className="flex-1 bg-transparent border-none outline-none font-mono text-base placeholder:text-muted-foreground h-8"
-                    autoComplete="off"
-                  />
-                  <Button
-                    size="sm"
-                    onClick={handleSerialSend}
-                    disabled={!serialConnected || !serialCommand.trim() || serialLoading}
-                    className="h-8 px-4 shrink-0"
-                  >
-                    {serialLoading ? (
-                      <span className="material-icons animate-spin text-sm">sync</span>
-                    ) : (
-                      'Send'
-                    )}
-                  </Button>
-                </div>
-              </div>
-            )}
+            <div
+              ref={logsContainerRef}
+              className="h-[calc(100%-40px)] overflow-auto overscroll-contain p-3 font-mono text-xs space-y-0.5"
+            >
+              {filteredLogs.length > 0 ? (
+                filteredLogs.map((log, i) => (
+                  <div key={i} className="py-0.5 flex gap-2">
+                    <span className="text-muted-foreground shrink-0">
+                      {formatTimestamp(log.timestamp)}
+                    </span>
+                    <span className={`shrink-0 font-semibold ${
+                      log.level === 'ERROR' ? 'text-red-500' :
+                      log.level === 'WARNING' ? 'text-amber-500' :
+                      log.level === 'DEBUG' ? 'text-muted-foreground' :
+                      'text-foreground'
+                    }`}>
+                      [{log.level || 'LOG'}]
+                    </span>
+                    <span className="break-all">{log.message || ''}</span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-muted-foreground text-center py-4">No logs available</p>
+              )}
+            </div>
           </>
         )}
       </div>
