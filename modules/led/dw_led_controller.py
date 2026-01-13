@@ -587,7 +587,12 @@ def effect_idle(controller: DWLEDController, effect_settings: Optional[dict] = N
                 )
         else:
             # Default: Rainbow effect with current controller parameters
-            controller.set_effect(8)  # Rainbow - uses controller's current speed/intensity
+            controller.set_effect(8, speed=controller._speed, intensity=controller._intensity)
+            controller.set_colors(
+                color1=controller._color1,
+                color2=controller._color2,
+                color3=controller._color3
+            )
 
         return True
     except Exception as e:
