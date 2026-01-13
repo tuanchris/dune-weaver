@@ -453,6 +453,33 @@ async def broadcast_status_update(status: dict):
     
     active_status_connections.difference_update(disconnected)
 
+async def broadcast_patterns_updated(pattern_file: str = None):
+    """Broadcast pattern update notification to all connected clients.
+
+    This notifies touchscreen and other clients that patterns have changed,
+    so they can refresh their pattern lists.
+
+    Args:
+        pattern_file: Optional specific pattern that was added/updated
+    """
+    disconnected = set()
+    message = {
+        "type": "patterns_updated",
+        "data": {
+            "pattern_file": pattern_file
+        }
+    }
+    for websocket in active_status_connections:
+        try:
+            await websocket.send_json(message)
+        except WebSocketDisconnect:
+            disconnected.add(websocket)
+        except RuntimeError:
+            disconnected.add(websocket)
+
+    active_status_connections.difference_update(disconnected)
+    logger.info(f"Broadcast patterns_updated notification for: {pattern_file}")
+
 @app.websocket("/ws/cache-progress")
 async def websocket_cache_progress_endpoint(websocket: WebSocket):
     from modules.core.cache_manager import get_cache_progress
@@ -1215,7 +1242,10 @@ async def upload_theta_rho(file: UploadFile = File(...)):
                 logger.error(f"Error generating preview for {file_path_in_patterns_dir} (attempt {attempt + 1}): {str(e)}")
                 if attempt < max_retries - 1:
                     await asyncio.sleep(0.5)  # Small delay before retry
-        
+
+        # Notify connected clients (including touchscreen) about the new pattern
+        await broadcast_patterns_updated(file_path_in_patterns_dir)
+
         return {"success": True, "message": f"File {file.filename} uploaded successfully"}
     except Exception as e:
         logger.error(f"Error uploading file: {str(e)}")

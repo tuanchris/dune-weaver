@@ -10,6 +10,7 @@ import threading
 import time
 from pathlib import Path
 import os
+from png_cache_manager import PngCacheManager
 
 QML_IMPORT_NAME = "DuneWeaver"
 QML_IMPORT_MAJOR_VERSION = 1
@@ -81,6 +82,9 @@ class Backend(QObject):
     ledStatusChanged = Signal()
     ledEffectsLoaded = Signal(list)  # List of available effects
     ledPalettesLoaded = Signal(list)  # List of available palettes
+
+    # Pattern updates signal (for touchscreen to refresh when patterns are uploaded)
+    patternsUpdated = Signal(str)  # pattern_file that was added/updated (or empty string)
     
     def __init__(self):
         super().__init__()
@@ -143,7 +147,10 @@ class Backend(QObject):
         # Load local settings first
         self._load_local_settings()
         print(f"🖥️ Screen management initialized: timeout={self._screen_timeout}s, timer started")
-        
+
+        # PNG cache manager for converting WebP previews to PNG
+        self._png_cache_manager = PngCacheManager()
+
         # HTTP session - initialize lazily
         self.session = None
         self._session_initialized = False
@@ -360,6 +367,19 @@ class Backend(QObject):
 
                 self.statusChanged.emit()
                 self.progressChanged.emit()
+
+            # Handle patterns_updated notification (when patterns are uploaded via web interface)
+            elif data.get("type") == "patterns_updated":
+                pattern_data = data.get("data", {})
+                pattern_file = pattern_data.get("pattern_file", "")
+                print(f"📥 Patterns updated notification received: {pattern_file}")
+                # Convert the new pattern's WebP preview to PNG for touchscreen compatibility
+                if pattern_file:
+                    asyncio.create_task(self._convert_pattern_preview(pattern_file))
+                else:
+                    # If no specific pattern, just refresh the model
+                    self.patternsUpdated.emit(pattern_file)
+
         except json.JSONDecodeError:
             pass
     
@@ -379,7 +399,34 @@ class Backend(QObject):
                         print(f"🔌 Updated current port from WebSocket trigger: {current_port}")
         except Exception as e:
             print(f"💥 Exception getting current port: {e}")
-    
+
+    async def _convert_pattern_preview(self, pattern_file: str):
+        """Convert a pattern's WebP preview to PNG for touchscreen compatibility.
+
+        Called when we receive a patterns_updated notification from the main app.
+        The main app generates WebP previews, but Qt/QML works better with PNG.
+        """
+        try:
+            # Strip .thr extension if present to get the pattern name
+            pattern_name = pattern_file
+            if pattern_name.endswith('.thr'):
+                pattern_name = pattern_name[:-4]
+
+            print(f"🖼️ Converting preview for {pattern_name} to PNG...")
+            success = await self._png_cache_manager.convert_specific_pattern(pattern_name)
+
+            if success:
+                print(f"✅ PNG preview ready for {pattern_name}")
+            else:
+                print(f"⚠️ PNG conversion skipped or failed for {pattern_name}")
+
+        except Exception as e:
+            print(f"💥 Error converting pattern preview: {e}")
+
+        # Always emit the signal to refresh the pattern model
+        # (even if conversion failed, the WebP might still work as fallback)
+        self.patternsUpdated.emit(pattern_file)
+
     # API Methods
     @Slot(str, str)
     def executePattern(self, fileName, preExecution="adaptive"):

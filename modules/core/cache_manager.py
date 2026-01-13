@@ -7,6 +7,11 @@ from pathlib import Path
 from modules.core.pattern_manager import list_theta_rho_files, THETA_RHO_DIR, parse_theta_rho_file
 from modules.core.process_pool import get_pool as _get_process_pool
 
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
+
 logger = logging.getLogger(__name__)
 
 # Global cache progress state
@@ -502,6 +507,60 @@ async def generate_image_preview(pattern_file):
         return True
     except Exception as e:
         logger.error(f"Failed to generate image for {pattern_file}: {str(e)}")
+        return False
+
+async def convert_webp_to_png(pattern_file: str) -> bool:
+    """Convert a WebP preview to PNG format for touchscreen compatibility.
+
+    The touchscreen (Qt/QML) has better support for PNG than WebP,
+    so we generate both formats when a pattern is uploaded.
+
+    Args:
+        pattern_file: The pattern file name (e.g., 'custom_patterns/my_pattern.thr')
+
+    Returns:
+        True if conversion succeeded or PNG already exists, False on error
+    """
+    if not Image:
+        logger.warning("PIL (Pillow) not available - cannot convert WebP to PNG")
+        return False
+
+    try:
+        webp_path = Path(get_cache_path(pattern_file))
+        png_path = webp_path.with_suffix('.png')
+
+        # Skip if PNG already exists
+        if png_path.exists():
+            logger.debug(f"PNG already exists for {pattern_file}")
+            return True
+
+        # Skip if WebP doesn't exist
+        if not webp_path.exists():
+            logger.warning(f"WebP not found for {pattern_file}, cannot convert to PNG")
+            return False
+
+        def _convert():
+            with Image.open(webp_path) as img:
+                # Keep transparency for modes that support it
+                if img.mode in ('RGBA', 'LA', 'P'):
+                    img.save(png_path, "PNG", optimize=True)
+                else:
+                    rgb_img = img.convert('RGB')
+                    rgb_img.save(png_path, "PNG", optimize=True)
+
+            # Set file permissions to match WebP file
+            try:
+                webp_stat = webp_path.stat()
+                os.chmod(png_path, webp_stat.st_mode)
+            except (OSError, PermissionError):
+                pass
+
+        await asyncio.to_thread(_convert)
+        logger.info(f"Converted {pattern_file} preview to PNG for touchscreen")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to convert {pattern_file} to PNG: {e}")
         return False
 
 async def generate_all_image_previews():

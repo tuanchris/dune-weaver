@@ -85,6 +85,12 @@ ApplicationWindow {
                 stackView.replace(connectionSplash)
             }
         }
+
+        onPatternsUpdated: function(patternFile) {
+            console.log("📥 QML: Patterns updated notification received:", patternFile)
+            console.log("📥 Refreshing pattern model to pick up new pattern/preview")
+            patternModel.refresh()
+        }
     }
     
     // Global touch/mouse handler for activity tracking
