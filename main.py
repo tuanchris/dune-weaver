@@ -971,7 +971,7 @@ async def discover_tables(timeout: float = 3.0):
         "name": state.table_name,
         "host": "localhost",
         "port": state.server_port or 8080,
-        "version": version_manager.get_version(),
+        "version": await version_manager.get_current_version(),
         "url": f"http://localhost:{state.server_port or 8080}",
         "is_current": True
     }

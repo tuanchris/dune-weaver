@@ -213,7 +213,7 @@ class MDNSManager:
             await self.start_advertisement(
                 table_id=state.table_id,
                 table_name=table_name,
-                version=version_manager.get_version(),
+                version=await version_manager.get_current_version(),
                 port=state.server_port or 8080
             )
 
@@ -230,7 +230,7 @@ async def start_mdns_advertisement():
     await mdns_manager.start_advertisement(
         table_id=state.table_id,
         table_name=state.table_name,
-        version=version_manager.get_version(),
+        version=await version_manager.get_current_version(),
         port=state.server_port or 8080
     )
 
