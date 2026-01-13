@@ -183,6 +183,16 @@ async def lifespan(app: FastAPI):
                 intensity=state.dw_led_intensity
             )
             logger.info(f"LED controller initialized: DW LEDs ({state.dw_led_num_leds} LEDs on GPIO{state.dw_led_gpio_pin}, pixel order: {state.dw_led_pixel_order})")
+
+            # Initialize hardware and start idle effect (matches behavior of /set_led_config)
+            status = state.led_controller.check_status()
+            if status.get("connected", False):
+                state.led_controller.effect_idle()
+                _start_idle_led_timeout()
+                logger.info("DW LEDs hardware initialized and idle effect started")
+            else:
+                error_msg = status.get("error", "Unknown error")
+                logger.warning(f"DW LED hardware initialization failed: {error_msg}")
         else:
             state.led_controller = None
             logger.info("LED controller not configured")
