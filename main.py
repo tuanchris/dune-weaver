@@ -187,7 +187,7 @@ async def lifespan(app: FastAPI):
             # Initialize hardware and start idle effect (matches behavior of /set_led_config)
             status = state.led_controller.check_status()
             if status.get("connected", False):
-                state.led_controller.effect_idle()
+                state.led_controller.effect_idle(state.dw_led_idle_effect)
                 _start_idle_led_timeout()
                 logger.info("DW LEDs hardware initialized and idle effect started")
             else:

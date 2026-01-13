@@ -548,13 +548,12 @@ def effect_loading(controller: DWLEDController) -> bool:
 
 
 def effect_idle(controller: DWLEDController, effect_settings: Optional[dict] = None) -> bool:
-    """Show idle effect with full settings"""
+    """Show idle effect with full settings. If no effect configured, plays Rainbow with current parameters."""
     try:
-        if effect_settings and isinstance(effect_settings, dict):
-            # New format: full settings dict
-            controller.set_power(1)
+        controller.set_power(1)
 
-            # Set effect
+        if effect_settings and isinstance(effect_settings, dict):
+            # Configured idle effect: apply full settings
             effect_id = effect_settings.get("effect_id", 0)
             palette_id = effect_settings.get("palette_id", 0)
             speed = effect_settings.get("speed", 128)
@@ -586,10 +585,10 @@ def effect_idle(controller: DWLEDController, effect_settings: Optional[dict] = N
                     color2=(r2, g2, b2),
                     color3=(r3, g3, b3)
                 )
+        else:
+            # Default: Rainbow effect with current controller parameters
+            controller.set_effect(8)  # Rainbow - uses controller's current speed/intensity
 
-            return True
-
-        # Default: do nothing (keep current LED state)
         return True
     except Exception as e:
         logger.error(f"Error setting idle effect: {e}")
