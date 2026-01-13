@@ -223,16 +223,31 @@ def device_init(homing=True):
 
 def connect_device(homing=True):
     # Initialize LED interface based on configured provider
+    # Note: DW LEDs are initialized at startup in main.py, so we preserve the existing controller
     if state.led_provider == "wled" and state.wled_ip:
         state.led_controller = LEDInterface(provider="wled", ip_address=state.wled_ip)
+    elif state.led_provider == "dw_leds":
+        # DW LEDs are already initialized in main.py at startup
+        # Only initialize here if not already set up (e.g., reconnection scenario)
+        if not state.led_controller or not state.led_controller.is_configured:
+            state.led_controller = LEDInterface(
+                provider="dw_leds",
+                num_leds=state.dw_led_num_leds,
+                gpio_pin=state.dw_led_gpio_pin,
+                pixel_order=state.dw_led_pixel_order,
+                brightness=state.dw_led_brightness / 100.0,
+                speed=state.dw_led_speed,
+                intensity=state.dw_led_intensity
+            )
     elif state.led_provider == "hyperion" and state.hyperion_ip:
         state.led_controller = LEDInterface(
             provider="hyperion",
             ip_address=state.hyperion_ip,
             port=state.hyperion_port
         )
-    else:
+    elif state.led_provider == "none" or not state.led_provider:
         state.led_controller = None
+    # For other cases (e.g., wled without IP), preserve existing controller
 
     # Show loading effect
     if state.led_controller:

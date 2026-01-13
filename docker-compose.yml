@@ -13,6 +13,7 @@ services:
     network_mode: "host" # Use host network for device access
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./static/dist:/usr/share/nginx/html:ro  # Mount local build for dev without rebuild
     depends_on:
       - backend
     container_name: dune-weaver-frontend

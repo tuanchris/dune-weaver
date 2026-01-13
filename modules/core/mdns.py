@@ -177,12 +177,12 @@ class MDNSManager:
         discovered = []
 
         try:
-            # Create a temporary zeroconf instance for discovery
-            zc = Zeroconf()
+            # Create an async zeroconf instance for discovery
+            async_zc = AsyncZeroconf()
             listener = DuneWeaverServiceListener()
 
-            # Start browsing for services
-            browser = ServiceBrowser(zc, SERVICE_TYPE, listener)
+            # Start browsing for services using async browser
+            browser = AsyncServiceBrowser(async_zc.zeroconf, SERVICE_TYPE, listener)
 
             # Wait for discovery
             await asyncio.sleep(timeout)
@@ -190,9 +190,9 @@ class MDNSManager:
             # Collect results
             discovered = list(listener.discovered_tables.values())
 
-            # Cleanup
+            # Cleanup using async methods
             browser.cancel()
-            zc.close()
+            await async_zc.async_close()
 
             logger.info(f"mDNS: Discovered {len(discovered)} table(s)")
 
