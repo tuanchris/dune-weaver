@@ -137,12 +137,18 @@ cmd_update() {
     sudo chmod +x /usr/local/bin/dw
 
     if is_docker_mode; then
+        echo "Stopping current container..."
+        sudo docker compose down
+
         echo "Pulling latest Docker image..."
         sudo docker compose pull
 
-        echo "Restarting with new version..."
-        sudo docker compose up -d --quiet-pull
-        sudo docker compose restart
+        echo "Starting with new version..."
+        sudo docker compose up -d --remove-orphans
+
+        echo "Cleaning up unused Docker resources..."
+        sudo docker image prune -f
+        sudo docker container prune -f
     else
         echo "Updating Python dependencies..."
         source .venv/bin/activate
