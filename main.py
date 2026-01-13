@@ -925,7 +925,7 @@ async def get_table_info():
     return {
         "id": state.table_id,
         "name": state.table_name,
-        "version": version_manager.get_version()
+        "version": await version_manager.get_current_version()
     }
 
 @app.patch("/api/table-info", tags=["multi-table"])
