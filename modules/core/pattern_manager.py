@@ -743,8 +743,9 @@ async def run_theta_rho_file(file_path, is_playlist=False):
         global progress_update_task
         if not is_playlist and not progress_update_task:
             progress_update_task = asyncio.create_task(broadcast_progress())
-        
-        coordinates = parse_theta_rho_file(file_path)
+
+        # Run file parsing in thread to avoid blocking the event loop
+        coordinates = await asyncio.to_thread(parse_theta_rho_file, file_path)
         total_coordinates = len(coordinates)
 
         if total_coordinates < 2:
@@ -960,7 +961,8 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
             cache_data = None
             if clear_pattern and clear_pattern in ['adaptive', 'clear_from_in', 'clear_from_out']:
                 from modules.core import cache_manager
-                cache_data = cache_manager.load_metadata_cache()
+                # Run in thread to avoid blocking the event loop
+                cache_data = await asyncio.to_thread(cache_manager.load_metadata_cache)
                 logger.info(f"Loaded metadata cache for {len(cache_data.get('data', {}))} patterns")
 
             # Construct the complete pattern sequence
