@@ -74,7 +74,7 @@ export function LEDPage() {
   const [color3, setColor3] = useState('#0000ff')
 
   // Ref for debouncing color picker API calls
-  const colorDebounceRef = useRef<NodeJS.Timeout | null>(null)
+  const colorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Effect automation state
   const [idleEffect, setIdleEffect] = useState<EffectSettings | null>(null)
