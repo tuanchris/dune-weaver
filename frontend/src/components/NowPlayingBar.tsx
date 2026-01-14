@@ -165,8 +165,21 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
     const connectWebSocket = () => {
       if (!shouldReconnect) return
 
+      // Don't interrupt an existing connection that's still connecting
+      if (wsRef.current) {
+        if (wsRef.current.readyState === WebSocket.CONNECTING) {
+          return // Already connecting, wait for it
+        }
+        if (wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.close()
+        }
+        wsRef.current = null
+      }
+
       const wsUrl = apiClient.getWebSocketUrl('/ws/status')
       const ws = new WebSocket(wsUrl)
+      // Assign to ref IMMEDIATELY so concurrent calls see it's connecting
+      wsRef.current = ws
 
       ws.onmessage = (event) => {
         if (!shouldReconnect) return
@@ -184,25 +197,17 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
         if (!shouldReconnect) return
         reconnectTimeout = setTimeout(connectWebSocket, 3000)
       }
-
-      wsRef.current = ws
     }
 
     connectWebSocket()
 
     // Reconnect when base URL changes (table switch)
     const unsubscribe = apiClient.onBaseUrlChange(() => {
-      // Disable reconnect for old connection
-      shouldReconnect = false
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout)
         reconnectTimeout = null
       }
-      if (wsRef.current) {
-        wsRef.current.close()
-      }
-      // Re-enable and connect to new URL
-      shouldReconnect = true
+      // connectWebSocket handles closing existing connection safely
       connectWebSocket()
     })
 

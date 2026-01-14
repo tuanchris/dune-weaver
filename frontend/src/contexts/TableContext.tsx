@@ -174,7 +174,20 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
       // If no active table AND no restored selection, select the current one
       // Use ref to check restored selection because activeTable state may not be updated yet
       if (!activeTable && !restoredActiveIdRef.current) {
-        setActiveTable(currentTable)
+        // For initial selection of current table, just update state without reload
+        // Reload is only needed when switching between DIFFERENT tables
+        setActiveTableState(currentTable)
+        // Save to localStorage so it persists
+        try {
+          const data: StoredTableData = {
+            tables: [currentTable],
+            activeTableId: currentTable.id,
+          }
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+          localStorage.setItem(ACTIVE_TABLE_KEY, currentTable.id)
+        } catch (e) {
+          console.error('Failed to save initial table selection:', e)
+        }
       } else if (activeTable?.isCurrent) {
         // Update active table name if it changed on the backend
         setActiveTableState(prev => prev ? { ...prev, name: currentTable.name } : null)
@@ -188,7 +201,7 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsDiscovering(false)
     }
-  }, [activeTable, setActiveTable])
+  }, [activeTable]) // Only depends on activeTable for checking if we need to update name
 
   // Add a table manually by URL
   const addTable = useCallback(async (url: string, name?: string): Promise<Table | null> => {

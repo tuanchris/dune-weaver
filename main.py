@@ -301,7 +301,15 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Global semaphore to limit concurrent preview processing
 # Prevents resource exhaustion when loading many previews simultaneously
-preview_semaphore = asyncio.Semaphore(5)
+# Lazily initialized to avoid "attached to a different loop" errors
+_preview_semaphore: Optional[asyncio.Semaphore] = None
+
+def get_preview_semaphore() -> asyncio.Semaphore:
+    """Get or create the preview semaphore in the current event loop."""
+    global _preview_semaphore
+    if _preview_semaphore is None:
+        _preview_semaphore = asyncio.Semaphore(5)
+    return _preview_semaphore
 
 # Pydantic models for request/response validation
 class ConnectRequest(BaseModel):
@@ -1156,7 +1164,14 @@ async def restart(request: ConnectRequest):
 
 # Store for debug serial connections (separate from main connection)
 _debug_serial_connections: dict = {}
-_debug_serial_lock = asyncio.Lock()
+_debug_serial_lock: Optional[asyncio.Lock] = None
+
+def get_debug_serial_lock() -> asyncio.Lock:
+    """Get or create the debug serial lock in the current event loop."""
+    global _debug_serial_lock
+    if _debug_serial_lock is None:
+        _debug_serial_lock = asyncio.Lock()
+    return _debug_serial_lock
 
 class DebugSerialRequest(BaseModel):
     port: str
@@ -1173,7 +1188,7 @@ async def debug_serial_open(request: DebugSerialRequest):
     """Open a debug serial connection (independent of main connection)."""
     import serial
 
-    async with _debug_serial_lock:
+    async with get_debug_serial_lock():
         # Close existing connection on this port if any
         if request.port in _debug_serial_connections:
             try:
@@ -1198,7 +1213,7 @@ async def debug_serial_open(request: DebugSerialRequest):
 @app.post("/api/debug-serial/close", tags=["debug-serial"])
 async def debug_serial_close(request: ConnectRequest):
     """Close a debug serial connection."""
-    async with _debug_serial_lock:
+    async with get_debug_serial_lock():
         if request.port not in _debug_serial_connections:
             return {"success": True, "message": "Port not open"}
 
@@ -1216,7 +1231,7 @@ async def debug_serial_send(request: DebugSerialCommand):
     """Send a command and receive response on debug serial connection."""
     import serial
 
-    async with _debug_serial_lock:
+    async with get_debug_serial_lock():
         if request.port not in _debug_serial_connections:
             raise HTTPException(status_code=400, detail="Port not open. Open it first.")
 
@@ -1271,7 +1286,7 @@ async def debug_serial_send(request: DebugSerialCommand):
 @app.get("/api/debug-serial/status", tags=["debug-serial"])
 async def debug_serial_status():
     """Get status of all debug serial connections."""
-    async with _debug_serial_lock:
+    async with get_debug_serial_lock():
         status = {}
         for port, ser in _debug_serial_connections.items():
             try:
@@ -2586,7 +2601,7 @@ async def preview_thr_batch(request: dict):
     async def process_single_file(file_name):
         """Process a single file and return its preview data."""
         # Acquire semaphore to limit concurrent processing
-        async with preview_semaphore:
+        async with get_preview_semaphore():
             t1 = time.time()
             try:
                 # Normalize file path for cross-platform compatibility

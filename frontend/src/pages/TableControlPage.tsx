@@ -296,6 +296,29 @@ export function TableControlPage() {
     }
   }
 
+  const handleSerialReset = async () => {
+    if (!serialConnected || serialLoading) return
+
+    setSerialLoading(true)
+    addSerialHistory('cmd', '[Ctrl+X] Soft Reset')
+
+    try {
+      // Send Ctrl+X (0x18) - GRBL soft reset command
+      const data = await apiClient.post<{ responses?: string[]; detail?: string }>('/api/debug-serial/send', { port: selectedSerialPort, command: '\x18' })
+      if (data.responses && data.responses.length > 0) {
+        data.responses.forEach((line: string) => addSerialHistory('resp', line))
+      } else {
+        addSerialHistory('resp', 'Reset sent')
+      }
+      toast.success('Reset command sent')
+    } catch (error) {
+      addSerialHistory('error', `Reset failed: ${error}`)
+      toast.error('Failed to send reset')
+    } finally {
+      setSerialLoading(false)
+    }
+  }
+
   const handleSerialKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -689,16 +712,28 @@ export function TableControlPage() {
                   <span className="hidden sm:inline">Connect</span>
                 </Button>
               ) : (
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={handleSerialDisconnect}
-                  disabled={serialLoading}
-                  title="Disconnect"
-                >
-                  <span className="material-icons-outlined sm:mr-1">power_off</span>
-                  <span className="hidden sm:inline">Disconnect</span>
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={handleSerialDisconnect}
+                    disabled={serialLoading}
+                    title="Disconnect"
+                  >
+                    <span className="material-icons-outlined sm:mr-1">power_off</span>
+                    <span className="hidden sm:inline">Disconnect</span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleSerialReset}
+                    disabled={serialLoading}
+                    title="Send Ctrl+X soft reset"
+                  >
+                    <span className="material-icons-outlined sm:mr-1">restart_alt</span>
+                    <span className="hidden sm:inline">Reset</span>
+                  </Button>
+                </>
               )}
               {/* Clear button - show on mobile in controls row */}
               {serialHistory.length > 0 && (

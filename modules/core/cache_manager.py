@@ -19,6 +19,18 @@ cache_progress = {
     "error": None
 }
 
+# Lock to prevent race conditions when writing to metadata cache
+# Multiple concurrent tasks (from asyncio.gather) can try to read-modify-write simultaneously
+# Lazily initialized to avoid "attached to a different loop" errors
+_metadata_cache_lock: "asyncio.Lock | None" = None
+
+def _get_metadata_cache_lock() -> asyncio.Lock:
+    """Get or create the metadata cache lock in the current event loop."""
+    global _metadata_cache_lock
+    if _metadata_cache_lock is None:
+        _metadata_cache_lock = asyncio.Lock()
+    return _metadata_cache_lock
+
 # Constants
 CACHE_DIR = os.path.join(THETA_RHO_DIR, "cached_images")
 METADATA_CACHE_FILE = "metadata_cache.json"  # Now in root directory
@@ -375,28 +387,33 @@ async def get_pattern_metadata_async(pattern_file):
     
     return None
 
-def cache_pattern_metadata(pattern_file, first_coord, last_coord, total_coords):
-    """Cache metadata for a pattern file."""
-    try:
-        cache_data = load_metadata_cache()
-        data_section = cache_data.get('data', {})
-        pattern_path = os.path.join(THETA_RHO_DIR, pattern_file)
-        file_mtime = os.path.getmtime(pattern_path)
-        
-        data_section[pattern_file] = {
-            'mtime': file_mtime,
-            'metadata': {
-                'first_coordinate': first_coord,
-                'last_coordinate': last_coord,
-                'total_coordinates': total_coords
+async def cache_pattern_metadata(pattern_file, first_coord, last_coord, total_coords):
+    """Cache metadata for a pattern file.
+
+    Uses asyncio.Lock to prevent race conditions when multiple concurrent tasks
+    (from asyncio.gather) try to read-modify-write the cache file simultaneously.
+    """
+    async with _get_metadata_cache_lock():
+        try:
+            cache_data = await asyncio.to_thread(load_metadata_cache)
+            data_section = cache_data.get('data', {})
+            pattern_path = os.path.join(THETA_RHO_DIR, pattern_file)
+            file_mtime = await asyncio.to_thread(os.path.getmtime, pattern_path)
+
+            data_section[pattern_file] = {
+                'mtime': file_mtime,
+                'metadata': {
+                    'first_coordinate': first_coord,
+                    'last_coordinate': last_coord,
+                    'total_coordinates': total_coords
+                }
             }
-        }
-        
-        cache_data['data'] = data_section
-        save_metadata_cache(cache_data)
-        logger.debug(f"Cached metadata for {pattern_file}")
-    except Exception as e:
-        logger.warning(f"Failed to cache metadata for {pattern_file}: {str(e)}")
+
+            cache_data['data'] = data_section
+            await asyncio.to_thread(save_metadata_cache, cache_data)
+            logger.debug(f"Cached metadata for {pattern_file}")
+        except Exception as e:
+            logger.warning(f"Failed to cache metadata for {pattern_file}: {str(e)}")
 
 def needs_cache(pattern_file):
     """Check if a pattern file needs its cache generated."""
@@ -469,7 +486,7 @@ async def generate_image_preview(pattern_file):
                     total_coords = len(coordinates)
 
                     # Cache the metadata for future use
-                    cache_pattern_metadata(pattern_file, first_coord, last_coord, total_coords)
+                    await cache_pattern_metadata(pattern_file, first_coord, last_coord, total_coords)
                     logger.debug(f"Metadata cached for {pattern_file}: {total_coords} coordinates")
                 else:
                     logger.warning(f"No coordinates found in {pattern_file}")
@@ -655,7 +672,7 @@ async def generate_metadata_cache():
                         total_coords = len(coordinates)
 
                         # Cache the metadata
-                        cache_pattern_metadata(file_name, first_coord, last_coord, total_coords)
+                        await cache_pattern_metadata(file_name, first_coord, last_coord, total_coords)
                         successful += 1
                         logger.debug(f"Generated metadata for {file_name}")
 

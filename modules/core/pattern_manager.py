@@ -393,22 +393,17 @@ class MotionControlThread:
         state.machine_y = new_y_abs
 
     def _send_grbl_coordinates_sync(self, x: float, y: float, speed: int = 600, timeout: int = 2, home: bool = False):
-        """Synchronous version of send_grbl_coordinates for motion thread."""
-        logger.debug(f"Motion thread sending G-code: X{x} Y{y} at F{speed}")
+        """Synchronous version of send_grbl_coordinates for motion thread.
 
-        # Track overall attempt time
-        overall_start_time = time.time()
-        max_total_timeout = 30  # Maximum total time to retry before giving up
+        Retries indefinitely until success or stop_requested is set.
+        Use force stop to abort if the hardware is unresponsive.
+        """
+        logger.debug(f"Motion thread sending G-code: X{x} Y{y} at F{speed}")
 
         while True:
             # Check for stop request before each attempt
             if state.stop_requested:
                 logger.info("Motion thread: Stop requested, aborting command")
-                return False
-
-            # Check for overall timeout
-            if time.time() - overall_start_time > max_total_timeout:
-                logger.error(f"Motion thread: Timeout after {max_total_timeout}s, aborting command")
                 return False
 
             try:

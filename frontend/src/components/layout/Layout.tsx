@@ -160,6 +160,7 @@ export function Layout() {
   const logsContainerRef = useRef<HTMLDivElement>(null)
 
   // Check device connection status via WebSocket
+  // This effect runs once on mount and manages its own reconnection logic
   useEffect(() => {
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
     let isMounted = true
@@ -167,7 +168,21 @@ export function Layout() {
     const connectWebSocket = () => {
       if (!isMounted) return
 
+      // Only close existing connection if it's open (not still connecting)
+      // This prevents "WebSocket closed before connection established" errors
+      if (wsRef.current) {
+        if (wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.close()
+          wsRef.current = null
+        } else if (wsRef.current.readyState === WebSocket.CONNECTING) {
+          // Already connecting, don't interrupt
+          return
+        }
+      }
+
       const ws = new WebSocket(apiClient.getWebSocketUrl('/ws/status'))
+      // Assign to ref IMMEDIATELY so concurrent calls see it's connecting
+      wsRef.current = ws
 
       ws.onopen = () => {
         if (!isMounted) return
@@ -227,6 +242,7 @@ export function Layout() {
 
       ws.onclose = () => {
         if (!isMounted) return
+        wsRef.current = null
         setIsBackendConnected(false)
         setConnectionAttempts((prev) => prev + 1)
         // Reconnect after 3 seconds (don't change device status on WS disconnect)
@@ -237,26 +253,35 @@ export function Layout() {
         if (!isMounted) return
         setIsBackendConnected(false)
       }
-
-      wsRef.current = ws
     }
 
-    // Reset playing state when table changes to avoid false transitions
+    // Reset playing state on mount
     wasPlayingRef.current = null
 
+    // Connect on mount
     connectWebSocket()
+
+    // Subscribe to base URL changes (when user switches tables)
+    // This triggers reconnection to the new backend
+    const unsubscribe = apiClient.onBaseUrlChange(() => {
+      if (isMounted) {
+        wasPlayingRef.current = null // Reset playing state for new table
+        connectWebSocket()
+      }
+    })
 
     return () => {
       isMounted = false
+      unsubscribe()
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout)
       }
       if (wsRef.current) {
         wsRef.current.close()
+        wsRef.current = null
       }
     }
-    // Reconnect when active table changes
-  }, [activeTable?.id])
+  }, []) // Empty deps - runs once on mount, reconnects via apiClient listener
 
   // Connect to logs WebSocket when drawer opens
   useEffect(() => {

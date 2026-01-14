@@ -12,6 +12,7 @@ export default defineConfig({
   },
   server: {
     port: parseInt(process.env.PORT || '5173'),
+    host: true, // Listen on all interfaces (0.0.0.0) for mobile/network access
     allowedHosts: true, // Allow all hosts for local network development
     proxy: {
       // WebSocket endpoints

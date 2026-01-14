@@ -150,12 +150,24 @@ export function PlaylistsPage() {
   // Preview loading
   const pendingPreviewsRef = useRef<Set<string>>(new Set())
   const batchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   // Initialize and fetch data
   useEffect(() => {
     initPreviewCacheDB().catch(() => {})
     fetchPlaylists()
     fetchAllPatterns()
+
+    // Cleanup on unmount: abort in-flight requests and clear pending queue
+    return () => {
+      if (batchTimeoutRef.current) {
+        clearTimeout(batchTimeoutRef.current)
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+      pendingPreviewsRef.current.clear()
+    }
   }, [])
 
   // Refetch when backend reconnects
@@ -224,12 +236,19 @@ export function PlaylistsPage() {
   const fetchPreviewsBatch = async (paths: string[]) => {
     const BATCH_SIZE = 10 // Process 10 patterns at a time to avoid overwhelming the backend
 
+    // Create new AbortController for this batch of requests
+    abortControllerRef.current = new AbortController()
+    const signal = abortControllerRef.current.signal
+
     // Process in batches
     for (let i = 0; i < paths.length; i += BATCH_SIZE) {
+      // Check if aborted before each batch
+      if (signal.aborted) break
+
       const batch = paths.slice(i, i + BATCH_SIZE)
 
       try {
-        const data = await apiClient.post<Record<string, PreviewData>>('/preview_thr_batch', { file_names: batch })
+        const data = await apiClient.post<Record<string, PreviewData>>('/preview_thr_batch', { file_names: batch }, signal)
 
         const newPreviews: Record<string, PreviewData> = {}
         for (const [path, previewData] of Object.entries(data)) {
@@ -241,8 +260,9 @@ export function PlaylistsPage() {
         }
         setPreviews(prev => ({ ...prev, ...newPreviews }))
       } catch (error) {
+        // Stop processing if aborted, otherwise continue with next batch
+        if (error instanceof Error && error.name === 'AbortError') break
         console.error('Error fetching previews batch:', error)
-        // Continue with next batch even if one fails
       }
 
       // Small delay between batches to reduce backend load

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { apiClient } from '@/lib/apiClient'
@@ -72,6 +72,9 @@ export function LEDPage() {
   const [color1, setColor1] = useState('#ff0000')
   const [color2, setColor2] = useState('#000000')
   const [color3, setColor3] = useState('#0000ff')
+
+  // Ref for debouncing color picker API calls
+  const colorDebounceRef = useRef<NodeJS.Timeout | null>(null)
 
   // Effect automation state
   const [idleEffect, setIdleEffect] = useState<EffectSettings | null>(null)
@@ -254,27 +257,35 @@ export function LEDPage() {
     }
   }
 
-  const handleColorChange = async (slot: 1 | 2 | 3, value: string) => {
+  const handleColorChange = (slot: 1 | 2 | 3, value: string) => {
+    // Update UI immediately for responsive feedback
     if (slot === 1) setColor1(value)
     else if (slot === 2) setColor2(value)
     else setColor3(value)
 
-    // Debounce color changes
-    try {
-      const hexToRgb = (hex: string) => {
-        const r = parseInt(hex.slice(1, 3), 16)
-        const g = parseInt(hex.slice(3, 5), 16)
-        const b = parseInt(hex.slice(5, 7), 16)
-        return [r, g, b]
-      }
-
-      const payload: Record<string, number[]> = {}
-      payload[`color${slot}`] = hexToRgb(value)
-
-      await apiClient.post('/api/dw_leds/colors', payload)
-    } catch (error) {
-      console.error('Failed to set color:', error)
+    // Clear any pending debounce timer
+    if (colorDebounceRef.current) {
+      clearTimeout(colorDebounceRef.current)
     }
+
+    // Debounce API call by 300ms to prevent overwhelming the backend
+    colorDebounceRef.current = setTimeout(async () => {
+      try {
+        const hexToRgb = (hex: string) => {
+          const r = parseInt(hex.slice(1, 3), 16)
+          const g = parseInt(hex.slice(3, 5), 16)
+          const b = parseInt(hex.slice(5, 7), 16)
+          return [r, g, b]
+        }
+
+        const payload: Record<string, number[]> = {}
+        payload[`color${slot}`] = hexToRgb(value)
+
+        await apiClient.post('/api/dw_leds/colors', payload)
+      } catch (error) {
+        console.error('Failed to set color:', error)
+      }
+    }, 300)
   }
 
   const saveCurrentEffectSettings = async (type: 'idle' | 'playing') => {

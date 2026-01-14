@@ -25,7 +25,6 @@ import {
 import { toast } from 'sonner'
 import {
   Layers,
-  RefreshCw,
   Plus,
   Check,
   Wifi,
@@ -39,9 +38,7 @@ export function TableSelector() {
   const {
     tables,
     activeTable,
-    isDiscovering,
     setActiveTable,
-    discoverTables,
     addTable,
     removeTable,
     updateTableName,
@@ -62,11 +59,6 @@ export function TableSelector() {
       toast.success(`Switched to ${table.name}`)
     }
     setIsOpen(false)
-  }
-
-  const handleDiscover = async () => {
-    await discoverTables()
-    toast.success('Table discovery complete')
   }
 
   const handleAddTable = async () => {
@@ -144,17 +136,8 @@ export function TableSelector() {
         <PopoverContent className="w-72 p-2" align="end">
           <div className="space-y-2">
             {/* Header */}
-            <div className="flex items-center justify-between px-2 py-1">
+            <div className="px-2 py-1">
               <span className="text-sm font-medium">Sand Tables</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleDiscover}
-                disabled={isDiscovering}
-                className="h-7 px-2"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${isDiscovering ? 'animate-spin' : ''}`} />
-              </Button>
             </div>
 
             {/* Table list */}

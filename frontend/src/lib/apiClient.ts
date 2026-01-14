@@ -136,7 +136,12 @@ class ApiClient {
     } else {
       // Use current page's host for relative URLs
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      return `${protocol}//${window.location.host}${path}`
+      // In development mode (Vite on port 5173), connect directly to backend (port 8080)
+      // This bypasses Vite's WebSocket proxy which has issues with Safari mobile
+      const host = window.location.hostname
+      const port = import.meta.env.DEV ? '8080' : window.location.port
+      const portSuffix = port ? `:${port}` : ''
+      return `${protocol}//${host}${portSuffix}${path}`
     }
   }
 

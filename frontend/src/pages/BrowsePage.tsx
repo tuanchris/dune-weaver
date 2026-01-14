@@ -94,6 +94,7 @@ export function BrowsePage() {
   // Lazy loading queue for previews
   const pendingPreviewsRef = useRef<Set<string>>(new Set())
   const batchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   // Cache all previews state
   const [isCaching, setIsCaching] = useState(false)
@@ -125,6 +126,17 @@ export function BrowsePage() {
       fetchPatterns()
     })
     loadFavorites()
+
+    // Cleanup on unmount: abort in-flight requests and clear pending queue
+    return () => {
+      if (batchTimeoutRef.current) {
+        clearTimeout(batchTimeoutRef.current)
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+      pendingPreviewsRef.current.clear()
+    }
   }, [])
 
   // Refetch when backend reconnects
@@ -223,6 +235,10 @@ export function BrowsePage() {
   const fetchPreviewsBatch = async (filePaths: string[]) => {
     const BATCH_SIZE = 10 // Process 10 patterns at a time to avoid overwhelming the backend
 
+    // Create new AbortController for this batch of requests
+    abortControllerRef.current = new AbortController()
+    const signal = abortControllerRef.current.signal
+
     try {
       // First check IndexedDB cache for all patterns
       const cachedPreviews = await getPreviewsFromCache(filePaths)
@@ -242,10 +258,13 @@ export function BrowsePage() {
       // Fetch uncached patterns in batches to avoid overwhelming the backend
       if (uncachedPaths.length > 0) {
         for (let i = 0; i < uncachedPaths.length; i += BATCH_SIZE) {
+          // Check if aborted before each batch
+          if (signal.aborted) break
+
           const batch = uncachedPaths.slice(i, i + BATCH_SIZE)
 
           try {
-            const data = await apiClient.post<Record<string, PreviewData>>('/preview_thr_batch', { file_names: batch })
+            const data = await apiClient.post<Record<string, PreviewData>>('/preview_thr_batch', { file_names: batch }, signal)
 
             // Save fetched previews to IndexedDB cache
             for (const [path, previewData] of Object.entries(data)) {
@@ -255,8 +274,9 @@ export function BrowsePage() {
             }
 
             setPreviews((prev) => ({ ...prev, ...data }))
-          } catch {
-            // Continue with next batch even if one fails
+          } catch (err) {
+            // Stop processing if aborted, otherwise continue with next batch
+            if (err instanceof Error && err.name === 'AbortError') break
           }
 
           // Small delay between batches to reduce backend load
@@ -266,6 +286,8 @@ export function BrowsePage() {
         }
       }
     } catch (error) {
+      // Silently ignore abort errors
+      if (error instanceof Error && error.name === 'AbortError') return
       console.error('Error fetching previews:', error)
     }
   }
