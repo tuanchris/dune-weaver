@@ -392,10 +392,10 @@ class MotionControlThread:
         state.machine_x = new_x_abs
         state.machine_y = new_y_abs
 
-    def _send_grbl_coordinates_sync(self, x: float, y: float, speed: int = 600, timeout: int = 2, home: bool = False):
+    def _send_grbl_coordinates_sync(self, x: float, y: float, speed: int = 600, home: bool = False):
         """Synchronous version of send_grbl_coordinates for motion thread.
 
-        Retries indefinitely until success or stop_requested is set.
+        Waits indefinitely for 'ok' response until success or stop_requested is set.
         Use force stop to abort if the hardware is unresponsive.
         """
         logger.debug(f"Motion thread sending G-code: X{x} Y{y} at F{speed}")
@@ -411,7 +411,6 @@ class MotionControlThread:
                 state.conn.send(gcode + "\n")
                 logger.debug(f"Motion thread sent command: {gcode}")
 
-                start_time = time.time()
                 while True:
                     # Check for stop request while waiting for response
                     if state.stop_requested:
@@ -423,11 +422,6 @@ class MotionControlThread:
                     if response.lower() == "ok":
                         logger.debug("Motion thread: Command execution confirmed.")
                         return True
-
-                    # Timeout waiting for response
-                    if time.time() - start_time > timeout:
-                        logger.warning("Motion thread: Timeout waiting for 'ok' response")
-                        break
 
             except Exception as e:
                 error_str = str(e)
