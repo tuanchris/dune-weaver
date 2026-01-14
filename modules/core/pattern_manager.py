@@ -387,16 +387,17 @@ class MotionControlThread:
 
         while True:
             try:
-                gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 G53 X{x} Y{y} F{speed}"
-                state.conn.send(gcode + "\n")
-                logger.debug(f"Motion thread sent command: {gcode}")
+                if not state.stop_requested:
+                    gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 G53 X{x} Y{y} F{speed}"
+                    state.conn.send(gcode + "\n")
+                    logger.debug(f"Motion thread sent command: {gcode}")
 
-                while True:
-                    response = state.conn.readline()
-                    logger.debug(f"Motion thread response: {response}")
-                    if response.lower() == "ok":
-                        logger.debug("Motion thread: Command execution confirmed.")
-                        return
+                    while True:
+                        response = state.conn.readline()
+                        logger.debug(f"Motion thread response: {response}")
+                        if response.lower() == "ok":
+                            logger.debug("Motion thread: Command execution confirmed.")
+                            return
 
             except Exception as e:
                 error_str = str(e)
