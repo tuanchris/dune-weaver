@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
+import { apiClient } from '@/lib/apiClient'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -82,11 +83,10 @@ export function LEDPage() {
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        const response = await fetch('/get_led_config')
-        const data = await response.json()
+        const data = await apiClient.get<{ provider?: string; wled_ip?: string; dw_led_num_leds?: number; dw_led_gpio_pin?: number }>('/get_led_config')
         // Map backend response fields to our interface
         setLedConfig({
-          provider: data.provider || 'none',
+          provider: (data.provider as LedConfig['provider']) || 'none',
           wled_ip: data.wled_ip,
           num_leds: data.dw_led_num_leds,
           gpio_pin: data.dw_led_gpio_pin,
@@ -112,8 +112,7 @@ export function LEDPage() {
 
   const fetchDWLedsStatus = async () => {
     try {
-      const response = await fetch('/api/dw_leds/status')
-      const data = await response.json()
+      const data = await apiClient.get<DWLedsStatus>('/api/dw_leds/status')
       setDwStatus(data)
       if (data.connected) {
         setBrightness(data.brightness || 35)
@@ -134,12 +133,10 @@ export function LEDPage() {
 
   const fetchEffectsAndPalettes = async () => {
     try {
-      const [effectsRes, palettesRes] = await Promise.all([
-        fetch('/api/dw_leds/effects'),
-        fetch('/api/dw_leds/palettes'),
+      const [effectsData, palettesData] = await Promise.all([
+        apiClient.get<{ effects?: [number, string][] }>('/api/dw_leds/effects'),
+        apiClient.get<{ palettes?: [number, string][] }>('/api/dw_leds/palettes'),
       ])
-      const effectsData = await effectsRes.json()
-      const palettesData = await palettesRes.json()
 
       if (effectsData.effects) {
         const sorted = [...effectsData.effects].sort((a, b) => a[1].localeCompare(b[1]))
@@ -156,8 +153,7 @@ export function LEDPage() {
 
   const fetchEffectSettings = async () => {
     try {
-      const response = await fetch('/api/dw_leds/get_effect_settings')
-      const data = await response.json()
+      const data = await apiClient.get<{ idle_effect?: EffectSettings; playing_effect?: EffectSettings }>('/api/dw_leds/get_effect_settings')
       setIdleEffect(data.idle_effect || null)
       setPlayingEffect(data.playing_effect || null)
     } catch (error) {
@@ -167,8 +163,7 @@ export function LEDPage() {
 
   const fetchIdleTimeout = async () => {
     try {
-      const response = await fetch('/api/dw_leds/idle_timeout')
-      const data = await response.json()
+      const data = await apiClient.get<{ enabled?: boolean; minutes?: number }>('/api/dw_leds/idle_timeout')
       setIdleTimeoutEnabled(data.enabled || false)
       setIdleTimeoutMinutes(data.minutes || 30)
     } catch (error) {
@@ -178,19 +173,14 @@ export function LEDPage() {
 
   const handlePowerToggle = async () => {
     try {
-      const response = await fetch('/api/dw_leds/power', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state: 2 }), // Toggle
-      })
-      const data = await response.json()
+      const data = await apiClient.post<{ connected?: boolean; power_on?: boolean; error?: string }>('/api/dw_leds/power', { state: 2 })
       if (data.connected) {
         toast.success(`Power ${data.power_on ? 'ON' : 'OFF'}`)
         await fetchDWLedsStatus()
       } else {
         toast.error(data.error || 'Failed to toggle power')
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to toggle power')
     }
   }
@@ -201,16 +191,11 @@ export function LEDPage() {
 
   const handleBrightnessCommit = async (value: number[]) => {
     try {
-      const response = await fetch('/api/dw_leds/brightness', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: value[0] }),
-      })
-      const data = await response.json()
+      const data = await apiClient.post<{ connected?: boolean }>('/api/dw_leds/brightness', { value: value[0] })
       if (data.connected) {
         toast.success(`Brightness: ${value[0]}%`)
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to set brightness')
     }
   }
@@ -221,13 +206,9 @@ export function LEDPage() {
 
   const handleSpeedCommit = async (value: number[]) => {
     try {
-      await fetch('/api/dw_leds/speed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ speed: value[0] }),
-      })
+      await apiClient.post('/api/dw_leds/speed', { speed: value[0] })
       toast.success(`Speed: ${value[0]}`)
-    } catch (error) {
+    } catch {
       toast.error('Failed to set speed')
     }
   }
@@ -238,13 +219,9 @@ export function LEDPage() {
 
   const handleIntensityCommit = async (value: number[]) => {
     try {
-      await fetch('/api/dw_leds/intensity', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intensity: value[0] }),
-      })
+      await apiClient.post('/api/dw_leds/intensity', { intensity: value[0] })
       toast.success(`Intensity: ${value[0]}`)
-    } catch (error) {
+    } catch {
       toast.error('Failed to set intensity')
     }
   }
@@ -252,19 +229,15 @@ export function LEDPage() {
   const handleEffectChange = async (value: string) => {
     setSelectedEffect(value)
     try {
-      const response = await fetch('/api/dw_leds/effect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ effect_id: parseInt(value) }),
-      })
-      const data = await response.json()
+      const data = await apiClient.post<{ connected?: boolean; power_on?: boolean }>('/api/dw_leds/effect', { effect_id: parseInt(value) })
       if (data.connected) {
         toast.success('Effect changed')
         if (data.power_on !== undefined) {
-          setDwStatus((prev) => prev ? { ...prev, power_on: data.power_on } : null)
+          const powerOn = data.power_on
+          setDwStatus((prev) => prev ? { ...prev, power_on: powerOn } : null)
         }
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to set effect')
     }
   }
@@ -272,16 +245,11 @@ export function LEDPage() {
   const handlePaletteChange = async (value: string) => {
     setSelectedPalette(value)
     try {
-      const response = await fetch('/api/dw_leds/palette', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ palette_id: parseInt(value) }),
-      })
-      const data = await response.json()
+      const data = await apiClient.post<{ connected?: boolean }>('/api/dw_leds/palette', { palette_id: parseInt(value) })
       if (data.connected) {
         toast.success('Palette changed')
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to set palette')
     }
   }
@@ -303,11 +271,7 @@ export function LEDPage() {
       const payload: Record<string, number[]> = {}
       payload[`color${slot}`] = hexToRgb(value)
 
-      await fetch('/api/dw_leds/colors', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
+      await apiClient.post('/api/dw_leds/colors', payload)
     } catch (error) {
       console.error('Failed to set color:', error)
     }
@@ -326,29 +290,20 @@ export function LEDPage() {
         color3,
       }
 
-      await fetch('/api/dw_leds/save_effect_settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
-      })
-
+      await apiClient.post('/api/dw_leds/save_effect_settings', settings)
       toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} effect saved`)
       await fetchEffectSettings()
-    } catch (error) {
+    } catch {
       toast.error(`Failed to save ${type} effect`)
     }
   }
 
   const clearEffectSettings = async (type: 'idle' | 'playing') => {
     try {
-      await fetch('/api/dw_leds/clear_effect_settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type }),
-      })
+      await apiClient.post('/api/dw_leds/clear_effect_settings', { type })
       toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} effect cleared`)
       await fetchEffectSettings()
-    } catch (error) {
+    } catch {
       toast.error(`Failed to clear ${type} effect`)
     }
   }
@@ -357,13 +312,9 @@ export function LEDPage() {
     const finalEnabled = enabled !== undefined ? enabled : idleTimeoutEnabled
     const finalMinutes = minutes !== undefined ? minutes : idleTimeoutMinutes
     try {
-      await fetch('/api/dw_leds/idle_timeout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: finalEnabled, minutes: finalMinutes }),
-      })
+      await apiClient.post('/api/dw_leds/idle_timeout', { enabled: finalEnabled, minutes: finalMinutes })
       toast.success(`Idle timeout ${finalEnabled ? 'enabled' : 'disabled'}`)
-    } catch (error) {
+    } catch {
       toast.error('Failed to save idle timeout')
     }
   }

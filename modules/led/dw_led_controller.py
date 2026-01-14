@@ -586,8 +586,8 @@ def effect_idle(controller: DWLEDController, effect_settings: Optional[dict] = N
                     color3=(r3, g3, b3)
                 )
         else:
-            # Default: Rainbow effect with current controller parameters
-            controller.set_effect(8, speed=controller._speed, intensity=controller._intensity)
+            # Default: Rainbow effect with speed 60 for smoother animation
+            controller.set_effect(8, speed=60, intensity=controller._intensity)
             controller.set_colors(
                 color1=controller._color1,
                 color2=controller._color2,

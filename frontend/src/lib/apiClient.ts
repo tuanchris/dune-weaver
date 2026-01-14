@@ -117,8 +117,8 @@ class ApiClient {
   /**
    * DELETE request
    */
-  async delete<T = unknown>(endpoint: string, signal?: AbortSignal): Promise<T> {
-    return this.request<T>(endpoint, { method: 'DELETE', signal })
+  async delete<T = unknown>(endpoint: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+    return this.request<T>(endpoint, { method: 'DELETE', body, signal })
   }
 
   /**

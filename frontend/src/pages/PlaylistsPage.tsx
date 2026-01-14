@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
+import { apiClient } from '@/lib/apiClient'
 import {
   initPreviewCacheDB,
   getPreviewsFromCache,
@@ -166,8 +167,7 @@ export function PlaylistsPage() {
   const fetchPlaylists = async () => {
     setIsLoadingPlaylists(true)
     try {
-      const response = await fetch('/list_all_playlists')
-      const data = await response.json()
+      const data = await apiClient.get<string[]>('/list_all_playlists')
       // Backend returns array directly, not { playlists: [...] }
       setPlaylists(Array.isArray(data) ? data : [])
     } catch (error) {
@@ -180,9 +180,7 @@ export function PlaylistsPage() {
 
   const fetchPlaylistPatterns = async (name: string) => {
     try {
-      const response = await fetch(`/get_playlist?name=${encodeURIComponent(name)}`)
-      if (!response.ok) throw new Error('Playlist not found')
-      const data = await response.json()
+      const data = await apiClient.get<{ files: string[] }>(`/get_playlist?name=${encodeURIComponent(name)}`)
       setPlaylistPatterns(data.files || [])
 
       // Load previews for playlist patterns
@@ -198,8 +196,7 @@ export function PlaylistsPage() {
 
   const fetchAllPatterns = async () => {
     try {
-      const response = await fetch('/list_theta_rho_files_with_metadata')
-      const data = await response.json()
+      const data = await apiClient.get<PatternMetadata[]>('/list_theta_rho_files_with_metadata')
       setAllPatterns(data)
     } catch (error) {
       console.error('Error fetching patterns:', error)
@@ -232,12 +229,7 @@ export function PlaylistsPage() {
       const batch = paths.slice(i, i + BATCH_SIZE)
 
       try {
-        const response = await fetch('/preview_thr_batch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ file_names: batch }),
-        })
-        const data = await response.json()
+        const data = await apiClient.post<Record<string, PreviewData>>('/preview_thr_batch', { file_names: batch })
 
         const newPreviews: Record<string, PreviewData> = {}
         for (const [path, previewData] of Object.entries(data)) {
@@ -292,21 +284,12 @@ export function PlaylistsPage() {
 
     const name = newPlaylistName.trim()
     try {
-      const response = await fetch('/create_playlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playlist_name: name, files: [] }),
-      })
-      if (response.ok) {
-        toast.success('Playlist created')
-        setIsCreateModalOpen(false)
-        setNewPlaylistName('')
-        await fetchPlaylists()
-        handleSelectPlaylist(name)
-      } else {
-        const data = await response.json()
-        throw new Error(data.detail || 'Failed to create playlist')
-      }
+      await apiClient.post('/create_playlist', { playlist_name: name, files: [] })
+      toast.success('Playlist created')
+      setIsCreateModalOpen(false)
+      setNewPlaylistName('')
+      await fetchPlaylists()
+      handleSelectPlaylist(name)
     } catch (error) {
       console.error('Create playlist error:', error)
       toast.error(error instanceof Error ? error.message : 'Failed to create playlist')
@@ -317,20 +300,14 @@ export function PlaylistsPage() {
     if (!playlistToRename || !newPlaylistName.trim()) return
 
     try {
-      const response = await fetch('/rename_playlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ old_name: playlistToRename, new_name: newPlaylistName.trim() }),
-      })
-      if (response.ok) {
-        toast.success('Playlist renamed')
-        setIsRenameModalOpen(false)
-        setNewPlaylistName('')
-        setPlaylistToRename(null)
-        fetchPlaylists()
-        if (selectedPlaylist === playlistToRename) {
-          setSelectedPlaylist(newPlaylistName.trim())
-        }
+      await apiClient.post('/rename_playlist', { old_name: playlistToRename, new_name: newPlaylistName.trim() })
+      toast.success('Playlist renamed')
+      setIsRenameModalOpen(false)
+      setNewPlaylistName('')
+      setPlaylistToRename(null)
+      fetchPlaylists()
+      if (selectedPlaylist === playlistToRename) {
+        setSelectedPlaylist(newPlaylistName.trim())
       }
     } catch (error) {
       toast.error('Failed to rename playlist')
@@ -341,18 +318,12 @@ export function PlaylistsPage() {
     if (!confirm(`Delete playlist "${name}"?`)) return
 
     try {
-      const response = await fetch('/delete_playlist', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playlist_name: name }),
-      })
-      if (response.ok) {
-        toast.success('Playlist deleted')
-        fetchPlaylists()
-        if (selectedPlaylist === name) {
-          setSelectedPlaylist(null)
-          setPlaylistPatterns([])
-        }
+      await apiClient.delete('/delete_playlist', { playlist_name: name })
+      toast.success('Playlist deleted')
+      fetchPlaylists()
+      if (selectedPlaylist === name) {
+        setSelectedPlaylist(null)
+        setPlaylistPatterns([])
       }
     } catch (error) {
       toast.error('Failed to delete playlist')
@@ -364,15 +335,9 @@ export function PlaylistsPage() {
 
     const newPatterns = playlistPatterns.filter(p => p !== patternPath)
     try {
-      const response = await fetch('/modify_playlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playlist_name: selectedPlaylist, files: newPatterns }),
-      })
-      if (response.ok) {
-        setPlaylistPatterns(newPatterns)
-        toast.success('Pattern removed')
-      }
+      await apiClient.post('/modify_playlist', { playlist_name: selectedPlaylist, files: newPatterns })
+      setPlaylistPatterns(newPatterns)
+      toast.success('Pattern removed')
     } catch (error) {
       toast.error('Failed to remove pattern')
     }
@@ -396,17 +361,11 @@ export function PlaylistsPage() {
 
     const newPatterns = Array.from(selectedPatternPaths)
     try {
-      const response = await fetch('/modify_playlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playlist_name: selectedPlaylist, files: newPatterns }),
-      })
-      if (response.ok) {
-        setPlaylistPatterns(newPatterns)
-        setIsPickerOpen(false)
-        toast.success('Playlist updated')
-        loadPreviewsForPaths(newPatterns)
-      }
+      await apiClient.post('/modify_playlist', { playlist_name: selectedPlaylist, files: newPatterns })
+      setPlaylistPatterns(newPatterns)
+      setIsPickerOpen(false)
+      toast.success('Playlist updated')
+      loadPreviewsForPaths(newPatterns)
     } catch (error) {
       toast.error('Failed to update playlist')
     }
@@ -430,23 +389,14 @@ export function PlaylistsPage() {
 
     setIsRunning(true)
     try {
-      const response = await fetch('/run_playlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          playlist_name: selectedPlaylist,
-          run_mode: runMode === 'indefinite' ? 'indefinite' : 'single',
-          pause_time: getPauseTimeInSeconds(),
-          clear_pattern: clearPattern,
-          shuffle: shuffle,
-        }),
+      await apiClient.post('/run_playlist', {
+        playlist_name: selectedPlaylist,
+        run_mode: runMode === 'indefinite' ? 'indefinite' : 'single',
+        pause_time: getPauseTimeInSeconds(),
+        clear_pattern: clearPattern,
+        shuffle: shuffle,
       })
-      if (response.ok) {
-        toast.success(`Started playlist: ${selectedPlaylist}`)
-      } else {
-        const data = await response.json()
-        throw new Error(data.detail || 'Failed to run playlist')
-      }
+      toast.success(`Started playlist: ${selectedPlaylist}`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to run playlist')
     } finally {

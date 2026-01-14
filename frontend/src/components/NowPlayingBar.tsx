@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Input } from '@/components/ui/input'
+import { apiClient } from '@/lib/apiClient'
 
 type Coordinate = [number, number]
 
@@ -156,13 +157,19 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
   const lastProgressTimeRef = useRef<number>(0)
   const smoothProgressRef = useRef<number>(0)
 
-  // Connect to status WebSocket
+  // Connect to status WebSocket (reconnects when table changes)
   useEffect(() => {
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
+    let shouldReconnect = true
+
     const connectWebSocket = () => {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const ws = new WebSocket(`${protocol}//${window.location.host}/ws/status`)
+      if (!shouldReconnect) return
+
+      const wsUrl = apiClient.getWebSocketUrl('/ws/status')
+      const ws = new WebSocket(wsUrl)
 
       ws.onmessage = (event) => {
+        if (!shouldReconnect) return
         try {
           const message = JSON.parse(event.data)
           if (message.type === 'status_update' && message.data) {
@@ -174,7 +181,8 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
       }
 
       ws.onclose = () => {
-        setTimeout(connectWebSocket, 3000)
+        if (!shouldReconnect) return
+        reconnectTimeout = setTimeout(connectWebSocket, 3000)
       }
 
       wsRef.current = ws
@@ -182,7 +190,28 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
 
     connectWebSocket()
 
+    // Reconnect when base URL changes (table switch)
+    const unsubscribe = apiClient.onBaseUrlChange(() => {
+      // Disable reconnect for old connection
+      shouldReconnect = false
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout)
+        reconnectTimeout = null
+      }
+      if (wsRef.current) {
+        wsRef.current.close()
+      }
+      // Re-enable and connect to new URL
+      shouldReconnect = true
+      connectWebSocket()
+    })
+
     return () => {
+      shouldReconnect = false
+      unsubscribe()
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout)
+      }
       if (wsRef.current) {
         wsRef.current.close()
       }
@@ -191,21 +220,25 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
 
   // Fetch preview images for current and next patterns
   const [nextPreviewUrl, setNextPreviewUrl] = useState<string | null>(null)
+  const lastFetchedFilesRef = useRef<string>('')
 
   useEffect(() => {
+    // Don't fetch if not visible
+    if (!isVisible) return
+
     const currentFile = status?.current_file
     const nextFile = status?.playlist?.next_file
 
     // Build list of files to fetch
     const filesToFetch = [currentFile, nextFile].filter(Boolean) as string[]
+    const fetchKey = filesToFetch.join('|')
+
+    // Skip if we already fetched these exact files
+    if (fetchKey === lastFetchedFilesRef.current) return
+    lastFetchedFilesRef.current = fetchKey
 
     if (filesToFetch.length > 0) {
-      fetch('/preview_thr_batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_names: filesToFetch }),
-      })
-        .then((r) => r.json())
+      apiClient.post<Record<string, { image_data?: string }>>('/preview_thr_batch', { file_names: filesToFetch })
         .then((data) => {
           if (currentFile && data[currentFile]?.image_data) {
             setPreviewUrl(data[currentFile].image_data)
@@ -226,7 +259,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
       setPreviewUrl(null)
       setNextPreviewUrl(null)
     }
-  }, [status?.current_file, status?.playlist?.next_file])
+  }, [isVisible, status?.current_file, status?.playlist?.next_file])
 
   // Canvas drawing functions for real-time preview
   const polarToCartesian = useCallback((theta: number, rho: number, size: number) => {
@@ -384,12 +417,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
     lastFileRef.current = currentFile
     lastDrawnIndexRef.current = -1
 
-    fetch('/get_theta_rho_coordinates', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ file_name: currentFile }),
-    })
-      .then((r) => r.json())
+    apiClient.post<{ coordinates?: Coordinate[] }>('/get_theta_rho_coordinates', { file_name: currentFile })
       .then((data) => {
         if (data.coordinates && Array.isArray(data.coordinates)) {
           setCoordinates(data.coordinates)
@@ -480,8 +508,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
   const handlePause = async () => {
     try {
       const endpoint = status?.is_paused ? '/resume_execution' : '/pause_execution'
-      const response = await fetch(endpoint, { method: 'POST' })
-      if (!response.ok) throw new Error()
+      await apiClient.post(endpoint)
       toast.success(status?.is_paused ? 'Resumed' : 'Paused')
     } catch {
       toast.error('Failed to toggle pause')
@@ -490,8 +517,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
 
   const handleStop = async () => {
     try {
-      const response = await fetch('/stop_execution', { method: 'POST' })
-      if (!response.ok) throw new Error()
+      await apiClient.post('/stop_execution')
       toast.success('Stopped')
     } catch {
       toast.error('Failed to stop')
@@ -500,8 +526,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
 
   const handleSkip = async () => {
     try {
-      const response = await fetch('/skip_pattern', { method: 'POST' })
-      if (!response.ok) throw new Error()
+      await apiClient.post('/skip_pattern')
       toast.success('Skipping to next pattern')
     } catch {
       toast.error('Failed to skip')
@@ -517,12 +542,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
       return
     }
     try {
-      const response = await fetch('/set_speed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ speed }),
-      })
-      if (!response.ok) throw new Error()
+      await apiClient.post('/set_speed', { speed })
       setSpeedInput('')
       toast.success(`Speed set to ${speed} mm/s`)
     } catch {

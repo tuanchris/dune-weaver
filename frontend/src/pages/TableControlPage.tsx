@@ -49,25 +49,38 @@ export function TableControlPage() {
 
   // Connect to status WebSocket to get current speed and playback status
   useEffect(() => {
-    const ws = new WebSocket(apiClient.getWebSocketUrl('/ws/status'))
+    let ws: WebSocket | null = null
 
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data)
-        if (message.type === 'status_update' && message.data) {
-          if (message.data.speed !== null && message.data.speed !== undefined) {
-            setCurrentSpeed(message.data.speed)
+    const connect = () => {
+      ws = new WebSocket(apiClient.getWebSocketUrl('/ws/status'))
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data)
+          if (message.type === 'status_update' && message.data) {
+            if (message.data.speed !== null && message.data.speed !== undefined) {
+              setCurrentSpeed(message.data.speed)
+            }
+            // Track if a pattern is running or paused
+            setIsPatternRunning(message.data.is_running || message.data.is_paused)
           }
-          // Track if a pattern is running or paused
-          setIsPatternRunning(message.data.is_running || message.data.is_paused)
+        } catch (error) {
+          console.error('Failed to parse status:', error)
         }
-      } catch (error) {
-        console.error('Failed to parse status:', error)
       }
     }
 
+    connect()
+
+    // Reconnect when table changes
+    const unsubscribe = apiClient.onBaseUrlChange(() => {
+      if (ws) ws.close()
+      connect()
+    })
+
     return () => {
-      ws.close()
+      unsubscribe()
+      if (ws) ws.close()
     }
   }, [])
 
@@ -78,13 +91,8 @@ export function TableControlPage() {
   ) => {
     setIsLoading(action)
     try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        ...(body && { body: JSON.stringify(body) }),
-      })
-      const data = await response.json()
-      if (data.success || response.ok) {
+      const data = await apiClient.post<{ success?: boolean; detail?: string }>(endpoint, body)
+      if (data.success !== false) {
         return { success: true, data }
       }
       throw new Error(data.detail || 'Action failed')

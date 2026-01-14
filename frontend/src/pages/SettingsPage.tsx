@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
+import { apiClient } from '@/lib/apiClient'
 import { useOnBackendConnected } from '@/hooks/useBackendConnection'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -240,8 +241,7 @@ export function SettingsPage() {
 
   const fetchPatternFiles = async () => {
     try {
-      const response = await fetch('/list_theta_rho_files')
-      const data = await response.json()
+      const data = await apiClient.get<string[]>('/list_theta_rho_files')
       // Response is a flat array of file paths
       setPatternFiles(Array.isArray(data) ? data : [])
     } catch (error) {
@@ -251,8 +251,7 @@ export function SettingsPage() {
 
   const fetchVersionInfo = async () => {
     try {
-      const response = await fetch('/api/version')
-      const data = await response.json()
+      const data = await apiClient.get<{ current: string; latest: string; update_available: boolean }>('/api/version')
       setVersionInfo(data)
     } catch (error) {
       console.error('Failed to fetch version info:', error)
@@ -291,13 +290,11 @@ export function SettingsPage() {
   const fetchPorts = async () => {
     try {
       // Fetch available ports
-      const portsResponse = await fetch('/list_serial_ports')
-      const portsData = await portsResponse.json()
+      const portsData = await apiClient.get<string[]>('/list_serial_ports')
       setPorts(portsData || [])
 
       // Fetch connection status
-      const statusResponse = await fetch('/serial_status')
-      const statusData = await statusResponse.json()
+      const statusData = await apiClient.get<{ connected: boolean; port?: string }>('/serial_status')
       setIsConnected(statusData.connected || false)
       setConnectionStatus(statusData.connected ? 'Connected' : 'Disconnected')
       if (statusData.port) {
@@ -320,8 +317,8 @@ export function SettingsPage() {
 
   const fetchSettings = async () => {
     try {
-      const response = await fetch('/api/settings')
-      const data = await response.json()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = await apiClient.get<Record<string, any>>('/api/settings')
       // Map the nested API response to our flat Settings interface
       setSettings({
         app_name: data.app?.name,
@@ -390,8 +387,8 @@ export function SettingsPage() {
 
   const fetchLedConfig = async () => {
     try {
-      const response = await fetch('/get_led_config')
-      const data = await response.json()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = await apiClient.get<Record<string, any>>('/get_led_config')
       setLedConfig({
         provider: data.provider || 'none',
         wled_ip: data.wled_ip,
@@ -406,8 +403,7 @@ export function SettingsPage() {
 
   const fetchPlaylists = async () => {
     try {
-      const response = await fetch('/list_all_playlists')
-      const data = await response.json()
+      const data = await apiClient.get('/list_all_playlists')
       // Backend returns array directly, not { playlists: [...] }
       setPlaylists(Array.isArray(data) ? data : [])
     } catch (error) {
@@ -422,12 +418,7 @@ export function SettingsPage() {
     }
     setIsLoading('connect')
     try {
-      const response = await fetch('/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ port: selectedPort }),
-      })
-      const data = await response.json()
+      const data = await apiClient.post<{ success?: boolean; message?: string }>('/connect', { port: selectedPort })
       if (data.success) {
         setIsConnected(true)
         setConnectionStatus(`Connected to ${selectedPort}`)
@@ -445,8 +436,7 @@ export function SettingsPage() {
   const handleDisconnect = async () => {
     setIsLoading('disconnect')
     try {
-      const response = await fetch('/disconnect', { method: 'POST' })
-      const data = await response.json()
+      const data = await apiClient.post<{ success?: boolean }>('/disconnect')
       if (data.success) {
         setIsConnected(false)
         setConnectionStatus('Disconnected')
@@ -462,20 +452,14 @@ export function SettingsPage() {
   const handleSavePreferredPort = async () => {
     setIsLoading('preferredPort')
     try {
-      const response = await fetch('/api/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          connection: { preferred_port: settings.preferred_port || null },
-        }),
+      await apiClient.patch('/api/settings', {
+        connection: { preferred_port: settings.preferred_port || null },
       })
-      if (response.ok) {
-        toast.success(
-          settings.preferred_port
-            ? `Auto-connect set to ${settings.preferred_port}`
-            : 'Auto-connect disabled'
-        )
-      }
+      toast.success(
+        settings.preferred_port
+          ? `Auto-connect set to ${settings.preferred_port}`
+          : 'Auto-connect disabled'
+      )
     } catch (error) {
       toast.error('Failed to save preferred port')
     } finally {
@@ -486,14 +470,8 @@ export function SettingsPage() {
   const handleSaveAppName = async () => {
     setIsLoading('appName')
     try {
-      const response = await fetch('/api/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ app: { name: settings.app_name } }),
-      })
-      if (response.ok) {
-        toast.success('App name saved. Refresh to see changes.')
-      }
+      await apiClient.patch('/api/settings', { app: { name: settings.app_name } })
+      toast.success('App name saved. Refresh to see changes.')
     } catch (error) {
       toast.error('Failed to save app name')
     } finally {
@@ -527,23 +505,10 @@ export function SettingsPage() {
 
     setIsLoading('logo')
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-
-      const response = await fetch('/api/upload-logo', {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setSettings({ ...settings, custom_logo: data.filename })
-        updateBranding(data.filename)
-        toast.success('Logo uploaded!')
-      } else {
-        const data = await response.json()
-        throw new Error(data.detail || 'Upload failed')
-      }
+      const data = await apiClient.uploadFile('/api/upload-logo', file, 'file') as { filename: string }
+      setSettings({ ...settings, custom_logo: data.filename })
+      updateBranding(data.filename)
+      toast.success('Logo uploaded!')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to upload logo')
     } finally {
@@ -558,12 +523,10 @@ export function SettingsPage() {
 
     setIsLoading('logo')
     try {
-      const response = await fetch('/api/custom-logo', { method: 'DELETE' })
-      if (response.ok) {
-        setSettings({ ...settings, custom_logo: undefined })
-        updateBranding(null)
-        toast.success('Logo removed!')
-      }
+      await apiClient.delete('/api/custom-logo')
+      setSettings({ ...settings, custom_logo: undefined })
+      updateBranding(null)
+      toast.success('Logo removed!')
     } catch (error) {
       toast.error('Failed to remove logo')
     } finally {
@@ -575,23 +538,14 @@ export function SettingsPage() {
     setIsLoading('led')
     try {
       // Use the /set_led_config endpoint (deprecated but still works)
-      const response = await fetch('/set_led_config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: ledConfig.provider,
-          ip_address: ledConfig.wled_ip,
-          num_leds: ledConfig.num_leds,
-          gpio_pin: ledConfig.gpio_pin,
-          pixel_order: ledConfig.pixel_order,
-        }),
+      await apiClient.post('/set_led_config', {
+        provider: ledConfig.provider,
+        ip_address: ledConfig.wled_ip,
+        num_leds: ledConfig.num_leds,
+        gpio_pin: ledConfig.gpio_pin,
+        pixel_order: ledConfig.pixel_order,
       })
-      if (response.ok) {
-        toast.success('LED configuration saved')
-      } else {
-        const data = await response.json()
-        throw new Error(data.detail || 'Failed to save LED config')
-      }
+      toast.success('LED configuration saved')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to save LED config')
     } finally {
@@ -602,26 +556,20 @@ export function SettingsPage() {
   const handleSaveMqttConfig = async () => {
     setIsLoading('mqtt')
     try {
-      const response = await fetch('/api/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mqtt: {
-            enabled: mqttConfig.enabled,
-            broker: mqttConfig.broker,
-            port: mqttConfig.port,
-            username: mqttConfig.username,
-            password: mqttConfig.password,
-            device_name: mqttConfig.device_name,
-            device_id: mqttConfig.device_id,
-            client_id: mqttConfig.client_id,
-            discovery_prefix: mqttConfig.discovery_prefix,
-          },
-        }),
+      await apiClient.patch('/api/settings', {
+        mqtt: {
+          enabled: mqttConfig.enabled,
+          broker: mqttConfig.broker,
+          port: mqttConfig.port,
+          username: mqttConfig.username,
+          password: mqttConfig.password,
+          device_name: mqttConfig.device_name,
+          device_id: mqttConfig.device_id,
+          client_id: mqttConfig.client_id,
+          discovery_prefix: mqttConfig.discovery_prefix,
+        },
       })
-      if (response.ok) {
-        toast.success('MQTT configuration saved. Restart required.')
-      }
+      toast.success('MQTT configuration saved. Restart required.')
     } catch (error) {
       toast.error('Failed to save MQTT config')
     } finally {
@@ -636,17 +584,12 @@ export function SettingsPage() {
     }
     setIsLoading('mqttTest')
     try {
-      const response = await fetch('/api/mqtt-test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          broker: mqttConfig.broker,
-          port: mqttConfig.port || 1883,
-          username: mqttConfig.username || '',
-          password: mqttConfig.password || '',
-        }),
+      const data = await apiClient.post<{ success?: boolean; error?: string }>('/api/mqtt-test', {
+        broker: mqttConfig.broker,
+        port: mqttConfig.port || 1883,
+        username: mqttConfig.username || '',
+        password: mqttConfig.password || '',
       })
-      const data = await response.json()
       if (data.success) {
         toast.success('MQTT connection successful!')
       } else {
@@ -662,18 +605,12 @@ export function SettingsPage() {
   const handleSaveMachineSettings = async () => {
     setIsLoading('machine')
     try {
-      const response = await fetch('/api/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          machine: {
-            table_type_override: settings.table_type_override || '',
-          },
-        }),
+      await apiClient.patch('/api/settings', {
+        machine: {
+          table_type_override: settings.table_type_override || '',
+        },
       })
-      if (response.ok) {
-        toast.success('Machine settings saved')
-      }
+      toast.success('Machine settings saved')
     } catch (error) {
       toast.error('Failed to save machine settings')
     } finally {
@@ -684,21 +621,15 @@ export function SettingsPage() {
   const handleSaveHomingConfig = async () => {
     setIsLoading('homing')
     try {
-      const response = await fetch('/api/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          homing: {
-            mode: settings.homing_mode,
-            angular_offset_degrees: settings.angular_offset,
-            auto_home_enabled: settings.auto_home_enabled,
-            auto_home_after_patterns: settings.auto_home_after_patterns,
-          },
-        }),
+      await apiClient.patch('/api/settings', {
+        homing: {
+          mode: settings.homing_mode,
+          angular_offset_degrees: settings.angular_offset,
+          auto_home_enabled: settings.auto_home_enabled,
+          auto_home_after_patterns: settings.auto_home_after_patterns,
+        },
       })
-      if (response.ok) {
-        toast.success('Homing configuration saved')
-      }
+      toast.success('Homing configuration saved')
     } catch (error) {
       toast.error('Failed to save homing configuration')
     } finally {
@@ -709,21 +640,15 @@ export function SettingsPage() {
   const handleSaveClearingSettings = async () => {
     setIsLoading('clearing')
     try {
-      const response = await fetch('/api/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          patterns: {
-            // Send 0 to indicate "reset to default" - backend interprets 0 or negative as None
-            clear_pattern_speed: settings.clear_pattern_speed ?? 0,
-            custom_clear_from_in: settings.custom_clear_from_in || null,
-            custom_clear_from_out: settings.custom_clear_from_out || null,
-          },
-        }),
+      await apiClient.patch('/api/settings', {
+        patterns: {
+          // Send 0 to indicate "reset to default" - backend interprets 0 or negative as None
+          clear_pattern_speed: settings.clear_pattern_speed ?? 0,
+          custom_clear_from_in: settings.custom_clear_from_in || null,
+          custom_clear_from_out: settings.custom_clear_from_out || null,
+        },
       })
-      if (response.ok) {
-        toast.success('Clearing settings saved')
-      }
+      toast.success('Clearing settings saved')
     } catch (error) {
       toast.error('Failed to save clearing settings')
     } finally {
@@ -736,19 +661,13 @@ export function SettingsPage() {
     try {
       // Convert pause value + unit to seconds
       const pauseTimeSeconds = displayPauseToSeconds(autoPlayPauseValue, autoPlayPauseUnit)
-      const response = await fetch('/api/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          auto_play: {
-            ...autoPlaySettings,
-            pause_time: pauseTimeSeconds,
-          },
-        }),
+      await apiClient.patch('/api/settings', {
+        auto_play: {
+          ...autoPlaySettings,
+          pause_time: pauseTimeSeconds,
+        },
       })
-      if (response.ok) {
-        toast.success('Auto-play settings saved')
-      }
+      toast.success('Auto-play settings saved')
     } catch (error) {
       toast.error('Failed to save auto-play settings')
     } finally {
@@ -759,16 +678,10 @@ export function SettingsPage() {
   const handleSaveStillSandsSettings = async () => {
     setIsLoading('stillsands')
     try {
-      const response = await fetch('/api/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          scheduled_pause: stillSandsSettings,
-        }),
+      await apiClient.patch('/api/settings', {
+        scheduled_pause: stillSandsSettings,
       })
-      if (response.ok) {
-        toast.success('Still Sands settings saved')
-      }
+      toast.success('Still Sands settings saved')
     } catch (error) {
       toast.error('Failed to save Still Sands settings')
     } finally {

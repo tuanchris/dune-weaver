@@ -1,4 +1,6 @@
 // IndexedDB cache for preview images - matches original implementation
+import { apiClient } from './apiClient'
+
 const PREVIEW_CACHE_DB_NAME = 'dune_weaver_previews'
 const PREVIEW_CACHE_DB_VERSION = 1
 const PREVIEW_CACHE_STORE_NAME = 'previews'
@@ -328,8 +330,7 @@ export async function cacheAllPreviews(
     await initPreviewCacheDB()
 
     // Fetch all patterns
-    const response = await fetch('/list_theta_rho_files_with_metadata')
-    const patterns: { path: string }[] = await response.json()
+    const patterns: { path: string }[] = await apiClient.get('/list_theta_rho_files_with_metadata')
     const allPaths = patterns.map((p) => p.path)
 
     // Check which patterns are already cached
@@ -351,19 +352,11 @@ export async function cacheAllPreviews(
       const batchPatterns = uncachedPatterns.slice(batchStart, batchEnd)
 
       try {
-        const batchResponse = await fetch('/preview_thr_batch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ file_names: batchPatterns }),
-        })
+        const results = await apiClient.post<Record<string, PreviewData>>('/preview_thr_batch', { file_names: batchPatterns })
 
-        if (batchResponse.ok) {
-          const results = await batchResponse.json()
-
-          for (const [path, data] of Object.entries(results)) {
-            if (data && !(data as { error?: string }).error) {
-              await savePreviewToCache(path, data as PreviewData)
-            }
+        for (const [path, data] of Object.entries(results)) {
+          if (data && !data.error) {
+            await savePreviewToCache(path, data)
           }
         }
       } catch {

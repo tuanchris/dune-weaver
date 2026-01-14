@@ -52,6 +52,7 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
   const [isDiscovering, setIsDiscovering] = useState(false)
   const [lastDiscovery, setLastDiscovery] = useState<Date | null>(null)
   const initializedRef = useRef(false)
+  const restoredActiveIdRef = useRef<string | null>(null) // Track restored selection
 
   // Load saved tables from localStorage on mount
   useEffect(() => {
@@ -70,18 +71,21 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
         if (activeId && data.tables) {
           const active = data.tables.find(t => t.id === activeId)
           if (active) {
+            restoredActiveIdRef.current = activeId // Mark that we restored a selection
             setActiveTableState(active)
-            apiClient.setBaseUrl(active.url === `http://localhost:${window.location.port || 8080}` ? '' : active.url)
+            // Only set non-empty base URL for remote tables
+            if (!active.isCurrent && active.url !== window.location.origin) {
+              apiClient.setBaseUrl(active.url)
+            }
           }
         }
       }
 
-      // Auto-discover on first load if no tables saved
-      if (!stored) {
-        discoverTables()
-      }
+      // Always refresh to ensure current table is available and up-to-date
+      discoverTables()
     } catch (e) {
       console.error('Failed to load saved tables:', e)
+      discoverTables()
     }
   }, [])
 
@@ -105,101 +109,86 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
     }
   }, [tables, activeTable])
 
-  // Set active table and update API client
+  // Set active table - saves to localStorage and reloads page for clean state
   const setActiveTable = useCallback((table: Table) => {
-    setActiveTableState(table)
+    // Save to localStorage before reload
+    try {
+      const currentTables = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
+      const data: StoredTableData = {
+        tables: currentTables.tables || tables,
+        activeTableId: table.id,
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+      localStorage.setItem(ACTIVE_TABLE_KEY, table.id)
+    } catch (e) {
+      console.error('Failed to save table selection:', e)
+    }
 
     // Update API client base URL
-    // If the table is the current one (serving this frontend), use relative URLs
     if (table.isCurrent || table.url === window.location.origin) {
       apiClient.setBaseUrl('')
     } else {
       apiClient.setBaseUrl(table.url)
     }
-  }, [])
 
-  // Discover tables via mDNS
+    // Reload page for clean state (WebSockets, caches, etc.)
+    window.location.reload()
+  }, [tables])
+
+  // Refresh tables - ensures current table is always available
   const discoverTables = useCallback(async () => {
     setIsDiscovering(true)
 
     try {
-      // Call the discovery endpoint on the current backend
-      const response = await fetch('/api/discover-tables?timeout=3')
-      if (!response.ok) {
-        throw new Error('Discovery failed')
+      // Always fetch the current table's info
+      const infoResponse = await fetch('/api/table-info')
+      if (!infoResponse.ok) {
+        throw new Error('Failed to fetch table info')
       }
 
-      const data = await response.json()
-      const discoveredTables: Table[] = (data.tables || []).map((t: {
-        id: string
-        name: string
-        url: string
-        host?: string
-        port?: number
-        version?: string
-        is_current?: boolean
-      }) => ({
-        id: t.id,
-        name: t.name,
-        url: t.url,
-        host: t.host,
-        port: t.port,
-        version: t.version,
+      const info = await infoResponse.json()
+      const currentTable: Table = {
+        id: info.id,
+        name: info.name,
+        url: window.location.origin,
+        version: info.version,
         isOnline: true,
-        isCurrent: t.is_current || false,
-      }))
+        isCurrent: true,
+      }
 
-      // Merge with existing tables (keep manual additions)
+      // Merge with existing tables
       setTables(prev => {
-        const merged = [...discoveredTables]
+        // Start with current table
+        const merged: Table[] = [currentTable]
 
-        // Add any manually added tables that weren't discovered
+        // Add any other tables (manual additions), mark them for status check
         prev.forEach(existing => {
-          if (!merged.find(t => t.id === existing.id)) {
-            merged.push({ ...existing, isOnline: false })
+          if (existing.id !== currentTable.id && !existing.isCurrent) {
+            merged.push({ ...existing, isOnline: existing.isOnline ?? false })
           }
         })
 
         return merged
       })
 
-      // If no active table, select the current one
-      if (!activeTable) {
-        const currentTable = discoveredTables.find(t => t.isCurrent)
-        if (currentTable) {
-          setActiveTable(currentTable)
-        }
+      // If no active table AND no restored selection, select the current one
+      // Use ref to check restored selection because activeTable state may not be updated yet
+      if (!activeTable && !restoredActiveIdRef.current) {
+        setActiveTable(currentTable)
+      } else if (activeTable?.isCurrent) {
+        // Update active table name if it changed on the backend
+        setActiveTableState(prev => prev ? { ...prev, name: currentTable.name } : null)
       }
+      // Clear the restored ref after first discovery
+      restoredActiveIdRef.current = null
 
       setLastDiscovery(new Date())
     } catch (e) {
-      console.error('Table discovery failed:', e)
-
-      // If discovery fails and we have no tables, add the current backend
-      if (tables.length === 0) {
-        try {
-          const infoResponse = await fetch('/api/table-info')
-          if (infoResponse.ok) {
-            const info = await infoResponse.json()
-            const currentTable: Table = {
-              id: info.id,
-              name: info.name,
-              url: window.location.origin,
-              version: info.version,
-              isOnline: true,
-              isCurrent: true,
-            }
-            setTables([currentTable])
-            setActiveTable(currentTable)
-          }
-        } catch {
-          // Ignore
-        }
-      }
+      console.error('Table refresh failed:', e)
     } finally {
       setIsDiscovering(false)
     }
-  }, [activeTable, tables.length, setActiveTable])
+  }, [activeTable, setActiveTable])
 
   // Add a table manually by URL
   const addTable = useCallback(async (url: string, name?: string): Promise<Table | null> => {

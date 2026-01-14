@@ -156,10 +156,16 @@ export function Layout() {
 
   // Check device connection status via WebSocket
   useEffect(() => {
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
+    let isMounted = true
+
     const connectWebSocket = () => {
+      if (!isMounted) return
+
       const ws = new WebSocket(apiClient.getWebSocketUrl('/ws/status'))
 
       ws.onopen = () => {
+        if (!isMounted) return
         setIsBackendConnected(true)
         setConnectionAttempts(0)
         // Dispatch event so pages can refetch data
@@ -167,6 +173,7 @@ export function Layout() {
       }
 
       ws.onmessage = (event) => {
+        if (!isMounted) return
         try {
           const data = JSON.parse(event.data)
           // Handle status updates
@@ -214,22 +221,31 @@ export function Layout() {
       }
 
       ws.onclose = () => {
+        if (!isMounted) return
         setIsBackendConnected(false)
         setConnectionAttempts((prev) => prev + 1)
         // Reconnect after 3 seconds (don't change device status on WS disconnect)
-        setTimeout(connectWebSocket, 3000)
+        reconnectTimeout = setTimeout(connectWebSocket, 3000)
       }
 
       ws.onerror = () => {
+        if (!isMounted) return
         setIsBackendConnected(false)
       }
 
       wsRef.current = ws
     }
 
+    // Reset playing state when table changes to avoid false transitions
+    wasPlayingRef.current = null
+
     connectWebSocket()
 
     return () => {
+      isMounted = false
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout)
+      }
       if (wsRef.current) {
         wsRef.current.close()
       }
@@ -345,7 +361,8 @@ export function Layout() {
         logsWsRef.current = null
       }
     }
-  }, [isLogsOpen])
+    // Also reconnect when active table changes
+  }, [isLogsOpen, activeTable?.id])
 
   const handleOpenLogs = () => {
     setIsLogsOpen(true)
@@ -553,7 +570,7 @@ export function Layout() {
       const interval = setInterval(() => {
         addLog('INFO', `Retrying connection to WebSocket /ws/status...`)
 
-        fetch('/api/settings', { method: 'GET' })
+        apiClient.get('/api/settings')
           .then(() => {
             addLog('INFO', 'HTTP endpoint responding, waiting for WebSocket...')
           })

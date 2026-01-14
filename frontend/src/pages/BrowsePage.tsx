@@ -7,6 +7,7 @@ import {
   cacheAllPreviews,
 } from '@/lib/previewCache'
 import { fuzzyMatch } from '@/lib/utils'
+import { apiClient } from '@/lib/apiClient'
 import { useOnBackendConnected } from '@/hooks/useBackendConnection'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -135,11 +136,8 @@ export function BrowsePage() {
   // Load favorites from "Favorites" playlist
   const loadFavorites = async () => {
     try {
-      const response = await fetch('/get_playlist?name=Favorites')
-      if (response.ok) {
-        const playlist = await response.json()
-        setFavorites(new Set(playlist.files || []))
-      }
+      const playlist = await apiClient.get<{ files?: string[] }>('/get_playlist?name=Favorites')
+      setFavorites(new Set(playlist.files || []))
     } catch {
       // Favorites playlist doesn't exist yet - that's OK
     }
@@ -156,33 +154,19 @@ export function BrowsePage() {
       if (isFavorite) {
         // Remove from favorites
         newFavorites.delete(path)
-        const response = await fetch('/modify_playlist', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ playlist_name: 'Favorites', files: Array.from(newFavorites) }),
-        })
-        if (response.ok) {
-          setFavorites(newFavorites)
-          toast.success('Removed from favorites')
-        }
+        await apiClient.post('/modify_playlist', { playlist_name: 'Favorites', files: Array.from(newFavorites) })
+        setFavorites(newFavorites)
+        toast.success('Removed from favorites')
       } else {
         // Add to favorites - first check if playlist exists
         newFavorites.add(path)
-        const checkResponse = await fetch('/get_playlist?name=Favorites')
-        if (checkResponse.ok) {
+        try {
+          await apiClient.get('/get_playlist?name=Favorites')
           // Playlist exists, add to it
-          await fetch('/add_to_playlist', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ playlist_name: 'Favorites', pattern: path }),
-          })
-        } else {
+          await apiClient.post('/add_to_playlist', { playlist_name: 'Favorites', pattern: path })
+        } catch {
           // Create playlist with this pattern
-          await fetch('/create_playlist', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ playlist_name: 'Favorites', files: [path] }),
-          })
+          await apiClient.post('/create_playlist', { playlist_name: 'Favorites', files: [path] })
         }
         setFavorites(newFavorites)
         toast.success('Added to favorites')
@@ -195,8 +179,7 @@ export function BrowsePage() {
   const fetchPatterns = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch('/list_theta_rho_files_with_metadata')
-      const data = await response.json()
+      const data = await apiClient.get<PatternMetadata[]>('/list_theta_rho_files_with_metadata')
       setPatterns(data)
 
       if (data.length > 0) {
@@ -262,12 +245,7 @@ export function BrowsePage() {
           const batch = uncachedPaths.slice(i, i + BATCH_SIZE)
 
           try {
-            const response = await fetch('/preview_thr_batch', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ file_names: batch }),
-            })
-            const data = await response.json()
+            const data = await apiClient.post<Record<string, PreviewData>>('/preview_thr_batch', { file_names: batch })
 
             // Save fetched previews to IndexedDB cache
             for (const [path, previewData] of Object.entries(data)) {
@@ -295,12 +273,7 @@ export function BrowsePage() {
   const fetchCoordinates = async (filePath: string) => {
     setIsLoadingCoordinates(true)
     try {
-      const response = await fetch('/get_theta_rho_coordinates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_name: filePath }),
-      })
-      const data = await response.json()
+      const data = await apiClient.post<{ coordinates?: Coordinate[] }>('/get_theta_rho_coordinates', { file_name: filePath })
       setCoordinates(data.coordinates || [])
     } catch (error) {
       console.error('Error fetching coordinates:', error)
@@ -652,25 +625,18 @@ export function BrowsePage() {
 
     setIsRunning(true)
     try {
-      const response = await fetch('/run_theta_rho', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          file_name: selectedPattern.path,
-          pre_execution: preExecution,
-        }),
+      await apiClient.post('/run_theta_rho', {
+        file_name: selectedPattern.path,
+        pre_execution: preExecution,
       })
-
-      if (response.status === 409) {
-        toast.error('Another pattern is already running')
-      } else if (response.ok) {
-        toast.success(`Running ${selectedPattern.name}`)
-      } else {
-        const data = await response.json()
-        throw new Error(data.detail || 'Failed to run pattern')
-      }
+      toast.success(`Running ${selectedPattern.name}`)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to run pattern')
+      const message = error instanceof Error ? error.message : 'Failed to run pattern'
+      if (message.includes('409') || message.includes('already running')) {
+        toast.error('Another pattern is already running')
+      } else {
+        toast.error(message)
+      }
     } finally {
       setIsRunning(false)
     }
@@ -689,21 +655,12 @@ export function BrowsePage() {
     }
 
     try {
-      const response = await fetch('/delete_theta_rho_file', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_name: selectedPattern.path }),
-      })
-
-      if (response.ok) {
-        toast.success(`Deleted ${selectedPattern.name}`)
-        setIsPanelOpen(false)
-        setSelectedPattern(null)
-        fetchPatterns()
-      } else {
-        throw new Error('Failed to delete pattern')
-      }
-    } catch (error) {
+      await apiClient.post('/delete_theta_rho_file', { file_name: selectedPattern.path })
+      toast.success(`Deleted ${selectedPattern.name}`)
+      setIsPanelOpen(false)
+      setSelectedPattern(null)
+      fetchPatterns()
+    } catch {
       toast.error('Failed to delete pattern')
     }
   }
@@ -762,27 +719,12 @@ export function BrowsePage() {
 
     setIsUploading(true)
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-
-      const response = await fetch('/upload_theta_rho', {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.detail || 'Upload failed')
-      }
-
+      await apiClient.uploadFile('/upload_theta_rho', file)
       toast.success(`Pattern "${file.name}" uploaded successfully`)
 
       // Refresh patterns list
-      const patternsRes = await fetch('/list_theta_rho_files')
-      if (patternsRes.ok) {
-        const data = await patternsRes.json()
-        setPatterns(data.files || [])
-      }
+      const data = await apiClient.get<{ files?: PatternMetadata[] }>('/list_theta_rho_files')
+      setPatterns(data.files || [])
     } catch (error) {
       console.error('Upload error:', error)
       toast.error(error instanceof Error ? error.message : 'Failed to upload pattern')
