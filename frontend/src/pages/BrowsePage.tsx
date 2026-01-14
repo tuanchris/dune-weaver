@@ -748,7 +748,7 @@ export function BrowsePage() {
   }
 
   return (
-    <div className={`flex flex-col w-full max-w-5xl mx-auto gap-6 py-6 px-4 transition-all duration-300 ${isPanelOpen ? 'lg:mr-[28rem]' : ''}`}>
+    <div className={`flex flex-col w-full max-w-5xl mx-auto gap-3 sm:gap-6 py-3 sm:py-6 px-3 sm:px-4 transition-all duration-300 ${isPanelOpen ? 'lg:mr-[28rem]' : ''}`}>
       {/* Hidden file input for pattern upload */}
       <input
         ref={fileInputRef}
@@ -758,74 +758,77 @@ export function BrowsePage() {
         className="hidden"
       />
 
-      {/* Page Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-bold tracking-tight">Browse Patterns</h1>
-          <p className="text-muted-foreground">
-            Explore and run patterns on your sand table · {patterns.length} patterns available
+      {/* Page Header - Compact on mobile */}
+      <div className="flex items-center justify-between gap-2 sm:gap-4">
+        <div className="space-y-0 sm:space-y-1 min-w-0">
+          <h1 className="text-xl sm:text-3xl font-bold tracking-tight">Browse Patterns</h1>
+          <p className="text-xs sm:text-base text-muted-foreground truncate">
+            {patterns.length} patterns available
           </p>
         </div>
         <Button
           variant="outline"
+          size="sm"
           onClick={() => fileInputRef.current?.click()}
           disabled={isUploading}
-          className="gap-2 shrink-0"
+          className="gap-1.5 sm:gap-2 shrink-0 h-8 sm:h-9"
         >
           {isUploading ? (
-            <span className="material-icons-outlined animate-spin text-lg">sync</span>
+            <span className="material-icons-outlined animate-spin text-base sm:text-lg">sync</span>
           ) : (
-            <span className="material-icons-outlined text-lg">add</span>
+            <span className="material-icons-outlined text-base sm:text-lg">add</span>
           )}
           <span className="hidden sm:inline">Add Pattern</span>
         </Button>
       </div>
 
-      <Separator />
+      <Separator className="my-0" />
 
-      {/* Sticky Filters */}
-      <div className="sticky top-14 z-30 py-4 -mx-4 px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex-1">
-            <div className="relative">
-              <span className="material-icons-outlined absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xl">
+      {/* Sticky Filters - Compact on mobile */}
+      <div className="sticky top-14 z-30 py-2 sm:py-4 -mx-4 px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+          {/* Search + Category on same row on mobile */}
+          <div className="flex gap-2 flex-1">
+            <div className="relative flex-1">
+              <span className="material-icons-outlined absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-lg sm:text-xl">
                 search
               </span>
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search patterns..."
-                className="pl-10 pr-10"
+                placeholder="Search..."
+                className="pl-8 sm:pl-10 pr-8 sm:pr-10 h-9 sm:h-10 text-sm"
               />
               {searchQuery && (
                 <Button
                   variant="ghost"
                   size="icon-sm"
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute right-1.5 sm:right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground h-6 w-6"
                 >
-                  <span className="material-icons-outlined text-xl">close</span>
+                  <span className="material-icons-outlined text-lg">close</span>
                 </Button>
               )}
             </div>
+
+            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+              <SelectTrigger className="w-28 sm:w-44 h-9 sm:h-10 text-sm">
+                <SelectValue placeholder="Category" />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map((cat) => (
+                  <SelectItem key={cat} value={cat}>
+                    {cat === 'all' ? 'All Categories' : cat === 'root' ? 'Uncategorized' : cat}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
-          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-            <SelectTrigger className="w-full sm:w-44">
-              <SelectValue placeholder="Category" />
-            </SelectTrigger>
-            <SelectContent>
-              {categories.map((cat) => (
-                <SelectItem key={cat} value={cat}>
-                  {cat === 'all' ? 'All Categories' : cat === 'root' ? 'Uncategorized' : cat}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
+          {/* Sort controls */}
           <div className="flex gap-2">
             <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-              <SelectTrigger className="w-full sm:w-36">
+              <SelectTrigger className="w-24 sm:w-36 h-9 sm:h-10 text-sm">
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
               <SelectContent>
@@ -839,7 +842,7 @@ export function BrowsePage() {
               variant="outline"
               size="icon"
               onClick={() => setSortAsc(!sortAsc)}
-              className="shrink-0"
+              className="shrink-0 h-9 w-9 sm:h-10 sm:w-10"
               title={sortAsc ? 'Ascending' : 'Descending'}
             >
               <span className="material-icons-outlined text-lg">

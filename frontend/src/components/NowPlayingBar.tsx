@@ -573,7 +573,12 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
       {/* Now Playing Bar - slides up to full height on mobile, 50vh on desktop when expanded */}
       <div
         ref={barRef}
-        className={`fixed left-0 right-0 z-40 bg-background border-t shadow-lg transition-all duration-300 ${isLogsOpen ? 'bottom-80' : isExpanded ? 'bottom-16' : 'bottom-16 max-md:bottom-20'}`}
+        className="fixed left-0 right-0 z-40 bg-background border-t shadow-lg transition-all duration-300"
+        style={{
+          bottom: isLogsOpen
+            ? 'calc(20rem + env(safe-area-inset-bottom, 0px))'
+            : 'calc(4rem + env(safe-area-inset-bottom, 0px))'
+        }}
         data-now-playing-bar={isExpanded ? 'expanded' : 'collapsed'}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}

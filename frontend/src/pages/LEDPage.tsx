@@ -352,8 +352,8 @@ export function LEDPage() {
           </span>
         </div>
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold">LED Controller Not Configured</h1>
-          <p className="text-muted-foreground max-w-md">
+          <h1 className="text-xl sm:text-2xl font-bold">LED Controller Not Configured</h1>
+          <p className="text-sm sm:text-base text-muted-foreground max-w-md">
             Configure your LED controller (WLED or DW LEDs) in the Settings page to control your lights.
           </p>
         </div>
@@ -384,9 +384,9 @@ export function LEDPage() {
   return (
     <div className="flex flex-col w-full max-w-5xl mx-auto gap-6 py-6 px-4">
       {/* Page Header */}
-      <div className="space-y-1">
-        <h1 className="text-3xl font-bold tracking-tight">LED Control</h1>
-        <p className="text-muted-foreground">DW LEDs - GPIO controlled LED strip</p>
+      <div className="space-y-0.5 sm:space-y-1">
+        <h1 className="text-xl sm:text-3xl font-bold tracking-tight">LED Control</h1>
+        <p className="text-xs sm:text-base text-muted-foreground">DW LEDs - GPIO controlled LED strip</p>
       </div>
 
       <Separator />

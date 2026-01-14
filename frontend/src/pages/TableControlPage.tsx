@@ -322,9 +322,9 @@ export function TableControlPage() {
     <TooltipProvider>
       <div className="flex flex-col w-full max-w-5xl mx-auto gap-6 py-6">
         {/* Page Header */}
-        <div className="space-y-1">
-          <h1 className="text-3xl font-bold tracking-tight">Table Control</h1>
-          <p className="text-muted-foreground">
+        <div className="space-y-0.5 sm:space-y-1">
+          <h1 className="text-xl sm:text-3xl font-bold tracking-tight">Table Control</h1>
+          <p className="text-xs sm:text-base text-muted-foreground">
             Manual controls for your sand table
           </p>
         </div>
@@ -628,61 +628,17 @@ export function TableControlPage() {
 
         {/* Serial Terminal */}
         <Card className="transition-all duration-200 hover:shadow-md hover:border-primary/20">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div>
+          <CardHeader className="pb-3 space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <span className="material-icons-outlined text-xl">terminal</span>
                   Serial Terminal
                 </CardTitle>
-                <CardDescription>Send raw commands to the table controller</CardDescription>
+                <CardDescription className="hidden sm:block">Send raw commands to the table controller</CardDescription>
               </div>
-              <div className="flex items-center gap-2">
-                {/* Port selector */}
-                <select
-                  className="h-9 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
-                  value={selectedSerialPort}
-                  onChange={(e) => setSelectedSerialPort(e.target.value)}
-                  disabled={serialConnected || serialLoading}
-                >
-                  <option value="">Select port...</option>
-                  {serialPorts.map((port) => (
-                    <option key={port} value={port}>{port}</option>
-                  ))}
-                </select>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={fetchSerialPorts}
-                  disabled={serialConnected || serialLoading}
-                  title="Refresh ports"
-                >
-                  <span className="material-icons-outlined">refresh</span>
-                </Button>
-                {!serialConnected ? (
-                  <Button
-                    size="sm"
-                    onClick={handleSerialConnect}
-                    disabled={!selectedSerialPort || serialLoading}
-                  >
-                    {serialLoading ? (
-                      <span className="material-icons-outlined animate-spin mr-1">sync</span>
-                    ) : (
-                      <span className="material-icons-outlined mr-1">power</span>
-                    )}
-                    Connect
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={handleSerialDisconnect}
-                    disabled={serialLoading}
-                  >
-                    <span className="material-icons-outlined mr-1">power_off</span>
-                    Disconnect
-                  </Button>
-                )}
+              {/* Clear button - only show on desktop in header */}
+              <div className="hidden sm:flex items-center gap-1">
                 {serialHistory.length > 0 && (
                   <Button
                     variant="ghost"
@@ -694,6 +650,68 @@ export function TableControlPage() {
                   </Button>
                 )}
               </div>
+            </div>
+            {/* Controls row - stacks better on mobile */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Port selector */}
+              <select
+                className="h-9 flex-1 min-w-[140px] max-w-[200px] rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                value={selectedSerialPort}
+                onChange={(e) => setSelectedSerialPort(e.target.value)}
+                disabled={serialConnected || serialLoading}
+              >
+                <option value="">Select port...</option>
+                {serialPorts.map((port) => (
+                  <option key={port} value={port}>{port}</option>
+                ))}
+              </select>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={fetchSerialPorts}
+                disabled={serialConnected || serialLoading}
+                title="Refresh ports"
+              >
+                <span className="material-icons-outlined">refresh</span>
+              </Button>
+              {!serialConnected ? (
+                <Button
+                  size="sm"
+                  onClick={handleSerialConnect}
+                  disabled={!selectedSerialPort || serialLoading}
+                  title="Connect"
+                >
+                  {serialLoading ? (
+                    <span className="material-icons-outlined animate-spin sm:mr-1">sync</span>
+                  ) : (
+                    <span className="material-icons-outlined sm:mr-1">power</span>
+                  )}
+                  <span className="hidden sm:inline">Connect</span>
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleSerialDisconnect}
+                  disabled={serialLoading}
+                  title="Disconnect"
+                >
+                  <span className="material-icons-outlined sm:mr-1">power_off</span>
+                  <span className="hidden sm:inline">Disconnect</span>
+                </Button>
+              )}
+              {/* Clear button - show on mobile in controls row */}
+              {serialHistory.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="sm:hidden"
+                  onClick={() => setSerialHistory([])}
+                  title="Clear history"
+                >
+                  <span className="material-icons-outlined">delete</span>
+                </Button>
+              )}
             </div>
           </CardHeader>
           <CardContent>

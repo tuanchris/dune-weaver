@@ -318,11 +318,22 @@ class MotionControlThread:
     def _execute_move(self, command: MotionCommand):
         """Execute a move command in the motion thread."""
         try:
-            # Wait if paused
+            # Wait if paused, but also check for stop request
             while self.paused and self.running:
+                if state.stop_requested:
+                    logger.info("Motion thread: Stop requested during pause")
+                    if command.future and not command.future.done():
+                        command.future.get_loop().call_soon_threadsafe(
+                            command.future.set_result, None
+                        )
+                    return
                 time.sleep(0.1)
 
-            if not self.running:
+            if not self.running or state.stop_requested:
+                if command.future and not command.future.done():
+                    command.future.get_loop().call_soon_threadsafe(
+                        command.future.set_result, None
+                    )
                 return
 
             # Execute the actual motion using sync version
@@ -387,8 +398,19 @@ class MotionControlThread:
 
         # Track overall attempt time
         overall_start_time = time.time()
+        max_total_timeout = 30  # Maximum total time to retry before giving up
 
         while True:
+            # Check for stop request before each attempt
+            if state.stop_requested:
+                logger.info("Motion thread: Stop requested, aborting command")
+                return False
+
+            # Check for overall timeout
+            if time.time() - overall_start_time > max_total_timeout:
+                logger.error(f"Motion thread: Timeout after {max_total_timeout}s, aborting command")
+                return False
+
             try:
                 gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 G53 X{x} Y{y} F{speed}"
                 state.conn.send(gcode + "\n")
@@ -396,11 +418,21 @@ class MotionControlThread:
 
                 start_time = time.time()
                 while True:
+                    # Check for stop request while waiting for response
+                    if state.stop_requested:
+                        logger.info("Motion thread: Stop requested while waiting for response")
+                        return False
+
                     response = state.conn.readline()
                     logger.debug(f"Motion thread response: {response}")
                     if response.lower() == "ok":
                         logger.debug("Motion thread: Command execution confirmed.")
-                        return
+                        return True
+
+                    # Timeout waiting for response
+                    if time.time() - start_time > timeout:
+                        logger.warning("Motion thread: Timeout waiting for 'ok' response")
+                        break
 
             except Exception as e:
                 error_str = str(e)
@@ -1098,8 +1130,6 @@ async def stop_actions(clear_playlist = True, wait_for_lock = True):
         with state.pause_condition:
             state.pause_requested = False
             state.stop_requested = True
-            state.current_playing_file = None
-            state.execution_progress = None
             state.is_clearing = False
 
             if clear_playlist:
@@ -1116,20 +1146,43 @@ async def stop_actions(clear_playlist = True, wait_for_lock = True):
 
             state.pause_condition.notify_all()
 
+        # Also set the pause event to wake up any paused patterns
+        get_pause_event().set()
+
+        # Send stop command to motion thread to clear its queue
+        if motion_controller.running:
+            motion_controller.command_queue.put(MotionCommand('stop'))
+
         # Wait for the pattern lock to be released before continuing
         # This ensures that when stop_actions completes, the pattern has fully stopped
         # Skip this if called from within pattern execution to avoid deadlock
         lock = get_pattern_lock()
         if wait_for_lock and lock.locked():
             logger.info("Waiting for pattern to fully stop...")
-            # Acquire and immediately release the lock to ensure the pattern has exited
-            async with lock:
-                logger.info("Pattern lock acquired - pattern has fully stopped")
+            # Use a timeout to prevent hanging forever
+            try:
+                async with asyncio.timeout(10.0):
+                    async with lock:
+                        logger.info("Pattern lock acquired - pattern has fully stopped")
+            except asyncio.TimeoutError:
+                logger.warning("Timeout waiting for pattern to stop - forcing cleanup")
+                # Force cleanup of state even if pattern didn't release lock gracefully
+                state.current_playing_file = None
+                state.execution_progress = None
+                state.is_running = False
+
+        # Always clear the current playing file after stop
+        state.current_playing_file = None
+        state.execution_progress = None
 
         # Call async function directly since we're in async context
         await connection_manager.update_machine_position()
     except Exception as e:
         logger.error(f"Error during stop_actions: {e}")
+        # Force cleanup state on error
+        state.current_playing_file = None
+        state.execution_progress = None
+        state.is_running = False
         # Ensure we still update machine position even if there's an error
         try:
             await connection_manager.update_machine_position()

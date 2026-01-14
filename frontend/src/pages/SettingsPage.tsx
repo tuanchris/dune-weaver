@@ -715,10 +715,10 @@ export function SettingsPage() {
   return (
     <div className="flex flex-col w-full max-w-5xl mx-auto gap-6 py-6 px-4">
       {/* Page Header */}
-      <div className="space-y-1">
-        <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground">
-          Configure your sand table and application preferences
+      <div className="space-y-0.5 sm:space-y-1">
+        <h1 className="text-xl sm:text-3xl font-bold tracking-tight">Settings</h1>
+        <p className="text-xs sm:text-base text-muted-foreground">
+          Configure your sand table
         </p>
       </div>
 

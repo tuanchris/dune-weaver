@@ -194,30 +194,32 @@ export function TableSelector() {
                     <Check className="h-4 w-4 text-primary flex-shrink-0" />
                   )}
 
-                  {/* Actions (shown on hover) */}
-                  <div className="hidden group-hover:flex items-center gap-1">
+                  {/* Actions - always visible on mobile, hover on desktop */}
+                  <div className="flex md:opacity-0 md:group-hover:opacity-100 items-center gap-1 transition-opacity">
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-6 w-6 p-0"
+                      className="h-7 w-7 p-0"
                       onClick={e => {
                         e.stopPropagation()
                         openRenameDialog(table)
                       }}
+                      title="Rename"
                     >
-                      <Pencil className="h-3 w-3" />
+                      <Pencil className="h-3.5 w-3.5" />
                     </Button>
                     {!table.isCurrent && (
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                        className="h-7 w-7 p-0 text-destructive hover:text-destructive"
                         onClick={e => {
                           e.stopPropagation()
                           handleRemove(table)
                         }}
+                        title="Remove"
                       >
-                        <Trash2 className="h-3 w-3" />
+                        <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     )}
                   </div>

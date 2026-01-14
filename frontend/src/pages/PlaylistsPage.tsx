@@ -453,12 +453,12 @@ export function PlaylistsPage() {
   }
 
   return (
-    <div className="flex flex-col w-full max-w-5xl mx-auto gap-6 py-6 h-[calc(100vh-10.5rem)] overflow-hidden">
+    <div className="flex flex-col w-full max-w-5xl mx-auto gap-4 sm:gap-6 py-4 sm:py-6 h-[calc(100dvh-10rem)] sm:h-[calc(100dvh-10.5rem)] overflow-hidden">
       {/* Page Header */}
-      <div className="space-y-1 shrink-0">
-        <h1 className="text-3xl font-bold tracking-tight">Playlists</h1>
-        <p className="text-muted-foreground">
-          Create and manage pattern playlists for your sand table
+      <div className="space-y-0.5 sm:space-y-1 shrink-0">
+        <h1 className="text-xl sm:text-3xl font-bold tracking-tight">Playlists</h1>
+        <p className="text-sm sm:text-base text-muted-foreground">
+          Create and manage pattern playlists
         </p>
       </div>
 
@@ -508,7 +508,7 @@ export function PlaylistsPage() {
                   <span className="material-icons-outlined text-lg">playlist_play</span>
                   <span className="truncate text-sm font-medium">{name}</span>
                 </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                   <Button
                     variant="ghost"
                     size="icon-sm"
@@ -594,7 +594,7 @@ export function PlaylistsPage() {
                 </Button>
               </div>
             ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+              <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4">
                 {playlistPatterns.map((path) => {
                   const previewUrl = getPreviewUrl(path)
                   if (!previewUrl && !previews[path]) {
@@ -603,7 +603,7 @@ export function PlaylistsPage() {
                   return (
                     <div
                       key={path}
-                      className="flex flex-col items-center gap-2 group"
+                      className="flex flex-col items-center gap-1.5 sm:gap-2 group"
                     >
                       <div className="relative w-full aspect-square">
                         <div className="w-full h-full rounded-full overflow-hidden border bg-muted hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:ring-offset-background transition-all cursor-pointer">
@@ -615,21 +615,21 @@ export function PlaylistsPage() {
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
-                              <span className="material-icons-outlined text-muted-foreground">
+                              <span className="material-icons-outlined text-muted-foreground text-sm sm:text-base">
                                 image
                               </span>
                             </div>
                           )}
                         </div>
                         <button
-                          className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm z-10"
+                          className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 w-5 h-5 rounded-full bg-destructive hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow-sm z-10"
                           onClick={() => handleRemovePattern(path)}
                           title="Remove from playlist"
                         >
                           <span className="material-icons" style={{ fontSize: '12px' }}>close</span>
                         </button>
                       </div>
-                      <p className="text-xs truncate font-medium w-full text-center">{getPatternName(path)}</p>
+                      <p className="text-[10px] sm:text-xs truncate font-medium w-full text-center">{getPatternName(path)}</p>
                     </div>
                   )
                 })}
@@ -639,89 +639,93 @@ export function PlaylistsPage() {
 
           {/* Playback Settings - Always visible when playlist selected */}
           {selectedPlaylist && (
-            <div className="border-t px-4 py-3 bg-muted/30 shrink-0">
-              <div className="flex flex-wrap items-center gap-3">
-                {/* Run Mode Segmented Control */}
-                <div className="flex rounded-md border bg-muted/50 p-0.5">
-                  <button
-                    onClick={() => setRunMode('single')}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded text-sm font-medium transition-colors ${
-                      runMode === 'single'
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <span className="material-icons-outlined text-sm">play_circle</span>
-                    Once
-                  </button>
-                  <button
-                    onClick={() => setRunMode('indefinite')}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded text-sm font-medium transition-colors ${
-                      runMode === 'indefinite'
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <span className="material-icons-outlined text-sm">repeat</span>
-                    Loop
-                  </button>
+            <div className="border-t px-3 py-2.5 sm:px-4 sm:py-3 bg-muted/30 shrink-0">
+              {/* Mobile: 2-row layout, Desktop: single row */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3">
+                {/* Top row on mobile: Mode, Shuffle, Pause, Clear */}
+                <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                  {/* Run Mode Segmented Control */}
+                  <div className="flex rounded-md border bg-muted/50 p-0.5">
+                    <button
+                      onClick={() => setRunMode('single')}
+                      className={`flex items-center gap-1 px-2 py-1 rounded text-xs sm:text-sm font-medium transition-colors ${
+                        runMode === 'single'
+                          ? 'bg-background text-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <span className="material-icons-outlined text-sm">play_circle</span>
+                      Once
+                    </button>
+                    <button
+                      onClick={() => setRunMode('indefinite')}
+                      className={`flex items-center gap-1 px-2 py-1 rounded text-xs sm:text-sm font-medium transition-colors ${
+                        runMode === 'indefinite'
+                          ? 'bg-background text-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <span className="material-icons-outlined text-sm">repeat</span>
+                      Loop
+                    </button>
+                  </div>
+
+                  {/* Shuffle Toggle */}
+                  <div className="flex items-center gap-1.5 h-8 px-2 rounded-md border bg-muted/50">
+                    <span className="material-icons-outlined text-sm text-muted-foreground">shuffle</span>
+                    <Switch
+                      checked={shuffle}
+                      onCheckedChange={setShuffle}
+                      className="scale-90"
+                    />
+                  </div>
+
+                  {/* Pause Time - more compact on mobile */}
+                  <div className="flex items-center gap-1">
+                    <Label className="text-xs text-muted-foreground hidden sm:inline">Pause:</Label>
+                    <Input
+                      type="number"
+                      value={pauseTime}
+                      onChange={(e) => setPauseTime(Number(e.target.value))}
+                      min={0}
+                      className="w-12 sm:w-14 h-8 text-sm"
+                    />
+                    <Select value={pauseUnit} onValueChange={(v) => setPauseUnit(v as 'sec' | 'min' | 'hr')}>
+                      <SelectTrigger className="h-8 w-14 sm:w-16 text-xs sm:text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="sec">sec</SelectItem>
+                        <SelectItem value="min">min</SelectItem>
+                        <SelectItem value="hr">hr</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Clear Pattern */}
+                  <div className="flex items-center gap-1">
+                    <Label className="text-xs text-muted-foreground hidden sm:inline">Clear:</Label>
+                    <Select value={clearPattern} onValueChange={(v) => setClearPattern(v as PreExecution)}>
+                      <SelectTrigger className="h-8 w-24 sm:w-28 text-xs sm:text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {preExecutionOptions.map(opt => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
-                {/* Shuffle Toggle */}
-                <div className="flex items-center gap-1.5 h-8 px-2 rounded-md border bg-muted/50">
-                  <span className="material-icons-outlined text-sm text-muted-foreground">shuffle</span>
-                  <Switch
-                    checked={shuffle}
-                    onCheckedChange={setShuffle}
-                    className="scale-90"
-                  />
-                </div>
+                {/* Spacer - only on desktop */}
+                <div className="hidden sm:flex sm:flex-1" />
 
-                {/* Pause Time */}
-                <div className="flex items-center gap-1.5">
-                  <Label className="text-xs text-muted-foreground">Pause:</Label>
-                  <Input
-                    type="number"
-                    value={pauseTime}
-                    onChange={(e) => setPauseTime(Number(e.target.value))}
-                    min={0}
-                    className="w-14 h-8 text-sm"
-                  />
-                  <Select value={pauseUnit} onValueChange={(v) => setPauseUnit(v as 'sec' | 'min' | 'hr')}>
-                    <SelectTrigger className="h-8 w-16 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="sec">sec</SelectItem>
-                      <SelectItem value="min">min</SelectItem>
-                      <SelectItem value="hr">hr</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Clear Pattern */}
-                <div className="flex items-center gap-1.5">
-                  <Label className="text-xs text-muted-foreground">Clear:</Label>
-                  <Select value={clearPattern} onValueChange={(v) => setClearPattern(v as PreExecution)}>
-                    <SelectTrigger className="h-8 w-28 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {preExecutionOptions.map(opt => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Spacer */}
-                <div className="flex-1" />
-
-                {/* Run Button */}
+                {/* Run Button - full width on mobile */}
                 <Button
-                  className="gap-2"
+                  className="gap-2 w-full sm:w-auto"
                   onClick={handleRunPlaylist}
                   disabled={isRunning || playlistPatterns.length === 0}
                 >

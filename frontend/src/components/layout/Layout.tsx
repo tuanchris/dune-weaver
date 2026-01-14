@@ -3,6 +3,8 @@ import { useEffect, useState, useRef } from 'react'
 import { toast } from 'sonner'
 import { NowPlayingBar } from '@/components/NowPlayingBar'
 import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Separator } from '@/components/ui/separator'
 import { cacheAllPreviews } from '@/lib/previewCache'
 import { TableSelector } from '@/components/TableSelector'
 import { useTable } from '@/contexts/TableContext'
@@ -94,6 +96,9 @@ export function Layout() {
 
     return () => clearTimeout(timer)
   }, [homingJustCompleted, homingCountdown, keepHomingLogsOpen])
+
+  // Mobile menu state
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   // Logs drawer state
   const [isLogsOpen, setIsLogsOpen] = useState(false)
@@ -709,7 +714,7 @@ export function Layout() {
     : 0
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background flex flex-col overflow-x-hidden">
       {/* Cache Progress Blocking Overlay */}
       {cacheProgress?.is_running && (
         <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center p-4">
@@ -1027,7 +1032,9 @@ export function Layout() {
               }
             />
           </Link>
-          <div className="flex items-center gap-1">
+
+          {/* Desktop actions */}
+          <div className="hidden md:flex items-center gap-1">
             <TableSelector />
             <Button
               variant="ghost"
@@ -1072,6 +1079,72 @@ export function Layout() {
               <span className="material-icons-outlined">power_settings_new</span>
             </Button>
           </div>
+
+          {/* Mobile actions */}
+          <div className="flex md:hidden items-center gap-1">
+            <TableSelector />
+            <Popover open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-full"
+                  aria-label="Open menu"
+                >
+                  <span className="material-icons-outlined">
+                    {isMobileMenuOpen ? 'close' : 'menu'}
+                  </span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-56 p-2">
+                <div className="flex flex-col gap-1">
+                  <button
+                    onClick={() => {
+                      setIsDark(!isDark)
+                      setIsMobileMenuOpen(false)
+                    }}
+                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
+                  >
+                    <span className="material-icons-outlined text-xl">
+                      {isDark ? 'light_mode' : 'dark_mode'}
+                    </span>
+                    {isDark ? 'Light Mode' : 'Dark Mode'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleOpenLogs()
+                      setIsMobileMenuOpen(false)
+                    }}
+                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
+                  >
+                    <span className="material-icons-outlined text-xl">article</span>
+                    View Logs
+                  </button>
+                  <Separator className="my-1" />
+                  <button
+                    onClick={() => {
+                      handleRestart()
+                      setIsMobileMenuOpen(false)
+                    }}
+                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-amber-500"
+                  >
+                    <span className="material-icons-outlined text-xl">restart_alt</span>
+                    Restart Docker
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleShutdown()
+                      setIsMobileMenuOpen(false)
+                    }}
+                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-red-500"
+                  >
+                    <span className="material-icons-outlined text-xl">power_settings_new</span>
+                    Shutdown
+                  </button>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
       </header>
 
@@ -1104,7 +1177,8 @@ export function Layout() {
       {!isNowPlayingOpen && (
         <button
           onClick={() => setIsNowPlayingOpen(true)}
-          className="fixed right-4 bottom-20 z-30 w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center transition-all duration-200 hover:bg-primary/90 hover:shadow-xl hover:scale-110 active:scale-95"
+          className="fixed right-4 z-30 w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center transition-all duration-200 hover:bg-primary/90 hover:shadow-xl hover:scale-110 active:scale-95"
+          style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}
           title="Now Playing"
         >
           <span className="material-icons">play_circle</span>
@@ -1113,10 +1187,13 @@ export function Layout() {
 
       {/* Logs Drawer */}
       <div
-        className={`fixed left-0 right-0 z-30 bg-background border-t border-border bottom-16 ${
+        className={`fixed left-0 right-0 z-30 bg-background border-t border-border ${
           isResizing ? '' : 'transition-[height] duration-300'
         }`}
-        style={{ height: isLogsOpen ? logsDrawerHeight : 0 }}
+        style={{
+          height: isLogsOpen ? logsDrawerHeight : 0,
+          bottom: 'calc(4rem + env(safe-area-inset-bottom, 0px))'
+        }}
       >
         {isLogsOpen && (
           <>
@@ -1211,7 +1288,7 @@ export function Layout() {
       </div>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background pb-safe">
         <div className="max-w-5xl mx-auto grid grid-cols-5 h-16">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path
