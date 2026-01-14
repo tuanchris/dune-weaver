@@ -318,22 +318,11 @@ class MotionControlThread:
     def _execute_move(self, command: MotionCommand):
         """Execute a move command in the motion thread."""
         try:
-            # Wait if paused, but also check for stop request
+            # Wait if paused
             while self.paused and self.running:
-                if state.stop_requested:
-                    logger.info("Motion thread: Stop requested during pause")
-                    if command.future and not command.future.done():
-                        command.future.get_loop().call_soon_threadsafe(
-                            command.future.set_result, None
-                        )
-                    return
                 time.sleep(0.1)
 
-            if not self.running or state.stop_requested:
-                if command.future and not command.future.done():
-                    command.future.get_loop().call_soon_threadsafe(
-                        command.future.set_result, None
-                    )
+            if not self.running:
                 return
 
             # Execute the actual motion using sync version
@@ -392,36 +381,22 @@ class MotionControlThread:
         state.machine_x = new_x_abs
         state.machine_y = new_y_abs
 
-    def _send_grbl_coordinates_sync(self, x: float, y: float, speed: int = 600, home: bool = False):
-        """Synchronous version of send_grbl_coordinates for motion thread.
-
-        Waits indefinitely for 'ok' response until success or stop_requested is set.
-        Use force stop to abort if the hardware is unresponsive.
-        """
+    def _send_grbl_coordinates_sync(self, x: float, y: float, speed: int = 600, timeout: int = 2, home: bool = False):
+        """Synchronous version of send_grbl_coordinates for motion thread."""
         logger.debug(f"Motion thread sending G-code: X{x} Y{y} at F{speed}")
 
         while True:
-            # Check for stop request before each attempt
-            if state.stop_requested:
-                logger.info("Motion thread: Stop requested, aborting command")
-                return False
-
             try:
                 gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 G53 X{x} Y{y} F{speed}"
                 state.conn.send(gcode + "\n")
                 logger.debug(f"Motion thread sent command: {gcode}")
 
                 while True:
-                    # Check for stop request while waiting for response
-                    if state.stop_requested:
-                        logger.info("Motion thread: Stop requested while waiting for response")
-                        return False
-
                     response = state.conn.readline()
                     logger.debug(f"Motion thread response: {response}")
                     if response.lower() == "ok":
                         logger.debug("Motion thread: Command execution confirmed.")
-                        return True
+                        return
 
             except Exception as e:
                 error_str = str(e)
