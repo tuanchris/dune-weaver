@@ -34,7 +34,6 @@ import argparse
 import subprocess
 import platform
 from modules.core import process_pool as pool_module
-from modules.core import mdns
 
 # Get log level from environment variable, default to INFO
 log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -277,22 +276,10 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(idle_timeout_monitor())
 
-    # Start mDNS advertisement for multi-table discovery
-    try:
-        await mdns.start_mdns_advertisement()
-    except Exception as e:
-        logger.warning(f"Failed to start mDNS advertisement: {e}")
-
     yield  # This separates startup from shutdown code
 
     # Shutdown
     logger.info("Shutting down Dune Weaver application...")
-
-    # Stop mDNS advertisement
-    try:
-        await mdns.stop_mdns_advertisement()
-    except Exception as e:
-        logger.warning(f"Error stopping mDNS: {e}")
 
     # Shutdown process pool
     pool_module.shutdown_pool(wait=True)
@@ -955,47 +942,6 @@ async def update_table_info(update: TableInfoUpdate):
         "success": True,
         "id": state.table_id,
         "name": state.table_name
-    }
-
-@app.get("/api/discover-tables", tags=["multi-table"])
-async def discover_tables(timeout: float = 3.0):
-    """
-    Discover other Dune Weaver tables on the local network.
-
-    Uses mDNS/Bonjour to find tables advertising the _duneweaver._tcp service.
-
-    Args:
-        timeout: Discovery timeout in seconds (default 3.0, max 10.0)
-
-    Returns:
-        List of discovered tables with their id, name, host, port, and url
-    """
-    # Clamp timeout to reasonable range
-    timeout = min(max(timeout, 0.5), 10.0)
-
-    tables = await mdns.discover_tables(timeout=timeout)
-
-    # Also include this table in the list
-    local_table = {
-        "id": state.table_id,
-        "name": state.table_name,
-        "host": "localhost",
-        "port": state.server_port or 8080,
-        "version": await version_manager.get_current_version(),
-        "url": f"http://localhost:{state.server_port or 8080}",
-        "is_current": True
-    }
-
-    # Mark discovered tables as not current
-    for table in tables:
-        table["is_current"] = False
-
-    # Filter out self if discovered via mDNS
-    tables = [t for t in tables if t.get("id") != state.table_id]
-
-    return {
-        "tables": [local_table] + tables,
-        "count": len(tables) + 1
     }
 
 # ============================================================================
