@@ -64,6 +64,49 @@ def log_execution_time(pattern_name: str, table_type: str, speed: int, actual_ti
     except Exception as e:
         logger.error(f"Failed to log execution time: {e}")
 
+def get_last_completed_execution_time(pattern_name: str, speed: float) -> Optional[dict]:
+    """Get the last completed execution time for a pattern at a specific speed.
+
+    Args:
+        pattern_name: Name of the pattern file (e.g., 'circle.thr')
+        speed: Speed setting to match
+
+    Returns:
+        Dict with execution time info if found, None otherwise.
+        Format: {"actual_time_seconds": float, "actual_time_formatted": str, "timestamp": str}
+    """
+    if not os.path.exists(EXECUTION_LOG_FILE):
+        return None
+
+    try:
+        matching_entry = None
+        with open(EXECUTION_LOG_FILE, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    # Only consider fully completed patterns (100% finished)
+                    if (entry.get('completed', False) and
+                        entry.get('pattern_name') == pattern_name and
+                        entry.get('speed') == speed):
+                        # Keep the most recent match (last one in file)
+                        matching_entry = entry
+                except json.JSONDecodeError:
+                    continue
+
+        if matching_entry:
+            return {
+                "actual_time_seconds": matching_entry.get('actual_time_seconds'),
+                "actual_time_formatted": matching_entry.get('actual_time_formatted'),
+                "timestamp": matching_entry.get('timestamp')
+            }
+        return None
+    except Exception as e:
+        logger.error(f"Failed to read execution time log: {e}")
+        return None
+
 # Asyncio primitives - initialized lazily to avoid event loop issues
 # These must be created in the context of the running event loop
 pause_event: Optional[asyncio.Event] = None
@@ -1254,7 +1297,14 @@ def get_status():
             "elapsed_time": elapsed_time,
             "percentage": (current / total * 100) if total > 0 else 0
         }
-    
+
+        # Add historical execution time if available for this pattern at current speed
+        if state.current_playing_file:
+            pattern_name = os.path.basename(state.current_playing_file)
+            historical_time = get_last_completed_execution_time(pattern_name, state.speed)
+            if historical_time:
+                status["progress"]["last_completed_time"] = historical_time
+
     return status
 
 async def broadcast_progress():

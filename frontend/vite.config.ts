@@ -90,6 +90,7 @@ export default defineConfig({
       '/preview_thr': 'http://localhost:8080',
       '/preview_thr_batch': 'http://localhost:8080',
       '/get_theta_rho_coordinates': 'http://localhost:8080',
+      '/delete_theta_rho_file': 'http://localhost:8080',
       // Playlists
       '/list_all_playlists': 'http://localhost:8080',
       '/get_playlist': 'http://localhost:8080',

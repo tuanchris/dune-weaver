@@ -75,7 +75,10 @@ export function BrowsePage() {
   // Selection and panel state
   const [selectedPattern, setSelectedPattern] = useState<PatternMetadata | null>(null)
   const [isPanelOpen, setIsPanelOpen] = useState(false)
-  const [preExecution, setPreExecution] = useState<PreExecution>('adaptive')
+  const [preExecution, setPreExecution] = useState<PreExecution>(() => {
+    const cached = localStorage.getItem('preExecution')
+    return (cached as PreExecution) || 'adaptive'
+  })
   const [isRunning, setIsRunning] = useState(false)
 
   // Animated preview modal state
@@ -116,6 +119,11 @@ export function BrowsePage() {
     window.addEventListener('playback-started', handlePlaybackStarted)
     return () => window.removeEventListener('playback-started', handlePlaybackStarted)
   }, [])
+
+  // Persist pre-execution selection to localStorage
+  useEffect(() => {
+    localStorage.setItem('preExecution', preExecution)
+  }, [preExecution])
 
   // Initialize IndexedDB cache and fetch patterns on mount
   useEffect(() => {
@@ -1117,18 +1125,18 @@ export function BrowsePage() {
             {/* Modal Content */}
             <div className="p-6 overflow-y-auto flex-1 flex justify-center items-center">
               {isLoadingCoordinates ? (
-                <div className="w-[400px] h-[400px] flex items-center justify-center rounded-full bg-muted">
+                <div className="w-full max-w-[400px] aspect-square flex items-center justify-center rounded-full bg-muted">
                   <span className="material-icons-outlined animate-spin text-4xl text-muted-foreground">
                     sync
                   </span>
                 </div>
               ) : (
-                <div className="relative">
+                <div className="relative w-full max-w-[400px] aspect-square">
                   <canvas
                     ref={canvasRef}
                     width={400}
                     height={400}
-                    className="rounded-full"
+                    className="rounded-full w-full h-full"
                   />
                   {/* Play/Pause overlay */}
                   <div

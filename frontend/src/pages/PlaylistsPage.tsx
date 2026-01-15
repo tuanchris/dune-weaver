@@ -74,7 +74,7 @@ export function PlaylistsPage() {
     return (cached === 'sec' || cached === 'min' || cached === 'hr') ? cached : 'min'
   })
   const [clearPattern, setClearPattern] = useState<PreExecution>(() => {
-    const cached = localStorage.getItem('playlist-clearPattern')
+    const cached = localStorage.getItem('preExecution')
     return (cached as PreExecution) || 'adaptive'
   })
 
@@ -92,7 +92,7 @@ export function PlaylistsPage() {
     localStorage.setItem('playlist-pauseUnit', pauseUnit)
   }, [pauseUnit])
   useEffect(() => {
-    localStorage.setItem('playlist-clearPattern', clearPattern)
+    localStorage.setItem('preExecution', clearPattern)
   }, [clearPattern])
 
   // Persist selected playlist to localStorage

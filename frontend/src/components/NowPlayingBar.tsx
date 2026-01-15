@@ -28,6 +28,11 @@ interface PlaybackStatus {
     remaining_time: number
     elapsed_time: number
     percentage: number
+    last_completed_time?: {
+      actual_time_seconds: number
+      actual_time_formatted: string
+      timestamp: string
+    }
   } | null
   playlist: {
     current_index: number
@@ -639,8 +644,15 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
 
   const patternName = formatPatternName(status?.current_file ?? null)
   const progressPercent = status?.progress?.percentage || 0
-  const remainingTime = status?.progress?.remaining_time || 0
+  const tqdmRemainingTime = status?.progress?.remaining_time || 0
   const elapsedTime = status?.progress?.elapsed_time || 0
+
+  // Use historical time if available, otherwise fall back to tqdm estimate
+  const historicalTime = status?.progress?.last_completed_time?.actual_time_seconds
+  const remainingTime = historicalTime
+    ? Math.max(0, historicalTime - elapsedTime)
+    : tqdmRemainingTime
+  const usingHistoricalEta = !!historicalTime
 
   // Detect waiting state between patterns
   const isWaiting = (status?.pause_time_remaining ?? 0) > 0
@@ -750,11 +762,9 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                             </>
                           ) : (
                             <>
-                              <div className="marquee-container">
-                                <p className="text-sm md:text-base font-semibold whitespace-nowrap animate-marquee">
-                                  {patternName}
-                                </p>
-                              </div>
+                              <p className="text-sm md:text-base font-semibold truncate">
+                                {patternName}
+                              </p>
                               {status.playlist && (
                                 <p className="text-xs text-muted-foreground">
                                   Pattern {status.playlist.current_index + 1} of {status.playlist.total_files}
@@ -776,7 +786,13 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                         <div className="hidden md:flex items-center gap-3">
                           <span className="text-sm text-muted-foreground w-12 font-mono">{formatTime(elapsedTime)}</span>
                           <Progress value={progressPercent} className="h-2 flex-1" />
-                          <span className="text-sm text-muted-foreground w-12 text-right font-mono">-{formatTime(remainingTime)}</span>
+                          <span
+                            className={`text-sm text-muted-foreground text-right font-mono flex items-center justify-end gap-1 ${usingHistoricalEta ? 'w-16' : 'w-12'}`}
+                            title={usingHistoricalEta ? 'ETA based on last completed run' : 'Estimated time remaining'}
+                          >
+                            {usingHistoricalEta && <span className="material-icons-outlined text-sm">history</span>}
+                            -{formatTime(remainingTime)}
+                          </span>
                         </div>
                       )}
 
@@ -869,16 +885,19 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
               {/* Progress Bar - Mobile only (full width at bottom) */}
               {isPlaying && status && (
                 isWaiting ? (
-                  <div className="flex md:hidden items-center gap-3 px-6 pb-3">
+                  <div className="flex md:hidden items-center gap-3 px-6 pb-16">
                     <span className="material-icons-outlined text-muted-foreground text-lg">hourglass_top</span>
                     <Progress value={waitProgress} className="h-2 flex-1" />
                     <span className="text-sm text-muted-foreground font-mono">{formatTime(waitTimeRemaining)}</span>
                   </div>
                 ) : (
-                  <div className="flex md:hidden items-center gap-3 px-6 pb-3">
+                  <div className="flex md:hidden items-center gap-3 px-6 pb-16">
                     <span className="text-sm text-muted-foreground w-12 font-mono">{formatTime(elapsedTime)}</span>
                     <Progress value={progressPercent} className="h-2 flex-1" />
-                    <span className="text-sm text-muted-foreground w-12 text-right font-mono">-{formatTime(remainingTime)}</span>
+                    <span className={`text-sm text-muted-foreground text-right font-mono flex items-center justify-end gap-0.5 ${usingHistoricalEta ? 'w-16' : 'w-12'}`}>
+                      {usingHistoricalEta && <span className="material-icons-outlined text-sm">history</span>}
+                      -{formatTime(remainingTime)}
+                    </span>
                   </div>
                 )
               )}
@@ -891,7 +910,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
               <div className="w-full max-w-5xl mx-auto flex flex-col md:flex-row md:items-center md:justify-center gap-3 md:gap-6">
                 {/* Canvas - full width on mobile (click to collapse) */}
                 <div
-                  className="flex items-center justify-center flex-1 md:flex-none min-h-0 cursor-pointer"
+                  className="flex items-center justify-center cursor-pointer"
                   onClick={() => setIsExpanded(false)}
                   title="Click to collapse"
                 >
@@ -899,8 +918,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                     ref={canvasRef}
                     width={600}
                     height={600}
-                    className="w-full max-h-full rounded-full border-2 md:w-auto hover:border-primary transition-colors"
-                    style={{ aspectRatio: '1/1', maxHeight: '40vh' }}
+                    className="rounded-full border-2 hover:border-primary transition-colors max-h-[40vh] max-w-[40vh] w-[40vh] h-[40vh] md:w-[300px] md:h-[300px] md:max-w-none md:max-h-none"
                   />
                 </div>
 
@@ -944,9 +962,12 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                   <div className="space-y-1 md:space-y-2">
                     <Progress value={progressPercent} className="h-1.5 md:h-2" />
                     <div className="flex justify-between text-xs md:text-sm text-muted-foreground font-mono">
-                      <span>{formatTime(elapsedTime)}</span>
+                      <span className="w-16">{formatTime(elapsedTime)}</span>
                       <span>{progressPercent.toFixed(0)}%</span>
-                      <span>-{formatTime(remainingTime)}</span>
+                      <span className="w-16 flex items-center justify-end gap-1">
+                        {usingHistoricalEta && <span className="material-icons-outlined text-xs">history</span>}
+                        -{formatTime(remainingTime)}
+                      </span>
                     </div>
                   </div>
                 )}
