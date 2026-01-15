@@ -45,8 +45,9 @@
 
 /* Dark mode */
 .dark {
-  --color-border: hsl(0 0% 25%);
-  --color-input: hsl(0 0% 25%);
+  color-scheme: dark;
+  --color-border: hsl(0 0% 32%);
+  --color-input: hsl(0 0% 32%);
   --color-ring: hsl(207 90% 50%);
   --color-background: hsl(0 0% 10%);
   --color-foreground: hsl(210 40% 98%);
@@ -54,20 +55,22 @@
   --color-primary: hsl(207 90% 50%);
   --color-primary-foreground: hsl(210 40% 98%);
 
-  --color-secondary: hsl(0 0% 20%);
+  --color-secondary: hsl(0 0% 25%);
   --color-secondary-foreground: hsl(210 40% 98%);
 
-  --color-muted: hsl(0 0% 20%);
+  --color-muted: hsl(0 0% 25%);
   --color-muted-foreground: hsl(215 20.2% 65.1%);
 
-  --color-accent: hsl(0 0% 20%);
+  --color-accent: hsl(0 0% 25%);
   --color-accent-foreground: hsl(210 40% 98%);
 
   --color-destructive: hsl(0 62.8% 50.6%);
   --color-destructive-foreground: hsl(210 40% 98%);
 
-  --color-card: hsl(0 0% 15%);
+  --color-card: hsl(0 0% 18%);
   --color-card-foreground: hsl(210 40% 98%);
+
+  --color-input-background: hsl(0 0% 28%);
 
   --color-popover: hsl(0 0% 15%);
   --color-popover-foreground: hsl(210 40% 98%);
@@ -76,6 +79,20 @@
 /* Base styles */
 * {
   border-color: var(--color-border);
+}
+
+/* Form label spacing - adds margin below labels for better readability */
+label {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+/* Form input background - lighter than card for visibility */
+.dark input:not([type="checkbox"]):not([type="radio"]),
+.dark select,
+.dark textarea,
+.dark [role="combobox"] {
+  background-color: var(--color-input-background);
 }
 
 body {

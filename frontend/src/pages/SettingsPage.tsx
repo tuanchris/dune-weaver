@@ -728,10 +728,10 @@ export function SettingsPage() {
         type="multiple"
         value={openSections}
         onValueChange={handleAccordionChange}
-        className="space-y-4"
+        className="space-y-3"
       >
         {/* Device Connection */}
-        <AccordionItem value="connection" id="section-connection" className="border rounded-lg px-4 overflow-visible">
+        <AccordionItem value="connection" id="section-connection" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
               <span className="material-icons-outlined text-muted-foreground">
@@ -747,7 +747,7 @@ export function SettingsPage() {
           </AccordionTrigger>
           <AccordionContent className="pt-4 pb-6 space-y-6">
             {/* Connection Status */}
-            <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+            <div className="flex items-center justify-between p-4 rounded-lg border">
               <div className="flex items-center gap-3">
                 <div className={`p-2 rounded-lg ${isConnected ? 'bg-green-100 dark:bg-green-900' : 'bg-muted'}`}>
                   <span className={`material-icons ${isConnected ? 'text-green-600' : 'text-muted-foreground'}`}>
@@ -858,7 +858,7 @@ export function SettingsPage() {
         </AccordionItem>
 
         {/* Machine Settings */}
-        <AccordionItem value="machine" id="section-machine" className="border rounded-lg px-4 overflow-visible">
+        <AccordionItem value="machine" id="section-machine" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
               <span className="material-icons-outlined text-muted-foreground">
@@ -875,19 +875,19 @@ export function SettingsPage() {
           <AccordionContent className="pt-4 pb-6 space-y-6">
             {/* Hardware Parameters */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="p-3 bg-muted/50 rounded-lg">
+              <div className="p-3 rounded-lg bg-muted/50">
                 <p className="text-xs text-muted-foreground">Detected Type</p>
                 <p className="font-medium text-sm">{settings.detected_table_type || 'Unknown'}</p>
               </div>
-              <div className="p-3 bg-muted/50 rounded-lg">
+              <div className="p-3 rounded-lg bg-muted/50">
                 <p className="text-xs text-muted-foreground">Gear Ratio</p>
                 <p className="font-medium text-sm">{settings.gear_ratio ?? '—'}</p>
               </div>
-              <div className="p-3 bg-muted/50 rounded-lg">
+              <div className="p-3 rounded-lg bg-muted/50">
                 <p className="text-xs text-muted-foreground">X Steps/mm</p>
                 <p className="font-medium text-sm">{settings.x_steps_per_mm ?? '—'}</p>
               </div>
-              <div className="p-3 bg-muted/50 rounded-lg">
+              <div className="p-3 rounded-lg bg-muted/50">
                 <p className="text-xs text-muted-foreground">Y Steps/mm</p>
                 <p className="font-medium text-sm">{settings.y_steps_per_mm ?? '—'}</p>
               </div>
@@ -944,7 +944,7 @@ export function SettingsPage() {
         </AccordionItem>
 
         {/* Homing Configuration */}
-        <AccordionItem value="homing" id="section-homing" className="border rounded-lg px-4 overflow-visible">
+        <AccordionItem value="homing" id="section-homing" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
               <span className="material-icons-outlined text-muted-foreground">
@@ -1020,7 +1020,7 @@ export function SettingsPage() {
             )}
 
             {/* Auto-Home During Playlists */}
-            <div className="p-4 bg-muted/50 rounded-lg space-y-4">
+            <div className="p-4 rounded-lg border space-y-3">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium flex items-center gap-2">
@@ -1078,7 +1078,7 @@ export function SettingsPage() {
         </AccordionItem>
 
         {/* Application Settings */}
-        <AccordionItem value="application" id="section-application" className="border rounded-lg px-4 overflow-visible">
+        <AccordionItem value="application" id="section-application" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
               <span className="material-icons-outlined text-muted-foreground">
@@ -1096,7 +1096,7 @@ export function SettingsPage() {
             {/* Custom Logo */}
             <div className="space-y-3">
               <Label>Custom Logo</Label>
-              <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
+              <div className="flex items-center gap-4 p-4 rounded-lg border">
                 <div className="w-16 h-16 rounded-full overflow-hidden border bg-background flex items-center justify-center shrink-0">
                   {settings.custom_logo ? (
                     <img
@@ -1205,7 +1205,7 @@ export function SettingsPage() {
         </AccordionItem>
 
         {/* Pattern Clearing */}
-        <AccordionItem value="clearing" id="section-clearing" className="border rounded-lg px-4 overflow-visible">
+        <AccordionItem value="clearing" id="section-clearing" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
               <span className="material-icons-outlined text-muted-foreground">
@@ -1225,7 +1225,7 @@ export function SettingsPage() {
             </p>
 
             {/* Clearing Speed */}
-            <div className="p-4 bg-muted/50 rounded-lg space-y-4">
+            <div className="p-4 rounded-lg border space-y-3">
               <h4 className="font-medium">Clearing Speed</h4>
               <p className="text-sm text-muted-foreground">
                 Set a custom speed for clearing patterns. Leave empty to use the default pattern speed.
@@ -1251,7 +1251,7 @@ export function SettingsPage() {
             </div>
 
             {/* Custom Clear Patterns */}
-            <div className="p-4 bg-muted/50 rounded-lg space-y-4">
+            <div className="p-4 rounded-lg border space-y-3">
               <h4 className="font-medium">Custom Clear Patterns</h4>
               <p className="text-sm text-muted-foreground">
                 Choose specific patterns to use when clearing. Leave empty for default behavior.
@@ -1316,7 +1316,7 @@ export function SettingsPage() {
         </AccordionItem>
 
         {/* LED Controller Configuration */}
-        <AccordionItem value="led" id="section-led" className="border rounded-lg px-4 overflow-visible">
+        <AccordionItem value="led" id="section-led" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
               <span className="material-icons-outlined text-muted-foreground">
@@ -1358,7 +1358,7 @@ export function SettingsPage() {
 
             {/* WLED Config */}
             {ledConfig.provider === 'wled' && (
-              <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
+              <div className="space-y-3 p-4 rounded-lg border">
                 <Label htmlFor="wledIp">WLED IP Address</Label>
                 <Input
                   id="wledIp"
@@ -1376,7 +1376,7 @@ export function SettingsPage() {
 
             {/* DW LEDs Config */}
             {ledConfig.provider === 'dw_leds' && (
-              <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+              <div className="space-y-3 p-4 rounded-lg border">
                 <Alert className="flex items-start">
                   <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
                   <AlertDescription>
@@ -1457,7 +1457,7 @@ export function SettingsPage() {
         </AccordionItem>
 
         {/* Home Assistant Integration */}
-        <AccordionItem value="mqtt" id="section-mqtt" className="border rounded-lg px-4 overflow-visible">
+        <AccordionItem value="mqtt" id="section-mqtt" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
               <span className="material-icons-outlined text-muted-foreground">
@@ -1473,7 +1473,7 @@ export function SettingsPage() {
           </AccordionTrigger>
           <AccordionContent className="pt-4 pb-6 space-y-6">
             {/* Enable Toggle */}
-            <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+            <div className="flex items-center justify-between p-4 rounded-lg border">
               <div>
                 <p className="font-medium">Enable MQTT</p>
                 <p className="text-sm text-muted-foreground">
@@ -1489,7 +1489,7 @@ export function SettingsPage() {
             </div>
 
             {mqttConfig.enabled && (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {/* Broker Settings */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-3">
@@ -1614,7 +1614,7 @@ export function SettingsPage() {
         </AccordionItem>
 
         {/* Auto-play on Boot */}
-        <AccordionItem value="autoplay" id="section-autoplay" className="border rounded-lg px-4 overflow-visible">
+        <AccordionItem value="autoplay" id="section-autoplay" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
               <span className="material-icons-outlined text-muted-foreground">
@@ -1629,7 +1629,7 @@ export function SettingsPage() {
             </div>
           </AccordionTrigger>
           <AccordionContent className="pt-4 pb-6 space-y-6">
-            <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+            <div className="flex items-center justify-between p-4 rounded-lg border">
               <div>
                 <p className="font-medium">Enable Auto-play</p>
                 <p className="text-sm text-muted-foreground">
@@ -1645,7 +1645,7 @@ export function SettingsPage() {
             </div>
 
             {autoPlaySettings.enabled && (
-              <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+              <div className="space-y-3 p-4 rounded-lg border">
                 <div className="space-y-3">
                   <Label>Startup Playlist</Label>
                   <Select
@@ -1784,7 +1784,7 @@ export function SettingsPage() {
         </AccordionItem>
 
         {/* Still Sands */}
-        <AccordionItem value="stillsands" id="section-stillsands" className="border rounded-lg px-4 overflow-visible">
+        <AccordionItem value="stillsands" id="section-stillsands" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
               <span className="material-icons-outlined text-muted-foreground">
@@ -1799,7 +1799,7 @@ export function SettingsPage() {
             </div>
           </AccordionTrigger>
           <AccordionContent className="pt-4 pb-6 space-y-6">
-            <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+            <div className="flex items-center justify-between p-4 rounded-lg border">
               <div>
                 <p className="font-medium">Enable Still Sands</p>
                 <p className="text-sm text-muted-foreground">
@@ -1815,9 +1815,9 @@ export function SettingsPage() {
             </div>
 
             {stillSandsSettings.enabled && (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {/* Options */}
-                <div className="p-4 bg-muted/50 rounded-lg space-y-4">
+                <div className="p-4 rounded-lg border space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="material-icons-outlined text-base text-muted-foreground">
@@ -1861,7 +1861,7 @@ export function SettingsPage() {
                   </div>
 
                   {/* Timezone */}
-                  <div className="flex items-center justify-between pt-3 border-t">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-3 border-t">
                     <div className="flex items-center gap-3">
                       <span className="material-icons-outlined text-muted-foreground">
                         schedule
@@ -1881,7 +1881,7 @@ export function SettingsPage() {
                           setStillSandsSettings({ ...stillSandsSettings, timezone: e.target.value })
                         }
                         placeholder="System Default"
-                        className="w-[200px]"
+                        className="w-full sm:w-[200px]"
                       />
                       <datalist id="timezone-options">
                         {/* UTC Offsets */}
@@ -1931,7 +1931,7 @@ export function SettingsPage() {
                 </div>
 
                 {/* Time Slots */}
-                <div className="p-4 bg-muted/50 rounded-lg space-y-4">
+                <div className="p-4 rounded-lg border space-y-3">
                   <div className="flex items-center justify-between">
                     <h4 className="font-medium">Still Periods</h4>
                     <Button onClick={addTimeSlot} size="sm" variant="outline" className="gap-1">
@@ -1955,22 +1955,22 @@ export function SettingsPage() {
                       {stillSandsSettings.time_slots.map((slot, index) => (
                         <div
                           key={index}
-                          className="p-3 border rounded-lg bg-background space-y-3"
+                          className="p-3 border rounded-lg bg-muted/50 space-y-3 overflow-hidden"
                         >
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between -mr-1">
                             <span className="text-sm font-medium">Period {index + 1}</span>
                             <Button
                               variant="ghost"
-                              size="sm"
+                              size="icon"
                               onClick={() => removeTimeSlot(index)}
-                              className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                              className="h-7 w-7 text-destructive hover:text-destructive"
                             >
-                              <span className="material-icons text-base">delete</span>
+                              <span className="material-icons text-lg">delete</span>
                             </Button>
                           </div>
 
                           <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
+                            <div className="space-y-1.5 min-w-0">
                               <Label className="text-xs">Start Time</Label>
                               <Input
                                 type="time"
@@ -1978,9 +1978,10 @@ export function SettingsPage() {
                                 onChange={(e) =>
                                   updateTimeSlot(index, { start_time: e.target.value })
                                 }
+                                className="text-xs"
                               />
                             </div>
-                            <div className="space-y-1">
+                            <div className="space-y-1.5 min-w-0">
                               <Label className="text-xs">End Time</Label>
                               <Input
                                 type="time"
@@ -1988,11 +1989,12 @@ export function SettingsPage() {
                                 onChange={(e) =>
                                   updateTimeSlot(index, { end_time: e.target.value })
                                 }
+                                className="text-xs"
                               />
                             </div>
                           </div>
 
-                          <div className="space-y-1">
+                          <div className="space-y-1.5">
                             <Label className="text-xs">Days</Label>
                             <Select
                               value={slot.days}
@@ -2046,7 +2048,7 @@ export function SettingsPage() {
         </AccordionItem>
 
         {/* Software Version */}
-        <AccordionItem value="version" id="section-version" className="border rounded-lg px-4 overflow-visible">
+        <AccordionItem value="version" id="section-version" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
               <span className="material-icons-outlined text-muted-foreground">
@@ -2060,9 +2062,9 @@ export function SettingsPage() {
               </div>
             </div>
           </AccordionTrigger>
-          <AccordionContent className="pt-4 pb-6 space-y-4">
-            <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
-              <div className="p-2 bg-muted rounded-lg">
+          <AccordionContent className="pt-4 pb-6 space-y-3">
+            <div className="flex items-center gap-4 p-4 rounded-lg bg-muted/50">
+              <div className="p-2 bg-background rounded-lg">
                 <span className="material-icons text-muted-foreground">terminal</span>
               </div>
               <div className="flex-1">
@@ -2073,8 +2075,8 @@ export function SettingsPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
-              <div className="p-2 bg-muted rounded-lg">
+            <div className="flex items-center gap-4 p-4 rounded-lg bg-muted/50">
+              <div className="p-2 bg-background rounded-lg">
                 <span className="material-icons text-muted-foreground">system_update</span>
               </div>
               <div className="flex-1">

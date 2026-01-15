@@ -508,7 +508,7 @@ export function LEDPage() {
 
               {/* Speed and Intensity in styled boxes */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-muted/50 rounded-lg space-y-3">
+                <div className="p-4 rounded-lg border space-y-3">
                   <div className="flex justify-between items-center">
                     <Label className="flex items-center gap-2">
                       <span className="material-icons-outlined text-base text-muted-foreground">speed</span>
@@ -524,7 +524,7 @@ export function LEDPage() {
                     step={1}
                   />
                 </div>
-                <div className="p-4 bg-muted/50 rounded-lg space-y-3">
+                <div className="p-4 rounded-lg border space-y-3">
                   <div className="flex justify-between items-center">
                     <Label className="flex items-center gap-2">
                       <span className="material-icons-outlined text-base text-muted-foreground">tungsten</span>
@@ -633,14 +633,14 @@ export function LEDPage() {
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Playing Effect */}
-            <div className="p-4 bg-muted/50 rounded-lg space-y-3">
+            <div className="p-4 rounded-lg border space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="material-icons text-green-600">play_circle</span>
                   <span className="font-medium">While Playing</span>
                 </div>
               </div>
-              <div className="text-xs text-muted-foreground p-2 bg-background rounded border min-h-[40px]">
+              <div className="text-xs text-muted-foreground p-2 bg-muted/50 rounded border min-h-[40px]">
                 {formatEffectSettings(playingEffect)}
               </div>
               <div className="flex gap-2">
@@ -663,14 +663,14 @@ export function LEDPage() {
             </div>
 
             {/* Idle Effect */}
-            <div className="p-4 bg-muted/50 rounded-lg space-y-3">
+            <div className="p-4 rounded-lg border space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="material-icons text-blue-600">bedtime</span>
                   <span className="font-medium">When Idle</span>
                 </div>
               </div>
-              <div className="text-xs text-muted-foreground p-2 bg-background rounded border min-h-[40px]">
+              <div className="text-xs text-muted-foreground p-2 bg-muted/50 rounded border min-h-[40px]">
                 {formatEffectSettings(idleEffect)}
               </div>
               <div className="flex gap-2">
