@@ -50,11 +50,33 @@ export function TableControlPage() {
   // Connect to status WebSocket to get current speed and playback status
   useEffect(() => {
     let ws: WebSocket | null = null
+    let shouldReconnect = true
 
     const connect = () => {
+      if (!shouldReconnect) return
+
+      // Don't interrupt an existing connection that's still connecting
+      if (ws) {
+        if (ws.readyState === WebSocket.CONNECTING) {
+          return // Already connecting, wait for it
+        }
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.close()
+        }
+        ws = null
+      }
+
       ws = new WebSocket(apiClient.getWebSocketUrl('/ws/status'))
 
+      ws.onopen = () => {
+        if (!shouldReconnect) {
+          // Component unmounted while connecting - close the WebSocket now
+          ws?.close()
+        }
+      }
+
       ws.onmessage = (event) => {
+        if (!shouldReconnect) return
         try {
           const message = JSON.parse(event.data)
           if (message.type === 'status_update' && message.data) {
@@ -74,13 +96,19 @@ export function TableControlPage() {
 
     // Reconnect when table changes
     const unsubscribe = apiClient.onBaseUrlChange(() => {
-      if (ws) ws.close()
       connect()
     })
 
     return () => {
+      shouldReconnect = false
       unsubscribe()
-      if (ws) ws.close()
+      if (ws) {
+        // Only close if already OPEN - CONNECTING WebSockets will close in onopen
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.close()
+        }
+        ws = null
+      }
     }
   }, [])
 

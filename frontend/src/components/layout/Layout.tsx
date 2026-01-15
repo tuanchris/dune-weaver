@@ -185,7 +185,11 @@ export function Layout() {
       wsRef.current = ws
 
       ws.onopen = () => {
-        if (!isMounted) return
+        if (!isMounted) {
+          // Component unmounted while connecting - close the WebSocket now
+          ws.close()
+          return
+        }
         setIsBackendConnected(true)
         setConnectionAttempts(0)
         // Dispatch event so pages can refetch data
@@ -277,7 +281,10 @@ export function Layout() {
         clearTimeout(reconnectTimeout)
       }
       if (wsRef.current) {
-        wsRef.current.close()
+        // Only close if already OPEN - CONNECTING WebSockets will close in onopen
+        if (wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.close()
+        }
         wsRef.current = null
       }
     }
@@ -286,13 +293,15 @@ export function Layout() {
   // Connect to logs WebSocket when drawer opens
   useEffect(() => {
     if (!isLogsOpen) {
-      // Close WebSocket when drawer closes
-      if (logsWsRef.current) {
+      // Close WebSocket when drawer closes - only if OPEN (CONNECTING will close in onopen)
+      if (logsWsRef.current && logsWsRef.current.readyState === WebSocket.OPEN) {
         logsWsRef.current.close()
-        logsWsRef.current = null
       }
+      logsWsRef.current = null
       return
     }
+
+    let shouldConnect = true
 
     // Fetch initial logs
     const fetchInitialLogs = async () => {
@@ -322,9 +331,27 @@ export function Layout() {
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
 
     const connectLogsWebSocket = () => {
+      // Don't interrupt an existing connection that's still connecting
+      if (logsWsRef.current) {
+        if (logsWsRef.current.readyState === WebSocket.CONNECTING) {
+          return // Already connecting, wait for it
+        }
+        if (logsWsRef.current.readyState === WebSocket.OPEN) {
+          logsWsRef.current.close()
+        }
+        logsWsRef.current = null
+      }
+
       const ws = new WebSocket(apiClient.getWebSocketUrl('/ws/logs'))
+      // Assign to ref IMMEDIATELY so concurrent calls see it's connecting
+      logsWsRef.current = ws
 
       ws.onopen = () => {
+        if (!shouldConnect) {
+          // Effect cleanup ran while connecting - close now
+          ws.close()
+          return
+        }
         console.log('Logs WebSocket connected')
       }
 
@@ -364,10 +391,11 @@ export function Layout() {
       }
 
       ws.onclose = () => {
+        if (!shouldConnect) return
         console.log('Logs WebSocket closed, reconnecting...')
         // Reconnect after 3 seconds if drawer is still open
         reconnectTimeout = setTimeout(() => {
-          if (logsWsRef.current === ws) {
+          if (shouldConnect && logsWsRef.current === ws) {
             connectLogsWebSocket()
           }
         }, 3000)
@@ -376,18 +404,20 @@ export function Layout() {
       ws.onerror = (error) => {
         console.error('Logs WebSocket error:', error)
       }
-
-      logsWsRef.current = ws
     }
 
     connectLogsWebSocket()
 
     return () => {
+      shouldConnect = false
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout)
       }
       if (logsWsRef.current) {
-        logsWsRef.current.close()
+        // Only close if already OPEN - CONNECTING WebSockets will close in onopen
+        if (logsWsRef.current.readyState === WebSocket.OPEN) {
+          logsWsRef.current.close()
+        }
         logsWsRef.current = null
       }
     }
@@ -513,11 +543,11 @@ export function Layout() {
 
     if (!showOverlay) {
       setConnectionLogs([])
-      // Close WebSocket if open
-      if (blockingLogsWsRef.current) {
+      // Close WebSocket if open - only if OPEN (CONNECTING will close in onopen)
+      if (blockingLogsWsRef.current && blockingLogsWsRef.current.readyState === WebSocket.OPEN) {
         blockingLogsWsRef.current.close()
-        blockingLogsWsRef.current = null
       }
+      blockingLogsWsRef.current = null
       return
     }
 
@@ -549,7 +579,29 @@ export function Layout() {
     if (isHoming && isBackendConnected) {
       addLog('INFO', 'Homing started...')
 
+      let shouldConnect = true
+
+      // Don't interrupt an existing connection that's still connecting
+      if (blockingLogsWsRef.current) {
+        if (blockingLogsWsRef.current.readyState === WebSocket.CONNECTING) {
+          return // Already connecting, wait for it
+        }
+        if (blockingLogsWsRef.current.readyState === WebSocket.OPEN) {
+          blockingLogsWsRef.current.close()
+        }
+        blockingLogsWsRef.current = null
+      }
+
       const ws = new WebSocket(apiClient.getWebSocketUrl('/ws/logs'))
+      // Assign to ref IMMEDIATELY so concurrent calls see it's connecting
+      blockingLogsWsRef.current = ws
+
+      ws.onopen = () => {
+        if (!shouldConnect) {
+          // Effect cleanup ran while connecting - close now
+          ws.close()
+        }
+      }
 
       ws.onmessage = (event) => {
         try {
@@ -585,10 +637,12 @@ export function Layout() {
         }
       }
 
-      blockingLogsWsRef.current = ws
-
       return () => {
-        ws.close()
+        shouldConnect = false
+        // Only close if already OPEN - CONNECTING WebSockets will close in onopen
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.close()
+        }
         blockingLogsWsRef.current = null
       }
     }
@@ -618,11 +672,32 @@ export function Layout() {
     if (!isBackendConnected) return
 
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
+    let shouldConnect = true
 
     const connectCacheWebSocket = () => {
-      if (cacheWsRef.current) return
+      if (!shouldConnect) return
+      // Don't interrupt an existing connection that's still connecting
+      if (cacheWsRef.current) {
+        if (cacheWsRef.current.readyState === WebSocket.CONNECTING) {
+          return // Already connecting, wait for it
+        }
+        if (cacheWsRef.current.readyState === WebSocket.OPEN) {
+          return // Already connected
+        }
+        // CLOSING or CLOSED state - clear the ref
+        cacheWsRef.current = null
+      }
 
       const ws = new WebSocket(apiClient.getWebSocketUrl('/ws/cache-progress'))
+      // Assign to ref IMMEDIATELY so concurrent calls see it's connecting
+      cacheWsRef.current = ws
+
+      ws.onopen = () => {
+        if (!shouldConnect) {
+          // Effect cleanup ran while connecting - close now
+          ws.close()
+        }
+      }
 
       ws.onmessage = (event) => {
         try {
@@ -656,9 +731,10 @@ export function Layout() {
       }
 
       ws.onclose = () => {
+        if (!shouldConnect) return
         cacheWsRef.current = null
         // Reconnect after 3 seconds
-        if (isBackendConnected) {
+        if (shouldConnect && isBackendConnected) {
           reconnectTimeout = setTimeout(connectCacheWebSocket, 3000)
         }
       }
@@ -666,18 +742,20 @@ export function Layout() {
       ws.onerror = () => {
         // Will trigger onclose
       }
-
-      cacheWsRef.current = ws
     }
 
     connectCacheWebSocket()
 
     return () => {
+      shouldConnect = false
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout)
       }
       if (cacheWsRef.current) {
-        cacheWsRef.current.close()
+        // Only close if already OPEN - CONNECTING WebSockets will close in onopen
+        if (cacheWsRef.current.readyState === WebSocket.OPEN) {
+          cacheWsRef.current.close()
+        }
         cacheWsRef.current = null
       }
     }

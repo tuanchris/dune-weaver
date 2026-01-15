@@ -197,6 +197,13 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
       // Assign to ref IMMEDIATELY so concurrent calls see it's connecting
       wsRef.current = ws
 
+      ws.onopen = () => {
+        if (!shouldReconnect) {
+          // Component unmounted while connecting - close the WebSocket now
+          ws.close()
+        }
+      }
+
       ws.onmessage = (event) => {
         if (!shouldReconnect) return
         try {
@@ -234,7 +241,11 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
         clearTimeout(reconnectTimeout)
       }
       if (wsRef.current) {
-        wsRef.current.close()
+        // Only close if already OPEN - CONNECTING WebSockets will close in onopen
+        if (wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.close()
+        }
+        wsRef.current = null
       }
     }
   }, [])

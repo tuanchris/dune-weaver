@@ -13,6 +13,7 @@ from modules.core import scheduling
 logger = logging.getLogger(__name__)
 
 _pool: Optional[ProcessPoolExecutor] = None
+_shutdown_in_progress: bool = False
 
 
 def _get_worker_count() -> int:
@@ -57,9 +58,26 @@ def get_pool() -> ProcessPoolExecutor:
 
 
 def shutdown_pool(wait: bool = True, cancel_futures: bool = False):
-    """Shutdown the process pool."""
-    global _pool
+    """Shutdown the process pool.
+
+    Args:
+        wait: If True, wait for workers to finish current tasks before shutdown.
+              This allows workers to properly release semaphores.
+        cancel_futures: If True, cancel pending futures. Use with caution as this
+                       can cause semaphore leaks if wait=False.
+
+    Note: Always use wait=True to prevent semaphore leaks. The wait=False option
+    exists only for emergency shutdown scenarios.
+    """
+    global _pool, _shutdown_in_progress
+
+    # Prevent concurrent shutdown calls (race condition between signal handler and lifespan)
+    if _shutdown_in_progress:
+        logger.debug("Pool shutdown already in progress, skipping")
+        return
+
     if _pool is not None:
+        _shutdown_in_progress = True
         _pool.shutdown(wait=wait, cancel_futures=cancel_futures)
         _pool = None
         logger.info("Process pool shut down")

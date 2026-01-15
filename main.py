@@ -3101,8 +3101,8 @@ def signal_handler(signum, frame):
         if state.led_controller:
             state.led_controller.set_power(0)
 
-        # Shutdown process pool to prevent semaphore leaks
-        pool_module.shutdown_pool(wait=False, cancel_futures=True)
+        # Shutdown process pool - wait=True allows workers to release semaphores properly
+        pool_module.shutdown_pool(wait=True)
 
         # Stop pattern manager motion controller
         pattern_manager.motion_controller.stop()
