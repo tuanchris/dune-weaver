@@ -3,6 +3,15 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
 import { apiClient } from '@/lib/apiClient'
 
 type Coordinate = [number, number]
@@ -25,6 +34,8 @@ interface PlaybackStatus {
     total_files: number
     mode: string
     next_file: string | null
+    files: string[]
+    name: string | null
   } | null
   speed: number
   pause_time_remaining: number
@@ -539,6 +550,9 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
   }
 
   const [speedInput, setSpeedInput] = useState('')
+  const [showQueue, setShowQueue] = useState(false)
+  const [hideClearPatterns, setHideClearPatterns] = useState(false)
+  const [queuePreviews, setQueuePreviews] = useState<Record<string, string>>({})
 
   const handleSpeedSubmit = async () => {
     const speed = parseInt(speedInput)
@@ -555,6 +569,69 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
     }
   }
 
+  // Track which files we've already requested previews for
+  const requestedPreviewsRef = useRef<Set<string>>(new Set())
+
+  // Fetch queue previews when dialog opens
+  useEffect(() => {
+    if (!showQueue || !status?.playlist?.files) {
+      return
+    }
+
+    // Filter out files we've already requested
+    const filesToFetch = status.playlist.files.filter(f => !requestedPreviewsRef.current.has(f))
+    if (filesToFetch.length === 0) return
+
+    // Mark these as requested immediately to prevent duplicate requests
+    filesToFetch.forEach(f => requestedPreviewsRef.current.add(f))
+
+    // Fetch in batches of 20 to avoid overwhelming the server
+    const batchSize = 20
+    const fetchBatch = async (batch: string[]) => {
+      try {
+        const data = await apiClient.post<Record<string, { image_data?: string }>>('/preview_thr_batch', { file_names: batch })
+        const newPreviews: Record<string, string> = {}
+        for (const [file, result] of Object.entries(data)) {
+          if (result.image_data) {
+            newPreviews[file] = result.image_data
+          }
+        }
+        if (Object.keys(newPreviews).length > 0) {
+          setQueuePreviews(prev => ({ ...prev, ...newPreviews }))
+        }
+      } catch (err) {
+        console.error('Failed to fetch queue previews:', err)
+      }
+    }
+
+    // Fetch first batch immediately, then stagger the rest
+    for (let i = 0; i < filesToFetch.length; i += batchSize) {
+      const batch = filesToFetch.slice(i, i + batchSize)
+      setTimeout(() => fetchBatch(batch), (i / batchSize) * 200)
+    }
+  }, [showQueue, status?.playlist?.files])
+
+  // Reorder pattern in queue
+  const handleReorder = async (fromIndex: number, toIndex: number) => {
+    if (!status?.playlist?.files) return
+
+    // Can't move past items or the current item
+    if (toIndex <= status.playlist.current_index) {
+      toast.error("Can't move before current pattern")
+      return
+    }
+    if (fromIndex <= status.playlist.current_index) {
+      toast.error("Can't move completed or current pattern")
+      return
+    }
+
+    try {
+      await apiClient.post('/reorder_playlist', { from_index: fromIndex, to_index: toIndex })
+    } catch {
+      toast.error('Failed to reorder')
+    }
+  }
+
   // Don't render if not visible
   if (!isVisible) {
     return null
@@ -564,6 +641,12 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
   const progressPercent = status?.progress?.percentage || 0
   const remainingTime = status?.progress?.remaining_time || 0
   const elapsedTime = status?.progress?.elapsed_time || 0
+
+  // Detect waiting state between patterns
+  const isWaiting = (status?.pause_time_remaining ?? 0) > 0
+  const waitTimeRemaining = status?.pause_time_remaining ?? 0
+  const originalWaitTime = status?.original_pause_time ?? 0
+  const waitProgress = originalWaitTime > 0 ? ((originalWaitTime - waitTimeRemaining) / originalWaitTime) * 100 : 0
 
   return (
     <>
@@ -654,25 +737,48 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                       {/* Title Row */}
                       <div className="flex items-center gap-3 pr-12 md:pr-16">
                         <div className="flex-1 min-w-0">
-                          <div className="marquee-container">
-                            <p className="text-sm md:text-base font-semibold whitespace-nowrap animate-marquee">
-                              {patternName}
-                            </p>
-                          </div>
-                          {status.playlist && (
-                            <p className="text-xs text-muted-foreground">
-                              Pattern {status.playlist.current_index + 1} of {status.playlist.total_files}
-                            </p>
+                          {isWaiting ? (
+                            <>
+                              <p className="text-sm md:text-base font-semibold text-muted-foreground">
+                                Waiting for next pattern...
+                              </p>
+                              {status.playlist?.next_file && (
+                                <p className="text-xs text-muted-foreground">
+                                  Up next: {formatPatternName(status.playlist.next_file)}
+                                </p>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <div className="marquee-container">
+                                <p className="text-sm md:text-base font-semibold whitespace-nowrap animate-marquee">
+                                  {patternName}
+                                </p>
+                              </div>
+                              {status.playlist && (
+                                <p className="text-xs text-muted-foreground">
+                                  Pattern {status.playlist.current_index + 1} of {status.playlist.total_files}
+                                </p>
+                              )}
+                            </>
                           )}
                         </div>
                       </div>
 
                       {/* Progress Bar - Desktop only (inline, above controls) */}
-                      <div className="hidden md:flex items-center gap-3">
-                        <span className="text-sm text-muted-foreground w-12 font-mono">{formatTime(elapsedTime)}</span>
-                        <Progress value={progressPercent} className="h-2 flex-1" />
-                        <span className="text-sm text-muted-foreground w-12 text-right font-mono">-{formatTime(remainingTime)}</span>
-                      </div>
+                      {isWaiting ? (
+                        <div className="hidden md:flex items-center gap-3">
+                          <span className="material-icons-outlined text-muted-foreground text-lg">hourglass_top</span>
+                          <Progress value={waitProgress} className="h-2 flex-1" />
+                          <span className="text-sm text-muted-foreground font-mono">{formatTime(waitTimeRemaining)}</span>
+                        </div>
+                      ) : (
+                        <div className="hidden md:flex items-center gap-3">
+                          <span className="text-sm text-muted-foreground w-12 font-mono">{formatTime(elapsedTime)}</span>
+                          <Progress value={progressPercent} className="h-2 flex-1" />
+                          <span className="text-sm text-muted-foreground w-12 text-right font-mono">-{formatTime(remainingTime)}</span>
+                        </div>
+                      )}
 
                       {/* Playback Controls - Centered */}
                       <div className="flex items-center justify-center gap-3">
@@ -725,8 +831,15 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
 
                     {/* Next Pattern Preview - hidden on mobile */}
                     {status.playlist?.next_file && (
-                      <div className="hidden md:flex shrink-0 flex-col items-center gap-1 mr-16">
-                        <p className="text-xs text-muted-foreground font-medium">Up Next</p>
+                      <div
+                        className="hidden md:flex shrink-0 flex-col items-center gap-1 mr-16 cursor-pointer hover:opacity-80 transition-opacity"
+                        onClick={() => setShowQueue(true)}
+                        title="View queue"
+                      >
+                        <p className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                          Up Next
+                          <span className="material-icons-outlined text-xs">queue_music</span>
+                        </p>
                         <div className="w-24 h-24 rounded-full overflow-hidden bg-muted border-2">
                           {nextPreviewUrl ? (
                             <img
@@ -755,11 +868,19 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
 
               {/* Progress Bar - Mobile only (full width at bottom) */}
               {isPlaying && status && (
-                <div className="flex md:hidden items-center gap-3 px-6 pb-3">
-                  <span className="text-sm text-muted-foreground w-12 font-mono">{formatTime(elapsedTime)}</span>
-                  <Progress value={progressPercent} className="h-2 flex-1" />
-                  <span className="text-sm text-muted-foreground w-12 text-right font-mono">-{formatTime(remainingTime)}</span>
-                </div>
+                isWaiting ? (
+                  <div className="flex md:hidden items-center gap-3 px-6 pb-3">
+                    <span className="material-icons-outlined text-muted-foreground text-lg">hourglass_top</span>
+                    <Progress value={waitProgress} className="h-2 flex-1" />
+                    <span className="text-sm text-muted-foreground font-mono">{formatTime(waitTimeRemaining)}</span>
+                  </div>
+                ) : (
+                  <div className="flex md:hidden items-center gap-3 px-6 pb-3">
+                    <span className="text-sm text-muted-foreground w-12 font-mono">{formatTime(elapsedTime)}</span>
+                    <Progress value={progressPercent} className="h-2 flex-1" />
+                    <span className="text-sm text-muted-foreground w-12 text-right font-mono">-{formatTime(remainingTime)}</span>
+                  </div>
+                )
               )}
             </div>
           )}
@@ -787,23 +908,48 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                 <div className="md:w-80 shrink-0 flex flex-col justify-start md:justify-center gap-2 md:gap-4">
                 {/* Pattern Info */}
                 <div className="text-center">
-                  <h2 className="text-lg md:text-xl font-semibold truncate">{patternName}</h2>
-                  {status?.playlist && (
-                    <p className="text-sm text-muted-foreground">
-                      Pattern {status.playlist.current_index + 1} of {status.playlist.total_files}
-                    </p>
+                  {isWaiting ? (
+                    <>
+                      <h2 className="text-lg md:text-xl font-semibold text-muted-foreground">
+                        Waiting for next pattern...
+                      </h2>
+                      {status?.playlist?.next_file && (
+                        <p className="text-sm text-muted-foreground">
+                          Up next: {formatPatternName(status.playlist.next_file)}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <h2 className="text-lg md:text-xl font-semibold truncate">{patternName}</h2>
+                      {status?.playlist && (
+                        <p className="text-sm text-muted-foreground">
+                          Pattern {status.playlist.current_index + 1} of {status.playlist.total_files}
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
 
                 {/* Progress */}
-                <div className="space-y-1 md:space-y-2">
-                  <Progress value={progressPercent} className="h-1.5 md:h-2" />
-                  <div className="flex justify-between text-xs md:text-sm text-muted-foreground font-mono">
-                    <span>{formatTime(elapsedTime)}</span>
-                    <span>{progressPercent.toFixed(0)}%</span>
-                    <span>-{formatTime(remainingTime)}</span>
+                {isWaiting ? (
+                  <div className="space-y-1 md:space-y-2">
+                    <Progress value={waitProgress} className="h-1.5 md:h-2" />
+                    <div className="flex justify-center items-center gap-2 text-xs md:text-sm text-muted-foreground font-mono">
+                      <span className="material-icons-outlined text-base">hourglass_top</span>
+                      <span>{formatTime(waitTimeRemaining)} remaining</span>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-1 md:space-y-2">
+                    <Progress value={progressPercent} className="h-1.5 md:h-2" />
+                    <div className="flex justify-between text-xs md:text-sm text-muted-foreground font-mono">
+                      <span>{formatTime(elapsedTime)}</span>
+                      <span>{progressPercent.toFixed(0)}%</span>
+                      <span>-{formatTime(remainingTime)}</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Playback Controls */}
                 <div className="flex items-center justify-center gap-2 md:gap-3">
@@ -855,7 +1001,11 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
 
                 {/* Next Pattern */}
                 {status?.playlist?.next_file && (
-                  <div className="flex items-center gap-3 bg-muted/50 rounded-lg p-2 md:p-3">
+                  <div
+                    className="flex items-center gap-3 bg-muted/50 rounded-lg p-2 md:p-3 cursor-pointer hover:bg-muted/70 transition-colors"
+                    onClick={() => setShowQueue(true)}
+                    title="View queue"
+                  >
                     <div className="w-10 h-10 md:w-12 md:h-12 rounded-full overflow-hidden bg-muted border shrink-0">
                       {nextPreviewUrl ? (
                         <img
@@ -869,12 +1019,13 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                         </div>
                       )}
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-xs text-muted-foreground">Up Next</p>
                       <p className="text-sm font-medium truncate">
                         {formatPatternName(status.playlist.next_file)}
                       </p>
                     </div>
+                    <span className="material-icons-outlined text-muted-foreground text-lg">queue_music</span>
                   </div>
                 )}
               </div>
@@ -883,6 +1034,142 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
           )}
         </div>
       </div>
+
+      {/* Queue Dialog */}
+      <Dialog open={showQueue} onOpenChange={setShowQueue}>
+        <DialogContent className="max-w-md max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="material-icons-outlined">queue_music</span>
+              Queue
+              {status?.playlist?.name && (
+                <span className="text-sm font-normal text-muted-foreground">
+                  — {status.playlist.name}
+                </span>
+              )}
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              List of patterns in the current playlist queue
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Filter toggle */}
+          <div className="flex items-center justify-between py-2 border-b">
+            <Label htmlFor="hide-clear" className="text-sm text-muted-foreground cursor-pointer">
+              Hide clear patterns
+            </Label>
+            <Switch
+              id="hide-clear"
+              checked={hideClearPatterns}
+              onCheckedChange={setHideClearPatterns}
+            />
+          </div>
+
+          <div className="flex-1 overflow-y-auto -mx-6 px-6 py-2">
+            {status?.playlist?.files && status.playlist.files.length > 0 ? (
+              <div className="space-y-1">
+                {status.playlist.files.map((file, index) => {
+                  const isCurrent = index === status.playlist!.current_index
+                  const isPast = index < status.playlist!.current_index
+                  const isClearPattern = formatPatternName(file).toLowerCase().includes('clear')
+                  const canReorder = !isPast && !isCurrent
+
+                  // Filter out clear patterns if enabled
+                  if (hideClearPatterns && isClearPattern) return null
+
+                  return (
+                    <div
+                      key={`${file}-${index}`}
+                      className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${
+                        isCurrent
+                          ? 'bg-primary/10 border border-primary/30'
+                          : isPast
+                          ? 'opacity-50'
+                          : 'hover:bg-muted/50'
+                      }`}
+                    >
+                      {/* Index/Status indicator */}
+                      <div className="w-6 text-center shrink-0">
+                        {isCurrent ? (
+                          <span className="material-icons text-primary text-lg">
+                            {status.is_paused ? 'pause' : 'play_arrow'}
+                          </span>
+                        ) : isPast ? (
+                          <span className="material-icons-outlined text-muted-foreground text-sm">check</span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">{index + 1}</span>
+                        )}
+                      </div>
+
+                      {/* Preview thumbnail */}
+                      <div className="w-14 h-14 rounded-full overflow-hidden bg-muted border shrink-0">
+                        {queuePreviews[file] ? (
+                          <img
+                            src={queuePreviews[file]}
+                            alt=""
+                            className="w-full h-full object-cover pattern-preview"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <span className="material-icons-outlined text-muted-foreground text-base">image</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Pattern name */}
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm truncate ${isCurrent ? 'font-medium' : ''} ${isClearPattern ? 'text-muted-foreground italic' : ''}`}>
+                          {formatPatternName(file)}
+                        </p>
+                      </div>
+
+                      {/* Waiting indicator */}
+                      {isCurrent && isWaiting && (
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <span className="material-icons-outlined text-sm">hourglass_top</span>
+                          {formatTime(waitTimeRemaining)}
+                        </span>
+                      )}
+
+                      {/* Reorder buttons */}
+                      {canReorder && (
+                        <div className="flex flex-col shrink-0">
+                          <button
+                            onClick={() => handleReorder(index, index - 1)}
+                            disabled={index <= status.playlist!.current_index + 1}
+                            className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Move up"
+                          >
+                            <span className="material-icons text-sm">keyboard_arrow_up</span>
+                          </button>
+                          <button
+                            onClick={() => handleReorder(index, index + 1)}
+                            disabled={index >= status.playlist!.files.length - 1}
+                            className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Move down"
+                          >
+                            <span className="material-icons text-sm">keyboard_arrow_down</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="text-center text-muted-foreground py-8">No queue</p>
+            )}
+          </div>
+          {status?.playlist && (
+            <div className="pt-3 border-t text-xs text-muted-foreground flex justify-between">
+              <span>Mode: {status.playlist.mode}</span>
+              <span>
+                {status.playlist.current_index + 1} of {status.playlist.total_files}
+              </span>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

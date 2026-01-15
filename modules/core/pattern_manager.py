@@ -1099,12 +1099,15 @@ async def stop_actions(clear_playlist = True, wait_for_lock = True):
             state.stop_requested = True
             state.is_clearing = False
 
+            # Always clear pause time between patterns on stop
+            state.pause_time_remaining = 0
+            state.original_pause_time = None
+
             if clear_playlist:
                 # Clear playlist state
                 state.current_playlist = None
                 state.current_playlist_index = None
                 state.playlist_mode = None
-                state.pause_time_remaining = 0
 
                 # Cancel progress update task if we're clearing the playlist
                 global progress_update_task

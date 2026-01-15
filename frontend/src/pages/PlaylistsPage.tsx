@@ -615,14 +615,14 @@ export function PlaylistsPage() {
               </div>
             ) : (
               <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4">
-                {playlistPatterns.map((path) => {
+                {playlistPatterns.map((path, index) => {
                   const previewUrl = getPreviewUrl(path)
                   if (!previewUrl && !previews[path]) {
                     requestPreview(path)
                   }
                   return (
                     <div
-                      key={path}
+                      key={`${path}-${index}`}
                       className="flex flex-col items-center gap-1.5 sm:gap-2 group"
                     >
                       <div className="relative w-full aspect-square">

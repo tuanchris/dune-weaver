@@ -1120,15 +1120,19 @@ async def list_ports():
 async def connect(request: ConnectRequest):
     if not request.port:
         state.conn = connection_manager.WebSocketConnection('ws://fluidnc.local:81')
-        connection_manager.device_init()
+        if not connection_manager.device_init():
+            raise HTTPException(status_code=500, detail="Failed to initialize device - could not get machine parameters")
         logger.info('Successfully connected to websocket ws://fluidnc.local:81')
         return {"success": True}
 
     try:
         state.conn = connection_manager.SerialConnection(request.port)
-        connection_manager.device_init()
+        if not connection_manager.device_init():
+            raise HTTPException(status_code=500, detail="Failed to initialize device - could not get machine parameters")
         logger.info(f'Successfully connected to serial port {request.port}')
         return {"success": True}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f'Failed to connect to serial port {request.port}: {str(e)}')
         raise HTTPException(status_code=500, detail=str(e))
@@ -2172,6 +2176,42 @@ async def skip_pattern():
     if not state.current_playlist:
         raise HTTPException(status_code=400, detail="No playlist is currently running")
     state.skip_requested = True
+    return {"success": True}
+
+@app.post("/reorder_playlist")
+async def reorder_playlist(request: dict):
+    """Reorder a pattern in the current playlist queue."""
+    if not state.current_playlist:
+        raise HTTPException(status_code=400, detail="No playlist is currently running")
+
+    from_index = request.get("from_index")
+    to_index = request.get("to_index")
+
+    if from_index is None or to_index is None:
+        raise HTTPException(status_code=400, detail="from_index and to_index are required")
+
+    playlist = state.current_playlist
+    current_index = state.current_playlist_index
+
+    # Validate indices
+    if from_index < 0 or from_index >= len(playlist):
+        raise HTTPException(status_code=400, detail="from_index out of range")
+    if to_index < 0 or to_index >= len(playlist):
+        raise HTTPException(status_code=400, detail="to_index out of range")
+
+    # Can't move items that are already played or currently playing
+    if from_index <= current_index:
+        raise HTTPException(status_code=400, detail="Cannot move completed or currently playing pattern")
+    if to_index <= current_index:
+        raise HTTPException(status_code=400, detail="Cannot move pattern before current position")
+
+    # Perform the reorder
+    item = playlist.pop(from_index)
+    playlist.insert(to_index, item)
+
+    # Update state (this triggers the property setter)
+    state.current_playlist = playlist
+
     return {"success": True}
 
 @app.get("/api/custom_clear_patterns", deprecated=True, tags=["settings-deprecated"])

@@ -70,6 +70,7 @@ export default defineConfig({
       '/pause_execution': 'http://localhost:8080',
       '/resume_execution': 'http://localhost:8080',
       '/skip_pattern': 'http://localhost:8080',
+      '/reorder_playlist': 'http://localhost:8080',
       '/run_theta_rho': 'http://localhost:8080',
       '/run_playlist': 'http://localhost:8080',
       // Movement

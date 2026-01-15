@@ -219,6 +219,7 @@ def device_init(homing=True):
         logger.info(f'State x, y; {state.machine_x}, {state.machine_y}')
 
     time.sleep(2)  # Allow time for the connection to establish
+    return True
 
 
 def connect_device(homing=True):
