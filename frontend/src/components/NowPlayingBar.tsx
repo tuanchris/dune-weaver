@@ -10,9 +10,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
 import { apiClient } from '@/lib/apiClient'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import type { DragEndEvent } from '@dnd-kit/core'
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 type Coordinate = [number, number]
 
@@ -62,6 +76,119 @@ function formatPatternName(path: string | null): string {
   // Extract filename without extension and path
   const name = path.split('/').pop()?.replace('.thr', '') || path
   return name
+}
+
+// Sortable queue item component for drag-and-drop
+interface SortableQueueItemProps {
+  id: string
+  file: string
+  index: number
+  currentIndex: number
+  isPaused: boolean
+  isWaiting: boolean
+  waitTimeRemaining: number
+  previewUrl: string | null
+}
+
+function SortableQueueItem({
+  id,
+  file,
+  index,
+  currentIndex,
+  isPaused,
+  isWaiting,
+  waitTimeRemaining,
+  previewUrl,
+}: SortableQueueItemProps) {
+  const isCurrent = index === currentIndex
+  const isPast = index < currentIndex
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id,
+    disabled: isPast || isCurrent,
+  })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 1000 : 'auto',
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${
+        isCurrent
+          ? 'bg-primary/10 border border-primary/30'
+          : isPast
+          ? 'opacity-50'
+          : 'hover:bg-muted/50'
+      } ${isDragging ? 'shadow-lg bg-background' : ''}`}
+    >
+      {/* Drag handle - only for future items */}
+      {!isPast && !isCurrent ? (
+        <div
+          {...attributes}
+          {...listeners}
+          className="w-6 flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing touch-none"
+        >
+          <span className="material-icons-outlined text-muted-foreground text-sm">drag_indicator</span>
+        </div>
+      ) : (
+        <div className="w-6 text-center shrink-0">
+          {isCurrent ? (
+            <span className="material-icons text-primary text-lg">
+              {isPaused ? 'pause' : 'play_arrow'}
+            </span>
+          ) : (
+            <span className="material-icons-outlined text-muted-foreground text-sm">check</span>
+          )}
+        </div>
+      )}
+
+      {/* Preview thumbnail */}
+      <div className="w-14 h-14 rounded-full overflow-hidden bg-muted border shrink-0">
+        {previewUrl ? (
+          <img
+            src={previewUrl}
+            alt=""
+            className="w-full h-full object-cover pattern-preview"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <span className="material-icons-outlined text-muted-foreground text-base">image</span>
+          </div>
+        )}
+      </div>
+
+      {/* Pattern name */}
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm truncate ${isCurrent ? 'font-medium' : ''}`}>
+          {formatPatternName(file)}
+        </p>
+        {!isPast && !isCurrent && (
+          <p className="text-xs text-muted-foreground">#{index + 1}</p>
+        )}
+      </div>
+
+      {/* Waiting indicator */}
+      {isCurrent && isWaiting && (
+        <span className="text-xs text-muted-foreground flex items-center gap-1">
+          <span className="material-icons-outlined text-sm">hourglass_top</span>
+          {formatTime(waitTimeRemaining)}
+        </span>
+      )}
+    </div>
+  )
 }
 
 interface NowPlayingBarProps {
@@ -567,8 +694,19 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
 
   const [speedInput, setSpeedInput] = useState('')
   const [showQueue, setShowQueue] = useState(false)
-  const [hideClearPatterns, setHideClearPatterns] = useState(false)
   const [queuePreviews, setQueuePreviews] = useState<Record<string, string>>({})
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Require 8px movement before starting drag
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
 
   const handleSpeedSubmit = async () => {
     const speed = parseInt(speedInput)
@@ -627,22 +765,36 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
     }
   }, [showQueue, status?.playlist?.files])
 
-  // Reorder pattern in queue
-  const handleReorder = async (fromIndex: number, toIndex: number) => {
-    if (!status?.playlist?.files) return
+  // Handle drag end for reordering queue
+  // Since playlist now contains only main patterns, indices map directly
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
 
-    // Can't move past items or the current item
-    if (toIndex <= status.playlist.current_index) {
-      toast.error("Can't move before current pattern")
+    if (!over || active.id === over.id || !status?.playlist?.files) return
+
+    // Extract indices from IDs
+    const fromIndex = parseInt(active.id.toString().replace('queue-item-', ''))
+    const toIndex = parseInt(over.id.toString().replace('queue-item-', ''))
+
+    if (isNaN(fromIndex) || isNaN(toIndex)) return
+
+    const currentIndex = status.playlist.current_index
+
+    // Can't move patterns that have already played
+    if (fromIndex < currentIndex) {
+      toast.error("Can't move completed pattern")
       return
     }
-    if (fromIndex <= status.playlist.current_index) {
-      toast.error("Can't move completed or current pattern")
+    if (toIndex < currentIndex) {
+      toast.error("Can't move to completed position")
       return
     }
 
     try {
-      await apiClient.post('/reorder_playlist', { from_index: fromIndex, to_index: toIndex })
+      await apiClient.post('/reorder_playlist', {
+        from_index: fromIndex,
+        to_index: toIndex
+      })
     } catch {
       toast.error('Failed to reorder')
     }
@@ -701,6 +853,18 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
 
         {/* Header with action buttons */}
         <div className="absolute top-3 right-3 flex items-center gap-1 z-10">
+          {/* Queue button - mobile only, when playlist exists */}
+          {isPlaying && status?.playlist && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden h-8 w-8"
+              onClick={() => setShowQueue(true)}
+              title="View queue"
+            >
+              <span className="material-icons-outlined text-lg">queue_music</span>
+            </Button>
+          )}
           {isPlaying && (
             <Button
               variant="ghost"
@@ -798,7 +962,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                           <span className="text-sm text-muted-foreground w-12 font-mono">{formatTime(elapsedTime)}</span>
                           <Progress value={progressPercent} className="h-2 flex-1" />
                           <span
-                            className={`text-sm text-muted-foreground text-right font-mono flex items-center justify-end gap-1 ${usingHistoricalEta ? 'w-16' : 'w-12'}`}
+                            className={`text-sm text-muted-foreground text-right font-mono flex items-center justify-end gap-1.5 ${usingHistoricalEta ? 'w-20' : 'w-12'}`}
                             title={usingHistoricalEta ? 'ETA based on last completed run' : 'Estimated time remaining'}
                           >
                             {usingHistoricalEta && <span className="material-icons-outlined text-sm">history</span>}
@@ -905,7 +1069,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                   <div className="flex md:hidden items-center gap-3 px-6 pb-16">
                     <span className="text-sm text-muted-foreground w-12 font-mono">{formatTime(elapsedTime)}</span>
                     <Progress value={progressPercent} className="h-2 flex-1" />
-                    <span className={`text-sm text-muted-foreground text-right font-mono flex items-center justify-end gap-0.5 ${usingHistoricalEta ? 'w-16' : 'w-12'}`}>
+                    <span className={`text-sm text-muted-foreground text-right font-mono flex items-center justify-end gap-1.5 ${usingHistoricalEta ? 'w-20' : 'w-12'}`}>
                       {usingHistoricalEta && <span className="material-icons-outlined text-sm">history</span>}
                       -{formatTime(remainingTime)}
                     </span>
@@ -1085,109 +1249,34 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
             </DialogDescription>
           </DialogHeader>
 
-          {/* Filter toggle */}
-          <div className="flex items-center justify-between py-2 border-b">
-            <Label htmlFor="hide-clear" className="text-sm text-muted-foreground cursor-pointer">
-              Hide clear patterns
-            </Label>
-            <Switch
-              id="hide-clear"
-              checked={hideClearPatterns}
-              onCheckedChange={setHideClearPatterns}
-            />
-          </div>
-
           <div className="flex-1 overflow-y-auto -mx-6 px-6 py-2">
             {status?.playlist?.files && status.playlist.files.length > 0 ? (
-              <div className="space-y-1">
-                {status.playlist.files.map((file, index) => {
-                  const isCurrent = index === status.playlist!.current_index
-                  const isPast = index < status.playlist!.current_index
-                  const isClearPattern = formatPatternName(file).toLowerCase().includes('clear')
-                  const canReorder = !isPast && !isCurrent
-
-                  // Filter out clear patterns if enabled
-                  if (hideClearPatterns && isClearPattern) return null
-
-                  return (
-                    <div
-                      key={`${file}-${index}`}
-                      className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${
-                        isCurrent
-                          ? 'bg-primary/10 border border-primary/30'
-                          : isPast
-                          ? 'opacity-50'
-                          : 'hover:bg-muted/50'
-                      }`}
-                    >
-                      {/* Index/Status indicator */}
-                      <div className="w-6 text-center shrink-0">
-                        {isCurrent ? (
-                          <span className="material-icons text-primary text-lg">
-                            {status.is_paused ? 'pause' : 'play_arrow'}
-                          </span>
-                        ) : isPast ? (
-                          <span className="material-icons-outlined text-muted-foreground text-sm">check</span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">{index + 1}</span>
-                        )}
-                      </div>
-
-                      {/* Preview thumbnail */}
-                      <div className="w-14 h-14 rounded-full overflow-hidden bg-muted border shrink-0">
-                        {queuePreviews[file] ? (
-                          <img
-                            src={queuePreviews[file]}
-                            alt=""
-                            className="w-full h-full object-cover pattern-preview"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <span className="material-icons-outlined text-muted-foreground text-base">image</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Pattern name */}
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm truncate ${isCurrent ? 'font-medium' : ''} ${isClearPattern ? 'text-muted-foreground italic' : ''}`}>
-                          {formatPatternName(file)}
-                        </p>
-                      </div>
-
-                      {/* Waiting indicator */}
-                      {isCurrent && isWaiting && (
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <span className="material-icons-outlined text-sm">hourglass_top</span>
-                          {formatTime(waitTimeRemaining)}
-                        </span>
-                      )}
-
-                      {/* Reorder buttons */}
-                      {canReorder && (
-                        <div className="flex flex-col shrink-0">
-                          <button
-                            onClick={() => handleReorder(index, index - 1)}
-                            disabled={index <= status.playlist!.current_index + 1}
-                            className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
-                            title="Move up"
-                          >
-                            <span className="material-icons text-sm">keyboard_arrow_up</span>
-                          </button>
-                          <button
-                            onClick={() => handleReorder(index, index + 1)}
-                            disabled={index >= status.playlist!.files.length - 1}
-                            className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
-                            title="Move down"
-                          >
-                            <span className="material-icons text-sm">keyboard_arrow_down</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={status.playlist.files.map((_, index) => `queue-item-${index}`)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-1">
+                    {status.playlist.files.map((file, index) => (
+                      <SortableQueueItem
+                        key={`queue-item-${index}`}
+                        id={`queue-item-${index}`}
+                        file={file}
+                        index={index}
+                        currentIndex={status.playlist!.current_index}
+                        isPaused={status.is_paused}
+                        isWaiting={isWaiting}
+                        waitTimeRemaining={waitTimeRemaining}
+                        previewUrl={queuePreviews[file] || null}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
             ) : (
               <p className="text-center text-muted-foreground py-8">No queue</p>
             )}
