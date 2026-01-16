@@ -744,8 +744,198 @@ def is_clear_pattern(file_path):
     # Check if the file path matches any clear pattern path
     return normalized_path in normalized_clear_patterns
 
-async def run_theta_rho_file(file_path, is_playlist=False):
-    """Run a theta-rho file by sending data in optimized batches with tqdm ETA tracking."""
+async def _execute_pattern_internal(file_path):
+    """Internal function to execute a pattern file. Must be called with lock already held.
+
+    Args:
+        file_path: Path to the .thr file to execute
+
+    Returns:
+        True if pattern completed successfully, False if stopped/skipped
+    """
+    # Run file parsing in thread to avoid blocking the event loop
+    coordinates = await asyncio.to_thread(parse_theta_rho_file, file_path)
+    total_coordinates = len(coordinates)
+
+    if total_coordinates < 2:
+        logger.warning("Not enough coordinates for interpolation")
+        return False
+
+    # Determine if this is a clearing pattern
+    is_clear_file = is_clear_pattern(file_path)
+
+    if is_clear_file:
+        initial_speed = state.clear_pattern_speed if state.clear_pattern_speed is not None else state.speed
+        logger.info(f"Running clearing pattern at initial speed {initial_speed}")
+    else:
+        logger.info(f"Running normal pattern at initial speed {state.speed}")
+
+    state.execution_progress = (0, total_coordinates, None, 0)
+
+    # stop actions without resetting the playlist, and don't wait for lock (we already have it)
+    # Preserve is_clearing flag since stop_actions resets it
+    was_clearing = state.is_clearing
+    await stop_actions(clear_playlist=False, wait_for_lock=False)
+    state.is_clearing = was_clearing
+
+    state.current_playing_file = file_path
+    state.stop_requested = False
+
+    # Reset LED idle timeout activity time when pattern starts
+    import time as time_module
+    state.dw_led_last_activity_time = time_module.time()
+
+    logger.info(f"Starting pattern execution: {file_path}")
+    logger.info(f"t: {state.current_theta}, r: {state.current_rho}")
+    await reset_theta()
+
+    start_time = time.time()
+    total_pause_time = 0  # Track total time spent paused (manual + scheduled)
+    if state.led_controller:
+        logger.info(f"Setting LED to playing effect: {state.dw_led_playing_effect}")
+        await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
+        # Cancel idle timeout when playing starts
+        idle_timeout_manager.cancel_timeout()
+
+    with tqdm(
+        total=total_coordinates,
+        unit="coords",
+        desc=f"Executing Pattern {file_path}",
+        dynamic_ncols=True,
+        disable=False,
+        mininterval=1.0
+    ) as pbar:
+        for i, coordinate in enumerate(coordinates):
+            theta, rho = coordinate
+            if state.stop_requested:
+                logger.info("Execution stopped by user")
+                if state.led_controller:
+                    await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
+                    start_idle_led_timeout()
+                break
+
+            if state.skip_requested:
+                logger.info("Skipping pattern...")
+                await connection_manager.check_idle_async()
+                if state.led_controller:
+                    await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
+                    start_idle_led_timeout()
+                break
+
+            # Wait for resume if paused (manual or scheduled)
+            manual_pause = state.pause_requested
+            # Only check scheduled pause during pattern if "finish pattern first" is NOT enabled
+            scheduled_pause = is_in_scheduled_pause_period() if not state.scheduled_pause_finish_pattern else False
+
+            if manual_pause or scheduled_pause:
+                pause_start = time.time()  # Track when pause started
+                if manual_pause and scheduled_pause:
+                    logger.info("Execution paused (manual + scheduled pause active)...")
+                elif manual_pause:
+                    logger.info("Execution paused (manual)...")
+                else:
+                    logger.info("Execution paused (scheduled pause period)...")
+                    # Turn off LED controller if scheduled pause and control_wled is enabled
+                    if state.scheduled_pause_control_wled and state.led_controller:
+                        logger.info("Turning off LED lights during Still Sands period")
+                        await state.led_controller.set_power_async(0)
+
+                # Only show idle effect if NOT in scheduled pause with LED control
+                # (manual pause always shows idle effect)
+                if state.led_controller and not (scheduled_pause and state.scheduled_pause_control_wled):
+                    await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
+                    start_idle_led_timeout()
+
+                # Remember if we turned off LED controller for scheduled pause
+                wled_was_off_for_scheduled = scheduled_pause and state.scheduled_pause_control_wled and not manual_pause
+
+                # Wait until both manual pause is released AND we're outside scheduled pause period
+                while state.pause_requested or is_in_scheduled_pause_period():
+                    if state.pause_requested:
+                        # For manual pause, wait directly on the event for immediate response
+                        # The while loop re-checks state after wake to handle rapid pause/resume
+                        await get_pause_event().wait()
+                    else:
+                        # For scheduled pause only, check periodically
+                        await asyncio.sleep(1)
+
+                total_pause_time += time.time() - pause_start  # Add pause duration
+                logger.info("Execution resumed...")
+                if state.led_controller:
+                    # Turn LED controller back on if it was turned off for scheduled pause
+                    if wled_was_off_for_scheduled:
+                        logger.info("Turning LED lights back on as Still Sands period ended")
+                        await state.led_controller.set_power_async(1)
+                        # CRITICAL: Give LED controller time to fully power on before sending more commands
+                        # Without this delay, rapid-fire requests can crash controllers on resource-constrained Pis
+                        await asyncio.sleep(0.5)
+                    await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
+                    # Cancel idle timeout when resuming from pause
+                    idle_timeout_manager.cancel_timeout()
+
+            # Dynamically determine the speed for each movement
+            # Use clear_pattern_speed if it's set and this is a clear file, otherwise use state.speed
+            if is_clear_file and state.clear_pattern_speed is not None:
+                current_speed = state.clear_pattern_speed
+            else:
+                current_speed = state.speed
+
+            await move_polar(theta, rho, current_speed)
+
+            # Update progress for all coordinates including the first one
+            pbar.update(1)
+            elapsed_time = time.time() - start_time
+            estimated_remaining_time = (total_coordinates - (i + 1)) / pbar.format_dict['rate'] if pbar.format_dict['rate'] and total_coordinates else 0
+            state.execution_progress = (i + 1, total_coordinates, estimated_remaining_time, elapsed_time)
+
+            # Add a small delay to allow other async operations
+            await asyncio.sleep(0.001)
+
+    # Update progress one last time to show 100%
+    elapsed_time = time.time() - start_time
+    actual_execution_time = elapsed_time - total_pause_time
+    state.execution_progress = (total_coordinates, total_coordinates, 0, elapsed_time)
+    # Give WebSocket a chance to send the final update
+    await asyncio.sleep(0.1)
+
+    # Log execution time (only for completed patterns, not stopped/skipped)
+    was_completed = not state.stop_requested and not state.skip_requested
+    pattern_name = os.path.basename(file_path)
+    effective_speed = state.clear_pattern_speed if (is_clear_file and state.clear_pattern_speed is not None) else state.speed
+    log_execution_time(
+        pattern_name=pattern_name,
+        table_type=state.table_type,
+        speed=effective_speed,
+        actual_time=actual_execution_time,
+        total_coordinates=total_coordinates,
+        was_completed=was_completed
+    )
+
+    if not state.conn:
+        logger.error("Device is not connected. Stopping pattern execution.")
+        return False
+
+    await connection_manager.check_idle_async()
+
+    # Set LED back to idle when pattern completes normally (not stopped early)
+    if state.led_controller and not state.stop_requested:
+        logger.info(f"Setting LED to idle effect: {state.dw_led_idle_effect}")
+        await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
+        start_idle_led_timeout()
+        logger.debug("LED effect set to idle after pattern completion")
+
+    return was_completed
+
+
+async def run_theta_rho_file(file_path, is_playlist=False, clear_pattern=None, cache_data=None):
+    """Run a theta-rho file with optional pre-execution clear pattern.
+
+    Args:
+        file_path: Path to the main .thr file to execute
+        is_playlist: True if running as part of a playlist
+        clear_pattern: Clear pattern mode ('adaptive', 'clear_from_in', 'clear_from_out', 'none', or None)
+        cache_data: Pre-loaded metadata cache for adaptive clear pattern selection
+    """
     lock = get_pattern_lock()
     if lock.locked():
         logger.warning("Another pattern is already running. Cannot start a new one.")
@@ -757,197 +947,51 @@ async def run_theta_rho_file(file_path, is_playlist=False):
         if not is_playlist and not progress_update_task:
             progress_update_task = asyncio.create_task(broadcast_progress())
 
-        # Run file parsing in thread to avoid blocking the event loop
-        coordinates = await asyncio.to_thread(parse_theta_rho_file, file_path)
-        total_coordinates = len(coordinates)
+        # Run clear pattern first if specified
+        if clear_pattern and clear_pattern != 'none':
+            clear_file_path = get_clear_pattern_file(clear_pattern, file_path, cache_data)
+            if clear_file_path:
+                logger.info(f"Running pre-execution clear pattern: {clear_file_path}")
+                state.is_clearing = True
+                await _execute_pattern_internal(clear_file_path)
+                state.is_clearing = False
+                # Reset skip flag after clear pattern (if user skipped clear, continue to main)
+                state.skip_requested = False
 
-        if total_coordinates < 2:
-            logger.warning("Not enough coordinates for interpolation")
+        # Check if stopped during clear pattern
+        if state.stop_requested:
+            logger.info("Execution stopped during clear pattern")
             if not is_playlist:
                 state.current_playing_file = None
                 state.execution_progress = None
             return
 
-        # Determine if this is a clearing pattern
-        is_clear_file = is_clear_pattern(file_path)
-        
-        if is_clear_file:
-            initial_speed = state.clear_pattern_speed if state.clear_pattern_speed is not None else state.speed
-            logger.info(f"Running clearing pattern at initial speed {initial_speed}")
-        else:
-            logger.info(f"Running normal pattern at initial speed {state.speed}")
-
-        state.execution_progress = (0, total_coordinates, None, 0)
-
-        # stop actions without resetting the playlist, and don't wait for lock (we already have it)
-        await stop_actions(clear_playlist=False, wait_for_lock=False)
-
-        state.current_playing_file = file_path
-        state.stop_requested = False
-
-        # Reset LED idle timeout activity time when pattern starts
-        import time as time_module
-        state.dw_led_last_activity_time = time_module.time()
-
-        logger.info(f"Starting pattern execution: {file_path}")
-        logger.info(f"t: {state.current_theta}, r: {state.current_rho}")
-        await reset_theta()
-
-        start_time = time.time()
-        total_pause_time = 0  # Track total time spent paused (manual + scheduled)
-        if state.led_controller:
-            logger.info(f"Setting LED to playing effect: {state.dw_led_playing_effect}")
-            await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
-            # Cancel idle timeout when playing starts
-            idle_timeout_manager.cancel_timeout()
-
-        with tqdm(
-            total=total_coordinates,
-            unit="coords",
-            desc=f"Executing Pattern {file_path}",
-            dynamic_ncols=True,
-            disable=False,
-            mininterval=1.0
-        ) as pbar:
-            for i, coordinate in enumerate(coordinates):
-                theta, rho = coordinate
-                if state.stop_requested:
-                    logger.info("Execution stopped by user")
-                    if state.led_controller:
-                        await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
-                        start_idle_led_timeout()
-                    break
-
-                if state.skip_requested:
-                    logger.info("Skipping pattern...")
-                    await connection_manager.check_idle_async()
-                    if state.led_controller:
-                        await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
-                        start_idle_led_timeout()
-                    break
-
-                # Wait for resume if paused (manual or scheduled)
-                manual_pause = state.pause_requested
-                # Only check scheduled pause during pattern if "finish pattern first" is NOT enabled
-                scheduled_pause = is_in_scheduled_pause_period() if not state.scheduled_pause_finish_pattern else False
-
-                if manual_pause or scheduled_pause:
-                    pause_start = time.time()  # Track when pause started
-                    if manual_pause and scheduled_pause:
-                        logger.info("Execution paused (manual + scheduled pause active)...")
-                    elif manual_pause:
-                        logger.info("Execution paused (manual)...")
-                    else:
-                        logger.info("Execution paused (scheduled pause period)...")
-                        # Turn off LED controller if scheduled pause and control_wled is enabled
-                        if state.scheduled_pause_control_wled and state.led_controller:
-                            logger.info("Turning off LED lights during Still Sands period")
-                            await state.led_controller.set_power_async(0)
-
-                    # Only show idle effect if NOT in scheduled pause with LED control
-                    # (manual pause always shows idle effect)
-                    if state.led_controller and not (scheduled_pause and state.scheduled_pause_control_wled):
-                        await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
-                        start_idle_led_timeout()
-
-                    # Remember if we turned off LED controller for scheduled pause
-                    wled_was_off_for_scheduled = scheduled_pause and state.scheduled_pause_control_wled and not manual_pause
-
-                    # Wait until both manual pause is released AND we're outside scheduled pause period
-                    while state.pause_requested or is_in_scheduled_pause_period():
-                        if state.pause_requested:
-                            # For manual pause, wait directly on the event for immediate response
-                            # The while loop re-checks state after wake to handle rapid pause/resume
-                            await get_pause_event().wait()
-                        else:
-                            # For scheduled pause only, check periodically
-                            await asyncio.sleep(1)
-
-                    total_pause_time += time.time() - pause_start  # Add pause duration
-                    logger.info("Execution resumed...")
-                    if state.led_controller:
-                        # Turn LED controller back on if it was turned off for scheduled pause
-                        if wled_was_off_for_scheduled:
-                            logger.info("Turning LED lights back on as Still Sands period ended")
-                            await state.led_controller.set_power_async(1)
-                            # CRITICAL: Give LED controller time to fully power on before sending more commands
-                            # Without this delay, rapid-fire requests can crash controllers on resource-constrained Pis
-                            await asyncio.sleep(0.5)
-                        await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
-                        # Cancel idle timeout when resuming from pause
-                        idle_timeout_manager.cancel_timeout()
-
-                # Dynamically determine the speed for each movement
-                # Use clear_pattern_speed if it's set and this is a clear file, otherwise use state.speed
-                if is_clear_file and state.clear_pattern_speed is not None:
-                    current_speed = state.clear_pattern_speed
-                else:
-                    current_speed = state.speed
-                    
-                await move_polar(theta, rho, current_speed)
-                
-                # Update progress for all coordinates including the first one
-                pbar.update(1)
-                elapsed_time = time.time() - start_time
-                estimated_remaining_time = (total_coordinates - (i + 1)) / pbar.format_dict['rate'] if pbar.format_dict['rate'] and total_coordinates else 0
-                state.execution_progress = (i + 1, total_coordinates, estimated_remaining_time, elapsed_time)
-                
-                # Add a small delay to allow other async operations
-                await asyncio.sleep(0.001)
-
-        # Update progress one last time to show 100%
-        elapsed_time = time.time() - start_time
-        actual_execution_time = elapsed_time - total_pause_time
-        state.execution_progress = (total_coordinates, total_coordinates, 0, elapsed_time)
-        # Give WebSocket a chance to send the final update
-        await asyncio.sleep(0.1)
-
-        # Log execution time (only for completed patterns, not stopped/skipped)
-        was_completed = not state.stop_requested and not state.skip_requested
-        pattern_name = os.path.basename(file_path)
-        effective_speed = state.clear_pattern_speed if (is_clear_file and state.clear_pattern_speed is not None) else state.speed
-        log_execution_time(
-            pattern_name=pattern_name,
-            table_type=state.table_type,
-            speed=effective_speed,
-            actual_time=actual_execution_time,
-            total_coordinates=total_coordinates,
-            was_completed=was_completed
-        )
-
-        if not state.conn:
-            logger.error("Device is not connected. Stopping pattern execution.")
-            return
-            
-        await connection_manager.check_idle_async()
-        
-        # Set LED back to idle when pattern completes normally (not stopped early)
-        if state.led_controller and not state.stop_requested:
-            logger.info(f"Setting LED to idle effect: {state.dw_led_idle_effect}")
-            await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
-            start_idle_led_timeout()
-            logger.debug("LED effect set to idle after pattern completion")
+        # Run the main pattern
+        completed = await _execute_pattern_internal(file_path)
 
         # Only clear state if not part of a playlist
         if not is_playlist:
             state.current_playing_file = None
             state.execution_progress = None
             logger.info("Pattern execution completed and state cleared")
+            # Only cancel progress update task if not part of a playlist
+            if progress_update_task:
+                progress_update_task.cancel()
+                try:
+                    await progress_update_task
+                except asyncio.CancelledError:
+                    pass
+                progress_update_task = None
         else:
             logger.info("Pattern execution completed, maintaining state for playlist")
-        
-        # Only cancel progress update task if not part of a playlist
-        if not is_playlist and progress_update_task:
-            progress_update_task.cancel()
-            try:
-                await progress_update_task
-            except asyncio.CancelledError:
-                pass
-            progress_update_task = None
             
 
 async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
-    """Run multiple .thr files in sequence with options."""
+    """Run multiple .thr files in sequence with options.
+
+    The playlist now stores only main patterns. Clear patterns are executed dynamically
+    before each main pattern based on the clear_pattern option.
+    """
     state.stop_requested = False
 
     # Reset LED idle timeout activity time when playlist starts
@@ -957,94 +1001,74 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
     # Set initial playlist state
     state.playlist_mode = run_mode
     state.current_playlist_index = 0
+
     # Start progress update task for the playlist
     global progress_update_task
     if not progress_update_task:
         progress_update_task = asyncio.create_task(broadcast_progress())
-    
-    
+
+    # Shuffle main patterns if requested (before starting)
     if shuffle:
         random.shuffle(file_paths)
         logger.info("Playlist shuffled")
 
+    # Store only main patterns in the playlist
+    state.current_playlist = file_paths
+
     try:
         while True:
-            # Load metadata cache once for all patterns (significant performance improvement)
-            # This avoids reading the cache file from disk for every pattern
+            # Load metadata cache once per playlist iteration (for adaptive clear patterns)
             cache_data = None
             if clear_pattern and clear_pattern in ['adaptive', 'clear_from_in', 'clear_from_out']:
                 from modules.core import cache_manager
-                # Run in thread to avoid blocking the event loop
                 cache_data = await asyncio.to_thread(cache_manager.load_metadata_cache)
                 logger.info(f"Loaded metadata cache for {len(cache_data.get('data', {}))} patterns")
-
-            # Construct the complete pattern sequence
-            pattern_sequence = []
-            for path in file_paths:
-                # Add clear pattern if specified
-                if clear_pattern and clear_pattern != 'none':
-                    clear_file_path = get_clear_pattern_file(clear_pattern, path, cache_data)
-                    if clear_file_path:
-                        pattern_sequence.append(clear_file_path)
-
-                # Add main pattern
-                pattern_sequence.append(path)
-
-            # Shuffle if requested
-            if shuffle:
-                # Get pairs of patterns (clear + main) to keep them together
-                pairs = [pattern_sequence[i:i+2] for i in range(0, len(pattern_sequence), 2)]
-                random.shuffle(pairs)
-                # Flatten the pairs back into a single list
-                pattern_sequence = [pattern for pair in pairs for pattern in pair]
-                logger.info("Playlist shuffled")
-
-            # Set the playlist to the first pattern
-            state.current_playlist = pattern_sequence
 
             # Reset pattern counter at the start of the playlist
             state.patterns_since_last_home = 0
 
-            # Execute the pattern sequence
-            for idx, file_path in enumerate(pattern_sequence):
+            # Execute main patterns using index-based access
+            # This allows the playlist to be reordered during execution
+            idx = 0
+            while idx < len(state.current_playlist):
                 state.current_playlist_index = idx
+
                 if state.stop_requested:
                     logger.info("Execution stopped")
                     return
 
-                current_is_clear = is_clear_pattern(file_path)
+                # Get the pattern at the current index (may have changed due to reordering)
+                file_path = state.current_playlist[idx]
+                logger.info(f"Running pattern {idx + 1}/{len(state.current_playlist)}: {file_path}")
 
-                # Update state for main patterns only
-                logger.info(f"Running pattern {file_path}")
+                # Execute the pattern with optional clear pattern
+                await run_theta_rho_file(
+                    file_path,
+                    is_playlist=True,
+                    clear_pattern=clear_pattern,
+                    cache_data=cache_data
+                )
 
-                # Execute the pattern
-                await run_theta_rho_file(file_path, is_playlist=True)
+                # Increment pattern counter and check auto-home
+                state.patterns_since_last_home += 1
+                logger.debug(f"Patterns since last home: {state.patterns_since_last_home}")
 
-                # Increment pattern counter and check auto-home for non-clear patterns
-                if not current_is_clear:
-                    state.patterns_since_last_home += 1
-                    logger.debug(f"Patterns since last home: {state.patterns_since_last_home}")
-
-                    # Check if we need to auto-home after this pattern
-                    # Auto-home triggers after X main patterns, regardless of clear pattern setting
-                    if state.auto_home_enabled and state.patterns_since_last_home >= state.auto_home_after_patterns:
-                        logger.info(f"Auto-homing triggered after {state.patterns_since_last_home} patterns")
-                        try:
-                            # Perform homing using connection_manager
-                            success = await asyncio.to_thread(connection_manager.home)
-                            if success:
-                                logger.info("Auto-homing completed successfully")
-                                state.patterns_since_last_home = 0
-                            else:
-                                logger.warning("Auto-homing failed, continuing with playlist")
-                        except Exception as e:
-                            logger.error(f"Error during auto-homing: {e}")
+                if state.auto_home_enabled and state.patterns_since_last_home >= state.auto_home_after_patterns:
+                    logger.info(f"Auto-homing triggered after {state.patterns_since_last_home} patterns")
+                    try:
+                        success = await asyncio.to_thread(connection_manager.home)
+                        if success:
+                            logger.info("Auto-homing completed successfully")
+                            state.patterns_since_last_home = 0
+                        else:
+                            logger.warning("Auto-homing failed, continuing with playlist")
+                    except Exception as e:
+                        logger.error(f"Error during auto-homing: {e}")
 
                 # Check for scheduled pause after pattern completes (when "finish pattern first" is enabled)
-                if state.scheduled_pause_finish_pattern and is_in_scheduled_pause_period() and not state.stop_requested:
+                if state.scheduled_pause_finish_pattern and is_in_scheduled_pause_period() and not state.stop_requested and not state.skip_requested:
                     logger.info("Pattern completed. Entering Still Sands period (finish pattern first mode)...")
 
-                    # Turn off LED controller if control_wled is enabled
                     wled_was_off_for_scheduled = False
                     if state.scheduled_pause_control_wled and state.led_controller:
                         logger.info("Turning off LED lights during Still Sands period")
@@ -1054,7 +1078,6 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                         await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
                         start_idle_led_timeout()
 
-                    # Wait until we're outside the scheduled pause period
                     while is_in_scheduled_pause_period() and not state.stop_requested:
                         await asyncio.sleep(1)
 
@@ -1064,38 +1087,34 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                             if wled_was_off_for_scheduled:
                                 logger.info("Turning LED lights back on as Still Sands period ended")
                                 await state.led_controller.set_power_async(1)
-                                await asyncio.sleep(0.5)  # Critical delay for LED controller
+                                await asyncio.sleep(0.5)
                             await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
                             idle_timeout_manager.cancel_timeout()
 
                 # Handle pause between patterns
-                if idx < len(pattern_sequence) - 1 and not state.stop_requested and pause_time > 0 and not state.skip_requested:
-                    # Check if current pattern is a clear pattern
-                    if current_is_clear:
-                        logger.info("Skipping pause after clear pattern")
-                    else:
-                        logger.info(f"Pausing for {pause_time} seconds")
-                        state.original_pause_time = pause_time
-                        pause_start = time.time()
-                        while time.time() - pause_start < pause_time:
-                            state.pause_time_remaining = pause_start + pause_time - time.time()
-                            if state.skip_requested:
-                                logger.info("Pause interrupted by stop/skip request")
-                                break
-                            await asyncio.sleep(1)
-                        state.pause_time_remaining = 0
-
-                state.skip_requested = False
-
-            if run_mode == "indefinite":
-                logger.info("Playlist completed. Restarting as per 'indefinite' run mode")
-                if pause_time > 0:
-                    logger.debug(f"Pausing for {pause_time} seconds before restarting")
+                if idx < len(state.current_playlist) - 1 and not state.stop_requested and pause_time > 0 and not state.skip_requested:
+                    logger.info(f"Pausing for {pause_time} seconds")
+                    state.original_pause_time = pause_time
                     pause_start = time.time()
                     while time.time() - pause_start < pause_time:
                         state.pause_time_remaining = pause_start + pause_time - time.time()
                         if state.skip_requested:
-                            logger.info("Pause interrupted by stop/skip request")
+                            logger.info("Pause interrupted by skip request")
+                            break
+                        await asyncio.sleep(1)
+                    state.pause_time_remaining = 0
+
+                state.skip_requested = False
+                idx += 1
+
+            if run_mode == "indefinite":
+                logger.info("Playlist completed. Restarting as per 'indefinite' run mode")
+                if pause_time > 0:
+                    pause_start = time.time()
+                    while time.time() - pause_start < pause_time:
+                        state.pause_time_remaining = pause_start + pause_time - time.time()
+                        if state.skip_requested:
+                            logger.info("Pause interrupted by skip request")
                             break
                         await asyncio.sleep(1)
                     state.pause_time_remaining = 0
@@ -1105,7 +1124,6 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                 break
 
     finally:
-        # Clean up progress update task
         if progress_update_task:
             progress_update_task.cancel()
             try:
@@ -1113,8 +1131,7 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
             except asyncio.CancelledError:
                 pass
             progress_update_task = None
-            
-        # Clear all state variables
+
         state.current_playing_file = None
         state.execution_progress = None
         state.current_playlist = None
@@ -1268,6 +1285,7 @@ def get_status():
         "scheduled_pause": is_in_scheduled_pause_period(),
         "is_running": bool(state.current_playing_file and not state.stop_requested),
         "is_homing": state.is_homing,
+        "is_clearing": state.is_clearing,
         "progress": None,
         "playlist": None,
         "speed": state.speed,
@@ -1280,12 +1298,21 @@ def get_status():
     
     # Add playlist information if available
     if state.current_playlist and state.current_playlist_index is not None:
-        next_index = state.current_playlist_index + 1
+        # When a clear pattern is running, the "next" pattern is the current main pattern
+        # (since the clear pattern runs before the main pattern at current_playlist_index)
+        if state.is_clearing:
+            next_file = state.current_playlist[state.current_playlist_index]
+        else:
+            next_index = state.current_playlist_index + 1
+            next_file = state.current_playlist[next_index] if next_index < len(state.current_playlist) else None
+
         status["playlist"] = {
             "current_index": state.current_playlist_index,
             "total_files": len(state.current_playlist),
             "mode": state.playlist_mode,
-            "next_file": state.current_playlist[next_index] if next_index < len(state.current_playlist) else None
+            "next_file": next_file,
+            "files": state.current_playlist,
+            "name": state.current_playlist_name
         }
     
     if state.execution_progress:
