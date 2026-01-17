@@ -4,8 +4,12 @@ Provides a single ProcessPoolExecutor shared across modules to:
 - Isolate CPU-intensive work from real-time threads (separate GILs)
 - Manage worker count based on available CPUs
 - Configure CPU affinity to keep workers off CPU 0 (reserved for motion/LED)
+
+Environment variables:
+- POOL_WORKERS: Override worker count (default: 1 for RAM conservation)
 """
 import logging
+import os
 from concurrent.futures import ProcessPoolExecutor
 from typing import Optional
 from modules.core import scheduling
@@ -15,15 +19,29 @@ logger = logging.getLogger(__name__)
 _pool: Optional[ProcessPoolExecutor] = None
 _shutdown_in_progress: bool = False
 
+# Default to 1 worker to conserve RAM on low-memory devices (Pi Zero 2 W has only 512MB)
+DEFAULT_WORKERS = 1
+
 
 def _get_worker_count() -> int:
-    """Calculate optimal worker count.
-    
-    - Reserve 1 CPU for motion control thread
-    - Max 3 workers (diminishing returns beyond)
-    - Min 1 worker
+    """Calculate worker count for the process pool.
+
+    Uses POOL_WORKERS env var if set, otherwise defaults to 1 worker
+    to conserve RAM on memory-constrained devices like Pi Zero 2 W.
+
+    For systems with more RAM, set POOL_WORKERS=2 or POOL_WORKERS=3.
     """
-    return min(3, max(1, scheduling.get_cpu_count() - 1))
+    env_workers = os.environ.get('POOL_WORKERS')
+    if env_workers is not None:
+        try:
+            count = int(env_workers)
+            if count >= 0:
+                return count
+            logger.warning(f"Invalid POOL_WORKERS={env_workers}, using default")
+        except ValueError:
+            logger.warning(f"Invalid POOL_WORKERS={env_workers}, using default")
+
+    return DEFAULT_WORKERS
 
 
 def setup_worker_process():
