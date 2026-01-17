@@ -1041,6 +1041,10 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                 file_path = state.current_playlist[idx]
                 logger.info(f"Running pattern {idx + 1}/{len(state.current_playlist)}: {file_path}")
 
+                # Clear pause state when starting a new pattern (prevents stale "waiting" UI)
+                state.pause_time_remaining = 0
+                state.original_pause_time = None
+
                 # Execute the pattern with optional clear pattern
                 await run_theta_rho_file(
                     file_path,
