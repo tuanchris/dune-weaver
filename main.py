@@ -2180,7 +2180,11 @@ async def skip_pattern():
 
 @app.post("/reorder_playlist")
 async def reorder_playlist(request: dict):
-    """Reorder a pattern in the current playlist queue."""
+    """Reorder a pattern in the current playlist queue.
+
+    Since the playlist now contains only main patterns (clear patterns are executed
+    dynamically at runtime), this simply moves the pattern from one position to another.
+    """
     if not state.current_playlist:
         raise HTTPException(status_code=400, detail="No playlist is currently running")
 
@@ -2190,7 +2194,7 @@ async def reorder_playlist(request: dict):
     if from_index is None or to_index is None:
         raise HTTPException(status_code=400, detail="from_index and to_index are required")
 
-    playlist = state.current_playlist
+    playlist = list(state.current_playlist)  # Make a copy to work with
     current_index = state.current_playlist_index
 
     # Validate indices
@@ -2199,15 +2203,18 @@ async def reorder_playlist(request: dict):
     if to_index < 0 or to_index >= len(playlist):
         raise HTTPException(status_code=400, detail="to_index out of range")
 
-    # Can't move items that are already played or currently playing
-    if from_index <= current_index:
-        raise HTTPException(status_code=400, detail="Cannot move completed or currently playing pattern")
-    if to_index <= current_index:
-        raise HTTPException(status_code=400, detail="Cannot move pattern before current position")
+    # Can't move patterns that have already played (before current_index)
+    # But CAN move the current pattern or swap with it (allows live reordering)
+    if from_index < current_index:
+        raise HTTPException(status_code=400, detail="Cannot move completed pattern")
+    if to_index < current_index:
+        raise HTTPException(status_code=400, detail="Cannot move to completed position")
 
     # Perform the reorder
     item = playlist.pop(from_index)
-    playlist.insert(to_index, item)
+    # Adjust to_index if moving forward (since we removed an item before it)
+    adjusted_to_index = to_index if to_index < from_index else to_index - 1
+    playlist.insert(adjusted_to_index, item)
 
     # Update state (this triggers the property setter)
     state.current_playlist = playlist

@@ -417,6 +417,8 @@ export function PlaylistsPage() {
         shuffle: shuffle,
       })
       toast.success(`Started playlist: ${selectedPlaylist}`)
+      // Trigger Now Playing bar to open
+      window.dispatchEvent(new CustomEvent('playback-started'))
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to run playlist')
     } finally {

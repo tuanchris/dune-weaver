@@ -1030,10 +1030,10 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
             # Execute main patterns using index-based access
             # This allows the playlist to be reordered during execution
             idx = 0
-            while idx < len(state.current_playlist):
+            while state.current_playlist and idx < len(state.current_playlist):
                 state.current_playlist_index = idx
 
-                if state.stop_requested:
+                if state.stop_requested or not state.current_playlist:
                     logger.info("Execution stopped")
                     return
 
@@ -1092,7 +1092,7 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                             idle_timeout_manager.cancel_timeout()
 
                 # Handle pause between patterns
-                if idx < len(state.current_playlist) - 1 and not state.stop_requested and pause_time > 0 and not state.skip_requested:
+                if state.current_playlist and idx < len(state.current_playlist) - 1 and not state.stop_requested and pause_time > 0 and not state.skip_requested:
                     logger.info(f"Pausing for {pause_time} seconds")
                     state.original_pause_time = pause_time
                     pause_start = time.time()

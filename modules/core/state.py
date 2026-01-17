@@ -30,6 +30,7 @@ class AppState:
         self.current_playlist_index = 0
         self.playlist_mode = "loop"
         self.pause_time_remaining = 0
+        self.active_clear_pattern = None  # Runtime: clear pattern mode for current playlist (not persisted)
         
         # Machine position variables
         self.machine_x = 0.0

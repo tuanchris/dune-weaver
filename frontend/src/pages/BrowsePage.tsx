@@ -660,6 +660,9 @@ export function BrowsePage() {
         pre_execution: preExecution,
       })
       toast.success(`Running ${selectedPattern.name}`)
+      // Close the preview panel and trigger Now Playing bar to open
+      setIsPanelOpen(false)
+      window.dispatchEvent(new CustomEvent('playback-started'))
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to run pattern'
       if (message.includes('409') || message.includes('already running')) {

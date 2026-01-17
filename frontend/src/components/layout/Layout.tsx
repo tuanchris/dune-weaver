@@ -154,6 +154,19 @@ export function Layout() {
   const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(false)
   const [openNowPlayingExpanded, setOpenNowPlayingExpanded] = useState(false)
   const wasPlayingRef = useRef<boolean | null>(null) // Track previous playing state (null = first message)
+
+  // Listen for playback-started event (dispatched when user starts a pattern)
+  useEffect(() => {
+    const handlePlaybackStarted = () => {
+      setIsNowPlayingOpen(true)
+      setOpenNowPlayingExpanded(true)
+      setIsLogsOpen(false)
+      // Reset expanded flag after animation
+      setTimeout(() => setOpenNowPlayingExpanded(false), 500)
+    }
+    window.addEventListener('playback-started', handlePlaybackStarted)
+    return () => window.removeEventListener('playback-started', handlePlaybackStarted)
+  }, [])
   const [logs, setLogs] = useState<Array<{ timestamp: string; level: string; logger: string; message: string }>>([])
   const [logLevelFilter, setLogLevelFilter] = useState<string>('ALL')
   const logsWsRef = useRef<WebSocket | null>(null)

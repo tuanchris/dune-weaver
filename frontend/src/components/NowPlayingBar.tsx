@@ -78,15 +78,11 @@ function formatPatternName(path: string | null): string {
   return name
 }
 
-// Sortable queue item component for drag-and-drop
+// Sortable queue item component for drag-and-drop (upcoming patterns only)
 interface SortableQueueItemProps {
   id: string
   file: string
   index: number
-  currentIndex: number
-  isPaused: boolean
-  isWaiting: boolean
-  waitTimeRemaining: number
   previewUrl: string | null
 }
 
@@ -94,15 +90,8 @@ function SortableQueueItem({
   id,
   file,
   index,
-  currentIndex,
-  isPaused,
-  isWaiting,
-  waitTimeRemaining,
   previewUrl,
 }: SortableQueueItemProps) {
-  const isCurrent = index === currentIndex
-  const isPast = index < currentIndex
-
   const {
     attributes,
     listeners,
@@ -110,10 +99,7 @@ function SortableQueueItem({
     transform,
     transition,
     isDragging,
-  } = useSortable({
-    id,
-    disabled: isPast || isCurrent,
-  })
+  } = useSortable({ id })
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -126,34 +112,16 @@ function SortableQueueItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${
-        isCurrent
-          ? 'bg-primary/10 border border-primary/30'
-          : isPast
-          ? 'opacity-50'
-          : 'hover:bg-muted/50'
-      } ${isDragging ? 'shadow-lg bg-background' : ''}`}
+      className={`flex items-center gap-2 p-2 rounded-lg transition-colors hover:bg-muted/50 ${isDragging ? 'shadow-lg bg-background' : ''}`}
     >
-      {/* Drag handle - only for future items */}
-      {!isPast && !isCurrent ? (
-        <div
-          {...attributes}
-          {...listeners}
-          className="w-6 flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing touch-none"
-        >
-          <span className="material-icons-outlined text-muted-foreground text-sm">drag_indicator</span>
-        </div>
-      ) : (
-        <div className="w-6 text-center shrink-0">
-          {isCurrent ? (
-            <span className="material-icons text-primary text-lg">
-              {isPaused ? 'pause' : 'play_arrow'}
-            </span>
-          ) : (
-            <span className="material-icons-outlined text-muted-foreground text-sm">check</span>
-          )}
-        </div>
-      )}
+      {/* Drag handle */}
+      <div
+        {...attributes}
+        {...listeners}
+        className="w-6 flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing touch-none"
+      >
+        <span className="material-icons-outlined text-muted-foreground text-sm">drag_indicator</span>
+      </div>
 
       {/* Preview thumbnail */}
       <div className="w-14 h-14 rounded-full overflow-hidden bg-muted border shrink-0">
@@ -161,32 +129,21 @@ function SortableQueueItem({
           <img
             src={previewUrl}
             alt=""
+            loading="lazy"
             className="w-full h-full object-cover pattern-preview"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <span className="material-icons-outlined text-muted-foreground text-base">image</span>
+            <span className="material-icons-outlined text-muted-foreground text-2xl">image</span>
           </div>
         )}
       </div>
 
       {/* Pattern name */}
       <div className="flex-1 min-w-0">
-        <p className={`text-sm truncate ${isCurrent ? 'font-medium' : ''}`}>
-          {formatPatternName(file)}
-        </p>
-        {!isPast && !isCurrent && (
-          <p className="text-xs text-muted-foreground">#{index + 1}</p>
-        )}
+        <p className="text-sm truncate">{formatPatternName(file)}</p>
+        <p className="text-xs text-muted-foreground">#{index + 1}</p>
       </div>
-
-      {/* Waiting indicator */}
-      {isCurrent && isWaiting && (
-        <span className="text-xs text-muted-foreground flex items-center gap-1">
-          <span className="material-icons-outlined text-sm">hourglass_top</span>
-          {formatTime(waitTimeRemaining)}
-        </span>
-      )}
     </div>
   )
 }
@@ -962,7 +919,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                           <span className="text-sm text-muted-foreground w-12 font-mono">{formatTime(elapsedTime)}</span>
                           <Progress value={progressPercent} className="h-2 flex-1" />
                           <span
-                            className={`text-sm text-muted-foreground text-right font-mono flex items-center justify-end gap-1.5 ${usingHistoricalEta ? 'w-20' : 'w-12'}`}
+                            className={`text-sm text-muted-foreground text-right font-mono flex items-center justify-end gap-1.5 shrink-0 ${usingHistoricalEta ? 'w-24' : 'w-14'}`}
                             title={usingHistoricalEta ? 'ETA based on last completed run' : 'Estimated time remaining'}
                           >
                             {usingHistoricalEta && <span className="material-icons-outlined text-sm">history</span>}
@@ -1069,7 +1026,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                   <div className="flex md:hidden items-center gap-3 px-6 pb-16">
                     <span className="text-sm text-muted-foreground w-12 font-mono">{formatTime(elapsedTime)}</span>
                     <Progress value={progressPercent} className="h-2 flex-1" />
-                    <span className={`text-sm text-muted-foreground text-right font-mono flex items-center justify-end gap-1.5 ${usingHistoricalEta ? 'w-20' : 'w-12'}`}>
+                    <span className={`text-sm text-muted-foreground text-right font-mono flex items-center justify-end gap-1.5 shrink-0 ${usingHistoricalEta ? 'w-24' : 'w-14'}`}>
                       {usingHistoricalEta && <span className="material-icons-outlined text-sm">history</span>}
                       -{formatTime(remainingTime)}
                     </span>
@@ -1251,32 +1208,42 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
 
           <div className="flex-1 overflow-y-auto -mx-6 px-6 py-2">
             {status?.playlist?.files && status.playlist.files.length > 0 ? (
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext
-                  items={status.playlist.files.map((_, index) => `queue-item-${index}`)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="space-y-1">
-                    {status.playlist.files.map((file, index) => (
-                      <SortableQueueItem
-                        key={`queue-item-${index}`}
-                        id={`queue-item-${index}`}
-                        file={file}
-                        index={index}
-                        currentIndex={status.playlist!.current_index}
-                        isPaused={status.is_paused}
-                        isWaiting={isWaiting}
-                        waitTimeRemaining={waitTimeRemaining}
-                        previewUrl={queuePreviews[file] || null}
-                      />
-                    ))}
-                  </div>
-                </SortableContext>
-              </DndContext>
+              (() => {
+                // Only show upcoming patterns (after current)
+                const currentIndex = status.playlist!.current_index
+                const upcomingFiles = status.playlist!.files
+                  .map((file, index) => ({ file, index }))
+                  .filter(({ index }) => index > currentIndex)
+
+                if (upcomingFiles.length === 0) {
+                  return <p className="text-center text-muted-foreground py-8">No upcoming patterns</p>
+                }
+
+                return (
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <SortableContext
+                      items={upcomingFiles.map(({ index }) => `queue-item-${index}`)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-1">
+                        {upcomingFiles.map(({ file, index }) => (
+                          <SortableQueueItem
+                            key={`queue-item-${index}`}
+                            id={`queue-item-${index}`}
+                            file={file}
+                            index={index}
+                            previewUrl={queuePreviews[file] || null}
+                          />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
+                )
+              })()
             ) : (
               <p className="text-center text-muted-foreground py-8">No queue</p>
             )}
