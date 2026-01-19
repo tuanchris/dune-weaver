@@ -165,6 +165,15 @@ export function TableControlPage() {
     }
   }
 
+  const handleSoftReset = async () => {
+    try {
+      await handleAction('reset', '/soft_reset')
+      toast.success('Reset sent. Homing required.')
+    } catch {
+      toast.error('Failed to send reset')
+    }
+  }
+
   const handleMoveToCenter = async () => {
     if (checkPatternRunning('move to center')) return
     try {
@@ -371,7 +380,7 @@ export function TableControlPage() {
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col w-full max-w-5xl mx-auto gap-6 py-3 sm:py-6 px-3 sm:px-4">
+      <div className="flex flex-col w-full max-w-5xl mx-auto gap-6 py-3 sm:py-6 px-0 sm:px-4">
         {/* Page Header */}
         <div className="space-y-0.5 sm:space-y-1 pl-1">
           <h1 className="text-xl font-semibold tracking-tight">Table Control</h1>
@@ -391,12 +400,13 @@ export function TableControlPage() {
               <CardDescription>Calibrate or stop the table</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
                       onClick={handleHome}
                       disabled={isLoading === 'home'}
+                      variant="primary"
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'home' ? (
@@ -426,7 +436,26 @@ export function TableControlPage() {
                       <span className="text-xs">Stop</span>
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Emergency stop</TooltipContent>
+                  <TooltipContent>Gracefully stop</TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={handleSoftReset}
+                      disabled={isLoading === 'reset'}
+                      variant="secondary"
+                      className="h-16 gap-1 flex-col items-center justify-center"
+                    >
+                      {isLoading === 'reset' ? (
+                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                      ) : (
+                        <span className="material-icons-outlined text-2xl">restart_alt</span>
+                      )}
+                      <span className="text-xs">Reset</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Reset DLC32/ESP32, requires homing</TooltipContent>
                 </Tooltip>
               </div>
             </CardContent>
@@ -697,18 +726,19 @@ export function TableControlPage() {
                     onClick={() => setSerialHistory([])}
                     title="Clear history"
                   >
-                    <span className="material-icons-outlined">delete</span>
+                    <span className="material-icons-outlined">delete_sweep</span>
                   </Button>
                 )}
               </div>
             </div>
             {/* Controls row - stacks better on mobile */}
             <div className="flex flex-wrap items-center gap-2">
-              {/* Port selector */}
+              {/* Port selector - auto-refreshes on focus */}
               <select
-                className="h-9 flex-1 min-w-[140px] max-w-[200px] rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                className="h-9 flex-1 min-w-[140px] max-w-[200px] rounded-full border border-input bg-background px-4 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
                 value={selectedSerialPort}
                 onChange={(e) => setSelectedSerialPort(e.target.value)}
+                onFocus={fetchSerialPorts}
                 disabled={serialConnected || serialLoading}
               >
                 <option value="">Select port...</option>
@@ -716,15 +746,6 @@ export function TableControlPage() {
                   <option key={port} value={port}>{port}</option>
                 ))}
               </select>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={fetchSerialPorts}
-                disabled={serialConnected || serialLoading}
-                title="Refresh ports"
-              >
-                <span className="material-icons-outlined">refresh</span>
-              </Button>
               {!serialConnected ? (
                 <Button
                   size="sm"

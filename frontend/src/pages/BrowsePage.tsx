@@ -46,7 +46,7 @@ interface PreviewData {
 // Coordinates come as [theta, rho] tuples from the backend
 type Coordinate = [number, number]
 
-type SortOption = 'name' | 'date' | 'category'
+type SortOption = 'name' | 'date' | 'size'
 type PreExecution = 'none' | 'adaptive' | 'clear_from_in' | 'clear_from_out' | 'clear_sideway'
 
 const preExecutionOptions: { value: PreExecution; label: string }[] = [
@@ -99,6 +99,12 @@ export function BrowsePage() {
     actual_time_formatted: string | null
     speed: number | null
   } | null>(null)
+
+  // All pattern histories for badges
+  const [allPatternHistories, setAllPatternHistories] = useState<Record<string, {
+    actual_time_formatted: string | null
+    timestamp: string | null
+  }>>({})
 
   // Canvas and animation refs
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -210,8 +216,13 @@ export function BrowsePage() {
   const fetchPatterns = async () => {
     setIsLoading(true)
     try {
-      const data = await apiClient.get<PatternMetadata[]>('/list_theta_rho_files_with_metadata')
+      // Fetch patterns and history in parallel
+      const [data, historyData] = await Promise.all([
+        apiClient.get<PatternMetadata[]>('/list_theta_rho_files_with_metadata'),
+        apiClient.get<Record<string, { actual_time_formatted: string | null; timestamp: string | null }>>('/api/pattern_history_all')
+      ])
       setPatterns(data)
+      setAllPatternHistories(historyData)
 
       if (data.length > 0) {
         // Sort patterns by name (default sort) before preloading
@@ -355,8 +366,8 @@ export function BrowsePage() {
         case 'date':
           comparison = a.date_modified - b.date_modified
           break
-        case 'category':
-          comparison = a.category.localeCompare(b.category) || a.name.localeCompare(b.name)
+        case 'size':
+          comparison = a.coordinates_count - b.coordinates_count
           break
         default:
           return 0
@@ -802,7 +813,7 @@ export function BrowsePage() {
   }
 
   return (
-    <div className="flex flex-col w-full max-w-5xl mx-auto gap-3 sm:gap-6 py-3 sm:py-6 px-3 sm:px-4">
+    <div className="flex flex-col w-full max-w-5xl mx-auto gap-3 sm:gap-6 py-3 sm:py-6 px-0 sm:px-4">
       {/* Hidden file input for pattern upload */}
       <input
         ref={fileInputRef}
@@ -836,7 +847,7 @@ export function BrowsePage() {
       </div>
 
       {/* Filter Bar */}
-      <div className="sticky top-[4.5rem] z-30 py-3 -mx-3 sm:-mx-4 px-3 sm:px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="sticky top-[4.5rem] z-30 py-3 -mx-0 sm:-mx-4 px-0 sm:px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Search - Pill shaped, white background */}
           <div className="relative flex-1 min-w-0">
@@ -884,8 +895,8 @@ export function BrowsePage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="name">Name</SelectItem>
-              <SelectItem value="date">Date</SelectItem>
-              <SelectItem value="category">Category</SelectItem>
+              <SelectItem value="date">Modified</SelectItem>
+              <SelectItem value="size">Size</SelectItem>
             </SelectContent>
           </Select>
 
@@ -965,6 +976,7 @@ export function BrowsePage() {
                 pattern={pattern}
                 isSelected={selectedPattern?.path === pattern.path}
                 isFavorite={favorites.has(pattern.path)}
+                playTime={allPatternHistories[pattern.path.split('/').pop() || '']?.actual_time_formatted || null}
                 onToggleFavorite={toggleFavorite}
                 onClick={() => handlePatternClick(pattern)}
               />
@@ -1251,11 +1263,12 @@ interface PatternCardProps {
   pattern: PatternMetadata
   isSelected: boolean
   isFavorite: boolean
+  playTime: string | null
   onToggleFavorite: (path: string, e: React.MouseEvent) => void
   onClick: () => void
 }
 
-function PatternCard({ pattern, isSelected, isFavorite, onToggleFavorite, onClick }: PatternCardProps) {
+function PatternCard({ pattern, isSelected, isFavorite, playTime, onToggleFavorite, onClick }: PatternCardProps) {
   const [imageLoaded, setImageLoaded] = useState(false)
   const [imageError, setImageError] = useState(false)
   const cardRef = useRef<HTMLButtonElement>(null)
@@ -1288,7 +1301,7 @@ function PatternCard({ pattern, isSelected, isFavorite, onToggleFavorite, onClic
     <button
       ref={cardRef}
       onClick={onClick}
-      className={`group flex flex-col items-center gap-2 p-2.5 rounded-xl bg-card border border-border shadow-sm transition-all duration-200 ease-out hover:-translate-y-1 hover:shadow-lg active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+      className={`group flex flex-col items-center gap-2 p-2.5 rounded-xl bg-card border border-border transition-all duration-200 ease-out hover:-translate-y-1 hover:shadow-md active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
         isSelected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''
       }`}
     >
@@ -1322,6 +1335,45 @@ function PatternCard({ pattern, isSelected, isFavorite, onToggleFavorite, onClic
             </div>
           )}
         </div>
+
+        {/* Play time badge */}
+        {playTime && (
+          <div className="absolute -top-1 -right-1 bg-card/90 backdrop-blur-sm text-[10px] font-medium px-1.5 py-0.5 rounded-full border border-border shadow-sm">
+            {(() => {
+              // Parse time and convert to minutes only
+              // Try MM:SS or HH:MM:SS format first (e.g., "15:48" or "1:15:48")
+              const colonMatch = playTime.match(/^(?:(\d+):)?(\d+):(\d+)$/)
+              if (colonMatch) {
+                const hours = colonMatch[1] ? parseInt(colonMatch[1]) : 0
+                const minutes = parseInt(colonMatch[2])
+                const seconds = parseInt(colonMatch[3])
+                const totalMins = hours * 60 + minutes + (seconds >= 30 ? 1 : 0)
+                return totalMins > 0 ? `${totalMins}m` : '<1m'
+              }
+
+              // Try text-based formats
+              const match = playTime.match(/(\d+)h\s*(\d+)m|(\d+)\s*min|(\d+)m\s*(\d+)s|(\d+)\s*sec/)
+              if (match) {
+                if (match[1] && match[2]) {
+                  // "Xh Ym" format
+                  return `${parseInt(match[1]) * 60 + parseInt(match[2])}m`
+                } else if (match[3]) {
+                  // "X min" format
+                  return `${match[3]}m`
+                } else if (match[4] && match[5]) {
+                  // "Xm Ys" format - round to minutes
+                  const mins = parseInt(match[4])
+                  return mins > 0 ? `${mins}m` : '<1m'
+                } else if (match[6]) {
+                  // seconds only
+                  return '<1m'
+                }
+              }
+              // Fallback: show original
+              return playTime
+            })()}
+          </div>
+        )}
       </div>
 
       {/* Name and favorite row */}

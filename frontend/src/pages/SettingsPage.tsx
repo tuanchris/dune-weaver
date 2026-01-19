@@ -109,6 +109,7 @@ export function SettingsPage() {
   // Settings state
   const [settings, setSettings] = useState<Settings>({})
   const [ledConfig, setLedConfig] = useState<LedConfig>({ provider: 'none', gpio_pin: 18 })
+  const [numLedsInput, setNumLedsInput] = useState('60')
   const [mqttConfig, setMqttConfig] = useState<MqttConfig>({ enabled: false })
 
   // UI state
@@ -134,6 +135,7 @@ export function SettingsPage() {
   })
   const [autoPlayPauseUnit, setAutoPlayPauseUnit] = useState<'sec' | 'min' | 'hr'>('min')
   const [autoPlayPauseValue, setAutoPlayPauseValue] = useState(5)
+  const [autoPlayPauseInput, setAutoPlayPauseInput] = useState('5')
   const [playlists, setPlaylists] = useState<string[]>([])
 
   // Convert pause time from seconds to value + unit for display
@@ -349,6 +351,7 @@ export function SettingsPage() {
         const pauseSeconds = data.auto_play.pause_time ?? 300 // Default 5 minutes
         const { value, unit } = secondsToDisplayPause(pauseSeconds)
         setAutoPlayPauseValue(value)
+        setAutoPlayPauseInput(String(value))
         setAutoPlayPauseUnit(unit)
         setAutoPlaySettings({
           enabled: data.auto_play.enabled || false,
@@ -398,6 +401,7 @@ export function SettingsPage() {
         gpio_pin: data.dw_led_gpio_pin,
         pixel_order: data.dw_led_pixel_order,
       })
+      setNumLedsInput(String(data.dw_led_num_leds || 60))
     } catch (error) {
       console.error('Error fetching LED config:', error)
     }
@@ -719,7 +723,7 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="flex flex-col w-full max-w-5xl mx-auto gap-6 py-3 sm:py-6 px-3 sm:px-4">
+    <div className="flex flex-col w-full max-w-5xl mx-auto gap-6 py-3 sm:py-6 px-0 sm:px-4">
       {/* Page Header */}
       <div className="space-y-0.5 sm:space-y-1 pl-1">
         <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
@@ -755,7 +759,7 @@ export function SettingsPage() {
             {/* Connection Status */}
             <div className="flex items-center justify-between p-4 rounded-lg border">
               <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${isConnected ? 'bg-green-100 dark:bg-green-900' : 'bg-muted'}`}>
+                <div className={`w-10 h-10 flex items-center justify-center rounded-lg ${isConnected ? 'bg-green-100 dark:bg-green-900' : 'bg-muted'}`}>
                   <span className={`material-icons ${isConnected ? 'text-green-600' : 'text-muted-foreground'}`}>
                     {isConnected ? 'usb' : 'usb_off'}
                   </span>
@@ -1403,13 +1407,25 @@ export function SettingsPage() {
                     <Label htmlFor="numLeds">Number of LEDs</Label>
                     <Input
                       id="numLeds"
-                      type="number"
-                      value={ledConfig.num_leds || 60}
-                      onChange={(e) =>
-                        setLedConfig({ ...ledConfig, num_leds: parseInt(e.target.value) })
-                      }
-                      min={1}
-                      max={1000}
+                      type="text"
+                      inputMode="numeric"
+                      value={numLedsInput}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9]/g, '')
+                        setNumLedsInput(val)
+                      }}
+                      onBlur={() => {
+                        const num = Math.min(1000, Math.max(1, parseInt(numLedsInput) || 60))
+                        setLedConfig({ ...ledConfig, num_leds: num })
+                        setNumLedsInput(String(num))
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const num = Math.min(1000, Math.max(1, parseInt(numLedsInput) || 60))
+                          setLedConfig({ ...ledConfig, num_leds: num })
+                          setNumLedsInput(String(num))
+                        }
+                      }}
                     />
                   </div>
                   <div className="space-y-3">
@@ -1725,10 +1741,25 @@ export function SettingsPage() {
                     <Label>Pause Between Patterns</Label>
                     <div className="flex gap-2">
                       <Input
-                        type="number"
-                        min="0"
-                        value={autoPlayPauseValue}
-                        onChange={(e) => setAutoPlayPauseValue(Number(e.target.value) || 0)}
+                        type="text"
+                        inputMode="numeric"
+                        value={autoPlayPauseInput}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^0-9]/g, '')
+                          setAutoPlayPauseInput(val)
+                        }}
+                        onBlur={() => {
+                          const num = Math.max(0, parseInt(autoPlayPauseInput) || 0)
+                          setAutoPlayPauseValue(num)
+                          setAutoPlayPauseInput(String(num))
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const num = Math.max(0, parseInt(autoPlayPauseInput) || 0)
+                            setAutoPlayPauseValue(num)
+                            setAutoPlayPauseInput(String(num))
+                          }
+                        }}
                         className="w-20"
                       />
                       <Select
@@ -1893,64 +1924,58 @@ export function SettingsPage() {
                       <div>
                         <p className="text-sm font-medium">Timezone</p>
                         <p className="text-xs text-muted-foreground">
-                          Select or type a timezone (e.g., UTC+5, America/New_York)
+                          Select a timezone for scheduling
                         </p>
                       </div>
                     </div>
-                    <div className="relative">
-                      <Input
-                        list="timezone-options"
-                        value={stillSandsSettings.timezone || ''}
-                        onChange={(e) =>
-                          setStillSandsSettings({ ...stillSandsSettings, timezone: e.target.value })
-                        }
-                        placeholder="System Default"
-                        className="w-full sm:w-[200px]"
-                      />
-                      <datalist id="timezone-options">
-                        {/* UTC Offsets */}
-                        <option value="Etc/GMT+12">UTC-12</option>
-                        <option value="Etc/GMT+11">UTC-11</option>
-                        <option value="Etc/GMT+10">UTC-10</option>
-                        <option value="Etc/GMT+9">UTC-9</option>
-                        <option value="Etc/GMT+8">UTC-8</option>
-                        <option value="Etc/GMT+7">UTC-7</option>
-                        <option value="Etc/GMT+6">UTC-6</option>
-                        <option value="Etc/GMT+5">UTC-5</option>
-                        <option value="Etc/GMT+4">UTC-4</option>
-                        <option value="Etc/GMT+3">UTC-3</option>
-                        <option value="Etc/GMT+2">UTC-2</option>
-                        <option value="Etc/GMT+1">UTC-1</option>
-                        <option value="UTC">UTC</option>
-                        <option value="Etc/GMT-1">UTC+1</option>
-                        <option value="Etc/GMT-2">UTC+2</option>
-                        <option value="Etc/GMT-3">UTC+3</option>
-                        <option value="Etc/GMT-4">UTC+4</option>
-                        <option value="Etc/GMT-5">UTC+5</option>
-                        <option value="Etc/GMT-6">UTC+6</option>
-                        <option value="Etc/GMT-7">UTC+7</option>
-                        <option value="Etc/GMT-8">UTC+8</option>
-                        <option value="Etc/GMT-9">UTC+9</option>
-                        <option value="Etc/GMT-10">UTC+10</option>
-                        <option value="Etc/GMT-11">UTC+11</option>
-                        <option value="Etc/GMT-12">UTC+12</option>
-                        {/* Americas */}
-                        <option value="America/New_York">America/New_York (Eastern)</option>
-                        <option value="America/Chicago">America/Chicago (Central)</option>
-                        <option value="America/Denver">America/Denver (Mountain)</option>
-                        <option value="America/Los_Angeles">America/Los_Angeles (Pacific)</option>
-                        {/* Europe */}
-                        <option value="Europe/London">Europe/London</option>
-                        <option value="Europe/Paris">Europe/Paris</option>
-                        <option value="Europe/Berlin">Europe/Berlin</option>
-                        {/* Asia */}
-                        <option value="Asia/Tokyo">Asia/Tokyo</option>
-                        <option value="Asia/Shanghai">Asia/Shanghai</option>
-                        <option value="Asia/Singapore">Asia/Singapore</option>
-                        {/* Australia */}
-                        <option value="Australia/Sydney">Australia/Sydney</option>
-                      </datalist>
-                    </div>
+                    <SearchableSelect
+                      value={stillSandsSettings.timezone || ''}
+                      onValueChange={(value) =>
+                        setStillSandsSettings({ ...stillSandsSettings, timezone: value })
+                      }
+                      placeholder="System Default"
+                      searchPlaceholder="Search timezones..."
+                      className="w-full sm:w-[200px]"
+                      options={[
+                        { value: '', label: 'System Default' },
+                        { value: 'Etc/GMT+12', label: 'UTC-12' },
+                        { value: 'Etc/GMT+11', label: 'UTC-11' },
+                        { value: 'Etc/GMT+10', label: 'UTC-10' },
+                        { value: 'Etc/GMT+9', label: 'UTC-9' },
+                        { value: 'Etc/GMT+8', label: 'UTC-8' },
+                        { value: 'Etc/GMT+7', label: 'UTC-7' },
+                        { value: 'Etc/GMT+6', label: 'UTC-6' },
+                        { value: 'Etc/GMT+5', label: 'UTC-5' },
+                        { value: 'Etc/GMT+4', label: 'UTC-4' },
+                        { value: 'Etc/GMT+3', label: 'UTC-3' },
+                        { value: 'Etc/GMT+2', label: 'UTC-2' },
+                        { value: 'Etc/GMT+1', label: 'UTC-1' },
+                        { value: 'UTC', label: 'UTC' },
+                        { value: 'Etc/GMT-1', label: 'UTC+1' },
+                        { value: 'Etc/GMT-2', label: 'UTC+2' },
+                        { value: 'Etc/GMT-3', label: 'UTC+3' },
+                        { value: 'Etc/GMT-4', label: 'UTC+4' },
+                        { value: 'Etc/GMT-5', label: 'UTC+5' },
+                        { value: 'Etc/GMT-6', label: 'UTC+6' },
+                        { value: 'Etc/GMT-7', label: 'UTC+7' },
+                        { value: 'Etc/GMT-8', label: 'UTC+8' },
+                        { value: 'Etc/GMT-9', label: 'UTC+9' },
+                        { value: 'Etc/GMT-10', label: 'UTC+10' },
+                        { value: 'Etc/GMT-11', label: 'UTC+11' },
+                        { value: 'Etc/GMT-12', label: 'UTC+12' },
+                        { value: 'America/New_York', label: 'America/New_York (Eastern)' },
+                        { value: 'America/Chicago', label: 'America/Chicago (Central)' },
+                        { value: 'America/Denver', label: 'America/Denver (Mountain)' },
+                        { value: 'America/Los_Angeles', label: 'America/Los_Angeles (Pacific)' },
+                        { value: 'Europe/London', label: 'Europe/London' },
+                        { value: 'Europe/Paris', label: 'Europe/Paris' },
+                        { value: 'Europe/Berlin', label: 'Europe/Berlin' },
+                        { value: 'Asia/Tokyo', label: 'Asia/Tokyo' },
+                        { value: 'Asia/Shanghai', label: 'Asia/Shanghai' },
+                        { value: 'Asia/Singapore', label: 'Asia/Singapore' },
+                        { value: 'Australia/Sydney', label: 'Australia/Sydney' },
+                      ]}
+                    />
                   </div>
                 </div>
 
@@ -2088,7 +2113,7 @@ export function SettingsPage() {
           </AccordionTrigger>
           <AccordionContent className="pt-4 pb-6 space-y-3">
             <div className="flex items-center gap-4 p-4 rounded-lg bg-muted/50">
-              <div className="p-2 bg-background rounded-lg">
+              <div className="w-10 h-10 flex items-center justify-center bg-background rounded-lg">
                 <span className="material-icons text-muted-foreground">terminal</span>
               </div>
               <div className="flex-1">
@@ -2100,7 +2125,7 @@ export function SettingsPage() {
             </div>
 
             <div className="flex items-center gap-4 p-4 rounded-lg bg-muted/50">
-              <div className="p-2 bg-background rounded-lg">
+              <div className="w-10 h-10 flex items-center justify-center bg-background rounded-lg">
                 <span className="material-icons text-muted-foreground">system_update</span>
               </div>
               <div className="flex-1">

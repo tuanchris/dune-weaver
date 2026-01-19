@@ -1601,6 +1601,29 @@ async def stop_execution():
     await pattern_manager.stop_actions()
     return {"success": True}
 
+@app.post("/soft_reset")
+async def soft_reset():
+    """Send Ctrl+X soft reset to the controller (DLC32/ESP32). Requires re-homing after."""
+    if not (state.conn.is_connected() if state.conn else False):
+        logger.warning("Attempted to soft reset without a connection")
+        raise HTTPException(status_code=400, detail="Connection not established")
+
+    try:
+        # Stop any running patterns first
+        await pattern_manager.stop_actions()
+
+        # Send Ctrl+X (0x18) - GRBL/FluidNC soft reset command
+        state.conn.send('\x18')
+        logger.info("Soft reset command (Ctrl+X) sent to controller")
+
+        # Mark as needing homing since position is now unknown
+        state.is_homed = False
+
+        return {"success": True, "message": "Soft reset sent. Homing required."}
+    except Exception as e:
+        logger.error(f"Error sending soft reset: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/send_home")
 async def send_home():
     try:
@@ -1802,6 +1825,45 @@ async def get_pattern_history(pattern_name: str):
     if history:
         return history
     return {"actual_time_seconds": None, "actual_time_formatted": None, "speed": None, "timestamp": None}
+
+@app.get("/api/pattern_history_all")
+async def get_all_pattern_history():
+    """Get execution history for all patterns in a single request.
+
+    Returns a dict mapping pattern names to their most recent execution history.
+    """
+    from modules.core.pattern_manager import EXECUTION_LOG_FILE
+    import json
+
+    if not os.path.exists(EXECUTION_LOG_FILE):
+        return {}
+
+    try:
+        history_map = {}
+        with open(EXECUTION_LOG_FILE, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    # Only consider fully completed patterns
+                    if entry.get('completed', False):
+                        pattern_name = entry.get('pattern_name')
+                        if pattern_name:
+                            # Keep the most recent match (last one in file wins)
+                            history_map[pattern_name] = {
+                                "actual_time_seconds": entry.get('actual_time_seconds'),
+                                "actual_time_formatted": entry.get('actual_time_formatted'),
+                                "speed": entry.get('speed'),
+                                "timestamp": entry.get('timestamp')
+                            }
+                except json.JSONDecodeError:
+                    continue
+        return history_map
+    except Exception as e:
+        logger.error(f"Failed to read execution time log: {e}")
+        return {}
 
 @app.get("/preview/{encoded_filename}")
 async def serve_preview(encoded_filename: str):

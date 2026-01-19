@@ -66,7 +66,9 @@ export function LEDPage() {
   const [palettes, setPalettes] = useState<[number, string][]>([])
   const [brightness, setBrightness] = useState(35)
   const [speed, setSpeed] = useState(128)
+  const [speedInput, setSpeedInput] = useState('128')
   const [intensity, setIntensity] = useState(128)
+  const [intensityInput, setIntensityInput] = useState('128')
   const [selectedEffect, setSelectedEffect] = useState('')
   const [selectedPalette, setSelectedPalette] = useState('')
   const [color1, setColor1] = useState('#ff0000')
@@ -81,6 +83,7 @@ export function LEDPage() {
   const [playingEffect, setPlayingEffect] = useState<EffectSettings | null>(null)
   const [idleTimeoutEnabled, setIdleTimeoutEnabled] = useState(false)
   const [idleTimeoutMinutes, setIdleTimeoutMinutes] = useState(30)
+  const [idleTimeoutInput, setIdleTimeoutInput] = useState('30')
 
   // Fetch LED configuration
   useEffect(() => {
@@ -120,7 +123,9 @@ export function LEDPage() {
       if (data.connected) {
         setBrightness(data.brightness || 35)
         setSpeed(data.speed || 128)
+        setSpeedInput(String(data.speed || 128))
         setIntensity(data.intensity || 128)
+        setIntensityInput(String(data.intensity || 128))
         setSelectedEffect(String(data.current_effect || 0))
         setSelectedPalette(String(data.current_palette || 0))
         if (data.colors) {
@@ -169,6 +174,7 @@ export function LEDPage() {
       const data = await apiClient.get<{ enabled?: boolean; minutes?: number }>('/api/dw_leds/idle_timeout')
       setIdleTimeoutEnabled(data.enabled || false)
       setIdleTimeoutMinutes(data.minutes || 30)
+      setIdleTimeoutInput(String(data.minutes || 30))
     } catch (error) {
       console.error('Error fetching idle timeout:', error)
     }
@@ -205,6 +211,7 @@ export function LEDPage() {
 
   const handleSpeedChange = useCallback((value: number[]) => {
     setSpeed(value[0])
+    setSpeedInput(String(value[0]))
   }, [])
 
   const handleSpeedCommit = async (value: number[]) => {
@@ -218,6 +225,7 @@ export function LEDPage() {
 
   const handleIntensityChange = useCallback((value: number[]) => {
     setIntensity(value[0])
+    setIntensityInput(String(value[0]))
   }, [])
 
   const handleIntensityCommit = async (value: number[]) => {
@@ -393,7 +401,7 @@ export function LEDPage() {
 
   // DW LEDs control panel
   return (
-    <div className="flex flex-col w-full max-w-5xl mx-auto gap-6 py-3 sm:py-6 px-3 sm:px-4">
+    <div className="flex flex-col w-full max-w-5xl mx-auto gap-6 py-3 sm:py-6 px-0 sm:px-4">
       {/* Page Header */}
       <div className="space-y-0.5 sm:space-y-1 pl-1">
         <h1 className="text-xl font-semibold tracking-tight">LED Control</h1>
@@ -514,7 +522,30 @@ export function LEDPage() {
                       <span className="material-icons-outlined text-sm mr-2 align-[-6px] text-muted-foreground">speed</span>
                       Speed
                     </Label>
-                    <span className="text-sm font-medium">{speed}</span>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      value={speedInput}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9]/g, '')
+                        setSpeedInput(val)
+                      }}
+                      onBlur={() => {
+                        const num = Math.min(255, Math.max(0, parseInt(speedInput) || 0))
+                        setSpeed(num)
+                        setSpeedInput(String(num))
+                        handleSpeedCommit([num])
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const num = Math.min(255, Math.max(0, parseInt(speedInput) || 0))
+                          setSpeed(num)
+                          setSpeedInput(String(num))
+                          handleSpeedCommit([num])
+                        }
+                      }}
+                      className="w-16 h-7 text-center text-sm font-medium px-2"
+                    />
                   </div>
                   <Slider
                     value={[speed]}
@@ -530,7 +561,30 @@ export function LEDPage() {
                       <span className="material-icons-outlined text-sm mr-2 align-[-6px] text-muted-foreground">tungsten</span>
                       Intensity
                     </Label>
-                    <span className="text-sm font-medium">{intensity}</span>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      value={intensityInput}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9]/g, '')
+                        setIntensityInput(val)
+                      }}
+                      onBlur={() => {
+                        const num = Math.min(255, Math.max(0, parseInt(intensityInput) || 0))
+                        setIntensity(num)
+                        setIntensityInput(String(num))
+                        handleIntensityCommit([num])
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const num = Math.min(255, Math.max(0, parseInt(intensityInput) || 0))
+                          setIntensity(num)
+                          setIntensityInput(String(num))
+                          handleIntensityCommit([num])
+                        }
+                      }}
+                      className="w-16 h-7 text-center text-sm font-medium px-2"
+                    />
                   </div>
                   <Slider
                     value={[intensity]}
@@ -601,11 +655,26 @@ export function LEDPage() {
               {idleTimeoutEnabled && (
                 <div className="flex items-center gap-2">
                   <Input
-                    type="number"
-                    value={idleTimeoutMinutes}
-                    onChange={(e) => setIdleTimeoutMinutes(parseInt(e.target.value) || 30)}
-                    min={1}
-                    max={1440}
+                    type="text"
+                    inputMode="numeric"
+                    value={idleTimeoutInput}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9]/g, '')
+                      setIdleTimeoutInput(val)
+                    }}
+                    onBlur={() => {
+                      const num = Math.min(1440, Math.max(1, parseInt(idleTimeoutInput) || 30))
+                      setIdleTimeoutMinutes(num)
+                      setIdleTimeoutInput(String(num))
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const num = Math.min(1440, Math.max(1, parseInt(idleTimeoutInput) || 30))
+                        setIdleTimeoutMinutes(num)
+                        setIdleTimeoutInput(String(num))
+                        saveIdleTimeout(idleTimeoutEnabled, num)
+                      }
+                    }}
                     className="w-20"
                   />
                   <span className="text-sm text-muted-foreground flex-1">minutes</span>

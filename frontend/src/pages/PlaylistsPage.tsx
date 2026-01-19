@@ -451,8 +451,8 @@ export function PlaylistsPage() {
         case 'date':
           cmp = a.date_modified - b.date_modified
           break
-        case 'category':
-          cmp = a.category.localeCompare(b.category)
+        case 'size':
+          cmp = a.coordinates_count - b.coordinates_count
           break
       }
       return sortAsc ? cmp : -cmp
@@ -474,7 +474,7 @@ export function PlaylistsPage() {
   }
 
   return (
-    <div className="flex flex-col w-full max-w-5xl mx-auto gap-4 sm:gap-6 py-3 sm:py-6 px-3 sm:px-4 h-[calc(100dvh-7rem)] overflow-hidden">
+    <div className="flex flex-col w-full max-w-5xl mx-auto gap-4 sm:gap-6 py-3 sm:py-6 px-0 sm:px-4 h-[calc(100dvh-7rem)] overflow-hidden">
       {/* Page Header */}
       <div className="space-y-0.5 sm:space-y-1 shrink-0 pl-1">
         <h1 className="text-xl font-semibold tracking-tight">Playlists</h1>
@@ -662,7 +662,7 @@ export function PlaylistsPage() {
           {selectedPlaylist && (
             <div className="absolute bottom-0 left-0 right-0 pointer-events-none z-20">
               {/* Blur backdrop */}
-              <div className="h-20 bg-gradient-to-t backdrop-blur-sm" />
+              <div className="h-20 bg-gradient-to-t" />
 
               {/* Controls container */}
               <div className="absolute bottom-4 left-0 right-0 flex items-center justify-center gap-3 px-4 pointer-events-auto">
@@ -878,8 +878,8 @@ export function PlaylistsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="name">Name</SelectItem>
-                    <SelectItem value="date">Date</SelectItem>
-                    <SelectItem value="category">Category</SelectItem>
+                    <SelectItem value="date">Modified</SelectItem>
+                    <SelectItem value="size">Size</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button

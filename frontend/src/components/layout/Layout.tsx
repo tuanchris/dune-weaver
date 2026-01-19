@@ -455,8 +455,8 @@ export function Layout() {
     // Also reconnect when active table changes
   }, [isLogsOpen, activeTable?.id])
 
-  const handleOpenLogs = () => {
-    setIsLogsOpen(true)
+  const handleToggleLogs = () => {
+    setIsLogsOpen((prev) => !prev)
   }
 
   // Filter logs by level
@@ -1207,7 +1207,7 @@ export function Layout() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={handleOpenLogs}
+              onClick={handleToggleLogs}
               className="rounded-full"
               aria-label="View logs"
               title="View Application Logs"
@@ -1282,7 +1282,7 @@ export function Layout() {
                   </button>
                   <button
                     onClick={() => {
-                      handleOpenLogs()
+                      handleToggleLogs()
                       setIsMobileMenuOpen(false)
                     }}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
