@@ -283,6 +283,8 @@ export function Layout() {
     const unsubscribe = apiClient.onBaseUrlChange(() => {
       if (isMounted) {
         wasPlayingRef.current = null // Reset playing state for new table
+        setIsConnected(false) // Reset connection status until new table reports
+        setIsBackendConnected(false) // Show connecting state
         connectWebSocket()
       }
     })
