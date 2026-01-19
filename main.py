@@ -748,12 +748,8 @@ async def update_settings(settings_update: SettingsUpdate):
     # Connection settings
     if settings_update.connection:
         if settings_update.connection.preferred_port is not None:
-            port = settings_update.connection.preferred_port
-            # "" or "none" = auto mode (None), "__none__" = disabled, else specific port
-            if port in ("", "none"):
-                state.preferred_port = None  # Auto mode
-            else:
-                state.preferred_port = port  # "__none__" for disabled, or specific port
+            # Store exactly what frontend sends: "__auto__", "__none__", or specific port
+            state.preferred_port = settings_update.connection.preferred_port
         updated_categories.append("connection")
 
     # Pattern settings

@@ -259,7 +259,7 @@ def connect_device(homing=True):
 
     ports = list_serial_ports()
 
-    # Check if auto-connect is disabled
+    # Check auto-connect mode: "__auto__" or None = auto, "__none__" = disabled, else specific port
     if state.preferred_port == "__none__":
         logger.info("Auto-connect disabled by user preference")
         # Skip all auto-connect logic, no connection will be established
@@ -267,7 +267,7 @@ def connect_device(homing=True):
     # 1. Preferred port (user's explicit choice) if available
     # 2. Last used port if available
     # 3. First available port as fallback
-    elif state.preferred_port and state.preferred_port in ports:
+    elif state.preferred_port and state.preferred_port not in ("__auto__", None) and state.preferred_port in ports:
         logger.info(f"Connecting to preferred port: {state.preferred_port}")
         state.conn = SerialConnection(state.preferred_port)
     elif state.port and state.port in ports:

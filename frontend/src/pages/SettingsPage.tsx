@@ -18,9 +18,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectLabel,
-  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -454,7 +454,8 @@ export function SettingsPage() {
   const handleSavePreferredPort = async () => {
     setIsLoading('preferredPort')
     try {
-      const portValue = settings.preferred_port === '__none__' ? '__none__' : (settings.preferred_port || null)
+      // Send the actual value: __auto__, __none__, or specific port
+      const portValue = settings.preferred_port || '__auto__'
       await apiClient.patch('/api/settings', {
         connection: { preferred_port: portValue },
       })
@@ -826,29 +827,9 @@ export function SettingsPage() {
               <div className="flex gap-3">
                 <Select
                   value={settings.preferred_port || '__auto__'}
-                  onValueChange={async (value) => {
-                    const newPort = value === '__auto__' ? undefined : value
-                    setSettings({ ...settings, preferred_port: newPort })
-                    // Auto-save on change
-                    setIsLoading('preferredPort')
-                    try {
-                      const portValue = value === '__none__' ? '__none__' : (value === '__auto__' ? null : value)
-                      await apiClient.patch('/api/settings', {
-                        connection: { preferred_port: portValue },
-                      })
-                      if (value === '__auto__') {
-                        toast.success('Auto-connect: Auto (first available port)')
-                      } else if (value === '__none__') {
-                        toast.success('Auto-connect: Disabled')
-                      } else {
-                        toast.success(`Auto-connect: ${value}`)
-                      }
-                    } catch {
-                      toast.error('Failed to save auto-connect setting')
-                    } finally {
-                      setIsLoading(null)
-                    }
-                  }}
+                  onValueChange={(value) =>
+                    setSettings({ ...settings, preferred_port: value === '__auto__' ? undefined : value })
+                  }
                 >
                   <SelectTrigger className="flex-1">
                     <SelectValue placeholder="Select auto-connect option..." />
@@ -868,6 +849,18 @@ export function SettingsPage() {
                     )}
                   </SelectContent>
                 </Select>
+                <Button
+                  onClick={handleSavePreferredPort}
+                  disabled={isLoading === 'preferredPort'}
+                  className="gap-2"
+                >
+                  {isLoading === 'preferredPort' ? (
+                    <span className="material-icons-outlined animate-spin">sync</span>
+                  ) : (
+                    <span className="material-icons-outlined">save</span>
+                  )}
+                  Save
+                </Button>
               </div>
               <p className="text-xs text-muted-foreground">
                 Choose how the system connects on startup: Auto picks the first available port, Disabled requires manual connection, or select a specific port.
@@ -1452,17 +1445,20 @@ export function SettingsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectLabel>RGB Strips (3-channel)</SelectLabel>
-                      <SelectItem value="RGB">RGB - WS2815/WS2811</SelectItem>
-                      <SelectItem value="GRB">GRB - WS2812/WS2812B (common)</SelectItem>
-                      <SelectItem value="BGR">BGR - Some WS2811 variants</SelectItem>
-                      <SelectItem value="RBG">RBG - Rare variant</SelectItem>
-                      <SelectItem value="GBR">GBR - Rare variant</SelectItem>
-                      <SelectItem value="BRG">BRG - Rare variant</SelectItem>
-                      <SelectSeparator />
-                      <SelectLabel>RGBW Strips (4-channel)</SelectLabel>
-                      <SelectItem value="GRBW">GRBW - SK6812 RGBW (common)</SelectItem>
-                      <SelectItem value="RGBW">RGBW - SK6812 variant</SelectItem>
+                      <SelectGroup>
+                        <SelectLabel>RGB Strips (3-channel)</SelectLabel>
+                        <SelectItem value="RGB">RGB - WS2815/WS2811</SelectItem>
+                        <SelectItem value="GRB">GRB - WS2812/WS2812B (common)</SelectItem>
+                        <SelectItem value="BGR">BGR - Some WS2811 variants</SelectItem>
+                        <SelectItem value="RBG">RBG - Rare variant</SelectItem>
+                        <SelectItem value="GBR">GBR - Rare variant</SelectItem>
+                        <SelectItem value="BRG">BRG - Rare variant</SelectItem>
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>RGBW Strips (4-channel)</SelectLabel>
+                        <SelectItem value="GRBW">GRBW - SK6812 RGBW (common)</SelectItem>
+                        <SelectItem value="RGBW">RGBW - SK6812 variant</SelectItem>
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
                 </div>
