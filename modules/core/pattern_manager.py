@@ -107,6 +107,49 @@ def get_last_completed_execution_time(pattern_name: str, speed: float) -> Option
         logger.error(f"Failed to read execution time log: {e}")
         return None
 
+def get_pattern_execution_history(pattern_name: str) -> Optional[dict]:
+    """Get the most recent completed execution for a pattern (any speed).
+
+    Args:
+        pattern_name: Name of the pattern file (e.g., 'circle.thr')
+
+    Returns:
+        Dict with execution time info if found, None otherwise.
+        Format: {"actual_time_seconds": float, "actual_time_formatted": str,
+                 "speed": int, "timestamp": str}
+    """
+    if not os.path.exists(EXECUTION_LOG_FILE):
+        return None
+
+    try:
+        matching_entry = None
+        with open(EXECUTION_LOG_FILE, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    # Only consider fully completed patterns
+                    if (entry.get('completed', False) and
+                        entry.get('pattern_name') == pattern_name):
+                        # Keep the most recent match (last one in file)
+                        matching_entry = entry
+                except json.JSONDecodeError:
+                    continue
+
+        if matching_entry:
+            return {
+                "actual_time_seconds": matching_entry.get('actual_time_seconds'),
+                "actual_time_formatted": matching_entry.get('actual_time_formatted'),
+                "speed": matching_entry.get('speed'),
+                "timestamp": matching_entry.get('timestamp')
+            }
+        return None
+    except Exception as e:
+        logger.error(f"Failed to read execution time log: {e}")
+        return None
+
 # Asyncio primitives - initialized lazily to avoid event loop issues
 # These must be created in the context of the running event loop
 pause_event: Optional[asyncio.Event] = None
@@ -764,6 +807,9 @@ async def _execute_pattern_internal(file_path):
     # Run file parsing in thread to avoid blocking the event loop
     coordinates = await asyncio.to_thread(parse_theta_rho_file, file_path)
     total_coordinates = len(coordinates)
+
+    # Cache coordinates in state for frontend preview (avoids re-parsing large files)
+    state._current_coordinates = coordinates
 
     if total_coordinates < 2:
         logger.warning("Not enough coordinates for interpolation")

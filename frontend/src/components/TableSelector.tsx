@@ -128,7 +128,7 @@ export function TableSelector() {
           >
             <Layers className="h-4 w-4" />
             <span className="hidden sm:inline max-w-[120px] truncate">
-              {activeTable?.name || 'Select Table'}
+              {activeTable?.appName || activeTable?.name || 'Select Table'}
             </span>
             <ChevronDown className="h-3 w-3 opacity-50" />
           </Button>

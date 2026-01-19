@@ -15,18 +15,34 @@
 
     <!-- Check for custom favicon -->
     <script>
-      fetch('/api/settings')
-        .then(r => r.json())
-        .then(settings => {
-          if (settings.app && settings.app.custom_logo) {
-            document.getElementById('favicon-ico').href = '/static/custom/favicon.ico';
-            document.getElementById('apple-touch-icon').href = '/static/custom/' + settings.app.custom_logo;
+      // Get base URL for active table (supports multi-table connections)
+      (function() {
+        var baseUrl = '';
+        try {
+          var stored = localStorage.getItem('duneweaver_tables');
+          var activeId = localStorage.getItem('duneweaver_active_table');
+          if (stored && activeId) {
+            var data = JSON.parse(stored);
+            var active = (data.tables || []).find(function(t) { return t.id === activeId; });
+            if (active && !active.isCurrent && active.url && active.url !== window.location.origin) {
+              baseUrl = active.url.replace(/\/$/, '');
+            }
           }
-          if (settings.app && settings.app.name) {
-            document.title = settings.app.name;
-          }
-        })
-        .catch(() => {});
+        } catch (e) {}
+
+        fetch(baseUrl + '/api/settings')
+          .then(function(r) { return r.json(); })
+          .then(function(settings) {
+            if (settings.app && settings.app.custom_logo) {
+              document.getElementById('favicon-ico').href = baseUrl + '/static/custom/favicon.ico';
+              document.getElementById('apple-touch-icon').href = baseUrl + '/static/custom/' + settings.app.custom_logo;
+            }
+            if (settings.app && settings.app.name) {
+              document.title = settings.app.name;
+            }
+          })
+          .catch(function() {});
+      })();
     </script>
   </head>
   <body>

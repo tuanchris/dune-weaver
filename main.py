@@ -288,10 +288,11 @@ app = FastAPI(lifespan=lifespan)
 
 # Add CORS middleware to allow cross-origin requests from other Dune Weaver frontends
 # This enables multi-table control from a single frontend
+# Note: allow_credentials must be False when allow_origins=["*"] (browser security requirement)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allow all origins for local network access
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -730,7 +731,7 @@ async def update_settings(settings_update: SettingsUpdate):
     Only include the categories and fields you want to update.
     All fields are optional - only provided values will be updated.
 
-    Example: {"app": {"name": "My Sand Table"}, "auto_play": {"enabled": true}}
+    Example: {"app": {"name": "Dune Weaver"}, "auto_play": {"enabled": true}}
     """
     updated_categories = []
     requires_restart = False
@@ -942,7 +943,7 @@ async def update_table_info(update: TableInfoUpdate):
     The table ID is immutable after generation.
     """
     if update.name is not None:
-        state.table_name = update.name.strip() or "My Sand Table"
+        state.table_name = update.name.strip() or "Dune Weaver"
         state.save()
         logger.info(f"Table name updated to: {state.table_name}")
 
@@ -1503,26 +1504,39 @@ async def get_theta_rho_coordinates(request: GetCoordinatesRequest):
         # Normalize file path for cross-platform compatibility and remove prefixes
         file_name = normalize_file_path(request.file_name)
         file_path = os.path.join(THETA_RHO_DIR, file_name)
-        
+
+        # Check if we can use cached coordinates (already loaded for current playback)
+        # This avoids re-parsing large files (2MB+) which can cause issues on Pi Zero 2W
+        current_file = state.current_playing_file
+        if current_file and state._current_coordinates:
+            # Normalize current file path for comparison
+            current_normalized = normalize_file_path(current_file)
+            if current_normalized == file_name:
+                logger.debug(f"Using cached coordinates for {file_name}")
+                return {
+                    "success": True,
+                    "coordinates": state._current_coordinates,
+                    "total_points": len(state._current_coordinates)
+                }
+
         # Check file existence asynchronously
         exists = await asyncio.to_thread(os.path.exists, file_path)
         if not exists:
             raise HTTPException(status_code=404, detail=f"File {file_name} not found")
 
-        # Parse the theta-rho file in a separate process for CPU-intensive work
-        # This prevents blocking the motion control thread
-        loop = asyncio.get_running_loop()
-        coordinates = await loop.run_in_executor(pool_module.get_pool(), parse_theta_rho_file, file_path)
-        
+        # Parse the theta-rho file in a thread (not process) to avoid memory pressure
+        # on resource-constrained devices like Pi Zero 2W
+        coordinates = await asyncio.to_thread(parse_theta_rho_file, file_path)
+
         if not coordinates:
             raise HTTPException(status_code=400, detail="No valid coordinates found in file")
-        
+
         return {
             "success": True,
             "coordinates": coordinates,
             "total_points": len(coordinates)
         }
-        
+
     except Exception as e:
         logger.error(f"Error getting coordinates for {request.file_name}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1770,6 +1784,24 @@ async def preview_thr(request: DeleteFileRequest):
     except Exception as e:
         logger.error(f"Failed to generate or serve preview for {request.file_name}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to serve preview image: {str(e)}")
+
+@app.get("/api/pattern_history/{pattern_name:path}")
+async def get_pattern_history(pattern_name: str):
+    """Get the most recent execution history for a pattern.
+
+    Returns the last completed execution time and speed for the given pattern.
+    """
+    from modules.core.pattern_manager import get_pattern_execution_history
+
+    # Get just the filename if a full path was provided
+    filename = os.path.basename(pattern_name)
+    if not filename.endswith('.thr'):
+        filename = f"{filename}.thr"
+
+    history = get_pattern_execution_history(filename)
+    if history:
+        return history
+    return {"actual_time_seconds": None, "actual_time_formatted": None, "speed": None, "timestamp": None}
 
 @app.get("/preview/{encoded_filename}")
 async def serve_preview(encoded_filename: str):
@@ -2227,6 +2259,43 @@ async def reorder_playlist(request: dict):
 
     return {"success": True}
 
+@app.post("/add_to_queue")
+async def add_to_queue(request: dict):
+    """Add a pattern to the current playlist queue.
+
+    Args:
+        pattern: The pattern file path to add (e.g., 'circle.thr' or 'subdirectory/pattern.thr')
+        position: 'next' to play after current pattern, 'end' to add to end of queue
+    """
+    if not state.current_playlist:
+        raise HTTPException(status_code=400, detail="No playlist is currently running")
+
+    pattern = request.get("pattern")
+    position = request.get("position", "end")  # 'next' or 'end'
+
+    if not pattern:
+        raise HTTPException(status_code=400, detail="pattern is required")
+
+    # Verify the pattern file exists
+    pattern_path = os.path.join(pattern_manager.THETA_RHO_DIR, pattern)
+    if not os.path.exists(pattern_path):
+        raise HTTPException(status_code=404, detail="Pattern file not found")
+
+    playlist = list(state.current_playlist)
+    current_index = state.current_playlist_index
+
+    if position == "next":
+        # Insert right after the current pattern
+        insert_index = current_index + 1
+    else:
+        # Add to end
+        insert_index = len(playlist)
+
+    playlist.insert(insert_index, pattern)
+    state.current_playlist = playlist
+
+    return {"success": True, "position": insert_index}
+
 @app.get("/api/custom_clear_patterns", deprecated=True, tags=["settings-deprecated"])
 async def get_custom_clear_patterns():
     """Get the currently configured custom clear patterns."""
@@ -2653,6 +2722,15 @@ async def preview_thr_batch(request: dict):
 
     async def process_single_file(file_name):
         """Process a single file and return its preview data."""
+        # Check in-memory cache first (for current and next playing patterns)
+        normalized_for_cache = normalize_file_path(file_name)
+        if state._current_preview and state._current_preview[0] == normalized_for_cache:
+            logger.debug(f"Using cached preview for current: {file_name}")
+            return file_name, state._current_preview[1]
+        if state._next_preview and state._next_preview[0] == normalized_for_cache:
+            logger.debug(f"Using cached preview for next: {file_name}")
+            return file_name, state._next_preview[1]
+
         # Acquire semaphore to limit concurrent processing
         async with get_preview_semaphore():
             t1 = time.time()
@@ -2685,9 +2763,8 @@ async def preview_thr_batch(request: dict):
                     last_coord_obj = metadata.get('last_coordinate')
                 else:
                     logger.debug(f"Metadata cache miss for {file_name}, parsing file")
-                    # Use process pool for CPU-intensive parsing
-                    loop = asyncio.get_running_loop()
-                    coordinates = await loop.run_in_executor(pool_module.get_pool(), parse_theta_rho_file, pattern_file_path)
+                    # Use thread pool to avoid memory pressure on resource-constrained devices
+                    coordinates = await asyncio.to_thread(parse_theta_rho_file, pattern_file_path)
                     first_coord = coordinates[0] if coordinates else None
                     last_coord = coordinates[-1] if coordinates else None
                     first_coord_obj = {"x": first_coord[0], "y": first_coord[1]} if first_coord else None
@@ -2701,6 +2778,24 @@ async def preview_thr_batch(request: dict):
                     "first_coordinate": first_coord_obj,
                     "last_coordinate": last_coord_obj
                 }
+
+                # Cache preview for current/next pattern to speed up subsequent requests
+                current_file = state.current_playing_file
+                if current_file:
+                    current_normalized = normalize_file_path(current_file)
+                    if normalized_file_name == current_normalized:
+                        state._current_preview = (normalized_file_name, result)
+                        logger.debug(f"Cached preview for current: {file_name}")
+                    elif state.current_playlist:
+                        # Check if this is the next pattern in playlist
+                        playlist = state.current_playlist
+                        idx = state.current_playlist_index
+                        if idx is not None and idx + 1 < len(playlist):
+                            next_file = normalize_file_path(playlist[idx + 1])
+                            if normalized_file_name == next_file:
+                                state._next_preview = (normalized_file_name, result)
+                                logger.debug(f"Cached preview for next: {file_name}")
+
                 logger.debug(f"Processed {file_name} in {time.time() - t1:.2f}s")
                 return file_name, result
             except Exception as e:

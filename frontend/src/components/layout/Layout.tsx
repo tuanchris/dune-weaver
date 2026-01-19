@@ -24,7 +24,10 @@ export function Layout() {
   const location = useLocation()
 
   // Multi-table context - must be called before any hooks that depend on activeTable
-  const { activeTable } = useTable()
+  const { activeTable, tables } = useTable()
+
+  // Use table name as app name when multiple tables exist
+  const hasMultipleTables = tables.length > 1
 
   const [isDark, setIsDark] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -38,6 +41,9 @@ export function Layout() {
   // App customization
   const [appName, setAppName] = useState(DEFAULT_APP_NAME)
   const [customLogo, setCustomLogo] = useState<string | null>(null)
+
+  // Display name: use table name when multiple tables exist, otherwise use settings app name
+  const displayName = hasMultipleTables && activeTable?.name ? activeTable.name : appName
 
   // Connection status
   const [isConnected, setIsConnected] = useState(false)
@@ -153,7 +159,11 @@ export function Layout() {
   // Now Playing bar state
   const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(false)
   const [openNowPlayingExpanded, setOpenNowPlayingExpanded] = useState(false)
+  const [currentPlayingFile, setCurrentPlayingFile] = useState<string | null>(null) // Track current file for header button
   const wasPlayingRef = useRef<boolean | null>(null) // Track previous playing state (null = first message)
+
+  // Derive isCurrentlyPlaying from currentPlayingFile
+  const isCurrentlyPlaying = Boolean(currentPlayingFile)
 
   // Listen for playback-started event (dispatched when user starts a pattern)
   useEffect(() => {
@@ -232,7 +242,11 @@ export function Layout() {
               setIsHoming(newIsHoming)
             }
             // Auto-open/close Now Playing bar based on playback state
-            const isPlaying = data.data.is_running || data.data.is_paused
+            // Track current file - this is the most reliable indicator of playback
+            const currentFile = data.data.current_file || null
+            setCurrentPlayingFile(currentFile)
+
+            const isPlaying = Boolean(currentFile) || Boolean(data.data.is_running) || Boolean(data.data.is_paused)
             // Skip auto-open on first message (page refresh) - only react to state changes
             if (wasPlayingRef.current !== null) {
               if (isPlaying && !wasPlayingRef.current) {
@@ -283,6 +297,7 @@ export function Layout() {
     const unsubscribe = apiClient.onBaseUrlChange(() => {
       if (isMounted) {
         wasPlayingRef.current = null // Reset playing state for new table
+        setCurrentPlayingFile(null) // Reset playback state for new table
         setIsConnected(false) // Reset connection status until new table reports
         setIsBackendConnected(false) // Show connecting state
         connectWebSocket()
@@ -509,11 +524,11 @@ export function Layout() {
   useEffect(() => {
     const currentNav = navItems.find((item) => item.path === location.pathname)
     if (currentNav) {
-      document.title = `${currentNav.title} | ${appName}`
+      document.title = `${currentNav.title} | ${displayName}`
     } else {
-      document.title = appName
+      document.title = displayName
     }
-  }, [location.pathname, appName])
+  }, [location.pathname, displayName])
 
   useEffect(() => {
     if (isDark) {
@@ -1128,11 +1143,11 @@ export function Layout() {
         <div className="flex h-14 items-center justify-between px-4">
           <Link to="/" className="flex items-center gap-2">
             <img
-              src={customLogo ? `/static/custom/${customLogo}` : '/static/android-chrome-192x192.png'}
-              alt={appName}
+              src={customLogo ? apiClient.getAssetUrl(`/static/custom/${customLogo}`) : apiClient.getAssetUrl('/static/android-chrome-192x192.png')}
+              alt={displayName}
               className="w-8 h-8 rounded-full object-cover"
             />
-            <span className="font-semibold text-lg">{appName}</span>
+            <span className="font-semibold text-lg">{displayName}</span>
             <span
               className={`w-2 h-2 rounded-full ${
                 !isBackendConnected
@@ -1153,7 +1168,19 @@ export function Layout() {
 
           {/* Desktop actions */}
           <div className="hidden md:flex items-center gap-1">
-            <TableSelector />
+            {/* Now Playing button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsNowPlayingOpen(!isNowPlayingOpen)}
+              className="rounded-full"
+              aria-label={isCurrentlyPlaying ? 'Now Playing' : 'Not Playing'}
+              title={currentPlayingFile ? `Playing: ${currentPlayingFile}` : 'Not Playing'}
+            >
+              <span className="material-icons-outlined">
+                {isCurrentlyPlaying ? 'play_circle' : 'stop_circle'}
+              </span>
+            </Button>
             <Button
               variant="ghost"
               size="icon"
@@ -1196,10 +1223,24 @@ export function Layout() {
             >
               <span className="material-icons-outlined">power_settings_new</span>
             </Button>
+            <TableSelector />
           </div>
 
           {/* Mobile actions */}
           <div className="flex md:hidden items-center gap-1">
+            {/* Now Playing button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsNowPlayingOpen(!isNowPlayingOpen)}
+              className="rounded-full"
+              aria-label={isCurrentlyPlaying ? 'Now Playing' : 'Not Playing'}
+              title={currentPlayingFile ? `Playing: ${currentPlayingFile}` : 'Not Playing'}
+            >
+              <span className="material-icons-outlined">
+                {isCurrentlyPlaying ? 'play_circle' : 'stop_circle'}
+              </span>
+            </Button>
             <TableSelector />
             <Popover open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
               <PopoverTrigger asChild>
@@ -1291,17 +1332,6 @@ export function Layout() {
         onClose={() => setIsNowPlayingOpen(false)}
       />
 
-      {/* Floating Now Playing Button */}
-      {!isNowPlayingOpen && (
-        <button
-          onClick={() => setIsNowPlayingOpen(true)}
-          className="fixed right-4 z-30 w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center transition-all duration-200 hover:bg-primary/90 hover:shadow-xl hover:scale-110 active:scale-95"
-          style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}
-          title="Now Playing"
-        >
-          <span className="material-icons">play_circle</span>
-        </button>
-      )}
 
       {/* Logs Drawer */}
       <div

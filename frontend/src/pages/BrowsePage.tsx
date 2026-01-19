@@ -21,6 +21,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 
 // Types
 interface PatternMetadata {
@@ -88,6 +94,12 @@ export function BrowsePage() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
   const [progress, setProgress] = useState(0)
+
+  // Pattern execution history state
+  const [patternHistory, setPatternHistory] = useState<{
+    actual_time_formatted: string | null
+    speed: number | null
+  } | null>(null)
 
   // Canvas and animation refs
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -565,36 +577,27 @@ export function BrowsePage() {
     }
   }, [coordinates, drawPattern])
 
-  const handlePatternClick = (pattern: PatternMetadata) => {
+  const handlePatternClick = async (pattern: PatternMetadata) => {
     setSelectedPattern(pattern)
     setIsPanelOpen(true)
     setPreExecution('adaptive')
-  }
+    setPatternHistory(null) // Reset while loading
 
-  const handleClosePanel = () => {
-    setIsPanelOpen(false)
-  }
-
-  // Swipe to close panel handling
-  const panelRef = useRef<HTMLDivElement>(null)
-  const panelTouchStartX = useRef<number | null>(null)
-
-  const handlePanelTouchStart = (e: React.TouchEvent) => {
-    panelTouchStartX.current = e.touches[0].clientX
-  }
-  const handlePanelTouchEnd = (e: React.TouchEvent) => {
-    if (panelTouchStartX.current === null) return
-    const touchEndX = e.changedTouches[0].clientX
-    const deltaX = touchEndX - panelTouchStartX.current
-    // Swipe right more than 50px to close
-    if (deltaX > 50) {
-      handleClosePanel()
+    // Fetch pattern execution history
+    try {
+      const history = await apiClient.get<{
+        actual_time_formatted: string | null
+        speed: number | null
+      }>(`/api/pattern_history/${encodeURIComponent(pattern.path)}`)
+      setPatternHistory(history)
+    } catch {
+      // Silently ignore - history is optional
     }
-    panelTouchStartX.current = null
   }
 
   const handleOpenAnimatedPreview = async () => {
     if (!selectedPattern) return
+    setIsPanelOpen(false) // Close sheet before opening preview
     setIsAnimatedPreviewOpen(true)
     setIsPlaying(false)
     setProgress(0)
@@ -698,6 +701,25 @@ export function BrowsePage() {
     }
   }
 
+  const handleAddToQueue = async (position: 'next' | 'end') => {
+    if (!selectedPattern) return
+
+    try {
+      await apiClient.post('/add_to_queue', {
+        pattern: selectedPattern.path,
+        position,
+      })
+      toast.success(position === 'next' ? 'Playing next' : 'Added to queue')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to add to queue'
+      if (message.includes('400') || message.includes('No playlist')) {
+        toast.error('No playlist is currently running')
+      } else {
+        toast.error(message)
+      }
+    }
+  }
+
   const getPreviewUrl = (path: string) => {
     const preview = previews[path]
     return preview?.image_data || null
@@ -705,7 +727,7 @@ export function BrowsePage() {
 
   const formatCoordinate = (coord: { x: number; y: number } | null) => {
     if (!coord) return '(-, -)'
-    return `(${coord.x.toFixed(2)}, ${coord.y.toFixed(2)})`
+    return `(${coord.x.toFixed(1)}, ${coord.y.toFixed(1)})`
   }
 
   const canDelete = selectedPattern?.path.startsWith('custom_patterns/')
@@ -781,7 +803,7 @@ export function BrowsePage() {
   }
 
   return (
-    <div className={`flex flex-col w-full max-w-5xl mx-auto gap-3 sm:gap-6 py-3 sm:py-6 px-3 sm:px-4 transition-all duration-300 ${isPanelOpen ? 'lg:mr-[28rem]' : ''}`}>
+    <div className="flex flex-col w-full max-w-5xl mx-auto gap-3 sm:gap-6 py-3 sm:py-6 px-3 sm:px-4">
       {/* Hidden file input for pattern upload */}
       <input
         ref={fileInputRef}
@@ -957,73 +979,81 @@ export function BrowsePage() {
 
       <div className="h-48" />
 
-      {/* Slide-in Preview Panel */}
-      <div
-        className={`fixed top-0 bottom-0 right-0 w-full max-w-md transform transition-transform duration-300 ease-in-out z-40 ${
-          isPanelOpen ? 'translate-x-0' : 'translate-x-full'
-        }`}
-        ref={panelRef}
-        onTouchStart={handlePanelTouchStart}
-        onTouchEnd={handlePanelTouchEnd}
-      >
-        <div className="h-full bg-background border-l shadow-xl flex flex-col">
-          <header className="flex h-14 items-center justify-between border-b px-4 shrink-0">
-            <h2 className="text-lg font-semibold truncate pr-4">
+      {/* Pattern Details Sheet */}
+      <Sheet open={isPanelOpen} onOpenChange={setIsPanelOpen}>
+        <SheetContent className="flex flex-col p-0 overflow-hidden">
+          <SheetHeader className="px-6 py-4 shrink-0">
+            <SheetTitle className="truncate pr-8">
               {selectedPattern?.name || 'Pattern Details'}
-            </h2>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleClosePanel}
-              className="rounded-full text-muted-foreground"
-            >
-              <span className="material-icons-outlined">close</span>
-            </Button>
-          </header>
+            </SheetTitle>
+          </SheetHeader>
 
           {selectedPattern && (
             <div className="p-6 overflow-y-auto flex-1">
               {/* Clickable Round Preview Image */}
-              <div
-                className="mb-6 aspect-square w-full max-w-[280px] mx-auto overflow-hidden rounded-full border bg-muted relative group cursor-pointer"
-                onClick={handleOpenAnimatedPreview}
-              >
-                {getPreviewUrl(selectedPattern.path) ? (
-                  <img
-                    src={getPreviewUrl(selectedPattern.path)!}
-                    alt={selectedPattern.name}
-                    className="w-full h-full object-cover pattern-preview"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <span className="material-icons-outlined text-4xl text-muted-foreground">
-                      image
-                    </span>
+              <div className="mb-6">
+                <div
+                  className="aspect-square w-full max-w-[280px] mx-auto overflow-hidden rounded-full border bg-muted relative group cursor-pointer"
+                  onClick={handleOpenAnimatedPreview}
+                >
+                  {getPreviewUrl(selectedPattern.path) ? (
+                    <img
+                      src={getPreviewUrl(selectedPattern.path)!}
+                      alt={selectedPattern.name}
+                      className="w-full h-full object-cover pattern-preview"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <span className="material-icons-outlined text-4xl text-muted-foreground">
+                        image
+                      </span>
+                    </div>
+                  )}
+                  {/* Play badge - always visible */}
+                  <div className="absolute bottom-2 right-2 bg-background/90 backdrop-blur-sm rounded-full w-10 h-10 flex items-center justify-center shadow-md border group-hover:scale-110 transition-transform">
+                    <span className="material-icons text-xl">play_arrow</span>
                   </div>
-                )}
-                {/* Play overlay on hover */}
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/20">
-                  <div className="bg-background rounded-full w-12 h-12 flex items-center justify-center shadow-lg">
-                    <span className="material-icons text-2xl">play_arrow</span>
-                  </div>
+                  {/* Hover overlay */}
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/20 rounded-full" />
                 </div>
+                <p className="text-xs text-muted-foreground text-center mt-2">Tap to preview animation</p>
               </div>
 
               {/* Coordinates */}
-              <div className="mb-6 flex justify-between text-sm">
+              <div className="mb-4 flex justify-between text-sm">
                 <div className="flex items-center gap-2">
+                  <span className="material-icons-outlined text-muted-foreground text-base">flag</span>
                   <span className="text-muted-foreground">First:</span>
                   <span className="font-semibold">
                     {formatCoordinate(previews[selectedPattern.path]?.first_coordinate)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
+                  <span className="material-icons-outlined text-muted-foreground text-base">check</span>
                   <span className="text-muted-foreground">Last:</span>
                   <span className="font-semibold">
                     {formatCoordinate(previews[selectedPattern.path]?.last_coordinate)}
                   </span>
                 </div>
               </div>
+
+              {/* Last Played Info */}
+              {patternHistory?.actual_time_formatted && (
+                <div className="mb-4 flex justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="material-icons-outlined text-muted-foreground text-base">schedule</span>
+                    <span className="text-muted-foreground">Last run:</span>
+                    <span className="font-semibold">{patternHistory.actual_time_formatted}</span>
+                  </div>
+                  {patternHistory.speed !== null && (
+                    <div className="flex items-center gap-2">
+                      <span className="material-icons-outlined text-muted-foreground text-base">speed</span>
+                      <span className="text-muted-foreground">Speed:</span>
+                      <span className="font-semibold">{patternHistory.speed}</span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Pre-Execution Options */}
               <div className="mb-6">
@@ -1054,58 +1084,65 @@ export function BrowsePage() {
 
               {/* Action Buttons */}
               <div className="space-y-3">
-                <Button
-                  onClick={handleRunPattern}
-                  disabled={isRunning}
-                  className="w-full gap-2"
-                  size="lg"
-                >
-                  {isRunning ? (
-                    <span className="material-icons-outlined animate-spin text-lg">sync</span>
-                  ) : (
-                    <span className="material-icons text-lg">play_arrow</span>
+                {/* Play + Delete row */}
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleRunPattern}
+                    disabled={isRunning}
+                    className="flex-1 gap-2"
+                    size="lg"
+                  >
+                    {isRunning ? (
+                      <span className="material-icons-outlined animate-spin text-lg">sync</span>
+                    ) : (
+                      <span className="material-icons text-lg">play_arrow</span>
+                    )}
+                    Play
+                  </Button>
+
+                  {canDelete && (
+                    <Button
+                      variant="outline"
+                      onClick={handleDeletePattern}
+                      className="text-destructive hover:bg-destructive/10 hover:border-destructive px-3"
+                      size="lg"
+                    >
+                      <span className="material-icons text-lg">delete</span>
+                    </Button>
                   )}
-                  Play
-                </Button>
+                </div>
 
-                <Button
-                  variant="secondary"
-                  onClick={handleDeletePattern}
-                  disabled={!canDelete}
-                  className={`w-full gap-2 ${
-                    canDelete
-                      ? 'border-destructive text-destructive hover:bg-destructive/10'
-                      : 'opacity-50 cursor-not-allowed'
-                  }`}
-                  size="lg"
-                >
-                  <span className="material-icons text-lg">delete</span>
-                  Delete
-                </Button>
-
-                {!canDelete && selectedPattern && (
-                  <p className="text-xs text-muted-foreground text-center">
-                    Only custom patterns can be deleted
-                  </p>
-                )}
+                {/* Queue buttons */}
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 gap-1.5"
+                    onClick={() => handleAddToQueue('next')}
+                  >
+                    <span className="material-icons-outlined text-base">playlist_play</span>
+                    Play Next
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 gap-1.5"
+                    onClick={() => handleAddToQueue('end')}
+                  >
+                    <span className="material-icons-outlined text-base">playlist_add</span>
+                    Add to Queue
+                  </Button>
+                </div>
               </div>
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Backdrop for mobile panel */}
-      {isPanelOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
-          onClick={handleClosePanel}
-        />
-      )}
+        </SheetContent>
+      </Sheet>
 
       {/* Animated Preview Modal */}
       {isAnimatedPreviewOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4"
           onClick={handleCloseAnimatedPreview}
         >
           <div

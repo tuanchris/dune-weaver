@@ -84,6 +84,10 @@ interface SortableQueueItemProps {
   file: string
   index: number
   previewUrl: string | null
+  isFirst: boolean
+  isLast: boolean
+  onMoveToTop: () => void
+  onMoveToBottom: () => void
 }
 
 function SortableQueueItem({
@@ -91,6 +95,10 @@ function SortableQueueItem({
   file,
   index,
   previewUrl,
+  isFirst,
+  isLast,
+  onMoveToTop,
+  onMoveToBottom,
 }: SortableQueueItemProps) {
   const {
     attributes,
@@ -112,7 +120,7 @@ function SortableQueueItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-2 p-2 rounded-lg transition-colors hover:bg-muted/50 ${isDragging ? 'shadow-lg bg-background' : ''}`}
+      className={`group flex items-center gap-2 p-2 rounded-lg transition-colors hover:bg-muted/50 ${isDragging ? 'shadow-lg bg-background' : ''}`}
     >
       {/* Drag handle */}
       <div
@@ -124,7 +132,7 @@ function SortableQueueItem({
       </div>
 
       {/* Preview thumbnail */}
-      <div className="w-14 h-14 rounded-full overflow-hidden bg-muted border shrink-0">
+      <div className="w-28 h-28 rounded-full overflow-hidden bg-muted border shrink-0">
         {previewUrl ? (
           <img
             src={previewUrl}
@@ -134,7 +142,7 @@ function SortableQueueItem({
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <span className="material-icons-outlined text-muted-foreground text-2xl">image</span>
+            <span className="material-icons-outlined text-muted-foreground text-4xl">image</span>
           </div>
         )}
       </div>
@@ -143,6 +151,26 @@ function SortableQueueItem({
       <div className="flex-1 min-w-0">
         <p className="text-sm truncate">{formatPatternName(file)}</p>
         <p className="text-xs text-muted-foreground">#{index + 1}</p>
+      </div>
+
+      {/* Move to top/bottom buttons - visible on hover */}
+      <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+        <button
+          onClick={onMoveToTop}
+          disabled={isFirst}
+          className="p-1 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+          title="Move to top"
+        >
+          <span className="material-icons-outlined text-sm">vertical_align_top</span>
+        </button>
+        <button
+          onClick={onMoveToBottom}
+          disabled={isLast}
+          className="p-1 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+          title="Move to bottom"
+        >
+          <span className="material-icons-outlined text-sm">vertical_align_bottom</span>
+        </button>
       </div>
     </div>
   )
@@ -757,6 +785,19 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
     }
   }
 
+  // Helper to move queue item to a specific position
+  const moveToPosition = async (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return
+    try {
+      await apiClient.post('/reorder_playlist', {
+        from_index: fromIndex,
+        to_index: toIndex
+      })
+    } catch {
+      toast.error('Failed to reorder')
+    }
+  }
+
   // Don't render if not visible
   if (!isVisible) {
     return null
@@ -1219,6 +1260,9 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                   return <p className="text-center text-muted-foreground py-8">No upcoming patterns</p>
                 }
 
+                const firstUpcomingIndex = upcomingFiles[0].index
+                const lastUpcomingIndex = upcomingFiles[upcomingFiles.length - 1].index
+
                 return (
                   <DndContext
                     sensors={sensors}
@@ -1237,6 +1281,10 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                             file={file}
                             index={index}
                             previewUrl={queuePreviews[file] || null}
+                            isFirst={index === firstUpcomingIndex}
+                            isLast={index === lastUpcomingIndex}
+                            onMoveToTop={() => moveToPosition(index, firstUpcomingIndex)}
+                            onMoveToBottom={() => moveToPosition(index, lastUpcomingIndex)}
                           />
                         ))}
                       </div>

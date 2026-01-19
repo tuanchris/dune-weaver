@@ -489,16 +489,16 @@ export function SettingsPage() {
   const updateBranding = (customLogo: string | null) => {
     const timestamp = Date.now() // Cache buster
 
-    // Update favicon links
+    // Update favicon links (use apiClient.getAssetUrl for multi-table support)
     const faviconIco = document.getElementById('favicon-ico') as HTMLLinkElement
     const appleTouchIcon = document.getElementById('apple-touch-icon') as HTMLLinkElement
 
     if (customLogo) {
-      if (faviconIco) faviconIco.href = `/static/custom/favicon.ico?v=${timestamp}`
-      if (appleTouchIcon) appleTouchIcon.href = `/static/custom/${customLogo}?v=${timestamp}`
+      if (faviconIco) faviconIco.href = apiClient.getAssetUrl(`/static/custom/favicon.ico?v=${timestamp}`)
+      if (appleTouchIcon) appleTouchIcon.href = apiClient.getAssetUrl(`/static/custom/${customLogo}?v=${timestamp}`)
     } else {
-      if (faviconIco) faviconIco.href = `/static/favicon.ico?v=${timestamp}`
-      if (appleTouchIcon) appleTouchIcon.href = `/static/apple-touch-icon.png?v=${timestamp}`
+      if (faviconIco) faviconIco.href = apiClient.getAssetUrl(`/static/favicon.ico?v=${timestamp}`)
+      if (appleTouchIcon) appleTouchIcon.href = apiClient.getAssetUrl(`/static/apple-touch-icon.png?v=${timestamp}`)
     }
 
     // Dispatch event for Layout to update header logo
@@ -1113,13 +1113,13 @@ export function SettingsPage() {
                   <div className="w-16 h-16 rounded-full overflow-hidden border bg-background flex items-center justify-center shrink-0">
                     {settings.custom_logo ? (
                       <img
-                        src={`/static/custom/${settings.custom_logo}`}
+                        src={apiClient.getAssetUrl(`/static/custom/${settings.custom_logo}`)}
                         alt="Custom Logo"
                         className="w-full h-full object-cover"
                       />
                     ) : (
                       <img
-                        src="/static/android-chrome-192x192.png"
+                        src={apiClient.getAssetUrl('/static/android-chrome-192x192.png')}
                         alt="Default Logo"
                         className="w-full h-full object-cover"
                       />

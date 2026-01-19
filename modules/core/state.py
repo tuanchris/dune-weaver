@@ -15,6 +15,9 @@ class AppState:
     def __init__(self):
         # Private variables for properties
         self._current_playing_file = None
+        self._current_coordinates = None  # Cache parsed coordinates for current file (avoids re-parsing large files)
+        self._current_preview = None  # Cache (file_name, base64_data) for current pattern preview
+        self._next_preview = None  # Cache (file_name, base64_data) for next pattern preview
         self._pause_requested = False
         self._speed = 100
         self._current_playlist = None
@@ -105,7 +108,7 @@ class AppState:
 
         # Multi-table identity (for network discovery)
         self.table_id = str(uuid.uuid4())  # UUID generated on first run, persistent across restarts
-        self.table_name = "My Sand Table"  # User-customizable table name
+        self.table_name = "Dune Weaver"  # User-customizable table name
 
         # Custom branding settings (filenames only, files stored in static/custom/)
         # Favicon is auto-generated from logo as logo-favicon.ico
@@ -152,8 +155,14 @@ class AppState:
 
     @current_playing_file.setter
     def current_playing_file(self, value):
+        # Clear cached data when file changes or is unset
+        if value != self._current_playing_file or value is None:
+            self._current_coordinates = None
+            self._current_preview = None
+            self._next_preview = None
+
         self._current_playing_file = value
-        
+
         # force an empty string (and not None) if we need to unset
         if value == None:
             value = ""
@@ -378,7 +387,7 @@ class AppState:
         self.table_id = data.get("table_id", None)
         if self.table_id is None:
             self.table_id = str(uuid.uuid4())
-        self.table_name = data.get("table_name", "My Sand Table")
+        self.table_name = data.get("table_name", "Dune Weaver")
         self.custom_logo = data.get("custom_logo", None)
         self.auto_play_enabled = data.get("auto_play_enabled", False)
         self.auto_play_playlist = data.get("auto_play_playlist", None)

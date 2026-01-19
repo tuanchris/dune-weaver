@@ -12,6 +12,7 @@ import { apiClient } from '@/lib/apiClient'
 export interface Table {
   id: string
   name: string
+  appName?: string // Application name from settings (e.g., "Dune Weaver")
   url: string
   host?: string
   port?: number
