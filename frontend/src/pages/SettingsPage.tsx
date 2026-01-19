@@ -826,9 +826,29 @@ export function SettingsPage() {
               <div className="flex gap-3">
                 <Select
                   value={settings.preferred_port || '__auto__'}
-                  onValueChange={(value) =>
-                    setSettings({ ...settings, preferred_port: value === '__auto__' ? undefined : value })
-                  }
+                  onValueChange={async (value) => {
+                    const newPort = value === '__auto__' ? undefined : value
+                    setSettings({ ...settings, preferred_port: newPort })
+                    // Auto-save on change
+                    setIsLoading('preferredPort')
+                    try {
+                      const portValue = value === '__none__' ? '__none__' : (value === '__auto__' ? null : value)
+                      await apiClient.patch('/api/settings', {
+                        connection: { preferred_port: portValue },
+                      })
+                      if (value === '__auto__') {
+                        toast.success('Auto-connect: Auto (first available port)')
+                      } else if (value === '__none__') {
+                        toast.success('Auto-connect: Disabled')
+                      } else {
+                        toast.success(`Auto-connect: ${value}`)
+                      }
+                    } catch {
+                      toast.error('Failed to save auto-connect setting')
+                    } finally {
+                      setIsLoading(null)
+                    }
+                  }}
                 >
                   <SelectTrigger className="flex-1">
                     <SelectValue placeholder="Select auto-connect option..." />
@@ -848,18 +868,6 @@ export function SettingsPage() {
                     )}
                   </SelectContent>
                 </Select>
-                <Button
-                  onClick={handleSavePreferredPort}
-                  disabled={isLoading === 'preferredPort'}
-                  className="gap-2"
-                >
-                  {isLoading === 'preferredPort' ? (
-                    <span className="material-icons-outlined animate-spin">sync</span>
-                  ) : (
-                    <span className="material-icons-outlined">save</span>
-                  )}
-                  Save
-                </Button>
               </div>
               <p className="text-xs text-muted-foreground">
                 Choose how the system connects on startup: Auto picks the first available port, Disabled requires manual connection, or select a specific port.
