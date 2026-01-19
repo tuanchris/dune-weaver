@@ -18,6 +18,8 @@ if not os.path.isfile(PLAYLISTS_FILE):
     logger.info(f"Creating new playlists file at {PLAYLISTS_FILE}")
     with open(PLAYLISTS_FILE, "w") as f:
         json.dump({}, f, indent=2)
+        f.flush()  # Ensure data is written to OS buffer
+        os.fsync(f.fileno())  # Force write to disk
 
 def load_playlists():
     """Load the entire playlists dictionary from the JSON file."""
@@ -31,6 +33,8 @@ def save_playlists(playlists_dict):
     logger.debug(f"Saving {len(playlists_dict)} playlists to file")
     with open(PLAYLISTS_FILE, "w") as f:
         json.dump(playlists_dict, f, indent=2)
+        f.flush()  # Ensure data is written to OS buffer
+        os.fsync(f.fileno())  # Force write to disk
 
 def list_all_playlists():
     """Returns a list of all playlist names."""
