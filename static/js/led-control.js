@@ -73,9 +73,9 @@ async function initializeLedPage() {
 
 // Initialize DW LEDs controls
 async function initializeDWLedsControls() {
-    // Check status and load available effects/palettes
-    await checkDWLedsStatus();
+    // Load available effects/palettes first, then check status to set current values
     await loadEffectsAndPalettes();
+    await checkDWLedsStatus();
 
     // Power toggle button
     document.getElementById('dw-leds-power-toggle')?.addEventListener('click', async () => {
