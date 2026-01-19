@@ -811,9 +811,41 @@ async def update_settings(settings_update: SettingsUpdate):
     # Save state
     state.save()
 
-    # Handle LED reinitialization if provider changed
-    if led_reinit_needed:
-        logger.info(f"LED provider changed from {old_led_provider} to {state.led_provider}, reinitialization may be needed")
+    # Handle LED reinitialization if provider changed or DW LED settings updated
+    if led_reinit_needed or (settings_update.led and settings_update.led.dw_led):
+        logger.info(f"LED settings changed, reinitializing controller (provider: {old_led_provider} -> {state.led_provider})")
+
+        # Stop existing controller
+        if state.led_controller:
+            try:
+                controller = state.led_controller.get_controller()
+                if controller and hasattr(controller, 'stop'):
+                    controller.stop()
+            except Exception as e:
+                logger.warning(f"Error stopping existing LED controller: {e}")
+
+        # Reinitialize based on current settings
+        try:
+            if state.led_provider == "wled" and state.wled_ip:
+                state.led_controller = LEDInterface("wled", state.wled_ip)
+                logger.info(f"LED controller reinitialized: WLED at {state.wled_ip}")
+            elif state.led_provider == "dw_leds":
+                state.led_controller = LEDInterface(
+                    "dw_leds",
+                    num_leds=state.dw_led_num_leds,
+                    gpio_pin=state.dw_led_gpio_pin,
+                    pixel_order=state.dw_led_pixel_order,
+                    brightness=state.dw_led_brightness / 100.0,
+                    speed=state.dw_led_speed,
+                    intensity=state.dw_led_intensity
+                )
+                logger.info(f"LED controller reinitialized: DW LEDs ({state.dw_led_num_leds} LEDs on GPIO{state.dw_led_gpio_pin})")
+            else:
+                state.led_controller = None
+                logger.info("LED controller disabled")
+        except Exception as e:
+            logger.error(f"Failed to reinitialize LED controller: {e}")
+            state.led_controller = None
 
     logger.info(f"Settings updated: {', '.join(updated_categories)}")
 
