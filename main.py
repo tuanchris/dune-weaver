@@ -749,7 +749,11 @@ async def update_settings(settings_update: SettingsUpdate):
     if settings_update.connection:
         if settings_update.connection.preferred_port is not None:
             port = settings_update.connection.preferred_port
-            state.preferred_port = None if port in ("", "none") else port
+            # "" or "none" = auto mode (None), "__none__" = disabled, else specific port
+            if port in ("", "none"):
+                state.preferred_port = None  # Auto mode
+            else:
+                state.preferred_port = port  # "__none__" for disabled, or specific port
         updated_categories.append("connection")
 
     # Pattern settings
@@ -2067,8 +2071,8 @@ async def set_led_config(request: LEDConfigRequest):
         old_gpio_pin = state.dw_led_gpio_pin
         old_pixel_order = state.dw_led_pixel_order
         hardware_changed = (
-            old_gpio_pin != (request.gpio_pin or 12) or
-            old_pixel_order != (request.pixel_order or "GRB")
+            old_gpio_pin != (request.gpio_pin or 18) or
+            old_pixel_order != (request.pixel_order or "RGB")
         )
 
         # Stop existing DW LED controller if hardware settings changed
@@ -2081,10 +2085,13 @@ async def set_led_config(request: LEDConfigRequest):
                     logger.info("LED controller stopped successfully")
                 except Exception as e:
                     logger.error(f"Error stopping LED controller: {e}")
+            # Clear the reference and give hardware time to release
+            state.led_controller = None
+            await asyncio.sleep(0.5)
 
         state.dw_led_num_leds = request.num_leds or 60
-        state.dw_led_gpio_pin = request.gpio_pin or 12
-        state.dw_led_pixel_order = request.pixel_order or "GRB"
+        state.dw_led_gpio_pin = request.gpio_pin or 18
+        state.dw_led_pixel_order = request.pixel_order or "RGB"
         state.dw_led_brightness = request.brightness or 35
         state.wled_ip = None
 

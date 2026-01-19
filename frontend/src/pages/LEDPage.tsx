@@ -443,9 +443,9 @@ export function LEDPage() {
 
                   {/* Brightness Slider */}
                   <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <Label className="flex items-center gap-2">
-                        <span className="material-icons-outlined text-base text-muted-foreground">brightness_6</span>
+                    <div className="flex justify-between items-center">
+                      <Label>
+                        <span className="material-icons-outlined text-sm mr-2 align-[-6px] text-muted-foreground">brightness_6</span>
                         Brightness
                       </Label>
                       <span className="text-sm font-medium">{brightness}%</span>
@@ -507,11 +507,11 @@ export function LEDPage() {
               </div>
 
               {/* Speed and Intensity in styled boxes */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-4 rounded-lg border space-y-3">
                   <div className="flex justify-between items-center">
-                    <Label className="flex items-center gap-2">
-                      <span className="material-icons-outlined text-base text-muted-foreground">speed</span>
+                    <Label>
+                      <span className="material-icons-outlined text-sm mr-2 align-[-6px] text-muted-foreground">speed</span>
                       Speed
                     </Label>
                     <span className="text-sm font-medium">{speed}</span>
@@ -526,8 +526,8 @@ export function LEDPage() {
                 </div>
                 <div className="p-4 rounded-lg border space-y-3">
                   <div className="flex justify-between items-center">
-                    <Label className="flex items-center gap-2">
-                      <span className="material-icons-outlined text-base text-muted-foreground">tungsten</span>
+                    <Label>
+                      <span className="material-icons-outlined text-sm mr-2 align-[-6px] text-muted-foreground">tungsten</span>
                       Intensity
                     </Label>
                     <span className="text-sm font-medium">{intensity}</span>

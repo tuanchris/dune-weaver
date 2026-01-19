@@ -19,6 +19,8 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -452,16 +454,19 @@ export function SettingsPage() {
   const handleSavePreferredPort = async () => {
     setIsLoading('preferredPort')
     try {
+      const portValue = settings.preferred_port === '__none__' ? '__none__' : (settings.preferred_port || null)
       await apiClient.patch('/api/settings', {
-        connection: { preferred_port: settings.preferred_port || null },
+        connection: { preferred_port: portValue },
       })
-      toast.success(
-        settings.preferred_port
-          ? `Auto-connect set to ${settings.preferred_port}`
-          : 'Auto-connect disabled'
-      )
+      if (!settings.preferred_port || settings.preferred_port === '__auto__') {
+        toast.success('Auto-connect: Auto (first available port)')
+      } else if (settings.preferred_port === '__none__') {
+        toast.success('Auto-connect: Disabled')
+      } else {
+        toast.success(`Auto-connect: ${settings.preferred_port}`)
+      }
     } catch (error) {
-      toast.error('Failed to save preferred port')
+      toast.error('Failed to save auto-connect setting')
     } finally {
       setIsLoading(null)
     }
@@ -817,24 +822,30 @@ export function SettingsPage() {
 
             {/* Preferred Port for Auto-Connect */}
             <div className="space-y-3">
-              <Label>Preferred Port (Auto-Connect)</Label>
+              <Label>Auto-Connect</Label>
               <div className="flex gap-3">
                 <Select
-                  value={settings.preferred_port || '__none__'}
+                  value={settings.preferred_port || '__auto__'}
                   onValueChange={(value) =>
-                    setSettings({ ...settings, preferred_port: value === '__none__' ? undefined : value })
+                    setSettings({ ...settings, preferred_port: value === '__auto__' ? undefined : value })
                   }
                 >
                   <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Select preferred port..." />
+                    <SelectValue placeholder="Select auto-connect option..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {ports.map((port) => (
-                      <SelectItem key={port} value={port}>
-                        {port}
-                      </SelectItem>
-                    ))}
-                    <SelectItem value="__none__">None (Disable auto-connect)</SelectItem>
+                    <SelectItem value="__auto__">Auto (pick first available)</SelectItem>
+                    <SelectItem value="__none__">Disabled (no auto-connect)</SelectItem>
+                    {ports.length > 0 && (
+                      <>
+                        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Available Ports</div>
+                        {ports.map((port) => (
+                          <SelectItem key={port} value={port}>
+                            {port}
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
                 <Button
@@ -851,7 +862,7 @@ export function SettingsPage() {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                When set, the system will automatically connect to this port on startup. Set to "None" to disable auto-connect.
+                Choose how the system connects on startup: Auto picks the first available port, Disabled requires manual connection, or select a specific port.
               </p>
             </div>
           </AccordionContent>
@@ -1096,31 +1107,33 @@ export function SettingsPage() {
             {/* Custom Logo */}
             <div className="space-y-3">
               <Label>Custom Logo</Label>
-              <div className="flex items-center gap-4 p-4 rounded-lg border">
-                <div className="w-16 h-16 rounded-full overflow-hidden border bg-background flex items-center justify-center shrink-0">
-                  {settings.custom_logo ? (
-                    <img
-                      src={`/static/custom/${settings.custom_logo}`}
-                      alt="Custom Logo"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <img
-                      src="/static/android-chrome-192x192.png"
-                      alt="Default Logo"
-                      className="w-full h-full object-cover"
-                    />
-                  )}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-lg border">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-full overflow-hidden border bg-background flex items-center justify-center shrink-0">
+                    {settings.custom_logo ? (
+                      <img
+                        src={`/static/custom/${settings.custom_logo}`}
+                        alt="Custom Logo"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <img
+                        src="/static/android-chrome-192x192.png"
+                        alt="Default Logo"
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">
+                      {settings.custom_logo ? 'Custom logo active' : 'Using default logo'}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      PNG, JPG, GIF, WebP or SVG (max 5MB)
+                    </p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <p className="font-medium">
-                    {settings.custom_logo ? 'Custom logo active' : 'Using default logo'}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    PNG, JPG, GIF, WebP or SVG (max 5MB)
-                  </p>
-                </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 sm:ml-auto">
                   <Button
                     variant="outline"
                     size="sm"
@@ -1431,9 +1444,16 @@ export function SettingsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectLabel>RGB Strips (3-channel)</SelectLabel>
                       <SelectItem value="RGB">RGB - WS2815/WS2811</SelectItem>
-                      <SelectItem value="GRB">GRB - WS2812/WS2812B</SelectItem>
-                      <SelectItem value="GRBW">GRBW - SK6812 RGBW</SelectItem>
+                      <SelectItem value="GRB">GRB - WS2812/WS2812B (common)</SelectItem>
+                      <SelectItem value="BGR">BGR - Some WS2811 variants</SelectItem>
+                      <SelectItem value="RBG">RBG - Rare variant</SelectItem>
+                      <SelectItem value="GBR">GBR - Rare variant</SelectItem>
+                      <SelectItem value="BRG">BRG - Rare variant</SelectItem>
+                      <SelectSeparator />
+                      <SelectLabel>RGBW Strips (4-channel)</SelectLabel>
+                      <SelectItem value="GRBW">GRBW - SK6812 RGBW (common)</SelectItem>
                       <SelectItem value="RGBW">RGBW - SK6812 variant</SelectItem>
                     </SelectContent>
                   </Select>

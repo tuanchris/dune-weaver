@@ -819,81 +819,83 @@ export function BrowsePage() {
 
       {/* Sticky Filters - Compact on mobile */}
       <div className="sticky top-14 z-30 py-2 sm:py-4 -mx-4 px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-          {/* Search + Category on same row on mobile */}
-          <div className="flex gap-2 flex-1">
-            <div className="relative flex-1">
-              <span className="material-icons-outlined absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-lg sm:text-xl">
-                search
-              </span>
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search..."
-                className="pl-8 sm:pl-10 pr-8 sm:pr-10 h-9 sm:h-10 text-sm"
-              />
-              {searchQuery && (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-1.5 sm:right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground h-6 w-6"
-                >
-                  <span className="material-icons-outlined text-lg">close</span>
-                </Button>
-              )}
-            </div>
-
-            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="w-28 sm:w-44 h-9 sm:h-10 text-sm">
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((cat) => (
-                  <SelectItem key={cat} value={cat}>
-                    {cat === 'all' ? 'All Categories' : cat === 'root' ? 'Uncategorized' : cat}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        {/* Mobile: Single row with all controls */}
+        <div className="flex items-center gap-1.5 sm:gap-3">
+          {/* Search */}
+          <div className="relative flex-1 min-w-0">
+            <span className="material-icons-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-lg">
+              search
+            </span>
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search..."
+              className="pl-8 pr-8 h-9 text-sm"
+            />
+            {searchQuery && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground h-6 w-6"
+              >
+                <span className="material-icons-outlined text-lg">close</span>
+              </Button>
+            )}
           </div>
 
-          {/* Sort controls */}
-          <div className="flex gap-2">
-            <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-              <SelectTrigger className="w-24 sm:w-36 h-9 sm:h-10 text-sm">
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="name">Name</SelectItem>
-                <SelectItem value="date">Date Modified</SelectItem>
-                <SelectItem value="category">Category</SelectItem>
-              </SelectContent>
-            </Select>
+          {/* Category */}
+          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+            <SelectTrigger className="w-[4.5rem] sm:w-36 h-9 text-sm shrink-0">
+              <SelectValue placeholder="All" />
+            </SelectTrigger>
+            <SelectContent>
+              {categories.map((cat) => (
+                <SelectItem key={cat} value={cat}>
+                  {cat === 'all' ? 'All' : cat === 'root' ? 'Default Patterns' : cat}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setSortAsc(!sortAsc)}
-              className="shrink-0 h-9 w-9 sm:h-10 sm:w-10"
-              title={sortAsc ? 'Ascending' : 'Descending'}
-            >
-              <span className="material-icons-outlined text-lg">
-                {sortAsc ? 'arrow_upward' : 'arrow_downward'}
-              </span>
-            </Button>
-          </div>
+          {/* Sort */}
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+            <SelectTrigger className="w-[4.5rem] sm:w-32 h-9 text-sm shrink-0">
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="name">Name</SelectItem>
+              <SelectItem value="date">Date</SelectItem>
+              <SelectItem value="category">Category</SelectItem>
+            </SelectContent>
+          </Select>
 
+          {/* Sort direction */}
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setSortAsc(!sortAsc)}
+            className="shrink-0 h-9 w-9"
+            title={sortAsc ? 'Ascending' : 'Descending'}
+          >
+            <span className="material-icons-outlined text-lg">
+              {sortAsc ? 'arrow_upward' : 'arrow_downward'}
+            </span>
+          </Button>
+
+          {/* Cache button - icon only on mobile */}
           {!allCached && (
             <Button
               variant="outline"
+              size="icon"
               onClick={handleCacheAllPreviews}
-              className="gap-2 whitespace-nowrap"
+              className="shrink-0 h-9 w-9 sm:w-auto sm:px-3 sm:gap-2"
+              title="Cache All Previews"
             >
               {isCaching ? (
                 <>
                   <span className="material-icons-outlined animate-spin text-lg">sync</span>
-                  <span>{cacheProgress}%</span>
+                  <span className="hidden sm:inline">{cacheProgress}%</span>
                 </>
               ) : (
                 <>

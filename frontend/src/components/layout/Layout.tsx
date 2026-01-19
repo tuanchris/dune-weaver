@@ -832,7 +832,7 @@ export function Layout() {
     : 0
 
   return (
-    <div className="min-h-dvh bg-background flex flex-col overflow-x-hidden">
+    <div className="min-h-dvh bg-background flex flex-col">
       {/* Cache Progress Blocking Overlay */}
       {cacheProgress?.is_running && (
         <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center p-4">
@@ -1124,7 +1124,7 @@ export function Layout() {
       )}
 
       {/* Header */}
-      <header className="sticky top-0 z-40 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <header className="fixed top-0 left-0 right-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex h-14 items-center justify-between px-4">
           <Link to="/" className="flex items-center gap-2">
             <img
@@ -1268,7 +1268,7 @@ export function Layout() {
 
       {/* Main Content */}
       <main
-        className={`container mx-auto px-4 transition-all duration-300 ${
+        className={`container mx-auto px-4 pt-16 transition-all duration-300 ${
           !isLogsOpen && !isNowPlayingOpen ? 'pb-20' :
           !isLogsOpen && isNowPlayingOpen ? 'pb-80' : ''
         }`}
