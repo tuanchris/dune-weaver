@@ -144,23 +144,34 @@ class DWLEDController:
         from modules.core import scheduling
         scheduling.setup_realtime_thread(priority=40)
         
+        delay_ms = 100  # Default delay
+        
         while not self._stop_thread.is_set():
             try:
-                with self._lock:
-                    if self._pixels and self._segment and self._powered_on:
-                        # Get current effect function (allows dynamic effect switching)
-                        effect_func = get_effect(self._current_effect_id)
+                # Use timeout to prevent indefinite blocking if lock is contended
+                acquired = self._lock.acquire(timeout=0.5)
+                if acquired:
+                    try:
+                        if self._pixels and self._segment and self._powered_on:
+                            # Get current effect function (allows dynamic effect switching)
+                            effect_func = get_effect(self._current_effect_id)
 
-                        # Run effect and get delay
-                        delay_ms = effect_func(self._segment)
+                            # Run effect and get delay
+                            delay_ms = effect_func(self._segment)
 
-                        # Update pixels
-                        self._pixels.show()
+                            # Update pixels
+                            self._pixels.show()
 
-                        # Increment call counter
-                        self._segment.call += 1
-                    else:
-                        delay_ms = 100  # Idle delay when off
+                            # Increment call counter
+                            self._segment.call += 1
+                        else:
+                            delay_ms = 100  # Idle delay when off
+                    finally:
+                        self._lock.release()
+                else:
+                    # Could not acquire lock within timeout, skip this frame
+                    logger.debug("Effect loop: lock acquisition timed out, skipping frame")
+                    delay_ms = 50  # Short delay before retry
 
                 # Sleep for the effect's requested delay
                 time.sleep(delay_ms / 1000.0)
