@@ -161,12 +161,20 @@ export function TableControlPage() {
       await handleAction('stop', '/stop_execution')
       toast.success('Execution stopped')
     } catch {
-      toast.error('Failed to stop execution')
+      // Normal stop failed, try force stop
+      try {
+        await handleAction('stop', '/force_stop')
+        toast.success('Force stopped')
+      } catch {
+        toast.error('Failed to stop execution')
+      }
     }
   }
 
   const handleSoftReset = async () => {
     try {
+      // Force stop first to clear any stuck state
+      await apiClient.post('/force_stop')
       await handleAction('reset', '/soft_reset')
       toast.success('Reset sent. Homing required.')
     } catch {

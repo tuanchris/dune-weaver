@@ -664,7 +664,13 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
       await apiClient.post('/stop_execution')
       toast.success('Stopped')
     } catch {
-      toast.error('Failed to stop')
+      // Normal stop failed, try force stop
+      try {
+        await apiClient.post('/force_stop')
+        toast.success('Force stopped')
+      } catch {
+        toast.error('Failed to stop')
+      }
     }
   }
 

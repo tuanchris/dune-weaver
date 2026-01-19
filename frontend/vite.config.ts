@@ -67,6 +67,7 @@ export default defineConfig({
       '/send_home': 'http://localhost:8080',
       '/send_coordinate': 'http://localhost:8080',
       '/stop_execution': 'http://localhost:8080',
+      '/force_stop': 'http://localhost:8080',
       '/soft_reset': 'http://localhost:8080',
       '/pause_execution': 'http://localhost:8080',
       '/resume_execution': 'http://localhost:8080',
