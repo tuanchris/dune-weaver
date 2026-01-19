@@ -1894,7 +1894,10 @@ async def get_playlist(name: str):
 
     playlist = playlist_manager.get_playlist(name)
     if not playlist:
-        raise HTTPException(status_code=404, detail=f"Playlist '{name}' not found")
+        # Auto-create empty playlist if not found
+        logger.info(f"Playlist '{name}' not found, creating empty playlist")
+        playlist_manager.create_playlist(name, [])
+        playlist = {"name": name, "files": []}
 
     return playlist
 
