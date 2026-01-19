@@ -998,6 +998,14 @@ def home(timeout=90):
                     homing_complete.set()
                     return
 
+                # Only zero positions if BOTH axes were homed successfully
+                # Otherwise, moving to x0 y0 would crash the unhomed axis
+                if not (state.homed_x and state.homed_y):
+                    logger.error(f"Skipping position zeroing - not all axes homed (X:{state.homed_x}, Y:{state.homed_y})")
+                    logger.error("Homing failed - please check sensors and try again")
+                    homing_complete.set()
+                    return
+
                 # Send x0 y0 to zero both positions using send_grbl_coordinates
                 logger.info(f"Zeroing positions with x0 y0 f{homing_speed}")
 
