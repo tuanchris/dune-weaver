@@ -32,7 +32,10 @@ class ApiClient {
    */
   setBaseUrl(url: string): void {
     // Remove trailing slash
-    this._baseUrl = url.replace(/\/$/, '')
+    const newUrl = url.replace(/\/$/, '')
+    // Only notify if the URL actually changed
+    if (newUrl === this._baseUrl) return
+    this._baseUrl = newUrl
     // Notify listeners
     this._listeners.forEach(listener => listener(this._baseUrl))
   }
@@ -193,8 +196,40 @@ class ApiClient {
   }
 }
 
-// Export singleton instance
+/**
+ * Initialize base URL from localStorage synchronously.
+ * This must happen BEFORE any components mount and try to connect to WebSockets.
+ * Otherwise, there's a race condition where components connect to the wrong backend.
+ */
+function getInitialBaseUrl(): string {
+  try {
+    const STORAGE_KEY = 'duneweaver_tables'
+    const ACTIVE_TABLE_KEY = 'duneweaver_active_table'
+
+    const stored = localStorage.getItem(STORAGE_KEY)
+    const activeId = localStorage.getItem(ACTIVE_TABLE_KEY)
+
+    if (stored && activeId) {
+      const data = JSON.parse(stored)
+      const activeTable = data.tables?.find((t: { id: string }) => t.id === activeId)
+
+      if (activeTable) {
+        // Only use non-empty URL for remote tables (not the current server)
+        if (!activeTable.isCurrent && activeTable.url && activeTable.url !== window.location.origin) {
+          return activeTable.url.replace(/\/$/, '')
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to restore base URL from localStorage:', e)
+  }
+
+  return ''
+}
+
+// Export singleton instance with correct initial base URL
 export const apiClient = new ApiClient()
+apiClient.setBaseUrl(getInitialBaseUrl())
 
 // Export class for testing
 export { ApiClient }
