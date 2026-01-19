@@ -474,11 +474,11 @@ export function PlaylistsPage() {
   }
 
   return (
-    <div className="flex flex-col w-full max-w-5xl mx-auto gap-4 sm:gap-6 py-4 sm:py-6 h-[calc(100dvh-10rem)] sm:h-[calc(100dvh-10.5rem)] overflow-hidden">
+    <div className="flex flex-col w-full max-w-5xl mx-auto gap-4 sm:gap-6 py-3 sm:py-6 px-3 sm:px-4 h-[calc(100dvh-7rem)] overflow-hidden">
       {/* Page Header */}
-      <div className="space-y-0.5 sm:space-y-1 shrink-0">
-        <h1 className="text-xl sm:text-3xl font-bold tracking-tight">Playlists</h1>
-        <p className="text-sm sm:text-base text-muted-foreground">
+      <div className="space-y-0.5 sm:space-y-1 shrink-0 pl-1">
+        <h1 className="text-xl font-semibold tracking-tight">Playlists</h1>
+        <p className="text-xs text-muted-foreground">
           Create and manage pattern playlists
         </p>
       </div>

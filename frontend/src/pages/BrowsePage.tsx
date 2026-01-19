@@ -12,7 +12,6 @@ import { useOnBackendConnected } from '@/hooks/useBackendConnection'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
 import { Slider } from '@/components/ui/slider'
 import {
   Select,
@@ -813,76 +812,74 @@ export function BrowsePage() {
         className="hidden"
       />
 
-      {/* Page Header - Compact on mobile */}
-      <div className="flex items-center justify-between gap-2 sm:gap-4">
-        <div className="space-y-0 sm:space-y-1 min-w-0">
-          <h1 className="text-xl sm:text-3xl font-bold tracking-tight">Browse Patterns</h1>
-          <p className="text-xs sm:text-base text-muted-foreground truncate">
+      {/* Page Header */}
+      <div className="flex items-start justify-between gap-4 pl-1">
+        <div className="space-y-0.5">
+          <h1 className="text-xl font-semibold tracking-tight">Browse Patterns</h1>
+          <p className="text-xs text-muted-foreground">
             {patterns.length} patterns available
           </p>
         </div>
         <Button
-          variant="secondary"
-          size="sm"
+          variant="ghost"
           onClick={() => fileInputRef.current?.click()}
           disabled={isUploading}
-          className="gap-1.5 sm:gap-2 shrink-0 h-8 sm:h-9"
+          className="gap-2 shrink-0 h-11 rounded-full px-4 bg-card border border-border shadow-sm hover:bg-accent"
         >
           {isUploading ? (
-            <span className="material-icons-outlined animate-spin text-base sm:text-lg">sync</span>
+            <span className="material-icons-outlined animate-spin text-lg">sync</span>
           ) : (
-            <span className="material-icons-outlined text-base sm:text-lg">add</span>
+            <span className="material-icons-outlined text-lg">add</span>
           )}
           <span className="hidden sm:inline">Add Pattern</span>
         </Button>
       </div>
 
-      <Separator className="my-0" />
-
-      {/* Sticky Filters - Compact on mobile */}
-      <div className="sticky top-14 z-30 py-2 sm:py-4 -mx-4 px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        {/* Mobile: Single row with all controls */}
-        <div className="flex items-center gap-1.5 sm:gap-3">
-          {/* Search */}
+      {/* Filter Bar */}
+      <div className="sticky top-[4.5rem] z-30 py-3 -mx-3 sm:-mx-4 px-3 sm:px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Search - Pill shaped, white background */}
           <div className="relative flex-1 min-w-0">
-            <span className="material-icons-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-lg">
+            <span className="material-icons-outlined absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-lg sm:text-xl">
               search
             </span>
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search..."
-              className="pl-8 pr-8 h-9 text-sm"
+              className="pl-9 sm:pl-11 pr-10 h-9 sm:h-11 rounded-full bg-card border-border shadow-sm text-xs sm:text-sm focus:ring-2 focus:ring-ring"
             />
             {searchQuery && (
               <Button
                 variant="ghost"
-                size="icon-sm"
+                size="icon"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground h-6 w-6"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground h-7 w-7 rounded-full"
               >
                 <span className="material-icons-outlined text-lg">close</span>
               </Button>
             )}
           </div>
 
-          {/* Category */}
+          {/* Category - Icon on mobile, text on desktop */}
           <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-            <SelectTrigger className="w-[4.5rem] sm:w-36 h-9 text-sm shrink-0">
+            <SelectTrigger className="h-9 w-9 sm:h-11 sm:w-auto rounded-full bg-card border-border shadow-sm text-xs sm:text-sm shrink-0 [&>svg]:hidden sm:[&>svg]:block px-0 sm:px-3 justify-center sm:justify-between [&>span:last-of-type]:hidden sm:[&>span:last-of-type]:inline">
+              <span className="material-icons-outlined text-lg shrink-0 sm:hidden">folder</span>
               <SelectValue placeholder="All" />
             </SelectTrigger>
             <SelectContent>
               {categories.map((cat) => (
                 <SelectItem key={cat} value={cat}>
-                  {cat === 'all' ? 'All' : cat === 'root' ? 'Default Patterns' : cat}
+                  {cat === 'all' ? 'All' : cat === 'root' ? 'Default' : cat}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
 
-          {/* Sort */}
+          {/* Sort - Icon on mobile, text on desktop */}
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-            <SelectTrigger className="w-[4.5rem] sm:w-32 h-9 text-sm shrink-0">
+            <SelectTrigger className="h-9 w-9 sm:h-11 sm:w-auto rounded-full bg-card border-border shadow-sm text-xs sm:text-sm shrink-0 [&>svg]:hidden sm:[&>svg]:block px-0 sm:px-3 justify-center sm:justify-between [&>span:last-of-type]:hidden sm:[&>span:last-of-type]:inline">
+              <span className="material-icons-outlined text-lg shrink-0 sm:hidden">sort</span>
               <SelectValue placeholder="Sort" />
             </SelectTrigger>
             <SelectContent>
@@ -892,37 +889,36 @@ export function BrowsePage() {
             </SelectContent>
           </Select>
 
-          {/* Sort direction */}
+          {/* Sort direction - Pill shaped, white background */}
           <Button
-            variant="secondary"
+            variant="outline"
             size="icon"
             onClick={() => setSortAsc(!sortAsc)}
-            className="shrink-0 h-9 w-9"
+            className="shrink-0 h-9 w-9 sm:h-11 sm:w-11 rounded-full bg-card shadow-sm"
             title={sortAsc ? 'Ascending' : 'Descending'}
           >
-            <span className="material-icons-outlined text-lg">
+            <span className="material-icons-outlined text-lg sm:text-xl">
               {sortAsc ? 'arrow_upward' : 'arrow_downward'}
             </span>
           </Button>
 
-          {/* Cache button - icon only on mobile */}
+          {/* Cache button - Pill shaped, white background */}
           {!allCached && (
             <Button
-              variant="secondary"
-              size="icon"
+              variant="outline"
               onClick={handleCacheAllPreviews}
-              className="shrink-0 h-9 w-9 sm:w-auto sm:px-3 sm:gap-2"
+              className="shrink-0 h-11 rounded-full lg:rounded-full bg-card shadow-sm px-3 sm:px-4 gap-2"
               title="Cache All Previews"
             >
               {isCaching ? (
                 <>
                   <span className="material-icons-outlined animate-spin text-lg">sync</span>
-                  <span className="hidden sm:inline">{cacheProgress}%</span>
+                  <span className="hidden sm:inline text-sm">{cacheProgress}%</span>
                 </>
               ) : (
                 <>
                   <span className="material-icons-outlined text-lg">cached</span>
-                  <span className="hidden sm:inline">Cache All</span>
+                  <span className="hidden sm:inline text-sm">Cache</span>
                 </>
               )}
             </Button>
@@ -1292,12 +1288,12 @@ function PatternCard({ pattern, isSelected, isFavorite, onToggleFavorite, onClic
     <button
       ref={cardRef}
       onClick={onClick}
-      className={`group flex flex-col items-center gap-2 p-2 rounded-lg transition-all duration-200 ease-out hover:-translate-y-1 hover:scale-[1.02] hover:shadow-lg hover:bg-accent/30 active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
-        isSelected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background bg-accent/20' : ''
+      className={`group flex flex-col items-center gap-2 p-2.5 rounded-xl bg-card border border-border shadow-sm transition-all duration-200 ease-out hover:-translate-y-1 hover:shadow-lg active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+        isSelected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''
       }`}
     >
       <div className="relative w-full aspect-square">
-        <div className="w-full h-full rounded-full overflow-hidden border bg-muted">
+        <div className="w-full h-full rounded-full overflow-hidden border border-border bg-muted">
           {previewUrl && !imageError ? (
             <>
               {!imageLoaded && (
@@ -1326,28 +1322,28 @@ function PatternCard({ pattern, isSelected, isFavorite, onToggleFavorite, onClic
             </div>
           )}
         </div>
-        {/* Favorite heart button */}
-        <div
-          className={`absolute -top-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center shadow-sm z-10 transition-opacity duration-200 cursor-pointer bg-white/90 dark:bg-gray-800/90 ${
-            isFavorite ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-          }`}
-          onClick={(e) => onToggleFavorite(pattern.path, e)}
-          title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-        >
-          <span
-            className={`material-icons transition-colors ${
-              isFavorite ? 'text-red-500 hover:text-red-600' : 'text-gray-400 hover:text-red-500'
-            }`}
-            style={{ fontSize: '14px' }}
-          >
-            {isFavorite ? 'favorite' : 'favorite_border'}
-          </span>
-        </div>
       </div>
 
-      <span className="text-xs font-medium text-center truncate w-full px-1" title={pattern.name}>
-        {pattern.name}
-      </span>
+      {/* Name and favorite row */}
+      <div className="flex items-center justify-between w-full gap-1 px-0.5">
+        <span className="text-xs font-bold text-foreground truncate" title={pattern.name}>
+          {pattern.name}
+        </span>
+        <button
+          className={`shrink-0 transition-colors ${
+            isFavorite ? 'text-red-500 hover:text-red-600' : 'text-muted-foreground hover:text-red-500'
+          }`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleFavorite(pattern.path, e)
+          }}
+          title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        >
+          <span className="material-icons" style={{ fontSize: '16px' }}>
+            {isFavorite ? 'favorite' : 'favorite_border'}
+          </span>
+        </button>
+      </div>
     </button>
   )
 }

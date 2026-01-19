@@ -9,6 +9,7 @@ import { cacheAllPreviews } from '@/lib/previewCache'
 import { TableSelector } from '@/components/TableSelector'
 import { useTable } from '@/contexts/TableContext'
 import { apiClient } from '@/lib/apiClient'
+import ShinyText from '@/components/ShinyText'
 
 const navItems = [
   { path: '/', label: 'Browse', icon: 'grid_view', title: 'Browse Patterns' },
@@ -1138,16 +1139,26 @@ export function Layout() {
         </div>
       )}
 
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex h-14 items-center justify-between px-4">
+      {/* Header - Floating Pill */}
+      <header className="fixed top-0 left-0 right-0 z-40">
+        {/* Blurry backdrop behind header */}
+        <div className="absolute inset-0 h-20 bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/50" />
+        <div className="relative w-full max-w-5xl mx-auto px-3 sm:px-4 pt-3 pointer-events-none">
+          <div className="flex h-12 items-center justify-between px-4 rounded-full bg-card shadow-lg border border-border pointer-events-auto">
           <Link to="/" className="flex items-center gap-2">
             <img
               src={customLogo ? apiClient.getAssetUrl(`/static/custom/${customLogo}`) : apiClient.getAssetUrl('/static/android-chrome-192x192.png')}
               alt={displayName}
               className="w-8 h-8 rounded-full object-cover"
             />
-            <span className="font-semibold text-lg">{displayName}</span>
+            <ShinyText
+              text={displayName}
+              className="font-semibold text-lg"
+              speed={4}
+              color={isDark ? '#a8a8a8' : '#555555'}
+              shineColor={isDark ? '#ffffff' : '#999999'}
+              spread={75}
+            />
             <span
               className={`w-2 h-2 rounded-full ${
                 !isBackendConnected
@@ -1167,7 +1178,7 @@ export function Layout() {
           </Link>
 
           {/* Desktop actions */}
-          <div className="hidden md:flex items-center gap-1">
+          <div className="hidden md:flex items-center gap-1 ml-6">
             {/* Now Playing button */}
             <Button
               variant="ghost"
@@ -1227,7 +1238,7 @@ export function Layout() {
           </div>
 
           {/* Mobile actions */}
-          <div className="flex md:hidden items-center gap-1">
+          <div className="flex md:hidden items-center gap-1 ml-4">
             {/* Now Playing button */}
             <Button
               variant="ghost"
@@ -1303,6 +1314,7 @@ export function Layout() {
                 </div>
               </PopoverContent>
             </Popover>
+            </div>
           </div>
         </div>
       </header>
@@ -1436,7 +1448,7 @@ export function Layout() {
       </div>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background pb-safe">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card pb-safe">
         <div className="max-w-5xl mx-auto grid grid-cols-5 h-16">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path
