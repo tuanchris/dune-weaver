@@ -1254,29 +1254,51 @@ async def debug_serial_send(request: DebugSerialCommand):
             await asyncio.to_thread(ser.write, command.encode())
             await asyncio.to_thread(ser.flush)
 
-            # Read response lines with timeout
+            # Read response with timeout - use read() for more reliable data capture
             responses = []
             start_time = time.time()
-            original_timeout = ser.timeout
-            ser.timeout = 0.1  # Short timeout for reading
+            buffer = ""
+
+            # Small delay to let response arrive
+            await asyncio.sleep(0.05)
 
             while time.time() - start_time < request.timeout:
                 try:
-                    line = await asyncio.to_thread(ser.readline)
-                    if line:
-                        decoded = line.decode('utf-8', errors='replace').strip()
-                        if decoded:
-                            responses.append(decoded)
-                            # Check for ok/error to know command completed
-                            if decoded.lower() in ['ok', 'error'] or decoded.lower().startswith('error:'):
-                                break
+                    # Read all available bytes
+                    waiting = ser.in_waiting
+                    if waiting > 0:
+                        data = await asyncio.to_thread(ser.read, waiting)
+                        if data:
+                            buffer += data.decode('utf-8', errors='replace')
+
+                            # Process complete lines from buffer
+                            while '\n' in buffer:
+                                line, buffer = buffer.split('\n', 1)
+                                line = line.strip()
+                                if line:
+                                    responses.append(line)
+                                    # Check for ok/error to know command completed
+                                    if line.lower() in ['ok', 'error'] or line.lower().startswith('error:'):
+                                        # Give a tiny bit more time for any trailing data
+                                        await asyncio.sleep(0.02)
+                                        # Read any remaining data
+                                        if ser.in_waiting > 0:
+                                            extra = await asyncio.to_thread(ser.read, ser.in_waiting)
+                                            if extra:
+                                                for extra_line in extra.decode('utf-8', errors='replace').strip().split('\n'):
+                                                    if extra_line.strip():
+                                                        responses.append(extra_line.strip())
+                                        break
                     else:
-                        # No data, small delay
-                        await asyncio.sleep(0.05)
-                except:
+                        # No data waiting, small delay
+                        await asyncio.sleep(0.02)
+                except Exception as read_error:
+                    logger.warning(f"Read error: {read_error}")
                     break
 
-            ser.timeout = original_timeout
+            # Add any remaining buffer content
+            if buffer.strip():
+                responses.append(buffer.strip())
 
             return {
                 "success": True,
