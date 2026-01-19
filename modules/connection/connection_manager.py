@@ -998,42 +998,38 @@ def home(timeout=90):
                     homing_complete.set()
                     return
 
-                # Only zero positions if BOTH axes were homed successfully
-                # Otherwise, moving to x0 y0 would crash the unhomed axis
-                if not (state.homed_x and state.homed_y):
-                    logger.error(f"Skipping position zeroing - not all axes homed (X:{state.homed_x}, Y:{state.homed_y})")
-                    logger.error("Homing failed - please check sensors and try again")
-                    homing_complete.set()
-                    return
+                # Skip zeroing if X homed but Y failed - moving Y to 0 would crash it
+                # (Y controls rho/radial position which is unknown if Y didn't home)
+                if state.homed_x and not state.homed_y:
+                    logger.warning("Skipping position zeroing - X homed but Y failed (would crash Y axis)")
+                else:
+                    # Send x0 y0 to zero both positions using send_grbl_coordinates
+                    logger.info(f"Zeroing positions with x0 y0 f{homing_speed}")
 
-                # Send x0 y0 to zero both positions using send_grbl_coordinates
-                logger.info(f"Zeroing positions with x0 y0 f{homing_speed}")
+                    # Run async function in new event loop
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        # Send G1 X0 Y0 F{homing_speed}
+                        result = loop.run_until_complete(send_grbl_coordinates(0, 0, homing_speed))
+                        if result == False:
+                            logger.error("Position zeroing failed - send_grbl_coordinates returned False")
+                            homing_complete.set()
+                            return
+                        logger.info("Position zeroing completed successfully")
+                    finally:
+                        loop.close()
 
-                # Run async function in new event loop
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    # Send G1 X0 Y0 F{homing_speed}
-                    result = loop.run_until_complete(send_grbl_coordinates(0, 0, homing_speed))
-                    if result == False:
-                        logger.error("Position zeroing failed - send_grbl_coordinates returned False")
+                    # Wait for device to reach idle state after zeroing movement
+                    logger.info("Waiting for device to reach idle state after zeroing...")
+                    idle_reached = check_idle()
+
+                    if not idle_reached:
+                        logger.error("Device did not reach idle state after zeroing")
                         homing_complete.set()
                         return
-                    logger.info("Position zeroing completed successfully")
-                finally:
-                    loop.close()
-
-                # Wait for device to reach idle state after zeroing movement
-                logger.info("Waiting for device to reach idle state after zeroing...")
-                idle_reached = check_idle()
-
-                if not idle_reached:
-                    logger.error("Device did not reach idle state after zeroing")
-                    homing_complete.set()
-                    return
 
                 # Set current position based on compass reference point (sensor mode only)
-                # Only set AFTER x0 y0 is confirmed and device is idle
                 offset_radians = math.radians(state.angular_homing_offset_degrees)
                 state.current_theta = offset_radians
                 state.current_rho = 0
@@ -1149,12 +1145,31 @@ def check_idle():
             return True
         time.sleep(1)
 
-async def check_idle_async():
+async def check_idle_async(timeout: float = 30.0):
     """
     Continuously check if the device is idle (async version).
+
+    Args:
+        timeout: Maximum seconds to wait for idle state (default 30s)
+
+    Returns:
+        True if device became idle, False if timeout or stop requested
     """
     logger.info("Checking idle (async)")
+    start_time = asyncio.get_event_loop().time()
+
     while True:
+        # Check if stop was requested - exit early
+        if state.stop_requested:
+            logger.info("Stop requested during idle check, exiting early")
+            return False
+
+        # Check timeout
+        elapsed = asyncio.get_event_loop().time() - start_time
+        if elapsed > timeout:
+            logger.warning(f"Timeout ({timeout}s) waiting for device idle state")
+            return False
+
         response = await asyncio.to_thread(get_status_response)
         if response and "Idle" in response:
             logger.info("Device is idle")

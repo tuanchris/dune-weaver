@@ -1620,13 +1620,53 @@ async def stop_execution():
     if not (state.conn.is_connected() if state.conn else False):
         logger.warning("Attempted to stop without a connection")
         raise HTTPException(status_code=400, detail="Connection not established")
-    await pattern_manager.stop_actions()
+    success = await pattern_manager.stop_actions()
+    if not success:
+        raise HTTPException(status_code=500, detail="Stop timed out - use force_stop")
     return {"success": True}
+
+@app.post("/force_stop")
+async def force_stop():
+    """Force stop all pattern execution and clear all state. Use when normal stop doesn't work."""
+    logger.info("Force stop requested - clearing all pattern state")
+
+    # Set stop flag first
+    state.stop_requested = True
+    state.pause_requested = False
+
+    # Clear all pattern-related state
+    state.current_playing_file = None
+    state.execution_progress = None
+    state.is_running = False
+    state.is_clearing = False
+    state.is_homing = False
+    state.current_playlist = None
+    state.current_playlist_index = None
+    state.playlist_mode = None
+    state.pause_time_remaining = 0
+
+    # Wake up any waiting tasks
+    try:
+        pattern_manager.get_pause_event().set()
+    except:
+        pass
+
+    # Stop motion controller and clear its queue
+    if pattern_manager.motion_controller.running:
+        pattern_manager.motion_controller.command_queue.put(
+            pattern_manager.MotionCommand('stop')
+        )
+
+    # Force release pattern lock by recreating it
+    pattern_manager.pattern_lock = None  # Will be recreated on next use
+
+    logger.info("Force stop completed - all pattern state cleared")
+    return {"success": True, "message": "Force stop completed"}
 
 @app.post("/soft_reset")
 async def soft_reset():
     """Send Ctrl+X soft reset to the controller (DLC32/ESP32). Requires re-homing after."""
-    if not (state.conn.is_connected() if state.conn else False):
+    if not (state.conn and state.conn.is_connected()):
         logger.warning("Attempted to soft reset without a connection")
         raise HTTPException(status_code=400, detail="Connection not established")
 
@@ -1634,9 +1674,18 @@ async def soft_reset():
         # Stop any running patterns first
         await pattern_manager.stop_actions()
 
-        # Send Ctrl+X (0x18) - GRBL/FluidNC soft reset command
-        state.conn.send('\x18')
-        logger.info("Soft reset command (Ctrl+X) sent to controller")
+        # Access the underlying serial object directly for more reliable reset
+        # This bypasses the connection abstraction which may have buffering issues
+        from modules.connection.connection_manager import SerialConnection
+        if isinstance(state.conn, SerialConnection) and state.conn.ser:
+            state.conn.ser.reset_input_buffer()  # Clear any pending data
+            state.conn.ser.write(b'\x18')  # Ctrl+X as bytes
+            state.conn.ser.flush()
+            logger.info(f"Soft reset command (Ctrl+X) sent directly via serial to {state.port}")
+        else:
+            # Fallback for WebSocket or other connection types
+            state.conn.send('\x18')
+            logger.info("Soft reset command (Ctrl+X) sent via connection abstraction")
 
         # Mark as needing homing since position is now unknown
         state.is_homed = False

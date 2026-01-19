@@ -80,7 +80,7 @@ class AppState:
         self.dw_led_gpio_pin = 18  # GPIO pin (12, 13, 18, or 19)
         self.dw_led_pixel_order = "RGB"  # Pixel color order for WS281x (RGB for WS2815, GRB for WS2812)
         self.dw_led_brightness = 35  # Brightness 0-100
-        self.dw_led_speed = 128  # Effect speed 0-255
+        self.dw_led_speed = 50  # Effect speed 0-255
         self.dw_led_intensity = 128  # Effect intensity 0-255
 
         # Idle effect settings (all parameters)
@@ -358,7 +358,7 @@ class AppState:
         self.dw_led_gpio_pin = data.get('dw_led_gpio_pin', 18)
         self.dw_led_pixel_order = data.get('dw_led_pixel_order', "RGB")
         self.dw_led_brightness = data.get('dw_led_brightness', 35)
-        self.dw_led_speed = data.get('dw_led_speed', 128)
+        self.dw_led_speed = data.get('dw_led_speed', 50)
         self.dw_led_intensity = data.get('dw_led_intensity', 128)
 
         # Load effect settings (handle both old string format and new dict format)

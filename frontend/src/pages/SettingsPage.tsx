@@ -1464,7 +1464,7 @@ export function SettingsPage() {
                       <SelectGroup>
                         <SelectLabel>RGB Strips (3-channel)</SelectLabel>
                         <SelectItem value="RGB">RGB - WS2815/WS2811</SelectItem>
-                        <SelectItem value="GRB">GRB - WS2812/WS2812B (common)</SelectItem>
+                        <SelectItem value="GRB">GRB - WS2812/WS2812B</SelectItem>
                         <SelectItem value="BGR">BGR - Some WS2811 variants</SelectItem>
                         <SelectItem value="RBG">RBG - Rare variant</SelectItem>
                         <SelectItem value="GBR">GBR - Rare variant</SelectItem>
@@ -1472,7 +1472,7 @@ export function SettingsPage() {
                       </SelectGroup>
                       <SelectGroup>
                         <SelectLabel>RGBW Strips (4-channel)</SelectLabel>
-                        <SelectItem value="GRBW">GRBW - SK6812 RGBW (common)</SelectItem>
+                        <SelectItem value="GRBW">GRBW - SK6812 RGBW</SelectItem>
                         <SelectItem value="RGBW">RGBW - SK6812 variant</SelectItem>
                       </SelectGroup>
                     </SelectContent>
