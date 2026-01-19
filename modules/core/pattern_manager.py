@@ -1210,11 +1210,7 @@ async def stop_actions(clear_playlist = True, wait_for_lock = True):
         clear_playlist: Whether to clear playlist state
         wait_for_lock: Whether to wait for pattern_lock to be released. Set to False when
                       called from within pattern execution to avoid deadlock.
-
-    Returns:
-        True if stopped cleanly, False if timed out waiting for pattern lock
     """
-    timed_out = False
     try:
         with state.pause_condition:
             state.pause_requested = False
@@ -1258,7 +1254,6 @@ async def stop_actions(clear_playlist = True, wait_for_lock = True):
                         logger.info("Pattern lock acquired - pattern has fully stopped")
             except asyncio.TimeoutError:
                 logger.warning("Timeout waiting for pattern to stop - forcing cleanup")
-                timed_out = True
                 # Force cleanup of state even if pattern didn't release lock gracefully
                 state.current_playing_file = None
                 state.execution_progress = None
@@ -1270,7 +1265,6 @@ async def stop_actions(clear_playlist = True, wait_for_lock = True):
 
         # Call async function directly since we're in async context
         await connection_manager.update_machine_position()
-        return not timed_out
     except Exception as e:
         logger.error(f"Error during stop_actions: {e}")
         # Force cleanup state on error
@@ -1282,7 +1276,6 @@ async def stop_actions(clear_playlist = True, wait_for_lock = True):
             await connection_manager.update_machine_position()
         except Exception as update_err:
             logger.error(f"Error updating machine position on error: {update_err}")
-        return False
 
 async def move_polar(theta, rho, speed=None):
     """

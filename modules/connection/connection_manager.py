@@ -1141,31 +1141,12 @@ def check_idle():
             return True
         time.sleep(1)
 
-async def check_idle_async(timeout: float = 30.0):
+async def check_idle_async():
     """
     Continuously check if the device is idle (async version).
-
-    Args:
-        timeout: Maximum seconds to wait for idle state (default 30s)
-
-    Returns:
-        True if device became idle, False if timeout or stop requested
     """
     logger.info("Checking idle (async)")
-    start_time = asyncio.get_event_loop().time()
-
     while True:
-        # Check if stop was requested - exit early
-        if state.stop_requested:
-            logger.info("Stop requested during idle check, exiting early")
-            return False
-
-        # Check timeout
-        elapsed = asyncio.get_event_loop().time() - start_time
-        if elapsed > timeout:
-            logger.warning(f"Timeout ({timeout}s) waiting for device idle state")
-            return False
-
         response = await asyncio.to_thread(get_status_response)
         if response and "Idle" in response:
             logger.info("Device is idle")
