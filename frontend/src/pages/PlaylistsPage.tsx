@@ -474,7 +474,7 @@ export function PlaylistsPage() {
   }
 
   return (
-    <div className="flex flex-col w-full max-w-5xl mx-auto gap-4 sm:gap-6 py-3 sm:py-6 px-0 sm:px-4 h-[calc(100dvh-7rem)] overflow-hidden">
+    <div className="flex flex-col w-full max-w-5xl mx-auto gap-4 sm:gap-6 py-3 sm:py-6 px-0 sm:px-4 h-[calc(100dvh-11rem)] overflow-hidden">
       {/* Page Header */}
       <div className="space-y-0.5 sm:space-y-1 shrink-0 pl-1">
         <h1 className="text-xl font-semibold tracking-tight">Playlists</h1>
@@ -490,7 +490,10 @@ export function PlaylistsPage() {
         {/* Playlists Sidebar */}
         <aside className="w-full lg:w-64 shrink-0 bg-card border rounded-lg flex flex-col max-h-48 lg:max-h-none">
           <div className="flex items-center justify-between px-3 py-2.5 border-b shrink-0">
-            <h2 className="text-lg font-semibold">My Playlists</h2>
+            <div>
+              <h2 className="text-lg font-semibold">My Playlists</h2>
+              <p className="text-sm text-muted-foreground">{playlists.length} playlist{playlists.length !== 1 ? 's' : ''}</p>
+            </div>
             <Button
               variant="ghost"
               size="icon"
@@ -564,7 +567,7 @@ export function PlaylistsPage() {
         {/* Main Content */}
         <main className="flex-1 bg-card border rounded-lg flex flex-col overflow-hidden min-h-0 relative">
           {/* Header */}
-          <header className="flex items-center justify-between px-4 py-3 border-b shrink-0">
+          <header className="flex items-center justify-between px-3 py-2.5 border-b shrink-0">
             <div className="flex items-center gap-3 min-w-0">
               <div className="min-w-0">
                 <h2 className="text-lg font-semibold truncate">

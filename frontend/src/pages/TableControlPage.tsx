@@ -262,9 +262,9 @@ export function TableControlPage() {
     }
   }
 
-  const handleSerialConnect = async () => {
+  const handleSerialConnect = async (silent = false) => {
     if (!selectedSerialPort) {
-      toast.error('Please select a serial port')
+      if (!silent) toast.error('Please select a serial port')
       return
     }
     setSerialLoading(true)
@@ -272,11 +272,11 @@ export function TableControlPage() {
       await apiClient.post('/api/debug-serial/open', { port: selectedSerialPort })
       setSerialConnected(true)
       addSerialHistory('resp', `Connected to ${selectedSerialPort}`)
-      toast.success(`Connected to ${selectedSerialPort}`)
+      if (!silent) toast.success(`Connected to ${selectedSerialPort}`)
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error'
       addSerialHistory('error', `Failed to connect: ${errorMsg}`)
-      toast.error('Failed to connect to serial port')
+      if (!silent) toast.error('Failed to connect to serial port')
     } finally {
       setSerialLoading(false)
     }
@@ -371,10 +371,10 @@ export function TableControlPage() {
     fetchMainConnectionStatus()
   }, [])
 
-  // Auto-connect to the main connection port
+  // Auto-connect to the main connection port (silent - no toast)
   useEffect(() => {
     if (mainConnectionPort && selectedSerialPort === mainConnectionPort && !serialConnected && !serialLoading) {
-      handleSerialConnect()
+      handleSerialConnect(true)
     }
   }, [mainConnectionPort, selectedSerialPort])
 
