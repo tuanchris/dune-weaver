@@ -911,7 +911,7 @@ export function Layout() {
                     <Button variant="ghost" onClick={handleSkipCacheAll}>
                       Skip for now
                     </Button>
-                    <Button variant="outline" onClick={handleCacheAllPreviews} className="gap-2">
+                    <Button variant="secondary" onClick={handleCacheAllPreviews} className="gap-2">
                       <span className="material-icons-outlined text-lg">cached</span>
                       Cache All
                     </Button>
@@ -1077,7 +1077,7 @@ export function Layout() {
                 {!keepHomingLogsOpen ? (
                   <>
                     <Button
-                      variant="outline"
+                      variant="secondary"
                       onClick={() => setKeepHomingLogsOpen(true)}
                       className="gap-2"
                     >

@@ -654,7 +654,7 @@ export function LEDPage() {
                 </Button>
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   onClick={() => clearEffectSettings('playing')}
                 >
                   Clear
@@ -684,7 +684,7 @@ export function LEDPage() {
                 </Button>
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   onClick={() => clearEffectSettings('idle')}
                 >
                   Clear

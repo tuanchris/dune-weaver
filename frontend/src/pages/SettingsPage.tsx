@@ -1136,7 +1136,7 @@ export function SettingsPage() {
                 </div>
                 <div className="flex gap-2 sm:ml-auto">
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     className="gap-2"
                     disabled={isLoading === 'logo'}
@@ -1151,7 +1151,7 @@ export function SettingsPage() {
                   </Button>
                   {settings.custom_logo && (
                     <Button
-                      variant="outline"
+                      variant="secondary"
                       size="sm"
                       className="gap-2 text-destructive hover:text-destructive"
                       disabled={isLoading === 'logo'}
@@ -1620,7 +1620,7 @@ export function SettingsPage() {
               </Button>
               {mqttConfig.enabled && mqttConfig.broker && (
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   onClick={handleTestMqttConnection}
                   disabled={isLoading === 'mqttTest'}
                   className="gap-2"
@@ -1958,7 +1958,7 @@ export function SettingsPage() {
                 <div className="p-4 rounded-lg border space-y-3">
                   <div className="flex items-center justify-between">
                     <h4 className="font-medium">Still Periods</h4>
-                    <Button onClick={addTimeSlot} size="sm" variant="outline" className="gap-1">
+                    <Button onClick={addTimeSlot} size="sm" variant="secondary" className="gap-1">
                       <span className="material-icons text-base">add</span>
                       Add Period
                     </Button>

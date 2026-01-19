@@ -212,7 +212,7 @@ export function TableSelector() {
 
             {/* Add table button */}
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               className="w-full gap-2"
               onClick={() => setShowAddDialog(true)}
@@ -254,7 +254,7 @@ export function TableSelector() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+            <Button variant="secondary" onClick={() => setShowAddDialog(false)}>
               Cancel
             </Button>
             <Button onClick={handleAddTable} disabled={isAdding}>
@@ -280,7 +280,7 @@ export function TableSelector() {
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowRenameDialog(false)}>
+            <Button variant="secondary" onClick={() => setShowRenameDialog(false)}>
               Cancel
             </Button>
             <Button onClick={handleRename}>Save</Button>

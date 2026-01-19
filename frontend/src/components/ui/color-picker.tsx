@@ -47,7 +47,7 @@ export function ColorPicker({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant="outline"
+          variant="secondary"
           className={cn(
             'w-12 h-12 rounded-full p-1 border-2',
             className

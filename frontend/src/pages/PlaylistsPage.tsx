@@ -13,7 +13,6 @@ import { preExecutionOptions } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import {
   Select,
@@ -563,7 +562,7 @@ export function PlaylistsPage() {
       </aside>
 
         {/* Main Content */}
-        <main className="flex-1 bg-card border rounded-lg flex flex-col overflow-hidden min-h-0">
+        <main className="flex-1 bg-card border rounded-lg flex flex-col overflow-hidden min-h-0 relative">
           {/* Header */}
           <header className="flex items-center justify-between px-4 py-3 border-b shrink-0">
             <div className="flex items-center gap-3 min-w-0">
@@ -590,7 +589,7 @@ export function PlaylistsPage() {
           </header>
 
           {/* Patterns List */}
-          <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          <div className={`flex-1 overflow-y-auto p-4 min-h-0 ${selectedPlaylist ? 'pb-28 sm:pb-24' : ''}`}>
             {!selectedPlaylist ? (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
                 <div className="p-4 rounded-full bg-muted">
@@ -610,7 +609,7 @@ export function PlaylistsPage() {
                   <p className="font-medium">Empty playlist</p>
                   <p className="text-sm">Add patterns to get started</p>
                 </div>
-                <Button variant="outline" className="mt-2 gap-2" onClick={openPatternPicker}>
+                <Button variant="secondary" className="mt-2 gap-2" onClick={openPatternPicker}>
                   <span className="material-icons-outlined text-base">add</span>
                   Add Patterns
                 </Button>
@@ -659,77 +658,86 @@ export function PlaylistsPage() {
             )}
           </div>
 
-          {/* Playback Settings - Always visible when playlist selected */}
+          {/* Floating Playback Controls */}
           {selectedPlaylist && (
-            <div className="border-t px-3 py-2.5 sm:px-4 sm:py-3 bg-muted/30 shrink-0">
-              {/* Mobile: 2-row layout, Desktop: single row */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3">
-                {/* Top row on mobile: Mode, Shuffle, Pause, Clear */}
-                <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                  {/* Run Mode Segmented Control */}
-                  <div className="flex rounded-md border bg-muted/50 p-0.5">
+            <div className="absolute bottom-0 left-0 right-0 pointer-events-none z-20">
+              {/* Blur backdrop */}
+              <div className="h-20 bg-gradient-to-t backdrop-blur-sm" />
+
+              {/* Controls container */}
+              <div className="absolute bottom-4 left-0 right-0 flex items-center justify-center gap-3 px-4 pointer-events-auto">
+                {/* Control pill */}
+                <div className="flex items-center h-12 sm:h-14 bg-card rounded-full shadow-xl border px-1.5 sm:px-2">
+                  {/* Shuffle & Loop */}
+                  <div className="flex items-center px-1 sm:px-2 border-r border-border gap-0.5 sm:gap-1">
                     <button
-                      onClick={() => setRunMode('single')}
-                      className={`flex items-center gap-1 px-2 py-1 rounded text-xs sm:text-sm font-medium transition-colors ${
-                        runMode === 'single'
-                          ? 'bg-background text-foreground shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground'
+                      onClick={() => setShuffle(!shuffle)}
+                      className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition ${
+                        shuffle
+                          ? 'text-primary bg-primary/10'
+                          : 'text-muted-foreground hover:bg-muted'
                       }`}
+                      title="Shuffle"
                     >
-                      <span className="material-icons-outlined text-sm">play_circle</span>
-                      Once
+                      <span className="material-icons-outlined text-lg sm:text-xl">shuffle</span>
                     </button>
                     <button
-                      onClick={() => setRunMode('indefinite')}
-                      className={`flex items-center gap-1 px-2 py-1 rounded text-xs sm:text-sm font-medium transition-colors ${
+                      onClick={() => setRunMode(runMode === 'indefinite' ? 'single' : 'indefinite')}
+                      className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition ${
                         runMode === 'indefinite'
-                          ? 'bg-background text-foreground shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground'
+                          ? 'text-primary bg-primary/10'
+                          : 'text-muted-foreground hover:bg-muted'
                       }`}
+                      title={runMode === 'indefinite' ? 'Loop mode' : 'Play once mode'}
                     >
-                      <span className="material-icons-outlined text-sm">repeat</span>
-                      Loop
+                      <span className="material-icons-outlined text-lg sm:text-xl">repeat</span>
                     </button>
                   </div>
 
-                  {/* Shuffle Toggle */}
-                  <div className="flex items-center gap-1.5 h-8 px-2 rounded-md border bg-muted/50">
-                    <span className="material-icons-outlined text-sm text-muted-foreground">shuffle</span>
-                    <Switch
-                      checked={shuffle}
-                      onCheckedChange={setShuffle}
-                      className="scale-90"
-                    />
+                  {/* Pause Time */}
+                  <div className="flex items-center px-2 sm:px-3 gap-2 sm:gap-3 border-r border-border">
+                    <span className="text-[10px] sm:text-xs font-semibold text-muted-foreground tracking-wider hidden sm:block">Pause</span>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="secondary"
+                        size="icon"
+                        className="w-7 h-7 sm:w-8 sm:h-8"
+                        onClick={() => setPauseTime(Math.max(0, pauseTime - 1))}
+                      >
+                        <span className="material-icons-outlined text-sm">remove</span>
+                      </Button>
+                      <button
+                        onClick={() => {
+                          const units: ('sec' | 'min' | 'hr')[] = ['sec', 'min', 'hr']
+                          const currentIndex = units.indexOf(pauseUnit)
+                          setPauseUnit(units[(currentIndex + 1) % units.length])
+                        }}
+                        className="relative flex items-center justify-center w-10 sm:w-12 text-xs sm:text-sm font-bold hover:text-primary transition"
+                        title="Click to change unit"
+                      >
+                        {pauseTime}{pauseUnit === 'sec' ? 's' : pauseUnit === 'min' ? 'm' : 'h'}
+                        <span className="material-icons-outlined text-xs opacity-50 scale-75 absolute -right-1">swap_vert</span>
+                      </button>
+                      <Button
+                        variant="secondary"
+                        size="icon"
+                        className="w-7 h-7 sm:w-8 sm:h-8"
+                        onClick={() => setPauseTime(pauseTime + 1)}
+                      >
+                        <span className="material-icons-outlined text-sm">add</span>
+                      </Button>
+                    </div>
                   </div>
 
-                  {/* Pause Time - more compact on mobile */}
-                  <div className="flex items-center gap-1">
-                    <Label className="text-xs text-muted-foreground hidden sm:inline">Pause:</Label>
-                    <Input
-                      type="number"
-                      value={pauseTime}
-                      onChange={(e) => setPauseTime(Number(e.target.value))}
-                      min={0}
-                      className="w-12 sm:w-14 h-8 text-sm"
-                    />
-                    <Select value={pauseUnit} onValueChange={(v) => setPauseUnit(v as 'sec' | 'min' | 'hr')}>
-                      <SelectTrigger className="h-8 w-14 sm:w-16 text-xs sm:text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="sec">sec</SelectItem>
-                        <SelectItem value="min">min</SelectItem>
-                        <SelectItem value="hr">hr</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Clear Pattern */}
-                  <div className="flex items-center gap-1">
-                    <Label className="text-xs text-muted-foreground hidden sm:inline">Clear:</Label>
+                  {/* Clear Pattern Dropdown */}
+                  <div className="flex items-center px-1 sm:px-2">
                     <Select value={clearPattern} onValueChange={(v) => setClearPattern(v as PreExecution)}>
-                      <SelectTrigger className="h-8 w-24 sm:w-28 text-xs sm:text-sm">
-                        <SelectValue />
+                      <SelectTrigger className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-0 p-0 shadow-none focus:ring-0 justify-center [&>svg]:hidden transition ${
+                        clearPattern !== 'none' ? '!bg-primary/10' : '!bg-transparent hover:!bg-muted'
+                      }`}>
+                        <span className={`material-icons-outlined text-lg sm:text-xl ${
+                          clearPattern !== 'none' ? 'text-primary' : 'text-muted-foreground'
+                        }`}>cleaning_services</span>
                       </SelectTrigger>
                       <SelectContent>
                         {preExecutionOptions.map(opt => (
@@ -742,22 +750,19 @@ export function PlaylistsPage() {
                   </div>
                 </div>
 
-                {/* Spacer - only on desktop */}
-                <div className="hidden sm:flex sm:flex-1" />
-
-                {/* Run Button - full width on mobile */}
-                <Button
-                  className="gap-2 w-full sm:w-auto"
+                {/* Play Button */}
+                <button
                   onClick={handleRunPlaylist}
                   disabled={isRunning || playlistPatterns.length === 0}
+                  className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground text-primary-foreground shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:scale-105 disabled:shadow-none disabled:hover:scale-100 transition-all duration-200 flex items-center justify-center"
+                  title="Run Playlist"
                 >
                   {isRunning ? (
-                    <span className="material-icons-outlined animate-spin">sync</span>
+                    <span className="material-icons-outlined text-xl sm:text-2xl animate-spin">sync</span>
                   ) : (
-                    <span className="material-icons-outlined">play_arrow</span>
+                    <span className="material-icons text-xl sm:text-2xl ml-0.5">play_arrow</span>
                   )}
-                  Run Playlist
-                </Button>
+                </button>
               </div>
             </div>
           )}
@@ -787,7 +792,7 @@ export function PlaylistsPage() {
             </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>
+            <Button variant="secondary" onClick={() => setIsCreateModalOpen(false)}>
               Cancel
             </Button>
             <Button onClick={handleCreatePlaylist} className="gap-2">
@@ -821,7 +826,7 @@ export function PlaylistsPage() {
             </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setIsRenameModalOpen(false)}>
+            <Button variant="secondary" onClick={() => setIsRenameModalOpen(false)}>
               Cancel
             </Button>
             <Button onClick={handleRenamePlaylist} className="gap-2">
@@ -979,7 +984,7 @@ export function PlaylistsPage() {
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setIsPickerOpen(false)}>
+            <Button variant="secondary" onClick={() => setIsPickerOpen(false)}>
               Cancel
             </Button>
             <Button onClick={handleSavePatterns} className="gap-2">

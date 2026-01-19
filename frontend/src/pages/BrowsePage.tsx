@@ -800,7 +800,7 @@ export function BrowsePage() {
           </p>
         </div>
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
           onClick={() => fileInputRef.current?.click()}
           disabled={isUploading}
@@ -872,7 +872,7 @@ export function BrowsePage() {
 
           {/* Sort direction */}
           <Button
-            variant="outline"
+            variant="secondary"
             size="icon"
             onClick={() => setSortAsc(!sortAsc)}
             className="shrink-0 h-9 w-9"
@@ -886,7 +886,7 @@ export function BrowsePage() {
           {/* Cache button - icon only on mobile */}
           {!allCached && (
             <Button
-              variant="outline"
+              variant="secondary"
               size="icon"
               onClick={handleCacheAllPreviews}
               className="shrink-0 h-9 w-9 sm:w-auto sm:px-3 sm:gap-2"
@@ -928,7 +928,7 @@ export function BrowsePage() {
           </div>
           {(searchQuery || selectedCategory !== 'all') && (
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={() => {
                 setSearchQuery('')
                 setSelectedCategory('all')
@@ -1069,7 +1069,7 @@ export function BrowsePage() {
                 </Button>
 
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   onClick={handleDeletePattern}
                   disabled={!canDelete}
                   className={`w-full gap-2 ${
@@ -1200,7 +1200,7 @@ export function BrowsePage() {
                   </span>
                   {isPlaying ? 'Pause' : 'Play'}
                 </Button>
-                <Button variant="outline" onClick={handleReset} className="gap-2">
+                <Button variant="secondary" onClick={handleReset} className="gap-2">
                   <span className="material-icons">replay</span>
                   Reset
                 </Button>

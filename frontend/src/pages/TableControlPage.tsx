@@ -486,7 +486,7 @@ export function TableControlPage() {
                     <Button
                       onClick={handleMoveToCenter}
                       disabled={isLoading === 'center'}
-                      variant="outline"
+                      variant="secondary"
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'center' ? (
@@ -505,7 +505,7 @@ export function TableControlPage() {
                     <Button
                       onClick={handleMoveToPerimeter}
                       disabled={isLoading === 'perimeter'}
-                      variant="outline"
+                      variant="secondary"
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'perimeter' ? (
@@ -524,7 +524,7 @@ export function TableControlPage() {
                     <TooltipTrigger asChild>
                       <DialogTrigger asChild>
                         <Button
-                          variant="outline"
+                          variant="secondary"
                           className="h-16 gap-1 flex-col items-center justify-center"
                         >
                           <span className="material-icons-outlined text-2xl">screen_rotation</span>
@@ -551,7 +551,7 @@ export function TableControlPage() {
                       ].map((step, i) => (
                         <li key={i} className="flex gap-3">
                           <Badge
-                            variant="outline"
+                            variant="secondary"
                             className="h-6 w-6 shrink-0 items-center justify-center rounded-full p-0"
                           >
                             {i + 1}
@@ -576,7 +576,7 @@ export function TableControlPage() {
                       <p className="text-sm font-medium text-center">Fine Adjustment</p>
                       <div className="flex justify-center gap-2">
                         <Button
-                          variant="outline"
+                          variant="secondary"
                           onClick={() => handleRotate(-10)}
                           disabled={isLoading === 'rotate'}
                         >
@@ -584,7 +584,7 @@ export function TableControlPage() {
                           CCW 10°
                         </Button>
                         <Button
-                          variant="outline"
+                          variant="secondary"
                           onClick={() => handleRotate(10)}
                           disabled={isLoading === 'rotate'}
                         >
@@ -621,7 +621,7 @@ export function TableControlPage() {
                     <Button
                       onClick={() => handleClearPattern('clear_from_in.thr', 'clear from center')}
                       disabled={isLoading === 'clear_from_in.thr'}
-                      variant="outline"
+                      variant="secondary"
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'clear_from_in.thr' ? (
@@ -640,7 +640,7 @@ export function TableControlPage() {
                     <Button
                       onClick={() => handleClearPattern('clear_from_out.thr', 'clear from perimeter')}
                       disabled={isLoading === 'clear_from_out.thr'}
-                      variant="outline"
+                      variant="secondary"
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'clear_from_out.thr' ? (
@@ -659,7 +659,7 @@ export function TableControlPage() {
                     <Button
                       onClick={() => handleClearPattern('clear_sideway.thr', 'clear sideways')}
                       disabled={isLoading === 'clear_sideway.thr'}
-                      variant="outline"
+                      variant="secondary"
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'clear_sideway.thr' ? (
@@ -753,7 +753,7 @@ export function TableControlPage() {
                   </Button>
                   <Button
                     size="sm"
-                    variant="outline"
+                    variant="secondary"
                     onClick={handleSerialReset}
                     disabled={serialLoading}
                     title="Send Ctrl+X soft reset"

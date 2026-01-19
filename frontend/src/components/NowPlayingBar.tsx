@@ -931,7 +931,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                       {/* Playback Controls - Centered */}
                       <div className="flex items-center justify-center gap-3">
                         <Button
-                          variant="outline"
+                          variant="secondary"
                           size="icon"
                           className="h-10 w-10 rounded-full"
                           onClick={handleStop}
@@ -951,7 +951,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                         </Button>
                         {status.playlist && (
                           <Button
-                            variant="outline"
+                            variant="secondary"
                             size="icon"
                             className="h-10 w-10 rounded-full"
                             onClick={handleSkip}
@@ -1107,7 +1107,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                 {/* Playback Controls */}
                 <div className="flex items-center justify-center gap-2 md:gap-3">
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="icon"
                     className="h-10 w-10 md:h-12 md:w-12 rounded-full"
                     onClick={handleStop}
@@ -1127,7 +1127,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                   </Button>
                   {status?.playlist && (
                     <Button
-                      variant="outline"
+                      variant="secondary"
                       size="icon"
                       className="h-10 w-10 md:h-12 md:w-12 rounded-full"
                       onClick={handleSkip}
