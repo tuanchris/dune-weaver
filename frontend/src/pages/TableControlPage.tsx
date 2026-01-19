@@ -749,7 +749,7 @@ export function TableControlPage() {
               {!serialConnected ? (
                 <Button
                   size="sm"
-                  onClick={handleSerialConnect}
+                  onClick={() => handleSerialConnect()}
                   disabled={!selectedSerialPort || serialLoading}
                   title="Connect"
                 >
