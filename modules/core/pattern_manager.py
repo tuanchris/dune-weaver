@@ -429,18 +429,26 @@ class MotionControlThread:
         logger.debug(f"Motion thread sending G-code: X{x} Y{y} at F{speed}")
 
         while True:
-            try:
-                if not state.stop_requested:
-                    gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 G53 X{x} Y{y} F{speed}"
-                    state.conn.send(gcode + "\n")
-                    logger.debug(f"Motion thread sent command: {gcode}")
+            # Check stop_requested at the start of each iteration
+            if state.stop_requested:
+                logger.debug("Motion thread: Stop requested, aborting command")
+                return
 
-                    while True:
-                        response = state.conn.readline()
-                        logger.debug(f"Motion thread response: {response}")
-                        if response.lower() == "ok":
-                            logger.debug("Motion thread: Command execution confirmed.")
-                            return
+            try:
+                gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 G53 X{x} Y{y} F{speed}"
+                state.conn.send(gcode + "\n")
+                logger.debug(f"Motion thread sent command: {gcode}")
+
+                while True:
+                    # Also check stop_requested while waiting for response
+                    if state.stop_requested:
+                        logger.debug("Motion thread: Stop requested while waiting for response")
+                        return
+                    response = state.conn.readline()
+                    logger.debug(f"Motion thread response: {response}")
+                    if response.lower() == "ok":
+                        logger.debug("Motion thread: Command execution confirmed.")
+                        return
 
             except Exception as e:
                 error_str = str(e)
