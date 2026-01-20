@@ -1,8 +1,15 @@
 import subprocess
 import logging
+import os
+from pathlib import Path
+from datetime import datetime
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# Trigger file location - visible to both container (/app) and host
+TRIGGER_FILE = Path("/app/.update-trigger")
+
 
 def check_git_updates():
     """Check for available Git updates."""
@@ -49,77 +56,79 @@ def check_git_updates():
             "latest_local_tag": None,
         }
 
-def update_software():
-    """Update the software to the latest version.
 
-    This runs inside the Docker container, so it:
-    1. Pulls latest code via git (mounted volume at /app)
-    2. Pulls new Docker image for the backend
-    3. Restarts the container to apply updates
+def is_update_watcher_available() -> bool:
+    """Check if the update watcher service is running on the host.
 
-    Note: For a complete update including container recreation,
-    run 'dw update' from the host machine instead.
+    The watcher service monitors the trigger file and runs 'dw update'
+    when it detects a trigger.
     """
-    error_log = []
-    logger.info("Starting software update process")
+    # The watcher is available if we can write to the trigger file location
+    # and the parent directory exists (indicating proper volume mount)
+    try:
+        return TRIGGER_FILE.parent.exists() and os.access(TRIGGER_FILE.parent, os.W_OK)
+    except Exception:
+        return False
 
-    def run_command(command, error_message, capture_output=False, cwd=None):
-        try:
-            logger.debug(f"Running command: {' '.join(command)}")
-            result = subprocess.run(command, check=True, capture_output=capture_output, text=True, cwd=cwd)
-            return result.stdout if capture_output else True
-        except subprocess.CalledProcessError as e:
-            logger.error(f"{error_message}: {e}")
-            error_log.append(error_message)
-            return None
 
-    # Step 1: Pull latest code via git (works because /app is mounted from host)
-    logger.info("Pulling latest code from git...")
-    git_result = run_command(
-        ["git", "pull", "--ff-only"],
-        "Failed to pull latest code from git",
-        cwd="/app"
-    )
-    if git_result:
-        logger.info("Git pull completed successfully")
+def trigger_host_update(message: str = None) -> tuple[bool, str | None]:
+    """Signal the host to run 'dw update' by creating a trigger file.
 
-    # Step 2: Pull new Docker image for the backend only
-    # Note: There is no separate frontend image - it's either bundled or built locally
-    logger.info("Pulling latest Docker image...")
-    run_command(
-        ["docker", "pull", "ghcr.io/tuanchris/dune-weaver:main"],
-        "Failed to pull backend Docker image"
-    )
+    The update watcher service on the host monitors this file and
+    executes the full update process when triggered.
 
-    # Step 3: Restart the backend container to apply updates
-    # We can't recreate ourselves from inside the container, so we just restart
-    # For full container recreation with new images, use 'dw update' from host
-    logger.info("Restarting backend container...")
+    Args:
+        message: Optional message to include in the trigger file
 
-    # Use docker restart which works from inside the container
-    restart_result = run_command(
-        ["docker", "restart", "dune-weaver-backend"],
-        "Failed to restart backend container"
-    )
+    Returns:
+        Tuple of (success, error_message)
+    """
+    try:
+        # Write trigger file with timestamp and optional message
+        trigger_content = f"triggered_at={datetime.now().isoformat()}\n"
+        if message:
+            trigger_content += f"message={message}\n"
 
-    if not restart_result:
-        # If docker restart fails, try a graceful approach
-        logger.info("Attempting graceful restart via compose...")
-        try:
-            # Just restart, don't try to recreate (which would fail)
-            subprocess.run(
-                ["docker", "compose", "restart", "backend"],
-                check=True,
-                cwd="/app"
-            )
-            logger.info("Container restarted successfully via compose")
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            logger.warning(f"Compose restart also failed: {e}")
-            error_log.append("Container restart failed - please run 'dw update' from host")
+        TRIGGER_FILE.write_text(trigger_content)
+        logger.info(f"Update trigger created at {TRIGGER_FILE}")
+        return True, None
+    except Exception as e:
+        error_msg = f"Failed to create update trigger: {e}"
+        logger.error(error_msg)
+        return False, error_msg
 
-    if error_log:
-        logger.error(f"Software update completed with errors: {error_log}")
-        return False, "Update completed with errors. For best results, run 'dw update' from the host machine.", error_log
 
-    logger.info("Software update completed successfully")
-    return True, None, None
+def update_software():
+    """Trigger a software update on the host machine.
+
+    When running in Docker, this creates a trigger file that the host's
+    update-watcher service monitors. The watcher then runs 'dw update'
+    on the host, which properly handles:
+    - Git pull for latest code
+    - Docker image pulls
+    - Container recreation with new images
+    - Cleanup of old images
+
+    Returns:
+        Tuple of (success, error_message, error_log)
+    """
+    logger.info("Initiating software update...")
+
+    # Check if we can trigger host update
+    if not is_update_watcher_available():
+        error_msg = (
+            "Update watcher not available. The update-watcher service may not be "
+            "installed or the volume mount is not configured correctly. "
+            "Please run 'dw update' manually from the host machine."
+        )
+        logger.error(error_msg)
+        return False, error_msg, [error_msg]
+
+    # Trigger the host update
+    success, error = trigger_host_update("Triggered from web UI")
+
+    if success:
+        logger.info("Update triggered successfully - host will process shortly")
+        return True, None, None
+    else:
+        return False, error, [error]

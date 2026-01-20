@@ -1,6 +1,10 @@
 """
 Version management for Dune Weaver
 Handles current version reading and GitHub API integration for latest version checking
+
+Testing overrides (environment variables):
+  FORCE_UPDATE_AVAILABLE=1  - Force update to appear available
+  FAKE_LATEST_VERSION=5.0.0 - Override the "latest" version for testing
 """
 
 import asyncio
@@ -13,6 +17,14 @@ from typing import Dict, Optional
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Testing overrides via environment variables
+FORCE_UPDATE_AVAILABLE = os.environ.get("FORCE_UPDATE_AVAILABLE", "").lower() in ("1", "true", "yes")
+FAKE_LATEST_VERSION = os.environ.get("FAKE_LATEST_VERSION", "")
+
+if FORCE_UPDATE_AVAILABLE or FAKE_LATEST_VERSION:
+    logger.warning(f"Version override active: FORCE_UPDATE_AVAILABLE={FORCE_UPDATE_AVAILABLE}, FAKE_LATEST_VERSION={FAKE_LATEST_VERSION}")
+
 
 class VersionManager:
     def __init__(self):

@@ -29,3 +29,5 @@ static/custom/*
 !static/custom/.gitkeep
 .claude/
 static/dist/
+# Update trigger file (created by container, consumed by host watcher)
+.update-trigger
