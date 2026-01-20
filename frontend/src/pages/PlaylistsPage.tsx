@@ -729,7 +729,10 @@ export function PlaylistsPage() {
                         variant="secondary"
                         size="icon"
                         className="w-7 h-7 sm:w-8 sm:h-8"
-                        onClick={() => setPauseTime(Math.max(0, pauseTime - 1))}
+                        onClick={() => {
+                          const step = pauseUnit === 'hr' ? 0.5 : 1
+                          setPauseTime(Math.max(0, pauseTime - step))
+                        }}
                       >
                         <span className="material-icons-outlined text-sm">remove</span>
                       </Button>
@@ -739,17 +742,20 @@ export function PlaylistsPage() {
                           const currentIndex = units.indexOf(pauseUnit)
                           setPauseUnit(units[(currentIndex + 1) % units.length])
                         }}
-                        className="relative flex items-center justify-center w-10 sm:w-12 text-xs sm:text-sm font-bold hover:text-primary transition"
+                        className="relative flex items-center justify-center min-w-14 sm:min-w-16 px-1 text-xs sm:text-sm font-bold hover:text-primary transition"
                         title="Click to change unit"
                       >
                         {pauseTime}{pauseUnit === 'sec' ? 's' : pauseUnit === 'min' ? 'm' : 'h'}
-                        <span className="material-icons-outlined text-xs opacity-50 scale-75 absolute -right-1">swap_vert</span>
+                        <span className="material-icons-outlined text-xs opacity-50 scale-75 ml-0.5">swap_vert</span>
                       </button>
                       <Button
                         variant="secondary"
                         size="icon"
                         className="w-7 h-7 sm:w-8 sm:h-8"
-                        onClick={() => setPauseTime(pauseTime + 1)}
+                        onClick={() => {
+                          const step = pauseUnit === 'hr' ? 0.5 : 1
+                          setPauseTime(pauseTime + step)
+                        }}
                       >
                         <span className="material-icons-outlined text-sm">add</span>
                       </Button>

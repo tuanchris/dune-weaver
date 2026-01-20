@@ -910,13 +910,15 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        {/* Swipe indicator - only on mobile */}
-        <div className="md:hidden flex justify-center pt-2 pb-1">
-          <div className="w-10 h-1 bg-muted-foreground/30 rounded-full" />
-        </div>
+        {/* Max-width container to match page layout */}
+        <div className="max-w-5xl mx-auto relative">
+          {/* Swipe indicator - only on mobile */}
+          <div className="md:hidden flex justify-center pt-2 pb-1">
+            <div className="w-10 h-1 bg-muted-foreground/30 rounded-full" />
+          </div>
 
-        {/* Header with action buttons */}
-        <div className="absolute top-3 right-3 flex items-center gap-1 z-10">
+          {/* Header with action buttons */}
+          <div className="absolute top-3 right-3 sm:right-4 flex items-center gap-1 z-10">
           {/* Queue button - mobile only, when playlist exists */}
           {isPlaying && status?.playlist && (
             <Button
@@ -1309,6 +1311,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
             </div>
           )}
         </div>
+        </div>{/* Close max-width container */}
       </div>
 
       {/* Queue Dialog */}
