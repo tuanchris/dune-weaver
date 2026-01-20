@@ -103,9 +103,17 @@ body {
   min-height: 100dvh; /* Use dynamic viewport height for mobile */
 }
 
-/* Safe area utilities for iOS notch/home indicator */
+/* Safe area utilities for iOS notch/Dynamic Island/home indicator */
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
 .pb-safe {
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.mt-safe {
+  margin-top: env(safe-area-inset-top, 0px);
 }
 
 .mb-safe {

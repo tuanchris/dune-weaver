@@ -59,6 +59,29 @@ export function PlaylistsPage() {
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [playlistToRename, setPlaylistToRename] = useState<string | null>(null)
 
+  // Mobile view state - show content panel when a playlist is selected
+  const [mobileShowContent, setMobileShowContent] = useState(false)
+
+  // Swipe gesture to go back on mobile
+  const swipeTouchStartRef = useRef<{ x: number; y: number } | null>(null)
+  const handleSwipeTouchStart = (e: React.TouchEvent) => {
+    swipeTouchStartRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+    }
+  }
+  const handleSwipeTouchEnd = (e: React.TouchEvent) => {
+    if (!swipeTouchStartRef.current || !mobileShowContent) return
+    const deltaX = e.changedTouches[0].clientX - swipeTouchStartRef.current.x
+    const deltaY = e.changedTouches[0].clientY - swipeTouchStartRef.current.y
+
+    // Swipe right to go back (positive X, more horizontal than vertical)
+    if (deltaX > 80 && deltaX > Math.abs(deltaY)) {
+      setMobileShowContent(false)
+    }
+    swipeTouchStartRef.current = null
+  }
+
   // Playback settings - initialized from localStorage
   const [runMode, setRunMode] = useState<RunMode>(() => {
     const cached = localStorage.getItem('playlist-runMode')
@@ -308,6 +331,12 @@ export function PlaylistsPage() {
   const handleSelectPlaylist = (name: string) => {
     setSelectedPlaylist(name)
     fetchPlaylistPatterns(name)
+    setMobileShowContent(true) // Show content panel on mobile
+  }
+
+  // Go back to playlist list on mobile
+  const handleMobileBack = () => {
+    setMobileShowContent(false)
   }
 
   const handleCreatePlaylist = async () => {
@@ -510,9 +539,11 @@ export function PlaylistsPage() {
       <Separator className="shrink-0" />
 
       {/* Main Content Area */}
-      <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
-        {/* Playlists Sidebar */}
-        <aside className="w-full lg:w-64 shrink-0 bg-card border rounded-lg flex flex-col max-h-48 lg:max-h-none">
+      <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0 relative overflow-hidden">
+        {/* Playlists Sidebar - Full screen on mobile, sidebar on desktop */}
+        <aside className={`w-full lg:w-64 shrink-0 bg-card border rounded-lg flex flex-col h-full overflow-hidden transition-transform duration-300 ease-in-out ${
+          mobileShowContent ? '-translate-x-full lg:translate-x-0 absolute lg:relative inset-0 lg:inset-auto' : 'translate-x-0'
+        }`}>
           <div className="flex items-center justify-between px-3 py-2.5 border-b shrink-0">
             <div>
               <h2 className="text-lg font-semibold">My Playlists</h2>
@@ -588,11 +619,26 @@ export function PlaylistsPage() {
         </nav>
       </aside>
 
-        {/* Main Content */}
-        <main className="flex-1 bg-card border rounded-lg flex flex-col overflow-hidden min-h-0 relative">
+        {/* Main Content - Slides in from right on mobile, swipe right to go back */}
+        <main
+          className={`flex-1 bg-card border rounded-lg flex flex-col overflow-hidden min-h-0 relative transition-transform duration-300 ease-in-out ${
+            mobileShowContent ? 'translate-x-0' : 'translate-x-full lg:translate-x-0 absolute lg:relative inset-0 lg:inset-auto'
+          }`}
+          onTouchStart={handleSwipeTouchStart}
+          onTouchEnd={handleSwipeTouchEnd}
+        >
           {/* Header */}
           <header className="flex items-center justify-between px-3 py-2.5 border-b shrink-0">
-            <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              {/* Back button - mobile only */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 lg:hidden shrink-0"
+                onClick={handleMobileBack}
+              >
+                <span className="material-icons-outlined">arrow_back</span>
+              </Button>
               <div className="min-w-0">
                 <h2 className="text-lg font-semibold truncate">
                   {selectedPlaylist || 'Select a Playlist'}

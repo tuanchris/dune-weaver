@@ -879,7 +879,10 @@ export function BrowsePage() {
       </div>
 
       {/* Filter Bar */}
-      <div className="sticky top-[4.5rem] z-30 py-3 -mx-0 sm:-mx-4 px-0 sm:px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div
+        className="sticky z-30 py-3 -mx-0 sm:-mx-4 px-0 sm:px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60"
+        style={{ top: 'calc(4.5rem + env(safe-area-inset-top, 0px))' }}
+      >
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Search - Pill shaped, white background */}
           <div className="relative flex-1 min-w-0">
@@ -1023,7 +1026,7 @@ export function BrowsePage() {
       {/* Pattern Details Sheet */}
       <Sheet open={isPanelOpen} onOpenChange={setIsPanelOpen}>
         <SheetContent
-          className="flex flex-col p-0 overflow-hidden"
+          className="flex flex-col p-0 overflow-hidden pt-safe"
           onTouchStart={handleSheetTouchStart}
           onTouchEnd={handleSheetTouchEnd}
         >

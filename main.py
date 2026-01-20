@@ -723,6 +723,50 @@ async def get_all_settings():
         }
     }
 
+@app.get("/api/manifest.webmanifest", tags=["settings"])
+async def get_dynamic_manifest():
+    """
+    Get a dynamically generated web manifest.
+
+    Returns manifest with custom icons and app name if custom branding is configured,
+    otherwise returns defaults.
+    """
+    # Determine icon paths based on whether custom logo exists
+    if state.custom_logo:
+        icon_base = "/static/custom"
+    else:
+        icon_base = "/static"
+
+    # Use custom app name or default
+    app_name = state.app_name or "Dune Weaver"
+
+    return {
+        "name": app_name,
+        "short_name": app_name,
+        "description": "Control your kinetic sand table",
+        "icons": [
+            {
+                "src": f"{icon_base}/android-chrome-192x192.png",
+                "sizes": "192x192",
+                "type": "image/png",
+                "purpose": "any"
+            },
+            {
+                "src": f"{icon_base}/android-chrome-512x512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any"
+            }
+        ],
+        "start_url": "/",
+        "scope": "/",
+        "display": "standalone",
+        "orientation": "any",
+        "theme_color": "#0a0a0a",
+        "background_color": "#0a0a0a",
+        "categories": ["utilities", "entertainment"]
+    }
+
 @app.patch("/api/settings", tags=["settings"])
 async def update_settings(settings_update: SettingsUpdate):
     """
@@ -2565,26 +2609,26 @@ CUSTOM_BRANDING_DIR = os.path.join("static", "custom")
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 MAX_LOGO_SIZE = 5 * 1024 * 1024  # 5MB
 
-def generate_favicon_from_logo(logo_path: str, favicon_path: str) -> bool:
-    """Generate a circular-cropped favicon from the uploaded logo using PIL.
+def generate_favicon_from_logo(logo_path: str, output_dir: str) -> bool:
+    """Generate circular favicons with transparent background from the uploaded logo.
 
-    Creates a multi-size ICO file (16x16, 32x32, 48x48) with circular crop.
+    Creates:
+    - favicon.ico (multi-size: 256, 128, 64, 48, 32, 16)
+    - favicon-16x16.png, favicon-32x32.png, favicon-96x96.png, favicon-128x128.png
+
     Returns True on success, False on failure.
     """
     try:
         from PIL import Image, ImageDraw
 
-        def create_circular_image(img, size):
-            """Create a circular-cropped image at the specified size."""
-            # Resize to target size
+        def create_circular_transparent(img, size):
+            """Create circular image with transparent background."""
             resized = img.resize((size, size), Image.Resampling.LANCZOS)
 
-            # Create circular mask
             mask = Image.new('L', (size, size), 0)
             draw = ImageDraw.Draw(mask)
             draw.ellipse((0, 0, size - 1, size - 1), fill=255)
 
-            # Apply circular mask - create transparent background
             output = Image.new('RGBA', (size, size), (0, 0, 0, 0))
             output.paste(resized, (0, 0), mask)
             return output
@@ -2601,21 +2645,75 @@ def generate_favicon_from_logo(logo_path: str, favicon_path: str) -> bool:
             top = (height - min_dim) // 2
             img = img.crop((left, top, left + min_dim, top + min_dim))
 
-            # Create circular images at each favicon size
-            sizes = [48, 32, 16]
-            circular_images = [create_circular_image(img, size) for size in sizes]
+            # Generate circular favicon PNGs with transparent background
+            png_sizes = {
+                "favicon-16x16.png": 16,
+                "favicon-32x32.png": 32,
+                "favicon-96x96.png": 96,
+                "favicon-128x128.png": 128,
+            }
+            for filename, size in png_sizes.items():
+                icon = create_circular_transparent(img, size)
+                icon.save(os.path.join(output_dir, filename), format='PNG')
 
-            # Save as ICO - first image is the main one, rest are appended
-            circular_images[0].save(
-                favicon_path,
+            # Generate high-resolution favicon.ico
+            ico_sizes = [256, 128, 64, 48, 32, 16]
+            ico_images = [create_circular_transparent(img, s) for s in ico_sizes]
+            ico_images[0].save(
+                os.path.join(output_dir, "favicon.ico"),
                 format='ICO',
-                append_images=circular_images[1:],
-                sizes=[(s, s) for s in sizes]
+                append_images=ico_images[1:],
+                sizes=[(s, s) for s in ico_sizes]
             )
 
         return True
     except Exception as e:
         logger.error(f"Failed to generate favicon: {str(e)}")
+        return False
+
+def generate_pwa_icons_from_logo(logo_path: str, output_dir: str) -> bool:
+    """Generate square PWA app icons from the uploaded logo.
+
+    Creates square icons (no circular crop) - OS will apply its own mask.
+
+    Generates:
+    - apple-touch-icon.png (180x180)
+    - android-chrome-192x192.png (192x192)
+    - android-chrome-512x512.png (512x512)
+
+    Returns True on success, False on failure.
+    """
+    try:
+        from PIL import Image
+
+        with Image.open(logo_path) as img:
+            # Convert to RGBA if needed
+            if img.mode != 'RGBA':
+                img = img.convert('RGBA')
+
+            # Crop to square (center crop)
+            width, height = img.size
+            min_dim = min(width, height)
+            left = (width - min_dim) // 2
+            top = (height - min_dim) // 2
+            img = img.crop((left, top, left + min_dim, top + min_dim))
+
+            # Generate square icons at each required size
+            icon_sizes = {
+                "apple-touch-icon.png": 180,
+                "android-chrome-192x192.png": 192,
+                "android-chrome-512x512.png": 512,
+            }
+
+            for filename, size in icon_sizes.items():
+                resized = img.resize((size, size), Image.Resampling.LANCZOS)
+                icon_path = os.path.join(output_dir, filename)
+                resized.save(icon_path, format='PNG')
+                logger.info(f"Generated PWA icon: {filename}")
+
+        return True
+    except Exception as e:
+        logger.error(f"Failed to generate PWA icons: {str(e)}")
         return False
 
 @app.post("/api/upload-logo", tags=["settings"])
@@ -2667,22 +2765,24 @@ async def upload_logo(file: UploadFile = File(...)):
         with open(file_path, "wb") as f:
             f.write(content)
 
-        # Generate favicon from logo (for non-SVG files)
+        # Generate favicon and PWA icons from logo (for non-SVG files)
         favicon_generated = False
+        pwa_icons_generated = False
         if file_ext != ".svg":
-            favicon_path = os.path.join(CUSTOM_BRANDING_DIR, "favicon.ico")
-            favicon_generated = generate_favicon_from_logo(file_path, favicon_path)
+            favicon_generated = generate_favicon_from_logo(file_path, CUSTOM_BRANDING_DIR)
+            pwa_icons_generated = generate_pwa_icons_from_logo(file_path, CUSTOM_BRANDING_DIR)
 
         # Update state
         state.custom_logo = filename
         state.save()
 
-        logger.info(f"Custom logo uploaded: {filename}, favicon generated: {favicon_generated}")
+        logger.info(f"Custom logo uploaded: {filename}, favicon generated: {favicon_generated}, PWA icons generated: {pwa_icons_generated}")
         return {
             "success": True,
             "filename": filename,
             "url": f"/static/custom/{filename}",
-            "favicon_generated": favicon_generated
+            "favicon_generated": favicon_generated,
+            "pwa_icons_generated": pwa_icons_generated
         }
 
     except HTTPException:
@@ -2693,7 +2793,7 @@ async def upload_logo(file: UploadFile = File(...)):
 
 @app.delete("/api/custom-logo", tags=["settings"])
 async def delete_custom_logo():
-    """Remove custom logo and favicon, reverting to defaults."""
+    """Remove custom logo, favicon, and PWA icons, reverting to defaults."""
     try:
         if state.custom_logo:
             # Remove logo
@@ -2701,14 +2801,33 @@ async def delete_custom_logo():
             if os.path.exists(logo_path):
                 os.remove(logo_path)
 
-            # Remove generated favicon
-            favicon_path = os.path.join(CUSTOM_BRANDING_DIR, "favicon.ico")
-            if os.path.exists(favicon_path):
-                os.remove(favicon_path)
+            # Remove generated favicons
+            favicon_files = [
+                "favicon.ico",
+                "favicon-16x16.png",
+                "favicon-32x32.png",
+                "favicon-96x96.png",
+                "favicon-128x128.png",
+            ]
+            for favicon_name in favicon_files:
+                favicon_path = os.path.join(CUSTOM_BRANDING_DIR, favicon_name)
+                if os.path.exists(favicon_path):
+                    os.remove(favicon_path)
+
+            # Remove generated PWA icons
+            pwa_icons = [
+                "apple-touch-icon.png",
+                "android-chrome-192x192.png",
+                "android-chrome-512x512.png",
+            ]
+            for icon_name in pwa_icons:
+                icon_path = os.path.join(CUSTOM_BRANDING_DIR, icon_name)
+                if os.path.exists(icon_path):
+                    os.remove(icon_path)
 
             state.custom_logo = None
             state.save()
-            logger.info("Custom logo and favicon removed")
+            logger.info("Custom logo, favicon, and PWA icons removed")
         return {"success": True}
     except Exception as e:
         logger.error(f"Error removing logo: {str(e)}")

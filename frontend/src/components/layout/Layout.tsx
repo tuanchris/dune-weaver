@@ -24,6 +24,11 @@ const DEFAULT_APP_NAME = 'Dune Weaver'
 export function Layout() {
   const location = useLocation()
 
+  // Scroll to top on route change
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [location.pathname])
+
   // Multi-table context - must be called before any hooks that depend on activeTable
   const { activeTable, tables } = useTable()
 
@@ -53,6 +58,7 @@ export function Layout() {
   const [isConnected, setIsConnected] = useState(false)
   const [isBackendConnected, setIsBackendConnected] = useState(false)
   const [isHoming, setIsHoming] = useState(false)
+  const [homingDismissed, setHomingDismissed] = useState(false)
   const [homingJustCompleted, setHomingJustCompleted] = useState(false)
   const [homingCountdown, setHomingCountdown] = useState(0)
   const [keepHomingLogsOpen, setKeepHomingLogsOpen] = useState(false)
@@ -236,11 +242,16 @@ export function Layout() {
             // Update homing status and detect completion
             if (data.data.is_homing !== undefined) {
               const newIsHoming = data.data.is_homing
+              // Detect transition from not homing to homing - reset dismissal
+              if (!wasHomingRef.current && newIsHoming) {
+                setHomingDismissed(false)
+              }
               // Detect transition from homing to not homing
               if (wasHomingRef.current && !newIsHoming) {
                 // Homing just completed - show completion state with countdown
                 setHomingJustCompleted(true)
                 setHomingCountdown(5)
+                setHomingDismissed(false)
               }
               wasHomingRef.current = newIsHoming
               setIsHoming(newIsHoming)
@@ -999,7 +1010,7 @@ export function Layout() {
       )}
 
       {/* Backend Connection / Homing Blocking Overlay */}
-      {(!isBackendConnected || isHoming || homingJustCompleted) && (
+      {(!isBackendConnected || (isHoming && !homingDismissed) || homingJustCompleted) && (
         <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center p-4">
           <div className="w-full max-w-2xl space-y-6">
             {/* Status Header */}
@@ -1150,11 +1161,25 @@ export function Layout() {
               </div>
             )}
 
+            {/* Dismiss button during homing */}
+            {isHoming && !homingJustCompleted && (
+              <div className="flex justify-center">
+                <Button
+                  variant="ghost"
+                  onClick={() => setHomingDismissed(true)}
+                  className="gap-2 text-muted-foreground"
+                >
+                  <span className="material-icons text-base">visibility_off</span>
+                  Dismiss
+                </Button>
+              </div>
+            )}
+
             {/* Hint */}
             {!homingJustCompleted && (
               <p className="text-center text-xs text-muted-foreground">
                 {isHoming
-                  ? 'The table is calibrating its position'
+                  ? 'Homing will continue in the background'
                   : 'Make sure the backend server is running on port 8080'
                 }
               </p>
@@ -1164,9 +1189,11 @@ export function Layout() {
       )}
 
       {/* Header - Floating Pill */}
-      <header className="fixed top-0 left-0 right-0 z-40">
-        {/* Blurry backdrop behind header */}
-        <div className="absolute inset-0 h-20 bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/50" />
+      <header className="fixed top-0 left-0 right-0 z-40 pt-safe">
+        {/* Blurry backdrop behind header - only on Browse page where content scrolls under */}
+        {location.pathname === '/' && (
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/50" style={{ height: 'calc(5rem + env(safe-area-inset-top, 0px))' }} />
+        )}
         <div className="relative w-full max-w-5xl mx-auto px-3 sm:px-4 pt-3 pointer-events-none">
           <div className="flex h-12 items-center justify-between px-4 rounded-full bg-card shadow-lg border border-border pointer-events-auto">
           <Link to="/" className="flex items-center gap-2">
@@ -1350,11 +1377,12 @@ export function Layout() {
 
       {/* Main Content */}
       <main
-        className={`container mx-auto px-4 pt-[4.5rem] transition-all duration-300 ${
+        className={`container mx-auto px-4 transition-all duration-300 ${
           !isLogsOpen && !isNowPlayingOpen ? 'pb-20' :
           !isLogsOpen && isNowPlayingOpen ? 'pb-80' : ''
         }`}
         style={{
+          paddingTop: 'calc(4.5rem + env(safe-area-inset-top, 0px))',
           paddingBottom: isLogsOpen
             ? isNowPlayingOpen
               ? logsDrawerHeight + 256 + 64 // drawer + now playing + nav
