@@ -240,46 +240,6 @@ install_cli() {
     print_success "'dw' command installed"
 }
 
-# Install update watcher service (for Docker deployments)
-install_update_watcher() {
-    if [[ "$USE_DOCKER" != "true" ]]; then
-        # Update watcher only needed for Docker deployments
-        return
-    fi
-
-    print_step "Installing update watcher service..."
-
-    # Make watcher script executable
-    chmod +x "$INSTALL_DIR/scripts/update-watcher.sh"
-
-    # Create systemd service with correct paths
-    sudo tee /etc/systemd/system/dune-weaver-update.service > /dev/null << EOF
-[Unit]
-Description=Dune Weaver Update Watcher
-After=multi-user.target docker.service
-Wants=docker.service
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=$INSTALL_DIR
-ExecStart=$INSTALL_DIR/scripts/update-watcher.sh
-Restart=always
-RestartSec=10
-StartLimitInterval=200
-StartLimitBurst=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    sudo systemctl daemon-reload
-    sudo systemctl enable dune-weaver-update
-    sudo systemctl start dune-weaver-update
-
-    print_success "Update watcher service installed"
-}
-
 # Deploy with Docker
 deploy_docker() {
     print_step "Deploying Dune Weaver with Docker Compose..."
@@ -424,7 +384,6 @@ main() {
     fi
 
     install_cli
-    install_update_watcher
     print_final_instructions
 }
 
