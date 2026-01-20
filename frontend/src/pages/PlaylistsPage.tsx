@@ -872,55 +872,55 @@ export function PlaylistsPage() {
               )}
             </div>
 
-            <div className="flex flex-wrap gap-3 items-center p-3 rounded-lg bg-muted/50">
-              <div className="flex items-center gap-2">
-                <Label className="text-xs text-muted-foreground">Sort:</Label>
-                <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-                  <SelectTrigger className="h-8 w-28">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="name">Name</SelectItem>
-                    <SelectItem value="date">Modified</SelectItem>
-                    <SelectItem value="size">Size</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => setSortAsc(!sortAsc)}
-                >
-                  <span className="material-icons-outlined text-lg">
-                    {sortAsc ? 'arrow_upward' : 'arrow_downward'}
-                  </span>
-                </Button>
-              </div>
+            <div className="flex flex-wrap gap-2 items-center">
+              {/* Folder dropdown - icon only on mobile, with text on sm+ */}
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="h-9 w-9 sm:w-auto rounded-full bg-card border-border shadow-sm text-sm px-0 sm:px-3 justify-center sm:justify-between [&>svg]:hidden sm:[&>svg]:block [&>span:last-of-type]:hidden sm:[&>span:last-of-type]:inline gap-2">
+                  <span className="material-icons-outlined text-lg shrink-0">folder</span>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map(cat => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat === 'all' ? 'All Folders' : cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-              <Separator orientation="vertical" className="h-6" />
+              {/* Sort dropdown - icon only on mobile, with text on sm+ */}
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+                <SelectTrigger className="h-9 w-9 sm:w-auto rounded-full bg-card border-border shadow-sm text-sm px-0 sm:px-3 justify-center sm:justify-between [&>svg]:hidden sm:[&>svg]:block [&>span:last-of-type]:hidden sm:[&>span:last-of-type]:inline gap-2">
+                  <span className="material-icons-outlined text-lg shrink-0">sort</span>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name">Name</SelectItem>
+                  <SelectItem value="date">Modified</SelectItem>
+                  <SelectItem value="size">Size</SelectItem>
+                </SelectContent>
+              </Select>
 
-              <div className="flex items-center gap-2">
-                <Label className="text-xs text-muted-foreground">Folder:</Label>
-                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                  <SelectTrigger className="h-8 w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map(cat => (
-                      <SelectItem key={cat} value={cat}>
-                        {cat === 'all' ? 'All Folders' : cat}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* Sort direction - pill shaped */}
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 rounded-full bg-card shadow-sm"
+                onClick={() => setSortAsc(!sortAsc)}
+                title={sortAsc ? 'Ascending' : 'Descending'}
+              >
+                <span className="material-icons-outlined text-lg">
+                  {sortAsc ? 'arrow_upward' : 'arrow_downward'}
+                </span>
+              </Button>
 
               <div className="flex-1" />
 
-              <div className="flex items-center gap-2 text-sm">
+              {/* Selection count - compact on mobile */}
+              <div className="flex items-center gap-1 sm:gap-2 text-sm bg-card rounded-full px-2 sm:px-3 py-2 shadow-sm border">
                 <span className="material-icons-outlined text-base text-primary">check_circle</span>
                 <span className="font-medium">{selectedPatternPaths.size}</span>
-                <span className="text-muted-foreground">selected</span>
+                <span className="hidden sm:inline text-muted-foreground">selected</span>
               </div>
             </div>
           </div>

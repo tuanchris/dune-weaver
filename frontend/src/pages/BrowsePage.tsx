@@ -874,7 +874,7 @@ export function BrowsePage() {
 
           {/* Category - Icon on mobile, text on desktop */}
           <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-            <SelectTrigger className="h-9 w-9 sm:h-11 sm:w-auto rounded-full bg-card border-border shadow-sm text-xs sm:text-sm shrink-0 [&>svg]:hidden sm:[&>svg]:block px-0 sm:px-3 justify-center sm:justify-between [&>span:last-of-type]:hidden sm:[&>span:last-of-type]:inline">
+            <SelectTrigger className="h-9 w-9 sm:h-11 sm:w-auto rounded-full bg-card border-border shadow-sm text-xs sm:text-sm shrink-0 [&>svg]:hidden sm:[&>svg]:block px-0 sm:px-3 justify-center sm:justify-between [&>span:last-of-type]:hidden sm:[&>span:last-of-type]:inline gap-2">
               <span className="material-icons-outlined text-lg shrink-0 sm:hidden">folder</span>
               <SelectValue placeholder="All" />
             </SelectTrigger>
@@ -889,7 +889,7 @@ export function BrowsePage() {
 
           {/* Sort - Icon on mobile, text on desktop */}
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-            <SelectTrigger className="h-9 w-9 sm:h-11 sm:w-auto rounded-full bg-card border-border shadow-sm text-xs sm:text-sm shrink-0 [&>svg]:hidden sm:[&>svg]:block px-0 sm:px-3 justify-center sm:justify-between [&>span:last-of-type]:hidden sm:[&>span:last-of-type]:inline">
+            <SelectTrigger className="h-9 w-9 sm:h-11 sm:w-auto rounded-full bg-card border-border shadow-sm text-xs sm:text-sm shrink-0 [&>svg]:hidden sm:[&>svg]:block px-0 sm:px-3 justify-center sm:justify-between [&>span:last-of-type]:hidden sm:[&>span:last-of-type]:inline gap-2">
               <span className="material-icons-outlined text-lg shrink-0 sm:hidden">sort</span>
               <SelectValue placeholder="Sort" />
             </SelectTrigger>

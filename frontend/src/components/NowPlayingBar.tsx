@@ -1085,7 +1085,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
 
           {/* Expanded view - Real-time canvas preview */}
           {isExpanded && isPlaying && (
-            <div className="flex-1 flex flex-col md:items-center md:justify-center px-4 py-2 md:py-4 overflow-hidden">
+            <div className="flex-1 flex flex-col md:items-center md:justify-center px-4 py-4 md:py-8 overflow-hidden">
               <div className="w-full max-w-5xl mx-auto flex flex-col md:flex-row md:items-center md:justify-center gap-3 md:gap-6">
                 {/* Canvas - full width on mobile (click to collapse) */}
                 <div
@@ -1097,7 +1097,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
                     ref={canvasRef}
                     width={600}
                     height={600}
-                    className="rounded-full border-2 hover:border-primary transition-colors max-h-[40vh] max-w-[40vh] w-[40vh] h-[40vh] md:w-[300px] md:h-[300px] md:max-w-none md:max-h-none"
+                    className="rounded-full border-2 hover:border-primary transition-colors w-[40vh] h-[40vh] max-w-[300px] max-h-[300px] md:w-[42vh] md:h-[42vh] md:max-w-[500px] md:max-h-[500px]"
                   />
                 </div>
 
