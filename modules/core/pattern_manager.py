@@ -967,7 +967,7 @@ async def _execute_pattern_internal(file_path):
 
                     if state.pause_requested:
                         # For manual pause, wait on multiple events for immediate response
-                        # Wake on: resume, stop, or skip
+                        # Wake on: resume, stop, skip, or timeout (for flag polling fallback)
                         pause_event = get_pause_event()
                         stop_event = state.get_stop_event()
                         skip_event = state.get_skip_event()
@@ -977,6 +977,10 @@ async def _execute_pattern_internal(file_path):
                             wait_tasks.append(asyncio.create_task(stop_event.wait(), name='stop'))
                         if skip_event:
                             wait_tasks.append(asyncio.create_task(skip_event.wait(), name='skip'))
+                        # Add timeout to ensure we periodically check flags even if events aren't set
+                        # This handles the case where stop is called from sync context (no event loop)
+                        timeout_task = asyncio.create_task(asyncio.sleep(1.0), name='timeout')
+                        wait_tasks.append(timeout_task)
 
                         try:
                             done, pending = await asyncio.wait(
@@ -1085,6 +1089,10 @@ async def run_theta_rho_file(file_path, is_playlist=False, clear_pattern=None, c
         return
 
     async with lock:  # This ensures only one pattern can run at a time
+        # Clear any stale pause state from previous playlist
+        state.pause_time_remaining = 0
+        state.original_pause_time = None
+
         # Start progress update task only if not part of a playlist
         global progress_update_task
         if not is_playlist and not progress_update_task:
