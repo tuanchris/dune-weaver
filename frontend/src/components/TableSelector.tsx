@@ -27,8 +27,6 @@ import {
   Layers,
   Plus,
   Check,
-  Wifi,
-  WifiOff,
   Pencil,
   Trash2,
 } from 'lucide-react'
@@ -154,12 +152,28 @@ export function TableSelector({ children }: TableSelectorProps) {
                   }`}
                   onClick={() => handleSelectTable(table)}
                 >
-                  {/* Status indicator */}
-                  {table.isOnline ? (
-                    <Wifi className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
-                  ) : (
-                    <WifiOff className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
-                  )}
+                  {/* Table icon with status indicator */}
+                  <div className="relative flex-shrink-0">
+                    <img
+                      src={
+                        table.customLogo
+                          ? `${table.isCurrent ? '' : table.url}/static/custom/${table.customLogo}`
+                          : `${table.isCurrent ? '' : table.url}/static/android-chrome-192x192.png`
+                      }
+                      alt={table.name}
+                      className="w-8 h-8 rounded-full object-cover"
+                      onError={(e) => {
+                        // Fallback to default icon if image fails to load
+                        (e.target as HTMLImageElement).src = '/static/android-chrome-192x192.png'
+                      }}
+                    />
+                    {/* Online status dot */}
+                    <span
+                      className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-popover ${
+                        table.isOnline ? 'bg-green-500' : 'bg-red-500'
+                      }`}
+                    />
+                  </div>
 
                   {/* Name and info */}
                   <div className="flex-1 min-w-0">

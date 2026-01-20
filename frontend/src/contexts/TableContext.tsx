@@ -19,6 +19,7 @@ export interface Table {
   version?: string
   isOnline?: boolean
   isCurrent?: boolean // True if this is the backend serving the frontend
+  customLogo?: string // Custom logo filename if set (e.g., "logo_abc123.png")
 }
 
 interface TableContextType {
@@ -141,13 +142,19 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
     setIsDiscovering(true)
 
     try {
-      // Always fetch the current table's info
-      const infoResponse = await fetch('/api/table-info')
+      // Fetch table info and settings in parallel
+      const [infoResponse, settingsResponse] = await Promise.all([
+        fetch('/api/table-info'),
+        fetch('/api/settings').catch(() => null),
+      ])
+
       if (!infoResponse.ok) {
         throw new Error('Failed to fetch table info')
       }
 
       const info = await infoResponse.json()
+      const settings = settingsResponse?.ok ? await settingsResponse.json() : null
+
       const currentTable: Table = {
         id: info.id,
         name: info.name,
@@ -155,6 +162,7 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
         version: info.version,
         isOnline: true,
         isCurrent: true,
+        customLogo: settings?.app?.custom_logo || undefined,
       }
 
       // Merge with existing tables
@@ -197,6 +205,34 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
       restoredActiveIdRef.current = null
 
       setLastDiscovery(new Date())
+
+      // Refresh remote tables in the background to get their customLogo
+      // Use setTimeout to not block the main discovery flow
+      setTimeout(() => {
+        setTables(currentTables => {
+          const remoteTables = currentTables.filter(t => !t.isCurrent)
+          remoteTables.forEach(async (table) => {
+            try {
+              const [infoResponse, settingsResponse] = await Promise.all([
+                fetch(`${table.url}/api/table-info`, { signal: AbortSignal.timeout(3000) }),
+                fetch(`${table.url}/api/settings`, { signal: AbortSignal.timeout(3000) }).catch(() => null),
+              ])
+              const isOnline = infoResponse.ok
+              const settings = settingsResponse?.ok ? await settingsResponse.json() : null
+              const customLogo = settings?.app?.custom_logo || undefined
+
+              setTables(prev =>
+                prev.map(t => (t.id === table.id ? { ...t, isOnline, customLogo } : t))
+              )
+            } catch {
+              setTables(prev =>
+                prev.map(t => (t.id === table.id ? { ...t, isOnline: false } : t))
+              )
+            }
+          })
+          return currentTables // Return unchanged for now, updates happen in the async callbacks
+        })
+      }, 100)
     } catch (e) {
       console.error('Table refresh failed:', e)
     } finally {
@@ -215,13 +251,19 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
         return null
       }
 
-      // Fetch table info from the URL
-      const response = await fetch(`${normalizedUrl}/api/table-info`)
-      if (!response.ok) {
+      // Fetch table info and settings in parallel
+      const [infoResponse, settingsResponse] = await Promise.all([
+        fetch(`${normalizedUrl}/api/table-info`),
+        fetch(`${normalizedUrl}/api/settings`).catch(() => null),
+      ])
+
+      if (!infoResponse.ok) {
         throw new Error('Failed to fetch table info')
       }
 
-      const info = await response.json()
+      const info = await infoResponse.json()
+      const settings = settingsResponse?.ok ? await settingsResponse.json() : null
+
       const newTable: Table = {
         id: info.id,
         name: name || info.name,
@@ -229,6 +271,7 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
         version: info.version,
         isOnline: true,
         isCurrent: false,
+        customLogo: settings?.app?.custom_logo || undefined,
       }
 
       setTables(prev => [...prev, newTable])
@@ -283,17 +326,23 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
     }
   }, [tables, activeTable])
 
-  // Check if a table is online
+  // Check if a table is online and update its info (including custom logo)
   const refreshTableStatus = useCallback(async (table: Table): Promise<boolean> => {
     try {
       const baseUrl = table.isCurrent ? '' : table.url
-      const response = await fetch(`${baseUrl}/api/table-info`, {
-        signal: AbortSignal.timeout(3000),
-      })
-      const isOnline = response.ok
+
+      // Fetch table info and settings in parallel
+      const [infoResponse, settingsResponse] = await Promise.all([
+        fetch(`${baseUrl}/api/table-info`, { signal: AbortSignal.timeout(3000) }),
+        fetch(`${baseUrl}/api/settings`, { signal: AbortSignal.timeout(3000) }).catch(() => null),
+      ])
+
+      const isOnline = infoResponse.ok
+      const settings = settingsResponse?.ok ? await settingsResponse.json() : null
+      const customLogo = settings?.app?.custom_logo || undefined
 
       setTables(prev =>
-        prev.map(t => (t.id === table.id ? { ...t, isOnline } : t))
+        prev.map(t => (t.id === table.id ? { ...t, isOnline, customLogo } : t))
       )
 
       return isOnline
