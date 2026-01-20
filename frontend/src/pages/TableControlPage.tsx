@@ -259,11 +259,21 @@ export function TableControlPage() {
 
   const fetchMainConnectionStatus = async () => {
     try {
+      // Fetch available ports first to validate against
+      const portsData = await apiClient.get<string[]>('/list_serial_ports')
+      const availablePorts = Array.isArray(portsData) ? portsData : []
+
       const data = await apiClient.get<{ connected: boolean; port?: string }>('/serial_status')
       if (data.connected && data.port) {
-        setMainConnectionPort(data.port)
-        // Auto-select the connected port
-        setSelectedSerialPort(data.port)
+        // Only set port if it exists in available ports
+        // This prevents race conditions where stale port data from a different
+        // backend (e.g., Mac port on a Pi) could be set and auto-connected
+        if (availablePorts.includes(data.port)) {
+          setMainConnectionPort(data.port)
+          setSelectedSerialPort(data.port)
+        } else {
+          console.warn(`Port ${data.port} from status not in available ports, ignoring`)
+        }
       }
     } catch {
       // Ignore errors

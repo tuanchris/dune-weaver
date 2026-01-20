@@ -293,16 +293,25 @@ export function SettingsPage() {
 
   const fetchPorts = async () => {
     try {
-      // Fetch available ports
+      // Fetch available ports first
       const portsData = await apiClient.get<string[]>('/list_serial_ports')
-      setPorts(portsData || [])
+      const availablePorts = portsData || []
+      setPorts(availablePorts)
 
       // Fetch connection status
       const statusData = await apiClient.get<{ connected: boolean; port?: string }>('/serial_status')
       setIsConnected(statusData.connected || false)
       setConnectionStatus(statusData.connected ? 'Connected' : 'Disconnected')
-      if (statusData.port) {
+
+      // Only set selectedPort if it exists in the available ports list
+      // This prevents race conditions where stale port data from a different
+      // backend (e.g., Mac port on a Pi) could be set
+      if (statusData.port && availablePorts.includes(statusData.port)) {
         setSelectedPort(statusData.port)
+      } else if (statusData.port && !availablePorts.includes(statusData.port)) {
+        // Port from status doesn't exist on this machine - likely stale data
+        console.warn(`Port ${statusData.port} from status not in available ports, ignoring`)
+        setSelectedPort('')
       }
     } catch (error) {
       console.error('Error fetching ports:', error)
