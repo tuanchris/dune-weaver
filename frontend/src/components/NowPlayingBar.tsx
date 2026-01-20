@@ -245,13 +245,29 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
     touchStartY.current = null
   }
 
-  // Use native event listener for touchmove to prevent background scroll
+  // Prevent background scroll when Now Playing bar is visible
+  useEffect(() => {
+    if (isVisible) {
+      // Lock body scroll when bar is visible on mobile
+      document.body.style.overflow = 'hidden'
+      return () => {
+        document.body.style.overflow = ''
+      }
+    }
+  }, [isVisible])
+
+  // Use native event listener for touchmove to prevent background scroll on the bar itself
   useEffect(() => {
     const bar = barRef.current
     if (!bar) return
 
     const handleTouchMove = (e: TouchEvent) => {
-      e.preventDefault()
+      // Only prevent default if not scrolling inside a scrollable element
+      const target = e.target as HTMLElement
+      const scrollableParent = target.closest('[data-scrollable]')
+      if (!scrollableParent) {
+        e.preventDefault()
+      }
     }
 
     bar.addEventListener('touchmove', handleTouchMove, { passive: false })
@@ -715,6 +731,30 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
   const [showQueue, setShowQueue] = useState(false)
   const [queuePreviews, setQueuePreviews] = useState<Record<string, string>>({})
 
+  // Queue dialog swipe-to-dismiss
+  const queueTouchStartY = useRef<number | null>(null)
+  const queueDialogRef = useRef<HTMLDivElement>(null)
+
+  const handleQueueTouchStart = (e: React.TouchEvent) => {
+    queueTouchStartY.current = e.touches[0].clientY
+  }
+
+  const handleQueueTouchEnd = (e: React.TouchEvent) => {
+    if (queueTouchStartY.current === null) return
+    const touchEndY = e.changedTouches[0].clientY
+    const deltaY = touchEndY - queueTouchStartY.current
+
+    // Swipe down to dismiss (only if at top of scroll or large swipe)
+    if (deltaY > 80) {
+      const scrollContainer = queueDialogRef.current?.querySelector('[data-scrollable]') as HTMLElement
+      const isAtTop = !scrollContainer || scrollContainer.scrollTop <= 0
+      if (isAtTop) {
+        setShowQueue(false)
+      }
+    }
+    queueTouchStartY.current = null
+  }
+
   // Optimistic queue state for smooth drag-and-drop
   const [optimisticQueue, setOptimisticQueue] = useState<string[] | null>(null)
   const optimisticTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -941,8 +981,8 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
             <div className="w-10 h-1 bg-muted-foreground/30 rounded-full" />
           </div>
 
-          {/* Header with action buttons */}
-          <div className="absolute top-3 right-3 sm:right-4 flex items-center gap-1 z-10">
+          {/* Header with action buttons - add safe area when expanded for Dynamic Island */}
+          <div className={`absolute right-3 sm:right-4 flex items-center gap-1 z-10 ${isExpanded ? 'top-3 mt-safe' : 'top-3'}`}>
           {/* Queue button - mobile only, when playlist exists */}
           {isPlaying && status?.playlist && (
             <Button
@@ -1171,7 +1211,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
 
           {/* Expanded view - Real-time canvas preview */}
           {isExpanded && isPlaying && (
-            <div className="flex-1 flex flex-col md:items-center md:justify-center px-4 py-4 md:py-8 overflow-hidden">
+            <div className="flex-1 flex flex-col md:items-center md:justify-center px-4 py-4 md:py-8 pt-safe overflow-hidden">
               <div className="w-full max-w-5xl mx-auto flex flex-col md:flex-row md:items-center md:justify-center gap-3 md:gap-6">
                 {/* Canvas - full width on mobile (click to collapse) */}
                 <div
@@ -1340,7 +1380,16 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
 
       {/* Queue Dialog */}
       <Dialog open={showQueue} onOpenChange={setShowQueue}>
-        <DialogContent className="max-w-md max-h-[80vh] flex flex-col">
+        <DialogContent
+          ref={queueDialogRef}
+          className="max-w-md max-h-[80vh] flex flex-col"
+          onTouchStart={handleQueueTouchStart}
+          onTouchEnd={handleQueueTouchEnd}
+        >
+          {/* Swipe indicator for mobile */}
+          <div className="md:hidden flex justify-center -mt-2 mb-2">
+            <div className="w-10 h-1 bg-muted-foreground/30 rounded-full" />
+          </div>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <span className="material-icons-outlined">queue_music</span>
@@ -1352,11 +1401,11 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
               )}
             </DialogTitle>
             <DialogDescription className="sr-only">
-              List of patterns in the current playlist queue
+              List of patterns in the current playlist queue. Swipe down to dismiss.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto -mx-6 px-6 py-2">
+          <div className="flex-1 overflow-y-auto -mx-6 px-6 py-2" data-scrollable>
             {status?.playlist && displayQueue.length > 0 ? (
               (() => {
                 // Only show upcoming patterns (after current)
