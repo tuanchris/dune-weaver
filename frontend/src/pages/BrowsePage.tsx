@@ -1381,20 +1381,29 @@ function PatternCard({ pattern, isSelected, isFavorite, playTime, onToggleFavori
         <span className="text-xs font-bold text-foreground truncate" title={pattern.name}>
           {pattern.name}
         </span>
-        <button
-          className={`shrink-0 transition-colors ${
+        <span
+          role="button"
+          tabIndex={0}
+          className={`shrink-0 transition-colors cursor-pointer ${
             isFavorite ? 'text-red-500 hover:text-red-600' : 'text-muted-foreground hover:text-red-500'
           }`}
           onClick={(e) => {
             e.stopPropagation()
             onToggleFavorite(pattern.path, e)
           }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              e.stopPropagation()
+              onToggleFavorite(pattern.path, e as unknown as React.MouseEvent)
+            }
+          }}
           title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
         >
           <span className="material-icons" style={{ fontSize: '16px' }}>
             {isFavorite ? 'favorite' : 'favorite_border'}
           </span>
-        </button>
+        </span>
       </div>
     </button>
   )
