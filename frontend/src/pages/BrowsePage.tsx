@@ -128,6 +128,29 @@ export function BrowsePage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isUploading, setIsUploading] = useState(false)
 
+  // Swipe to dismiss sheet on mobile
+  const sheetTouchStartRef = useRef<{ x: number; y: number } | null>(null)
+  const handleSheetTouchStart = (e: React.TouchEvent) => {
+    sheetTouchStartRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+    }
+  }
+  const handleSheetTouchEnd = (e: React.TouchEvent) => {
+    if (!sheetTouchStartRef.current) return
+    const deltaX = e.changedTouches[0].clientX - sheetTouchStartRef.current.x
+    const deltaY = e.changedTouches[0].clientY - sheetTouchStartRef.current.y
+
+    // Swipe right (positive X) or swipe down (positive Y) to dismiss
+    // Require at least 80px movement and more horizontal/vertical than the other direction
+    if (deltaX > 80 && deltaX > Math.abs(deltaY)) {
+      setIsPanelOpen(false)
+    } else if (deltaY > 80 && deltaY > Math.abs(deltaX)) {
+      setIsPanelOpen(false)
+    }
+    sheetTouchStartRef.current = null
+  }
+
   // Close panel when playback starts
   useEffect(() => {
     const handlePlaybackStarted = () => {
@@ -999,7 +1022,11 @@ export function BrowsePage() {
 
       {/* Pattern Details Sheet */}
       <Sheet open={isPanelOpen} onOpenChange={setIsPanelOpen}>
-        <SheetContent className="flex flex-col p-0 overflow-hidden">
+        <SheetContent
+          className="flex flex-col p-0 overflow-hidden"
+          onTouchStart={handleSheetTouchStart}
+          onTouchEnd={handleSheetTouchEnd}
+        >
           <SheetHeader className="px-6 py-4 shrink-0">
             <SheetTitle className="flex items-center gap-2 pr-8">
               {selectedPattern && (

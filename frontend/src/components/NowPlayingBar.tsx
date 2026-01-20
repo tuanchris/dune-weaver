@@ -153,8 +153,8 @@ function SortableQueueItem({
         <p className="text-xs text-muted-foreground">#{index + 1}</p>
       </div>
 
-      {/* Move to top/bottom buttons - visible on hover */}
-      <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+      {/* Move to top/bottom buttons - always visible on mobile, hover on desktop */}
+      <div className="flex flex-col gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0">
         <button
           onClick={onMoveToTop}
           disabled={isFirst}
@@ -688,6 +688,42 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
   const [showQueue, setShowQueue] = useState(false)
   const [queuePreviews, setQueuePreviews] = useState<Record<string, string>>({})
 
+  // Optimistic queue state for smooth drag-and-drop
+  const [optimisticQueue, setOptimisticQueue] = useState<string[] | null>(null)
+  const optimisticTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Sync optimistic queue with server state after a delay
+  // This allows the optimistic update to "stick" while the server catches up
+  useEffect(() => {
+    if (optimisticQueue && status?.playlist?.files) {
+      // Clear any pending timeout
+      if (optimisticTimeoutRef.current) {
+        clearTimeout(optimisticTimeoutRef.current)
+      }
+      // After server confirms (via WebSocket), clear optimistic state
+      // We check if server state matches our optimistic state
+      const serverOrder = status.playlist.files.join(',')
+      const optimisticOrder = optimisticQueue.join(',')
+      if (serverOrder === optimisticOrder) {
+        // Server caught up, clear optimistic state
+        setOptimisticQueue(null)
+      } else {
+        // Give server time to catch up, then accept server state
+        optimisticTimeoutRef.current = setTimeout(() => {
+          setOptimisticQueue(null)
+        }, 2000)
+      }
+    }
+    return () => {
+      if (optimisticTimeoutRef.current) {
+        clearTimeout(optimisticTimeoutRef.current)
+      }
+    }
+  }, [status?.playlist?.files, optimisticQueue])
+
+  // Use optimistic queue if available, otherwise use server state
+  const displayQueue = optimisticQueue || status?.playlist?.files || []
+
   // Drag and drop sensors
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -757,6 +793,14 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
     }
   }, [showQueue, status?.playlist?.files])
 
+  // Helper to reorder array (move item from one index to another)
+  const reorderArray = (arr: string[], fromIndex: number, toIndex: number): string[] => {
+    const result = [...arr]
+    const [removed] = result.splice(fromIndex, 1)
+    result.splice(toIndex, 0, removed)
+    return result
+  }
+
   // Handle drag end for reordering queue
   // Since playlist now contains only main patterns, indices map directly
   const handleDragEnd = async (event: DragEndEvent) => {
@@ -782,25 +826,40 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
       return
     }
 
+    // Optimistically update the queue immediately
+    const currentQueue = optimisticQueue || status.playlist.files
+    const newQueue = reorderArray(currentQueue, fromIndex, toIndex)
+    setOptimisticQueue(newQueue)
+
     try {
       await apiClient.post('/reorder_playlist', {
         from_index: fromIndex,
         to_index: toIndex
       })
     } catch {
+      // Revert optimistic update on failure
+      setOptimisticQueue(null)
       toast.error('Failed to reorder')
     }
   }
 
   // Helper to move queue item to a specific position
   const moveToPosition = async (fromIndex: number, toIndex: number) => {
-    if (fromIndex === toIndex) return
+    if (fromIndex === toIndex || !status?.playlist?.files) return
+
+    // Optimistically update the queue immediately
+    const currentQueue = optimisticQueue || status.playlist.files
+    const newQueue = reorderArray(currentQueue, fromIndex, toIndex)
+    setOptimisticQueue(newQueue)
+
     try {
       await apiClient.post('/reorder_playlist', {
         from_index: fromIndex,
         to_index: toIndex
       })
     } catch {
+      // Revert optimistic update on failure
+      setOptimisticQueue(null)
       toast.error('Failed to reorder')
     }
   }
@@ -1105,28 +1164,44 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                 {/* Controls */}
                 <div className="md:w-80 shrink-0 flex flex-col justify-start md:justify-center gap-2 md:gap-4">
                 {/* Pattern Info */}
-                <div className="text-center">
-                  {isWaiting ? (
-                    <>
-                      <h2 className="text-lg md:text-xl font-semibold text-muted-foreground">
-                        Waiting for next pattern...
-                      </h2>
-                      {status?.playlist?.next_file && (
-                        <p className="text-sm text-muted-foreground">
-                          Up next: {formatPatternName(status.playlist.next_file)}
-                        </p>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <h2 className="text-lg md:text-xl font-semibold truncate">{patternName}</h2>
-                      {status?.playlist && (
-                        <p className="text-sm text-muted-foreground">
-                          Pattern {status.playlist.current_index + 1} of {status.playlist.total_files}
-                        </p>
-                      )}
-                    </>
-                  )}
+                <div className="flex items-center justify-center gap-3">
+                  {/* Current pattern preview */}
+                  <div className="w-10 h-10 md:w-12 md:h-12 rounded-full overflow-hidden bg-muted border shrink-0">
+                    {previewUrl ? (
+                      <img
+                        src={previewUrl}
+                        alt={patternName}
+                        className="w-full h-full object-cover pattern-preview"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <span className="material-icons-outlined text-muted-foreground text-sm">image</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-left min-w-0">
+                    {isWaiting ? (
+                      <>
+                        <h2 className="text-lg md:text-xl font-semibold text-muted-foreground">
+                          Waiting for next pattern...
+                        </h2>
+                        {status?.playlist?.next_file && (
+                          <p className="text-sm text-muted-foreground">
+                            Up next: {formatPatternName(status.playlist.next_file)}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <h2 className="text-lg md:text-xl font-semibold truncate">{patternName}</h2>
+                        {status?.playlist && (
+                          <p className="text-sm text-muted-foreground">
+                            Pattern {status.playlist.current_index + 1} of {status.playlist.total_files}
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 {/* Progress */}
@@ -1255,11 +1330,11 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto -mx-6 px-6 py-2">
-            {status?.playlist?.files && status.playlist.files.length > 0 ? (
+            {status?.playlist && displayQueue.length > 0 ? (
               (() => {
                 // Only show upcoming patterns (after current)
                 const currentIndex = status.playlist!.current_index
-                const upcomingFiles = status.playlist!.files
+                const upcomingFiles = displayQueue
                   .map((file, index) => ({ file, index }))
                   .filter(({ index }) => index > currentIndex)
 

@@ -31,7 +31,6 @@ import {
   WifiOff,
   Pencil,
   Trash2,
-  ChevronDown,
 } from 'lucide-react'
 
 export function TableSelector() {
@@ -124,13 +123,12 @@ export function TableSelector() {
           <Button
             variant="ghost"
             size="sm"
-            className="gap-2 h-9 px-3"
+            className="gap-2 h-9 px-2"
           >
             <Layers className="h-4 w-4" />
             <span className="hidden sm:inline max-w-[120px] truncate">
               {activeTable?.appName || activeTable?.name || 'Select Table'}
             </span>
-            <ChevronDown className="h-3 w-3 opacity-50" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-72 p-2" align="end">
@@ -172,11 +170,6 @@ export function TableSelector() {
                     </span>
                   </div>
 
-                  {/* Selected indicator */}
-                  {activeTable?.id === table.id && (
-                    <Check className="h-4 w-4 text-primary flex-shrink-0" />
-                  )}
-
                   {/* Actions - always visible on mobile, hover on desktop */}
                   <div className="flex md:opacity-0 md:group-hover:opacity-100 items-center gap-1 transition-opacity">
                     <Button
@@ -206,6 +199,11 @@ export function TableSelector() {
                       </Button>
                     )}
                   </div>
+
+                  {/* Selected indicator - far right */}
+                  {activeTable?.id === table.id && (
+                    <Check className="h-4 w-4 text-primary flex-shrink-0" />
+                  )}
                 </div>
               ))}
             </div>

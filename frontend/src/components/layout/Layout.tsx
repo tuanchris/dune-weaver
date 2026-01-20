@@ -43,8 +43,11 @@ export function Layout() {
   const [appName, setAppName] = useState(DEFAULT_APP_NAME)
   const [customLogo, setCustomLogo] = useState<string | null>(null)
 
-  // Display name: use table name when multiple tables exist, otherwise use settings app name
-  const displayName = hasMultipleTables && activeTable?.name ? activeTable.name : appName
+  // Display name: when multiple tables exist, use the active table's name; otherwise use app settings
+  // Get the table from the tables array (most up-to-date source) to ensure we have current data
+  const activeTableData = tables.find(t => t.id === activeTable?.id)
+  const tableName = activeTableData?.name || activeTable?.name
+  const displayName = hasMultipleTables && tableName ? tableName : appName
 
   // Connection status
   const [isConnected, setIsConnected] = useState(false)
@@ -1199,7 +1202,7 @@ export function Layout() {
           </Link>
 
           {/* Desktop actions */}
-          <div className="hidden md:flex items-center gap-1 ml-6">
+          <div className="hidden md:flex items-center gap-0 ml-2">
             {/* Now Playing button */}
             <Button
               variant="ghost"
@@ -1213,53 +1216,58 @@ export function Layout() {
                 {isCurrentlyPlaying ? 'play_circle' : 'stop_circle'}
               </span>
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsDark(!isDark)}
-              className="rounded-full"
-              aria-label="Toggle dark mode"
-              title="Toggle Theme"
-            >
-              <span className="material-icons-outlined">
-                {isDark ? 'light_mode' : 'dark_mode'}
-              </span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleToggleLogs}
-              className="rounded-full"
-              aria-label="View logs"
-              title="View Application Logs"
-            >
-              <span className="material-icons-outlined">article</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleRestart}
-              className="rounded-full text-amber-500 hover:text-amber-600"
-              aria-label="Restart Docker"
-              title="Restart Docker"
-            >
-              <span className="material-icons-outlined">restart_alt</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleShutdown}
-              className="rounded-full text-red-500 hover:text-red-600"
-              aria-label="Shutdown system"
-              title="Shutdown System"
-            >
-              <span className="material-icons-outlined">power_settings_new</span>
-            </Button>
             <TableSelector />
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-full"
+                  aria-label="Open menu"
+                >
+                  <span className="material-icons-outlined">menu</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-56 p-2">
+                <div className="flex flex-col gap-1">
+                  <button
+                    onClick={() => setIsDark(!isDark)}
+                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
+                  >
+                    <span className="material-icons-outlined text-xl">
+                      {isDark ? 'light_mode' : 'dark_mode'}
+                    </span>
+                    {isDark ? 'Light Mode' : 'Dark Mode'}
+                  </button>
+                  <button
+                    onClick={handleToggleLogs}
+                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
+                  >
+                    <span className="material-icons-outlined text-xl">article</span>
+                    View Logs
+                  </button>
+                  <Separator className="my-1" />
+                  <button
+                    onClick={handleRestart}
+                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-amber-500"
+                  >
+                    <span className="material-icons-outlined text-xl">restart_alt</span>
+                    Restart Docker
+                  </button>
+                  <button
+                    onClick={handleShutdown}
+                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-red-500"
+                  >
+                    <span className="material-icons-outlined text-xl">power_settings_new</span>
+                    Shutdown
+                  </button>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
 
           {/* Mobile actions */}
-          <div className="flex md:hidden items-center gap-1 ml-4">
+          <div className="flex md:hidden items-center gap-0 ml-2">
             {/* Now Playing button */}
             <Button
               variant="ghost"
