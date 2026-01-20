@@ -500,13 +500,13 @@ export function Layout() {
   }
 
   const handleRestart = async () => {
+    if (!confirm('Are you sure you want to restart Docker containers?')) return
+
     try {
-      // Force stop first to clear any stuck state
-      await apiClient.post('/force_stop')
-      await apiClient.post('/soft_reset')
-      toast.success('Reset sent. Homing required.')
+      await apiClient.post('/api/system/restart')
+      toast.success('Docker containers are restarting...')
     } catch {
-      toast.error('Failed to send reset')
+      toast.error('Failed to restart Docker containers')
     }
   }
 
@@ -1219,8 +1219,8 @@ export function Layout() {
               size="icon"
               onClick={handleRestart}
               className="rounded-full text-amber-500 hover:text-amber-600"
-              aria-label="Reset Table"
-              title="Reset Table (requires homing)"
+              aria-label="Restart Docker"
+              title="Restart Docker"
             >
               <span className="material-icons-outlined">restart_alt</span>
             </Button>
@@ -1299,7 +1299,7 @@ export function Layout() {
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-amber-500"
                   >
                     <span className="material-icons-outlined text-xl">restart_alt</span>
-                    Reset Table
+                    Restart Docker
                   </button>
                   <button
                     onClick={() => {

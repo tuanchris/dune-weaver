@@ -1695,6 +1695,36 @@ async def soft_reset():
         logger.error(f"Error sending soft reset: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/controller_restart")
+async def controller_restart():
+    """Send $System/Control=RESTART to restart the FluidNC controller."""
+    if not (state.conn and state.conn.is_connected()):
+        logger.warning("Attempted to restart controller without a connection")
+        raise HTTPException(status_code=400, detail="Connection not established")
+
+    try:
+        # Stop any running patterns first
+        await pattern_manager.stop_actions()
+
+        # Send the FluidNC restart command
+        from modules.connection.connection_manager import SerialConnection
+        restart_cmd = "$System/Control=RESTART\n"
+        if isinstance(state.conn, SerialConnection) and state.conn.ser:
+            state.conn.ser.write(restart_cmd.encode())
+            state.conn.ser.flush()
+            logger.info(f"Controller restart command sent via serial to {state.port}")
+        else:
+            state.conn.send(restart_cmd)
+            logger.info("Controller restart command sent via connection abstraction")
+
+        # Mark as needing homing since position is now unknown
+        state.is_homed = False
+
+        return {"success": True, "message": "Controller restart command sent. Homing required."}
+    except Exception as e:
+        logger.error(f"Error sending controller restart: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/send_home")
 async def send_home():
     try:

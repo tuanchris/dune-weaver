@@ -147,7 +147,6 @@ export function TableControlPage() {
   }
 
   const handleHome = async () => {
-    if (checkPatternRunning('home')) return
     try {
       await handleAction('home', '/send_home')
       toast.success('Moving to home position...')
@@ -168,17 +167,6 @@ export function TableControlPage() {
       } catch {
         toast.error('Failed to stop execution')
       }
-    }
-  }
-
-  const handleSoftReset = async () => {
-    try {
-      // Force stop first to clear any stuck state
-      await apiClient.post('/force_stop')
-      await handleAction('reset', '/soft_reset')
-      toast.success('Reset sent. Homing required.')
-    } catch {
-      toast.error('Failed to send reset')
     }
   }
 
@@ -418,7 +406,7 @@ export function TableControlPage() {
               <CardDescription>Calibrate or stop the table</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -455,25 +443,6 @@ export function TableControlPage() {
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Gracefully stop</TooltipContent>
-                </Tooltip>
-
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      onClick={handleSoftReset}
-                      disabled={isLoading === 'reset'}
-                      variant="secondary"
-                      className="h-16 gap-1 flex-col items-center justify-center"
-                    >
-                      {isLoading === 'reset' ? (
-                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
-                      ) : (
-                        <span className="material-icons-outlined text-2xl">restart_alt</span>
-                      )}
-                      <span className="text-xs">Reset</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Reset DLC32/ESP32, requires homing</TooltipContent>
                 </Tooltip>
               </div>
             </CardContent>

@@ -69,6 +69,7 @@ export default defineConfig({
       '/stop_execution': 'http://localhost:8080',
       '/force_stop': 'http://localhost:8080',
       '/soft_reset': 'http://localhost:8080',
+      '/controller_restart': 'http://localhost:8080',
       '/pause_execution': 'http://localhost:8080',
       '/resume_execution': 'http://localhost:8080',
       '/skip_pattern': 'http://localhost:8080',
