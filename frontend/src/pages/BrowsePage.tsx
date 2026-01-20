@@ -46,7 +46,7 @@ interface PreviewData {
 // Coordinates come as [theta, rho] tuples from the backend
 type Coordinate = [number, number]
 
-type SortOption = 'name' | 'date' | 'size'
+type SortOption = 'name' | 'date' | 'size' | 'favorites'
 type PreExecution = 'none' | 'adaptive' | 'clear_from_in' | 'clear_from_out' | 'clear_sideway'
 
 const preExecutionOptions: { value: PreExecution; label: string }[] = [
@@ -369,6 +369,15 @@ export function BrowsePage() {
         case 'size':
           comparison = a.coordinates_count - b.coordinates_count
           break
+        case 'favorites': {
+          const aFav = favorites.has(a.path) ? 1 : 0
+          const bFav = favorites.has(b.path) ? 1 : 0
+          comparison = bFav - aFav // Favorites first
+          if (comparison === 0) {
+            comparison = a.name.localeCompare(b.name) // Then by name
+          }
+          break
+        }
         default:
           return 0
       }
@@ -376,7 +385,7 @@ export function BrowsePage() {
     })
 
     return result
-  }, [patterns, selectedCategory, searchQuery, sortBy, sortAsc])
+  }, [patterns, selectedCategory, searchQuery, sortBy, sortAsc, favorites])
 
   // Batched preview loading - collects requests and fetches in batches
   const requestPreview = useCallback((path: string) => {
@@ -894,6 +903,7 @@ export function BrowsePage() {
               <SelectValue placeholder="Sort" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="favorites">Favorites</SelectItem>
               <SelectItem value="name">Name</SelectItem>
               <SelectItem value="date">Modified</SelectItem>
               <SelectItem value="size">Size</SelectItem>

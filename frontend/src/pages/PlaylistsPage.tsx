@@ -50,6 +50,9 @@ export function PlaylistsPage() {
   const [sortBy, setSortBy] = useState<SortOption>('name')
   const [sortAsc, setSortAsc] = useState(true)
 
+  // Favorites state (loaded from "Favorites" playlist)
+  const [favorites, setFavorites] = useState<Set<string>>(new Set())
+
   // Create/Rename playlist modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false)
@@ -156,6 +159,7 @@ export function PlaylistsPage() {
     initPreviewCacheDB().catch(() => {})
     fetchPlaylists()
     fetchAllPatterns()
+    loadFavorites()
 
     // Cleanup on unmount: abort in-flight requests and clear pending queue
     return () => {
@@ -173,6 +177,7 @@ export function PlaylistsPage() {
   useOnBackendConnected(() => {
     fetchPlaylists()
     fetchAllPatterns()
+    loadFavorites()
   })
 
   const fetchPlaylists = async () => {
@@ -211,6 +216,16 @@ export function PlaylistsPage() {
       setAllPatterns(data)
     } catch (error) {
       console.error('Error fetching patterns:', error)
+    }
+  }
+
+  // Load favorites from "Favorites" playlist
+  const loadFavorites = async () => {
+    try {
+      const playlist = await apiClient.get<{ files?: string[] }>('/get_playlist?name=Favorites')
+      setFavorites(new Set(playlist.files || []))
+    } catch {
+      // Favorites playlist doesn't exist yet - that's OK
     }
   }
 
@@ -454,12 +469,21 @@ export function PlaylistsPage() {
         case 'size':
           cmp = a.coordinates_count - b.coordinates_count
           break
+        case 'favorites': {
+          const aFav = favorites.has(a.path) ? 1 : 0
+          const bFav = favorites.has(b.path) ? 1 : 0
+          cmp = bFav - aFav // Favorites first
+          if (cmp === 0) {
+            cmp = a.name.localeCompare(b.name) // Then by name
+          }
+          break
+        }
       }
       return sortAsc ? cmp : -cmp
     })
 
     return filtered
-  }, [allPatterns, searchQuery, selectedCategory, sortBy, sortAsc])
+  }, [allPatterns, searchQuery, selectedCategory, sortBy, sortAsc, favorites])
 
   // Get pattern name from path
   const getPatternName = (path: string) => {
@@ -895,6 +919,7 @@ export function PlaylistsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="favorites">Favorites</SelectItem>
                   <SelectItem value="name">Name</SelectItem>
                   <SelectItem value="date">Modified</SelectItem>
                   <SelectItem value="size">Size</SelectItem>
