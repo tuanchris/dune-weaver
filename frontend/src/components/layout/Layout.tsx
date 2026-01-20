@@ -1321,7 +1321,7 @@ export function Layout() {
 
       {/* Main Content */}
       <main
-        className={`container mx-auto px-4 pt-16 transition-all duration-300 ${
+        className={`container mx-auto px-4 pt-[4.5rem] transition-all duration-300 ${
           !isLogsOpen && !isNowPlayingOpen ? 'pb-20' :
           !isLogsOpen && isNowPlayingOpen ? 'pb-80' : ''
         }`}

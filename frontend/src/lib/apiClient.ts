@@ -196,40 +196,11 @@ class ApiClient {
   }
 }
 
-/**
- * Initialize base URL from localStorage synchronously.
- * This must happen BEFORE any components mount and try to connect to WebSockets.
- * Otherwise, there's a race condition where components connect to the wrong backend.
- */
-function getInitialBaseUrl(): string {
-  try {
-    const STORAGE_KEY = 'duneweaver_tables'
-    const ACTIVE_TABLE_KEY = 'duneweaver_active_table'
-
-    const stored = localStorage.getItem(STORAGE_KEY)
-    const activeId = localStorage.getItem(ACTIVE_TABLE_KEY)
-
-    if (stored && activeId) {
-      const data = JSON.parse(stored)
-      const activeTable = data.tables?.find((t: { id: string }) => t.id === activeId)
-
-      if (activeTable) {
-        // Only use non-empty URL for remote tables (not the current server)
-        if (!activeTable.isCurrent && activeTable.url && activeTable.url !== window.location.origin) {
-          return activeTable.url.replace(/\/$/, '')
-        }
-      }
-    }
-  } catch (e) {
-    console.warn('Failed to restore base URL from localStorage:', e)
-  }
-
-  return ''
-}
-
-// Export singleton instance with correct initial base URL
+// Export singleton instance
+// Note: Base URL is managed by TableContext after it validates table connectivity.
+// We intentionally don't pre-initialize from localStorage here to avoid pointing
+// to stale/unreachable servers which would cause silent API failures.
 export const apiClient = new ApiClient()
-apiClient.setBaseUrl(getInitialBaseUrl())
 
 // Export class for testing
 export { ApiClient }

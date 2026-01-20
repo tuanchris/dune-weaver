@@ -835,7 +835,7 @@ export function BrowsePage() {
           variant="ghost"
           onClick={() => fileInputRef.current?.click()}
           disabled={isUploading}
-          className="gap-2 shrink-0 h-11 rounded-full px-4 bg-card border border-border shadow-sm hover:bg-accent"
+          className="gap-2 shrink-0 h-9 w-9 sm:h-11 sm:w-auto rounded-full px-0 sm:px-4 justify-center bg-card border border-border shadow-sm hover:bg-accent"
         >
           {isUploading ? (
             <span className="material-icons-outlined animate-spin text-lg">sync</span>
@@ -918,7 +918,7 @@ export function BrowsePage() {
             <Button
               variant="outline"
               onClick={handleCacheAllPreviews}
-              className="shrink-0 h-11 rounded-full lg:rounded-full bg-card shadow-sm px-3 sm:px-4 gap-2"
+              className="shrink-0 h-9 w-9 sm:h-11 sm:w-auto rounded-full bg-card shadow-sm px-0 sm:px-4 justify-center sm:justify-start gap-2"
               title="Cache All Previews"
             >
               {isCaching ? (
