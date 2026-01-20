@@ -1,9 +1,11 @@
 # state.py
+import asyncio
 import threading
 import json
 import os
 import logging
 import uuid
+from typing import Optional, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +25,14 @@ class AppState:
         self._current_playlist = None
         self._current_playlist_name = None  # New variable for playlist name
         
+        # Execution control flags (with event support for async waiting)
+        self._stop_requested = False
+        self._skip_requested = False
+        self._stop_event: Optional[asyncio.Event] = None
+        self._skip_event: Optional[asyncio.Event] = None
+        self._event_loop: Optional[asyncio.AbstractEventLoop] = None
+
         # Regular state variables
-        self.stop_requested = False
         self.pause_condition = threading.Condition()
         self.execution_progress = None
         self.is_clearing = False
@@ -93,7 +101,6 @@ class AppState:
         self.dw_led_idle_timeout_enabled = False  # Enable automatic LED turn off after idle period
         self.dw_led_idle_timeout_minutes = 30  # Idle timeout duration in minutes
         self.dw_led_last_activity_time = None  # Last activity timestamp (runtime only, not persisted)
-        self.skip_requested = False
         self.table_type = None
         self.table_type_override = None  # User override for table type detection
         self._playlist_mode = "loop"
@@ -248,6 +255,131 @@ class AppState:
     @clear_pattern_speed.setter
     def clear_pattern_speed(self, value):
         self._clear_pattern_speed = value
+
+    # --- Execution Control Properties (stop/skip with event support) ---
+
+    def _ensure_events(self):
+        """Lazily create asyncio.Event objects in the current event loop."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop - skip event creation (sync code path)
+            return
+
+        # Recreate events if the event loop changed
+        if self._event_loop != loop:
+            self._event_loop = loop
+            self._stop_event = asyncio.Event()
+            self._skip_event = asyncio.Event()
+            # Sync event state with current flags
+            if self._stop_requested:
+                self._stop_event.set()
+            if self._skip_requested:
+                self._skip_event.set()
+
+    @property
+    def stop_requested(self) -> bool:
+        return self._stop_requested
+
+    @stop_requested.setter
+    def stop_requested(self, value: bool):
+        self._stop_requested = value
+        self._ensure_events()
+        if self._stop_event:
+            if value:
+                self._stop_event.set()
+            else:
+                self._stop_event.clear()
+
+    @property
+    def skip_requested(self) -> bool:
+        return self._skip_requested
+
+    @skip_requested.setter
+    def skip_requested(self, value: bool):
+        self._skip_requested = value
+        self._ensure_events()
+        if self._skip_event:
+            if value:
+                self._skip_event.set()
+            else:
+                self._skip_event.clear()
+
+    def get_stop_event(self) -> Optional[asyncio.Event]:
+        """Get the stop event for async waiting. Returns None if no event loop."""
+        self._ensure_events()
+        return self._stop_event
+
+    def get_skip_event(self) -> Optional[asyncio.Event]:
+        """Get the skip event for async waiting. Returns None if no event loop."""
+        self._ensure_events()
+        return self._skip_event
+
+    async def wait_for_interrupt(
+        self,
+        timeout: float = 1.0,
+        check_stop: bool = True,
+        check_skip: bool = True,
+    ) -> Literal['timeout', 'stopped', 'skipped']:
+        """
+        Wait for a stop/skip interrupt or timeout.
+
+        This provides instant response to stop/skip requests by waiting on
+        asyncio.Event objects rather than polling flags.
+
+        Args:
+            timeout: Maximum time to wait in seconds
+            check_stop: Whether to check for stop requests
+            check_skip: Whether to check for skip requests
+
+        Returns:
+            'stopped' if stop was requested
+            'skipped' if skip was requested
+            'timeout' if timeout elapsed without interrupt
+        """
+        # Quick flag check first (handles edge cases and sync code)
+        if check_stop and self._stop_requested:
+            return 'stopped'
+        if check_skip and self._skip_requested:
+            return 'skipped'
+
+        self._ensure_events()
+
+        # Build list of event wait tasks
+        tasks = []
+        if check_stop and self._stop_event:
+            tasks.append(asyncio.create_task(self._stop_event.wait(), name='stop'))
+        if check_skip and self._skip_event:
+            tasks.append(asyncio.create_task(self._skip_event.wait(), name='skip'))
+
+        if not tasks:
+            # No events available, fall back to simple sleep
+            await asyncio.sleep(timeout)
+            return 'timeout'
+
+        # Add timeout task
+        timeout_task = asyncio.create_task(asyncio.sleep(timeout), name='timeout')
+        tasks.append(timeout_task)
+
+        try:
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            # Cancel all pending tasks
+            for task in pending:
+                task.cancel()
+            # Await cancelled tasks to suppress warnings
+            for task in pending:
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+        # Check which event fired (flags are authoritative)
+        if check_stop and self._stop_requested:
+            return 'stopped'
+        if check_skip and self._skip_requested:
+            return 'skipped'
+        return 'timeout'
 
     def to_dict(self):
         """Return a dictionary representation of the state."""

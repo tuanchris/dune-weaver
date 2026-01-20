@@ -6,7 +6,7 @@ Provides a single ProcessPoolExecutor shared across modules to:
 - Configure CPU affinity to keep workers off CPU 0 (reserved for motion/LED)
 
 Environment variables:
-- POOL_WORKERS: Override worker count (default: 1 for RAM conservation)
+- POOL_WORKERS: Override worker count (default: 3)
 """
 import logging
 import os
@@ -19,17 +19,15 @@ logger = logging.getLogger(__name__)
 _pool: Optional[ProcessPoolExecutor] = None
 _shutdown_in_progress: bool = False
 
-# Default to 1 worker to conserve RAM on low-memory devices (Pi Zero 2 W has only 512MB)
-DEFAULT_WORKERS = 1
+# Default to 3 workers for parallel processing
+DEFAULT_WORKERS = 3
 
 
 def _get_worker_count() -> int:
     """Calculate worker count for the process pool.
 
-    Uses POOL_WORKERS env var if set, otherwise defaults to 1 worker
-    to conserve RAM on memory-constrained devices like Pi Zero 2 W.
-
-    For systems with more RAM, set POOL_WORKERS=2 or POOL_WORKERS=3.
+    Uses POOL_WORKERS env var if set, otherwise defaults to 3 workers.
+    For memory-constrained devices (Pi Zero 2 W), set POOL_WORKERS=1.
     """
     env_workers = os.environ.get('POOL_WORKERS')
     if env_workers is not None:

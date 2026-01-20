@@ -16,7 +16,7 @@ from modules.led.led_controller import effect_playing, effect_idle
 from modules.led.idle_timeout_manager import idle_timeout_manager
 import queue
 from dataclasses import dataclass
-from typing import Optional, Callable
+from typing import Optional, Callable, Literal
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -27,6 +27,54 @@ os.makedirs(THETA_RHO_DIR, exist_ok=True)
 
 # Execution time log file (JSON Lines format - one JSON object per line)
 EXECUTION_LOG_FILE = './execution_times.jsonl'
+
+
+async def wait_with_interrupt(
+    condition_fn: Callable[[], bool],
+    check_stop: bool = True,
+    check_skip: bool = True,
+    interval: float = 1.0,
+) -> Literal['completed', 'stopped', 'skipped']:
+    """
+    Wait while condition_fn() returns True, with instant interrupt support.
+
+    Uses asyncio.Event for instant response to stop/skip requests rather than
+    polling at fixed intervals. This ensures users get immediate feedback when
+    pressing stop or skip buttons.
+
+    Args:
+        condition_fn: Function that returns True while waiting should continue
+        check_stop: Whether to respond to stop requests (default True)
+        check_skip: Whether to respond to skip requests (default True)
+        interval: How often to re-check condition_fn in seconds (default 1.0)
+
+    Returns:
+        'completed' - condition_fn() returned False (normal completion)
+        'stopped' - stop was requested
+        'skipped' - skip was requested
+
+    Example:
+        result = await wait_with_interrupt(
+            lambda: state.pause_requested or is_in_scheduled_pause_period()
+        )
+        if result == 'stopped':
+            return  # Exit pattern execution
+        if result == 'skipped':
+            break  # Skip to next pattern
+    """
+    while condition_fn():
+        result = await state.wait_for_interrupt(
+            timeout=interval,
+            check_stop=check_stop,
+            check_skip=check_skip,
+        )
+        if result == 'stopped':
+            return 'stopped'
+        if result == 'skipped':
+            return 'skipped'
+        # 'timeout' means we should re-check condition_fn
+    return 'completed'
+
 
 def log_execution_time(pattern_name: str, table_type: str, speed: int, actual_time: float,
                        total_coordinates: int, was_completed: bool):
@@ -904,16 +952,57 @@ async def _execute_pattern_internal(file_path):
                 wled_was_off_for_scheduled = scheduled_pause and state.scheduled_pause_control_wled and not manual_pause
 
                 # Wait until both manual pause is released AND we're outside scheduled pause period
+                # Also check for stop/skip requests to allow immediate interruption
+                interrupted = False
                 while state.pause_requested or is_in_scheduled_pause_period():
+                    # Check for stop/skip first
+                    if state.stop_requested:
+                        logger.info("Stop requested during pause, exiting")
+                        interrupted = True
+                        break
+                    if state.skip_requested:
+                        logger.info("Skip requested during pause, skipping pattern")
+                        interrupted = True
+                        break
+
                     if state.pause_requested:
-                        # For manual pause, wait directly on the event for immediate response
-                        # The while loop re-checks state after wake to handle rapid pause/resume
-                        await get_pause_event().wait()
+                        # For manual pause, wait on multiple events for immediate response
+                        # Wake on: resume, stop, or skip
+                        pause_event = get_pause_event()
+                        stop_event = state.get_stop_event()
+                        skip_event = state.get_skip_event()
+
+                        wait_tasks = [asyncio.create_task(pause_event.wait(), name='pause')]
+                        if stop_event:
+                            wait_tasks.append(asyncio.create_task(stop_event.wait(), name='stop'))
+                        if skip_event:
+                            wait_tasks.append(asyncio.create_task(skip_event.wait(), name='skip'))
+
+                        try:
+                            done, pending = await asyncio.wait(
+                                wait_tasks, return_when=asyncio.FIRST_COMPLETED
+                            )
+                        finally:
+                            for task in pending:
+                                task.cancel()
+                            for task in pending:
+                                try:
+                                    await task
+                                except asyncio.CancelledError:
+                                    pass
                     else:
-                        # For scheduled pause only, check periodically
-                        await asyncio.sleep(1)
+                        # For scheduled pause, use wait_for_interrupt for instant response
+                        result = await state.wait_for_interrupt(timeout=1.0)
+                        if result in ('stopped', 'skipped'):
+                            interrupted = True
+                            break
 
                 total_pause_time += time.time() - pause_start  # Add pause duration
+
+                if interrupted:
+                    # Exit the coordinate loop if we were interrupted
+                    break
+
                 logger.info("Execution resumed...")
                 if state.led_controller:
                     # Turn LED controller back on if it was turned off for scheduled pause
@@ -1124,10 +1213,14 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                         await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
                         start_idle_led_timeout()
 
-                    while is_in_scheduled_pause_period() and not state.stop_requested:
-                        await asyncio.sleep(1)
+                    # Wait for scheduled pause to end, but allow stop/skip to interrupt
+                    result = await wait_with_interrupt(
+                        is_in_scheduled_pause_period,
+                        check_stop=True,
+                        check_skip=True,
+                    )
 
-                    if not state.stop_requested:
+                    if result == 'completed':
                         logger.info("Still Sands period ended. Resuming playlist...")
                         if state.led_controller:
                             if wled_was_off_for_scheduled:
