@@ -954,13 +954,17 @@ export function BrowsePage() {
             <Button
               variant="outline"
               onClick={handleCacheAllPreviews}
-              className="shrink-0 h-9 w-9 sm:h-11 sm:w-auto rounded-full bg-card shadow-sm px-0 sm:px-4 justify-center sm:justify-start gap-2"
+              className={`shrink-0 rounded-full bg-card shadow-sm gap-2 ${
+                isCaching
+                  ? 'h-9 sm:h-11 w-auto px-3 sm:px-4'
+                  : 'h-9 w-9 sm:h-11 sm:w-auto px-0 sm:px-4 justify-center sm:justify-start'
+              }`}
               title="Cache All Previews"
             >
               {isCaching ? (
                 <>
                   <span className="material-icons-outlined animate-spin text-lg">sync</span>
-                  <span className="hidden sm:inline text-sm">{cacheProgress}%</span>
+                  <span className="text-sm">{cacheProgress}%</span>
                 </>
               ) : (
                 <>

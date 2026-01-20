@@ -33,7 +33,11 @@ import {
   Trash2,
 } from 'lucide-react'
 
-export function TableSelector() {
+interface TableSelectorProps {
+  children?: React.ReactNode
+}
+
+export function TableSelector({ children }: TableSelectorProps) {
   const {
     tables,
     activeTable,
@@ -120,18 +124,20 @@ export function TableSelector() {
     <>
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-2 h-9 px-2"
-          >
-            <Layers className="h-4 w-4" />
-            <span className="hidden sm:inline max-w-[120px] truncate">
-              {activeTable?.appName || activeTable?.name || 'Select Table'}
-            </span>
-          </Button>
+          {children || (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-2 h-9 px-2"
+            >
+              <Layers className="h-4 w-4" />
+              <span className="hidden sm:inline max-w-[120px] truncate">
+                {activeTable?.appName || activeTable?.name || 'Select Table'}
+              </span>
+            </Button>
+          )}
         </PopoverTrigger>
-        <PopoverContent className="w-72 p-2" align="end">
+        <PopoverContent className="w-72 p-2" align="start" sideOffset={12} alignOffset={-56}>
           <div className="space-y-2">
             {/* Header */}
             <div className="px-2 py-1">
@@ -251,7 +257,7 @@ export function TableSelector() {
               />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="secondary" onClick={() => setShowAddDialog(false)}>
               Cancel
             </Button>
@@ -277,7 +283,7 @@ export function TableSelector() {
               autoFocus
             />
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="secondary" onClick={() => setShowRenameDialog(false)}>
               Cancel
             </Button>

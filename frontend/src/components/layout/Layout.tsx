@@ -1196,54 +1196,49 @@ export function Layout() {
         )}
         <div className="relative w-full max-w-5xl mx-auto px-3 sm:px-4 pt-3 pointer-events-none">
           <div className="flex h-12 items-center justify-between px-4 rounded-full bg-card shadow-lg border border-border pointer-events-auto">
-          <Link to="/" className="flex items-center gap-2">
-            <img
-              src={customLogo ? apiClient.getAssetUrl(`/static/custom/${customLogo}`) : apiClient.getAssetUrl('/static/android-chrome-192x192.png')}
-              alt={displayName}
-              className="w-8 h-8 rounded-full object-cover"
-            />
-            <ShinyText
-              text={displayName}
-              className="font-semibold text-lg"
-              speed={4}
-              color={isDark ? '#a8a8a8' : '#555555'}
-              shineColor={isDark ? '#ffffff' : '#999999'}
-              spread={75}
-            />
-            <span
-              className={`w-2 h-2 rounded-full ${
-                !isBackendConnected
-                  ? 'bg-gray-400'
-                  : isConnected
-                    ? 'bg-green-500 animate-pulse'
-                    : 'bg-red-500'
-              }`}
-              title={
-                !isBackendConnected
-                  ? 'Backend not connected'
-                  : isConnected
-                    ? 'Table connected'
-                    : 'Table disconnected'
-              }
-            />
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link to="/">
+              <img
+                src={customLogo ? apiClient.getAssetUrl(`/static/custom/${customLogo}`) : apiClient.getAssetUrl('/static/android-chrome-192x192.png')}
+                alt={displayName}
+                className="w-8 h-8 rounded-full object-cover"
+              />
+            </Link>
+            <TableSelector>
+              <button className="flex items-center gap-1.5 hover:opacity-80 transition-opacity group">
+                <ShinyText
+                  text={displayName}
+                  className="font-semibold text-lg"
+                  speed={4}
+                  color={isDark ? '#a8a8a8' : '#555555'}
+                  shineColor={isDark ? '#ffffff' : '#999999'}
+                  spread={75}
+                />
+                <span className="material-icons-outlined text-muted-foreground text-sm group-hover:text-foreground transition-colors">
+                  expand_more
+                </span>
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    !isBackendConnected
+                      ? 'bg-gray-400'
+                      : isConnected
+                        ? 'bg-green-500 animate-pulse'
+                        : 'bg-red-500'
+                  }`}
+                  title={
+                    !isBackendConnected
+                      ? 'Backend not connected'
+                      : isConnected
+                        ? 'Table connected'
+                        : 'Table disconnected'
+                  }
+                />
+              </button>
+            </TableSelector>
+          </div>
 
           {/* Desktop actions */}
           <div className="hidden md:flex items-center gap-0 ml-2">
-            {/* Now Playing button */}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsNowPlayingOpen(!isNowPlayingOpen)}
-              className="rounded-full"
-              aria-label={isCurrentlyPlaying ? 'Now Playing' : 'Not Playing'}
-              title={currentPlayingFile ? `Playing: ${currentPlayingFile}` : 'Not Playing'}
-            >
-              <span className="material-icons-outlined">
-                {isCurrentlyPlaying ? 'play_circle' : 'stop_circle'}
-              </span>
-            </Button>
-            <TableSelector />
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -1295,20 +1290,6 @@ export function Layout() {
 
           {/* Mobile actions */}
           <div className="flex md:hidden items-center gap-0 ml-2">
-            {/* Now Playing button */}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsNowPlayingOpen(!isNowPlayingOpen)}
-              className="rounded-full"
-              aria-label={isCurrentlyPlaying ? 'Now Playing' : 'Not Playing'}
-              title={currentPlayingFile ? `Playing: ${currentPlayingFile}` : 'Not Playing'}
-            >
-              <span className="material-icons-outlined">
-                {isCurrentlyPlaying ? 'play_circle' : 'stop_circle'}
-              </span>
-            </Button>
-            <TableSelector />
             <Popover open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
               <PopoverTrigger asChild>
                 <Button
@@ -1504,6 +1485,23 @@ export function Layout() {
           </>
         )}
       </div>
+
+      {/* Floating Now Playing Button - hidden when Now Playing bar is open */}
+      {!isNowPlayingOpen && (
+        <button
+          onClick={() => setIsNowPlayingOpen(true)}
+          className="fixed z-40 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full bg-card border border-border shadow-lg transition-all hover:shadow-xl hover:scale-105 active:scale-95"
+          style={{ bottom: 'calc(4.5rem + env(safe-area-inset-bottom, 0px))' }}
+          aria-label={isCurrentlyPlaying ? 'Now Playing' : 'Not Playing'}
+        >
+          <span className={`material-icons-outlined text-xl ${isCurrentlyPlaying ? 'text-primary' : 'text-muted-foreground'}`}>
+            {isCurrentlyPlaying ? 'play_circle' : 'stop_circle'}
+          </span>
+          <span className="text-sm font-medium">
+            {isCurrentlyPlaying ? 'Now Playing' : 'Not Playing'}
+          </span>
+        </button>
+      )}
 
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card pb-safe">

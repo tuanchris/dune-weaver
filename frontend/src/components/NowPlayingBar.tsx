@@ -88,6 +88,7 @@ interface SortableQueueItemProps {
   isLast: boolean
   onMoveToTop: () => void
   onMoveToBottom: () => void
+  requestPreview: (file: string) => void
 }
 
 function SortableQueueItem({
@@ -99,6 +100,7 @@ function SortableQueueItem({
   isLast,
   onMoveToTop,
   onMoveToBottom,
+  requestPreview,
 }: SortableQueueItemProps) {
   const {
     attributes,
@@ -108,6 +110,31 @@ function SortableQueueItem({
     transition,
     isDragging,
   } = useSortable({ id })
+
+  const previewContainerRef = useRef<HTMLDivElement>(null)
+  const hasRequestedRef = useRef(false)
+
+  // Lazy load preview when item becomes visible
+  useEffect(() => {
+    if (!previewContainerRef.current || previewUrl || hasRequestedRef.current) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && !hasRequestedRef.current) {
+            hasRequestedRef.current = true
+            requestPreview(file)
+            observer.disconnect()
+          }
+        })
+      },
+      { rootMargin: '50px' }
+    )
+
+    observer.observe(previewContainerRef.current)
+
+    return () => observer.disconnect()
+  }, [file, previewUrl, requestPreview])
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -132,7 +159,7 @@ function SortableQueueItem({
       </div>
 
       {/* Preview thumbnail */}
-      <div className="w-28 h-28 rounded-full overflow-hidden bg-muted border shrink-0">
+      <div ref={previewContainerRef} className="w-28 h-28 rounded-full overflow-hidden bg-muted border shrink-0">
         {previewUrl ? (
           <img
             src={previewUrl}
@@ -753,25 +780,28 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
 
   // Track which files we've already requested previews for
   const requestedPreviewsRef = useRef<Set<string>>(new Set())
+  const pendingQueuePreviewsRef = useRef<Set<string>>(new Set())
+  const batchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Fetch queue previews when dialog opens
-  useEffect(() => {
-    if (!showQueue || !status?.playlist?.files) {
-      return
-    }
+  // Batched queue preview fetching - collects requests and fetches in batches
+  const requestQueuePreview = useCallback((file: string) => {
+    // Skip if already loaded or pending
+    if (queuePreviews[file] || requestedPreviewsRef.current.has(file) || pendingQueuePreviewsRef.current.has(file)) return
 
-    // Filter out files we've already requested
-    const filesToFetch = status.playlist.files.filter(f => !requestedPreviewsRef.current.has(f))
-    if (filesToFetch.length === 0) return
+    pendingQueuePreviewsRef.current.add(file)
 
-    // Mark these as requested immediately to prevent duplicate requests
-    filesToFetch.forEach(f => requestedPreviewsRef.current.add(f))
+    // Debounce batch fetch
+    if (batchTimeoutRef.current) clearTimeout(batchTimeoutRef.current)
+    batchTimeoutRef.current = setTimeout(async () => {
+      const filesToFetch = Array.from(pendingQueuePreviewsRef.current)
+      pendingQueuePreviewsRef.current.clear()
+      if (filesToFetch.length === 0) return
 
-    // Fetch in batches of 20 to avoid overwhelming the server
-    const batchSize = 20
-    const fetchBatch = async (batch: string[]) => {
+      // Mark as requested
+      filesToFetch.forEach(f => requestedPreviewsRef.current.add(f))
+
       try {
-        const data = await apiClient.post<Record<string, { image_data?: string }>>('/preview_thr_batch', { file_names: batch })
+        const data = await apiClient.post<Record<string, { image_data?: string }>>('/preview_thr_batch', { file_names: filesToFetch })
         const newPreviews: Record<string, string> = {}
         for (const [file, result] of Object.entries(data)) {
           if (result.image_data) {
@@ -784,14 +814,8 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
       } catch (err) {
         console.error('Failed to fetch queue previews:', err)
       }
-    }
-
-    // Fetch first batch immediately, then stagger the rest
-    for (let i = 0; i < filesToFetch.length; i += batchSize) {
-      const batch = filesToFetch.slice(i, i + batchSize)
-      setTimeout(() => fetchBatch(batch), (i / batchSize) * 200)
-    }
-  }, [showQueue, status?.playlist?.files])
+    }, 100)
+  }, [queuePreviews])
 
   // Helper to reorder array (move item from one index to another)
   const reorderArray = (arr: string[], fromIndex: number, toIndex: number): string[] => {
@@ -1369,6 +1393,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                             isFirst={index === firstUpcomingIndex}
                             isLast={index === lastUpcomingIndex}
                             onMoveToTop={() => moveToPosition(index, firstUpcomingIndex)}
+                            requestPreview={requestQueuePreview}
                             onMoveToBottom={() => moveToPosition(index, lastUpcomingIndex)}
                           />
                         ))}

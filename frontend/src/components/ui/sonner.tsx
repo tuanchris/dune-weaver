@@ -5,11 +5,17 @@ type ToasterProps = React.ComponentProps<typeof Sonner>
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const [theme, setTheme] = useState<"light" | "dark">("light")
+  const [isStandalone, setIsStandalone] = useState(false)
 
   useEffect(() => {
     // Check initial theme
     const isDark = document.documentElement.classList.contains("dark")
     setTheme(isDark ? "dark" : "light")
+
+    // Check if running as PWA (standalone mode)
+    const standalone = window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as unknown as { standalone?: boolean }).standalone === true
+    setIsStandalone(standalone)
 
     // Watch for theme changes
     const observer = new MutationObserver((mutations) => {
@@ -25,10 +31,14 @@ const Toaster = ({ ...props }: ToasterProps) => {
     return () => observer.disconnect()
   }, [])
 
+  // Use larger offset for PWA to account for Dynamic Island/notch (59px typical + 16px padding)
+  const offset = isStandalone ? 75 : 16
+
   return (
     <Sonner
       theme={theme}
       className="toaster group"
+      offset={offset}
       toastOptions={{
         classNames: {
           toast:

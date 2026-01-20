@@ -222,10 +222,7 @@ export function PlaylistsPage() {
       const data = await apiClient.get<{ files: string[] }>(`/get_playlist?name=${encodeURIComponent(name)}`)
       setPlaylistPatterns(data.files || [])
 
-      // Load previews for playlist patterns
-      if (data.files?.length > 0) {
-        loadPreviewsForPaths(data.files)
-      }
+      // Previews are now lazy-loaded via IntersectionObserver in LazyPatternPreview
     } catch (error) {
       console.error('Error fetching playlist:', error)
       toast.error('Failed to load playlist')
@@ -411,12 +408,7 @@ export function PlaylistsPage() {
     setSelectedPatternPaths(new Set(playlistPatterns))
     setSearchQuery('')
     setIsPickerOpen(true)
-
-    // Load previews for all patterns
-    if (allPatterns.length > 0) {
-      const paths = allPatterns.slice(0, 50).map(p => p.path)
-      loadPreviewsForPaths(paths)
-    }
+    // Previews are lazy-loaded via IntersectionObserver in LazyPatternPreview
   }
 
   const handleSavePatterns = async () => {
@@ -428,7 +420,7 @@ export function PlaylistsPage() {
       setPlaylistPatterns(newPatterns)
       setIsPickerOpen(false)
       toast.success('Playlist updated')
-      loadPreviewsForPaths(newPatterns)
+      // Previews are lazy-loaded via IntersectionObserver
     } catch (error) {
       toast.error('Failed to update playlist')
     }
@@ -689,44 +681,31 @@ export function PlaylistsPage() {
               </div>
             ) : (
               <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4">
-                {playlistPatterns.map((path, index) => {
-                  const previewUrl = getPreviewUrl(path)
-                  if (!previewUrl && !previews[path]) {
-                    requestPreview(path)
-                  }
-                  return (
-                    <div
-                      key={`${path}-${index}`}
-                      className="flex flex-col items-center gap-1.5 sm:gap-2 group"
-                    >
-                      <div className="relative w-full aspect-square">
-                        <div className="w-full h-full rounded-full overflow-hidden border bg-muted hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:ring-offset-background transition-all cursor-pointer">
-                          {previewUrl ? (
-                            <img
-                              src={previewUrl}
-                              alt={getPatternName(path)}
-                              className="w-full h-full object-cover pattern-preview"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <span className="material-icons-outlined text-muted-foreground text-sm sm:text-base">
-                                image
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                        <button
-                          className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 w-5 h-5 rounded-full bg-destructive hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow-sm z-10"
-                          onClick={() => handleRemovePattern(path)}
-                          title="Remove from playlist"
-                        >
-                          <span className="material-icons" style={{ fontSize: '12px' }}>close</span>
-                        </button>
+                {playlistPatterns.map((path, index) => (
+                  <div
+                    key={`${path}-${index}`}
+                    className="flex flex-col items-center gap-1.5 sm:gap-2 group"
+                  >
+                    <div className="relative w-full aspect-square">
+                      <div className="w-full h-full rounded-full overflow-hidden border bg-muted hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:ring-offset-background transition-all cursor-pointer">
+                        <LazyPatternPreview
+                          path={path}
+                          previewUrl={getPreviewUrl(path)}
+                          requestPreview={requestPreview}
+                          alt={getPatternName(path)}
+                        />
                       </div>
-                      <p className="text-[10px] sm:text-xs truncate font-medium w-full text-center">{getPatternName(path)}</p>
+                      <button
+                        className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 w-5 h-5 rounded-full bg-destructive hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow-sm z-10"
+                        onClick={() => handleRemovePattern(path)}
+                        title="Remove from playlist"
+                      >
+                        <span className="material-icons" style={{ fontSize: '12px' }}>close</span>
+                      </button>
                     </div>
-                  )
-                })}
+                    <p className="text-[10px] sm:text-xs truncate font-medium w-full text-center">{getPatternName(path)}</p>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -1015,10 +994,6 @@ export function PlaylistsPage() {
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
                 {filteredPatterns.map(pattern => {
                   const isSelected = selectedPatternPaths.has(pattern.path)
-                  const previewUrl = getPreviewUrl(pattern.path)
-                  if (!previewUrl && !previews[pattern.path]) {
-                    requestPreview(pattern.path)
-                  }
                   return (
                     <div
                       key={pattern.path}
@@ -1032,19 +1007,12 @@ export function PlaylistsPage() {
                             : 'border-transparent hover:border-muted-foreground/30'
                         }`}
                       >
-                        {previewUrl ? (
-                          <img
-                            src={previewUrl}
-                            alt={pattern.name}
-                            className="w-full h-full object-cover pattern-preview"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <span className="material-icons-outlined text-muted-foreground">
-                              image
-                            </span>
-                          </div>
-                        )}
+                        <LazyPatternPreview
+                          path={pattern.path}
+                          previewUrl={getPreviewUrl(pattern.path)}
+                          requestPreview={requestPreview}
+                          alt={pattern.name}
+                        />
                         {isSelected && (
                           <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-primary flex items-center justify-center shadow-md">
                             <span className="material-icons text-primary-foreground" style={{ fontSize: '14px' }}>
@@ -1074,6 +1042,58 @@ export function PlaylistsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+// Lazy-loading pattern preview component
+interface LazyPatternPreviewProps {
+  path: string
+  previewUrl: string | null
+  requestPreview: (path: string) => void
+  alt: string
+  className?: string
+}
+
+function LazyPatternPreview({ path, previewUrl, requestPreview, alt, className = '' }: LazyPatternPreviewProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const hasRequestedRef = useRef(false)
+
+  useEffect(() => {
+    if (!containerRef.current || previewUrl || hasRequestedRef.current) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && !hasRequestedRef.current) {
+            hasRequestedRef.current = true
+            requestPreview(path)
+            observer.disconnect()
+          }
+        })
+      },
+      { rootMargin: '100px' }
+    )
+
+    observer.observe(containerRef.current)
+
+    return () => observer.disconnect()
+  }, [path, previewUrl, requestPreview])
+
+  return (
+    <div ref={containerRef} className={`w-full h-full flex items-center justify-center ${className}`}>
+      {previewUrl ? (
+        <img
+          src={previewUrl}
+          alt={alt}
+          loading="lazy"
+          className="w-full h-full object-cover pattern-preview"
+        />
+      ) : (
+        <span className="material-icons-outlined text-muted-foreground text-sm sm:text-base">
+          image
+        </span>
+      )}
     </div>
   )
 }
