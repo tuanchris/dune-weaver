@@ -175,6 +175,8 @@ export function SettingsPage() {
     latest: string
     update_available: boolean
   } | null>(null)
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'updating' | 'triggered' | 'error'>('idle')
+  const [updateError, setUpdateError] = useState<string | null>(null)
 
   // Helper to scroll to element with header offset
   const scrollToSection = (sectionId: string) => {
@@ -259,6 +261,24 @@ export function SettingsPage() {
       setVersionInfo(data)
     } catch (error) {
       console.error('Failed to fetch version info:', error)
+    }
+  }
+
+  const handleUpdate = async () => {
+    setUpdateStatus('updating')
+    setUpdateError(null)
+    try {
+      const response = await apiClient.post<{ success: boolean; message: string }>('/api/update')
+      if (response.success) {
+        setUpdateStatus('triggered')
+        // The system will restart, so we don't need to do anything else
+      } else {
+        setUpdateStatus('error')
+        setUpdateError(response.message || 'Update failed')
+      }
+    } catch (error) {
+      setUpdateStatus('error')
+      setUpdateError(error instanceof Error ? error.message : 'Failed to trigger update')
     }
   }
 
@@ -2146,12 +2166,47 @@ export function SettingsPage() {
               </div>
             </div>
 
-            {versionInfo?.update_available && (
+            {versionInfo?.update_available && updateStatus === 'idle' && (
+              <Button onClick={handleUpdate} className="w-full">
+                <span className="material-icons-outlined mr-2">system_update</span>
+                Update Now
+              </Button>
+            )}
+
+            {updateStatus === 'updating' && (
               <Alert className="flex items-start">
-                <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
+                <span className="material-icons animate-spin text-base mr-2 shrink-0">sync</span>
                 <AlertDescription>
-                  To update, run <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono">dw update</code> from the host machine.
+                  Triggering update... Please wait.
                 </AlertDescription>
+              </Alert>
+            )}
+
+            {updateStatus === 'triggered' && (
+              <Alert className="flex items-start border-green-500/50 bg-green-500/10">
+                <span className="material-icons text-base mr-2 shrink-0 text-green-600 dark:text-green-400">check_circle</span>
+                <AlertDescription className="text-green-700 dark:text-green-300">
+                  Update triggered! The system will restart shortly. This page will reload automatically.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {updateStatus === 'error' && (
+              <Alert variant="destructive" className="flex items-start">
+                <span className="material-icons-outlined text-base mr-2 shrink-0">error</span>
+                <div className="flex-1">
+                  <AlertDescription>
+                    {updateError || 'Update failed'}
+                  </AlertDescription>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setUpdateStatus('idle')}
+                    className="mt-2"
+                  >
+                    Try Again
+                  </Button>
+                </div>
               </Alert>
             )}
           </AccordionContent>
