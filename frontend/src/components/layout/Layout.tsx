@@ -476,13 +476,38 @@ export function Layout() {
     }
   }
 
-  // Copy logs to clipboard
+  // Copy logs to clipboard (with fallback for non-HTTPS)
   const handleCopyLogs = () => {
     const text = filteredLogs
       .map((log) => `${formatTimestamp(log.timestamp)} [${log.level}] ${log.message}`)
       .join('\n')
-    navigator.clipboard.writeText(text)
-    toast.success('Logs copied to clipboard')
+    copyToClipboard(text)
+  }
+
+  // Helper to copy text with fallback for non-secure contexts
+  const copyToClipboard = (text: string) => {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(() => {
+        toast.success('Logs copied to clipboard')
+      }).catch(() => {
+        toast.error('Failed to copy logs')
+      })
+    } else {
+      // Fallback for non-secure contexts (http://)
+      const textArea = document.createElement('textarea')
+      textArea.value = text
+      textArea.style.position = 'fixed'
+      textArea.style.left = '-9999px'
+      document.body.appendChild(textArea)
+      textArea.select()
+      try {
+        document.execCommand('copy')
+        toast.success('Logs copied to clipboard')
+      } catch {
+        toast.error('Failed to copy logs')
+      }
+      document.body.removeChild(textArea)
+    }
   }
 
   // Download logs as file
@@ -1047,11 +1072,7 @@ export function Layout() {
                       const logText = connectionLogs
                         .map((log) => `[${new Date(log.timestamp).toLocaleTimeString()}] [${log.level}] ${log.message}`)
                         .join('\n')
-                      navigator.clipboard.writeText(logText).then(() => {
-                        toast.success('Logs copied to clipboard')
-                      }).catch(() => {
-                        toast.error('Failed to copy logs')
-                      })
+                      copyToClipboard(logText)
                     }}
                     className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
                     title="Copy logs to clipboard"
