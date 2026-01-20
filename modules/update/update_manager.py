@@ -3,6 +3,7 @@ import logging
 import os
 from pathlib import Path
 from datetime import datetime
+from typing import Optional, Tuple
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -71,7 +72,7 @@ def is_update_watcher_available() -> bool:
         return False
 
 
-def trigger_host_update(message: str = None) -> tuple[bool, str | None]:
+def trigger_host_update(message: str = None) -> Tuple[bool, Optional[str]]:
     """Signal the host to run 'dw update' by creating a trigger file.
 
     The update watcher service on the host monitors this file and
