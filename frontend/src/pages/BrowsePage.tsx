@@ -991,8 +991,29 @@ export function BrowsePage() {
       <Sheet open={isPanelOpen} onOpenChange={setIsPanelOpen}>
         <SheetContent className="flex flex-col p-0 overflow-hidden">
           <SheetHeader className="px-6 py-4 shrink-0">
-            <SheetTitle className="truncate pr-8">
-              {selectedPattern?.name || 'Pattern Details'}
+            <SheetTitle className="flex items-center gap-2 pr-8">
+              {selectedPattern && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className={`shrink-0 transition-colors cursor-pointer flex items-center ${
+                    favorites.has(selectedPattern.path) ? 'text-red-500 hover:text-red-600' : 'text-muted-foreground hover:text-red-500'
+                  }`}
+                  onClick={(e) => toggleFavorite(selectedPattern.path, e)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      toggleFavorite(selectedPattern.path, e as unknown as React.MouseEvent)
+                    }
+                  }}
+                  title={favorites.has(selectedPattern.path) ? 'Remove from favorites' : 'Add to favorites'}
+                >
+                  <span className="material-icons" style={{ fontSize: '20px' }}>
+                    {favorites.has(selectedPattern.path) ? 'favorite' : 'favorite_border'}
+                  </span>
+                </span>
+              )}
+              <span className="truncate">{selectedPattern?.name || 'Pattern Details'}</span>
             </SheetTitle>
           </SheetHeader>
 

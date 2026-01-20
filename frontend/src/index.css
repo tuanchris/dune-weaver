@@ -175,7 +175,7 @@ body {
 
 /* Now Playing Bar heights - responsive for mobile vs desktop */
 [data-now-playing-bar="collapsed"] {
-  height: 200px;
+  height: 232px;
 }
 
 [data-now-playing-bar="expanded"] {
@@ -184,7 +184,7 @@ body {
 
 @media (max-width: 767px) {
   [data-now-playing-bar="collapsed"] {
-    height: 256px;
+    height: 288px;
   }
 
   [data-now-playing-bar="expanded"] {

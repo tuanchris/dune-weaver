@@ -178,12 +178,13 @@ function SortableQueueItem({
 
 interface NowPlayingBarProps {
   isLogsOpen?: boolean
+  logsDrawerHeight?: number
   isVisible: boolean
   openExpanded?: boolean
   onClose: () => void
 }
 
-export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = false, onClose }: NowPlayingBarProps) {
+export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVisible, openExpanded = false, onClose }: NowPlayingBarProps) {
   const [status, setStatus] = useState<PlaybackStatus | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
@@ -843,7 +844,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
         className="fixed left-0 right-0 z-40 bg-background border-t shadow-lg transition-all duration-300"
         style={{
           bottom: isLogsOpen
-            ? 'calc(20rem + env(safe-area-inset-bottom, 0px))'
+            ? `calc(${logsDrawerHeight}px + 4rem + env(safe-area-inset-bottom, 0px))`
             : 'calc(4rem + env(safe-area-inset-bottom, 0px))'
         }}
         data-now-playing-bar={isExpanded ? 'expanded' : 'collapsed'}
@@ -899,7 +900,7 @@ export function NowPlayingBar({ isLogsOpen = false, isVisible, openExpanded = fa
           {!isExpanded && (
             <div className="flex-1 flex flex-col">
               {/* Main row with preview and controls */}
-              <div className="flex-1 flex items-center gap-6 px-6">
+              <div className="flex-1 flex items-center gap-6 px-6 py-4">
                 {/* Current Pattern Preview - Rounded (click to expand) */}
                 <div
                   className="w-48 h-48 rounded-full overflow-hidden bg-muted shrink-0 border-2 cursor-pointer hover:border-primary transition-colors"

@@ -1339,6 +1339,7 @@ export function Layout() {
       {/* Now Playing Bar */}
       <NowPlayingBar
         isLogsOpen={isLogsOpen}
+        logsDrawerHeight={logsDrawerHeight}
         isVisible={isNowPlayingOpen}
         openExpanded={openNowPlayingExpanded}
         onClose={() => setIsNowPlayingOpen(false)}

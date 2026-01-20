@@ -23,6 +23,10 @@ services:
     restart: always
     ports:
       - "8080:8080"
+    environment:
+      # Testing overrides (uncomment to enable):
+      # FORCE_UPDATE_AVAILABLE: "1"        # Always show update available
+      # FAKE_LATEST_VERSION: "99.0.0"      # Fake a newer version
     volumes:
       # Mount entire app directory for persistence
       - .:/app
