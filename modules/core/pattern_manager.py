@@ -1107,21 +1107,9 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                     cache_data=cache_data
                 )
 
-                # Increment pattern counter and check auto-home
+                # Increment pattern counter (auto-home check happens after pause time)
                 state.patterns_since_last_home += 1
                 logger.debug(f"Patterns since last home: {state.patterns_since_last_home}")
-
-                if state.auto_home_enabled and state.patterns_since_last_home >= state.auto_home_after_patterns:
-                    logger.info(f"Auto-homing triggered after {state.patterns_since_last_home} patterns")
-                    try:
-                        success = await asyncio.to_thread(connection_manager.home)
-                        if success:
-                            logger.info("Auto-homing completed successfully")
-                            state.patterns_since_last_home = 0
-                        else:
-                            logger.warning("Auto-homing failed, continuing with playlist")
-                    except Exception as e:
-                        logger.error(f"Error during auto-homing: {e}")
 
                 # Check for scheduled pause after pattern completes (when "finish pattern first" is enabled)
                 if state.scheduled_pause_finish_pattern and is_in_scheduled_pause_period() and not state.stop_requested and not state.skip_requested:
@@ -1161,6 +1149,23 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                             break
                         await asyncio.sleep(1)
                     state.pause_time_remaining = 0
+
+                # Auto-home after pause time, before next clear pattern starts
+                # Only home if there's a next pattern and we haven't been stopped
+                if (state.auto_home_enabled and
+                    state.patterns_since_last_home >= state.auto_home_after_patterns and
+                    state.current_playlist and idx < len(state.current_playlist) - 1 and
+                    not state.stop_requested):
+                    logger.info(f"Auto-homing triggered after {state.patterns_since_last_home} patterns (before next clear pattern)")
+                    try:
+                        success = await asyncio.to_thread(connection_manager.home)
+                        if success:
+                            logger.info("Auto-homing completed successfully")
+                            state.patterns_since_last_home = 0
+                        else:
+                            logger.warning("Auto-homing failed, continuing with playlist")
+                    except Exception as e:
+                        logger.error(f"Error during auto-homing: {e}")
 
                 state.skip_requested = False
                 idx += 1
