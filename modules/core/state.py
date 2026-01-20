@@ -117,6 +117,10 @@ class AppState:
         self.table_id = str(uuid.uuid4())  # UUID generated on first run, persistent across restarts
         self.table_name = "Dune Weaver"  # User-customizable table name
 
+        # Known remote tables (for multi-table management)
+        # List of dicts: [{id, name, url, host?, port?, version?}, ...]
+        self.known_tables = []
+
         # Custom branding settings (filenames only, files stored in static/custom/)
         # Favicon is auto-generated from logo as logo-favicon.ico
         self.custom_logo = None  # Custom logo filename (e.g., "logo-abc123.png")
@@ -428,6 +432,7 @@ class AppState:
             "app_name": self.app_name,
             "table_id": self.table_id,
             "table_name": self.table_name,
+            "known_tables": self.known_tables,
             "custom_logo": self.custom_logo,
             "auto_play_enabled": self.auto_play_enabled,
             "auto_play_playlist": self.auto_play_playlist,
@@ -520,6 +525,7 @@ class AppState:
         if self.table_id is None:
             self.table_id = str(uuid.uuid4())
         self.table_name = data.get("table_name", "Dune Weaver")
+        self.known_tables = data.get("known_tables", [])
         self.custom_logo = data.get("custom_logo", None)
         self.auto_play_enabled = data.get("auto_play_enabled", False)
         self.auto_play_playlist = data.get("auto_play_playlist", None)

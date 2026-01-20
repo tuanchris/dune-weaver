@@ -965,6 +965,17 @@ async def update_settings(settings_update: SettingsUpdate):
 class TableInfoUpdate(BaseModel):
     name: Optional[str] = None
 
+class KnownTableAdd(BaseModel):
+    id: str
+    name: str
+    url: str
+    host: Optional[str] = None
+    port: Optional[int] = None
+    version: Optional[str] = None
+
+class KnownTableUpdate(BaseModel):
+    name: Optional[str] = None
+
 @app.get("/api/table-info", tags=["multi-table"])
 async def get_table_info():
     """
@@ -996,6 +1007,83 @@ async def update_table_info(update: TableInfoUpdate):
         "id": state.table_id,
         "name": state.table_name
     }
+
+@app.get("/api/known-tables", tags=["multi-table"])
+async def get_known_tables():
+    """
+    Get list of known remote tables.
+
+    These are tables that have been manually added and are persisted
+    for multi-table management.
+    """
+    return {"tables": state.known_tables}
+
+@app.post("/api/known-tables", tags=["multi-table"])
+async def add_known_table(table: KnownTableAdd):
+    """
+    Add a known remote table.
+
+    This persists the table information so it's available across
+    browser sessions and devices.
+    """
+    # Check if table with same ID already exists
+    existing_ids = [t.get("id") for t in state.known_tables]
+    if table.id in existing_ids:
+        raise HTTPException(status_code=400, detail="Table with this ID already exists")
+
+    # Check if table with same URL already exists
+    existing_urls = [t.get("url") for t in state.known_tables]
+    if table.url in existing_urls:
+        raise HTTPException(status_code=400, detail="Table with this URL already exists")
+
+    new_table = {
+        "id": table.id,
+        "name": table.name,
+        "url": table.url,
+    }
+    if table.host:
+        new_table["host"] = table.host
+    if table.port:
+        new_table["port"] = table.port
+    if table.version:
+        new_table["version"] = table.version
+
+    state.known_tables.append(new_table)
+    state.save()
+    logger.info(f"Added known table: {table.name} ({table.url})")
+
+    return {"success": True, "table": new_table}
+
+@app.delete("/api/known-tables/{table_id}", tags=["multi-table"])
+async def remove_known_table(table_id: str):
+    """
+    Remove a known remote table by ID.
+    """
+    original_count = len(state.known_tables)
+    state.known_tables = [t for t in state.known_tables if t.get("id") != table_id]
+
+    if len(state.known_tables) == original_count:
+        raise HTTPException(status_code=404, detail="Table not found")
+
+    state.save()
+    logger.info(f"Removed known table: {table_id}")
+
+    return {"success": True}
+
+@app.patch("/api/known-tables/{table_id}", tags=["multi-table"])
+async def update_known_table(table_id: str, update: KnownTableUpdate):
+    """
+    Update a known remote table's name.
+    """
+    for table in state.known_tables:
+        if table.get("id") == table_id:
+            if update.name is not None:
+                table["name"] = update.name.strip()
+            state.save()
+            logger.info(f"Updated known table {table_id}: name={update.name}")
+            return {"success": True, "table": table}
+
+    raise HTTPException(status_code=404, detail="Table not found")
 
 # ============================================================================
 # Individual Settings Endpoints (Deprecated - use /api/settings instead)

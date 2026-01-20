@@ -142,10 +142,11 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
     setIsDiscovering(true)
 
     try {
-      // Fetch table info and settings in parallel
-      const [infoResponse, settingsResponse] = await Promise.all([
+      // Fetch table info, settings, and known tables in parallel
+      const [infoResponse, settingsResponse, knownTablesResponse] = await Promise.all([
         fetch('/api/table-info'),
         fetch('/api/settings').catch(() => null),
+        fetch('/api/known-tables').catch(() => null),
       ])
 
       if (!infoResponse.ok) {
@@ -154,6 +155,8 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
 
       const info = await infoResponse.json()
       const settings = settingsResponse?.ok ? await settingsResponse.json() : null
+      const knownTablesData = knownTablesResponse?.ok ? await knownTablesResponse.json() : null
+      const knownTables: Array<{ id: string; name: string; url: string; host?: string; port?: number; version?: string }> = knownTablesData?.tables || []
 
       const currentTable: Table = {
         id: info.id,
@@ -165,15 +168,24 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
         customLogo: settings?.app?.custom_logo || undefined,
       }
 
-      // Merge with existing tables
-      setTables(prev => {
+      // Merge current table with known tables from backend
+      setTables(() => {
         // Start with current table
         const merged: Table[] = [currentTable]
 
-        // Add any other tables (manual additions), mark them for status check
-        prev.forEach(existing => {
-          if (existing.id !== currentTable.id && !existing.isCurrent) {
-            merged.push({ ...existing, isOnline: existing.isOnline ?? false })
+        // Add known tables from backend (these are persisted remote tables)
+        knownTables.forEach(known => {
+          if (known.id !== currentTable.id) {
+            merged.push({
+              id: known.id,
+              name: known.name,
+              url: known.url,
+              host: known.host,
+              port: known.port,
+              version: known.version,
+              isOnline: false, // Will be updated by background refresh
+              isCurrent: false,
+            })
           }
         })
 
@@ -274,6 +286,25 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
         customLogo: settings?.app?.custom_logo || undefined,
       }
 
+      // Persist to backend
+      try {
+        const hostname = new URL(normalizedUrl).hostname
+        await fetch('/api/known-tables', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: newTable.id,
+            name: newTable.name,
+            url: newTable.url,
+            host: hostname,
+            version: newTable.version,
+          }),
+        })
+      } catch (e) {
+        console.error('Failed to persist table to backend:', e)
+        // Continue anyway - table will still work for this session
+      }
+
       setTables(prev => [...prev, newTable])
       return newTable
     } catch (e) {
@@ -283,7 +314,15 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
   }, [tables])
 
   // Remove a table
-  const removeTable = useCallback((id: string) => {
+  const removeTable = useCallback(async (id: string) => {
+    // Remove from backend
+    try {
+      await fetch(`/api/known-tables/${id}`, { method: 'DELETE' })
+    } catch (e) {
+      console.error('Failed to remove table from backend:', e)
+      // Continue anyway - remove from local state
+    }
+
     setTables(prev => prev.filter(t => t.id !== id))
 
     // If removing active table, switch to another
@@ -312,6 +351,19 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
       })
 
       if (response.ok) {
+        // Also update the known table name in the current backend (for remote tables)
+        if (!table.isCurrent) {
+          try {
+            await fetch(`/api/known-tables/${id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name }),
+            })
+          } catch (e) {
+            console.error('Failed to update known table name:', e)
+          }
+        }
+
         setTables(prev =>
           prev.map(t => (t.id === id ? { ...t, name } : t))
         )
