@@ -289,11 +289,29 @@ class AppState:
     def stop_requested(self, value: bool):
         self._stop_requested = value
         self._ensure_events()
-        if self._stop_event:
-            if value:
-                self._stop_event.set()
-            else:
-                self._stop_event.clear()
+        if self._stop_event and self._event_loop:
+            # asyncio.Event.set()/clear() are NOT thread-safe
+            # Use call_soon_threadsafe when called from non-async threads (e.g., motion thread)
+            try:
+                if asyncio.get_running_loop() == self._event_loop:
+                    # Same loop - safe to call directly
+                    if value:
+                        self._stop_event.set()
+                    else:
+                        self._stop_event.clear()
+                else:
+                    # Different loop - use thread-safe call
+                    if value:
+                        self._event_loop.call_soon_threadsafe(self._stop_event.set)
+                    else:
+                        self._event_loop.call_soon_threadsafe(self._stop_event.clear)
+            except RuntimeError:
+                # No running loop (sync context) - use thread-safe call
+                if self._event_loop.is_running():
+                    if value:
+                        self._event_loop.call_soon_threadsafe(self._stop_event.set)
+                    else:
+                        self._event_loop.call_soon_threadsafe(self._stop_event.clear)
 
     @property
     def skip_requested(self) -> bool:
@@ -303,11 +321,29 @@ class AppState:
     def skip_requested(self, value: bool):
         self._skip_requested = value
         self._ensure_events()
-        if self._skip_event:
-            if value:
-                self._skip_event.set()
-            else:
-                self._skip_event.clear()
+        if self._skip_event and self._event_loop:
+            # asyncio.Event.set()/clear() are NOT thread-safe
+            # Use call_soon_threadsafe when called from non-async threads (e.g., motion thread)
+            try:
+                if asyncio.get_running_loop() == self._event_loop:
+                    # Same loop - safe to call directly
+                    if value:
+                        self._skip_event.set()
+                    else:
+                        self._skip_event.clear()
+                else:
+                    # Different loop - use thread-safe call
+                    if value:
+                        self._event_loop.call_soon_threadsafe(self._skip_event.set)
+                    else:
+                        self._event_loop.call_soon_threadsafe(self._skip_event.clear)
+            except RuntimeError:
+                # No running loop (sync context) - use thread-safe call
+                if self._event_loop.is_running():
+                    if value:
+                        self._event_loop.call_soon_threadsafe(self._skip_event.set)
+                    else:
+                        self._event_loop.call_soon_threadsafe(self._skip_event.clear)
 
     def get_stop_event(self) -> Optional[asyncio.Event]:
         """Get the stop event for async waiting. Returns None if no event loop."""

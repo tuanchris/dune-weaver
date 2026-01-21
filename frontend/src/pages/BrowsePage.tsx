@@ -819,9 +819,8 @@ export function BrowsePage() {
       await apiClient.uploadFile('/upload_theta_rho', file)
       toast.success(`Pattern "${file.name}" uploaded successfully`)
 
-      // Refresh patterns list
-      const data = await apiClient.get<{ files?: PatternMetadata[] }>('/list_theta_rho_files')
-      setPatterns(data.files || [])
+      // Refresh patterns list using the same function as initial load
+      await fetchPatterns()
     } catch (error) {
       console.error('Upload error:', error)
       toast.error(error instanceof Error ? error.message : 'Failed to upload pattern')

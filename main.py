@@ -1950,6 +1950,9 @@ async def move_to_center():
 
         check_homing_in_progress()
 
+        # Clear stop_requested to ensure manual move works after pattern stop
+        state.stop_requested = False
+
         logger.info("Moving device to center position")
         await pattern_manager.reset_theta()
         await pattern_manager.move_polar(0, 0)
@@ -1968,6 +1971,9 @@ async def move_to_perimeter():
             raise HTTPException(status_code=400, detail="Connection not established")
 
         check_homing_in_progress()
+
+        # Clear stop_requested to ensure manual move works after pattern stop
+        state.stop_requested = False
 
         await pattern_manager.reset_theta()
         await pattern_manager.move_polar(0, 1)
@@ -2143,6 +2149,9 @@ async def send_coordinate(request: CoordinateRequest):
         raise HTTPException(status_code=400, detail="Connection not established")
 
     check_homing_in_progress()
+
+    # Clear stop_requested to ensure manual move works after pattern stop
+    state.stop_requested = False
 
     try:
         logger.debug(f"Sending coordinate: theta={request.theta}, rho={request.rho}")

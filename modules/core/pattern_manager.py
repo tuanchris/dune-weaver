@@ -1406,9 +1406,8 @@ async def move_polar(theta, rho, speed=None):
         rho (float): Target rho coordinate
         speed (int, optional): Speed override. If None, uses state.speed
     """
-    # Clear stop_requested to ensure manual moves work after pattern stop
-    # Without this, moves would silently abort if stop_requested was left True
-    state.stop_requested = False
+    # Note: stop_requested is cleared once at pattern start (execute_theta_rho_file line 890)
+    # Don't clear it here on every coordinate - causes performance issues with event system
 
     # Ensure motion control thread is running
     if not motion_controller.running:
