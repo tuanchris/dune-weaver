@@ -35,6 +35,7 @@ class ApiClient {
     const newUrl = url.replace(/\/$/, '')
     // Only notify if the URL actually changed
     if (newUrl === this._baseUrl) return
+    console.log('[ApiClient] setBaseUrl:', { from: this._baseUrl || '(empty)', to: newUrl || '(empty)' })
     this._baseUrl = newUrl
     // Notify listeners
     this._listeners.forEach(listener => listener(this._baseUrl))
@@ -131,11 +132,12 @@ class ApiClient {
     // Ensure endpoint starts with /
     const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
 
+    let wsUrl: string
     if (this._baseUrl) {
       // Parse the base URL to get host
       const url = new URL(this._baseUrl)
       const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-      return `${protocol}//${url.host}${path}`
+      wsUrl = `${protocol}//${url.host}${path}`
     } else {
       // Use current page's host for relative URLs
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -144,8 +146,10 @@ class ApiClient {
       const host = window.location.hostname
       const port = import.meta.env.DEV ? '8080' : window.location.port
       const portSuffix = port ? `:${port}` : ''
-      return `${protocol}//${host}${portSuffix}${path}`
+      wsUrl = `${protocol}//${host}${portSuffix}${path}`
     }
+    console.log('[ApiClient] getWebSocketUrl:', { baseUrl: this._baseUrl || '(empty)', wsUrl })
+    return wsUrl
   }
 
   /**
