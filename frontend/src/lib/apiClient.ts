@@ -201,10 +201,51 @@ class ApiClient {
 }
 
 // Export singleton instance
-// Note: Base URL is managed by TableContext after it validates table connectivity.
-// We intentionally don't pre-initialize from localStorage here to avoid pointing
-// to stale/unreachable servers which would cause silent API failures.
 export const apiClient = new ApiClient()
+
+// Pre-initialize base URL from localStorage to avoid race conditions.
+// This runs synchronously at module load time, before React renders,
+// ensuring WebSocket connections use the correct URL from the start.
+function initializeBaseUrlFromStorage(): void {
+  try {
+    const STORAGE_KEY = 'duneweaver_tables'
+    const ACTIVE_TABLE_KEY = 'duneweaver_active_table'
+
+    const stored = localStorage.getItem(STORAGE_KEY)
+    const activeId = localStorage.getItem(ACTIVE_TABLE_KEY)
+
+    if (!stored || !activeId) return
+
+    const data = JSON.parse(stored)
+    const tables = data.tables || []
+    const active = tables.find((t: { id: string }) => t.id === activeId)
+
+    if (!active?.url) return
+
+    // Normalize URL for comparison (handles port differences like :80)
+    const normalizeOrigin = (url: string): string => {
+      try {
+        return new URL(url).origin
+      } catch {
+        return url
+      }
+    }
+
+    const normalizedActiveUrl = normalizeOrigin(active.url)
+    const currentOrigin = window.location.origin
+
+    // Only set base URL for remote tables (different origin)
+    if (normalizedActiveUrl !== currentOrigin) {
+      console.log('[ApiClient] Pre-initializing base URL from localStorage:', active.url)
+      apiClient.setBaseUrl(active.url)
+    }
+  } catch (e) {
+    console.error('[ApiClient] Failed to pre-initialize base URL:', e)
+  }
+}
+
+// Run initialization immediately at module load
+initializeBaseUrlFromStorage()
 
 // Export class for testing
 export { ApiClient }
