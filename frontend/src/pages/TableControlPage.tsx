@@ -43,7 +43,6 @@ export function TableControlPage() {
   const [serialCommand, setSerialCommand] = useState('')
   const [serialHistory, setSerialHistory] = useState<Array<{ type: 'cmd' | 'resp' | 'error'; text: string; time: string }>>([])
   const [serialLoading, setSerialLoading] = useState(false)
-  const [mainConnectionPort, setMainConnectionPort] = useState<string | null>(null)
   const serialOutputRef = useRef<HTMLDivElement>(null)
   const serialInputRef = useRef<HTMLInputElement>(null)
 
@@ -257,7 +256,6 @@ export function TableControlPage() {
         // This prevents race conditions where stale port data from a different
         // backend (e.g., Mac port on a Pi) could be set and auto-connected
         if (availablePorts.includes(data.port)) {
-          setMainConnectionPort(data.port)
           setSelectedSerialPort(data.port)
         } else {
           console.warn(`Port ${data.port} from status not in available ports, ignoring`)
