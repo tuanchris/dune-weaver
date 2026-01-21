@@ -27,6 +27,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { apiClient } from '@/lib/apiClient'
 
 export function TableControlPage() {
@@ -773,19 +780,22 @@ export function TableControlPage() {
             </div>
             {/* Controls row - stacks better on mobile */}
             <div className="flex flex-wrap items-center gap-2">
-              {/* Port selector - auto-refreshes on focus */}
-              <select
-                className="h-9 flex-1 min-w-[180px] max-w-[280px] rounded-full border border-input bg-background px-4 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+              {/* Port selector - auto-refreshes on open */}
+              <Select
                 value={selectedSerialPort}
-                onChange={(e) => setSelectedSerialPort(e.target.value)}
-                onFocus={fetchSerialPorts}
+                onValueChange={setSelectedSerialPort}
+                onOpenChange={(open) => open && fetchSerialPorts()}
                 disabled={serialConnected || serialLoading}
               >
-                <option value="">Select port...</option>
-                {serialPorts.map((port) => (
-                  <option key={port} value={port}>{port}</option>
-                ))}
-              </select>
+                <SelectTrigger className="h-9 flex-1 min-w-[180px] max-w-[280px]">
+                  <SelectValue placeholder="Select port..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {serialPorts.map((port) => (
+                    <SelectItem key={port} value={port}>{port}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {!serialConnected ? (
                 <Button
                   size="sm"
