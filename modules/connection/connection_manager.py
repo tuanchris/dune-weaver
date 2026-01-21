@@ -116,8 +116,6 @@ class SerialConnection(BaseConnection):
         with self.lock:
             if self.ser.is_open:
                 self.ser.close()
-        # Release the lock resources
-        self.lock = None
 
 ###############################################################################
 # WebSocket Connection Implementation
@@ -181,8 +179,7 @@ class WebSocketConnection(BaseConnection):
         with self.lock:
             if self.ws:
                 self.ws.close()
-        # Release the lock resources
-        self.lock = None
+                self.ws = None
                 
 def list_serial_ports():
     """Return a list of available serial ports."""
@@ -360,6 +357,10 @@ def get_status_response() -> str:
     """
     Send a status query ('?') and return the response if available.
     """
+    if state.conn is None or not state.conn.is_connected():
+        logger.warning("Cannot get status response: no active connection")
+        return False
+
     while True:
         try:
             state.conn.send('?')
