@@ -775,7 +775,7 @@ export function TableControlPage() {
             <div className="flex flex-wrap items-center gap-2">
               {/* Port selector - auto-refreshes on focus */}
               <select
-                className="h-9 flex-1 min-w-[140px] max-w-[200px] rounded-full border border-input bg-background px-4 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                className="h-9 flex-1 min-w-[180px] max-w-[280px] rounded-full border border-input bg-background px-4 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
                 value={selectedSerialPort}
                 onChange={(e) => setSelectedSerialPort(e.target.value)}
                 onFocus={fetchSerialPorts}
