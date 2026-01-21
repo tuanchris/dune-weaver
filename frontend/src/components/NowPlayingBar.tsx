@@ -975,7 +975,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
         onTouchEnd={handleTouchEnd}
       >
         {/* Max-width container to match page layout */}
-        <div className="max-w-5xl mx-auto relative">
+        <div className="h-full max-w-5xl mx-auto relative">
           {/* Swipe indicator - only on mobile */}
           <div className="md:hidden flex justify-center pt-2 pb-1">
             <div className="w-10 h-1 bg-muted-foreground/30 rounded-full" />
@@ -1212,7 +1212,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
           {/* Expanded view - Real-time canvas preview */}
           {isExpanded && isPlaying && (
             <div className="flex-1 flex flex-col md:items-center md:justify-center px-4 py-4 md:py-8 pt-safe overflow-hidden">
-              <div className="w-full max-w-5xl mx-auto flex flex-col md:flex-row md:items-center md:justify-center gap-3 md:gap-6">
+              <div className="w-full max-w-5xl mx-auto flex flex-col md:flex-row md:items-center gap-3 md:gap-6">
                 {/* Canvas - full width on mobile (click to collapse) */}
                 <div
                   className="flex-1 flex items-center justify-center cursor-pointer"
