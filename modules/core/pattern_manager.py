@@ -518,11 +518,10 @@ class MotionControlThread:
     def _send_grbl_coordinates_sync(self, x: float, y: float, speed: int = 600, timeout: int = 2, home: bool = False):
         """Synchronous version of send_grbl_coordinates for motion thread.
 
-        Sends coordinate and waits for 'ok'. If no 'ok' received within 1 second,
-        resends the command. Retries forever until 'ok' is received.
+        Waits indefinitely for 'ok' because GRBL only responds after the move completes,
+        which can take many seconds at slow speeds.
         """
         gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 G53 X{x} Y{y} F{speed}"
-        retry_count = 0
 
         while True:
             # Check stop_requested at the start of each iteration
@@ -534,10 +533,9 @@ class MotionControlThread:
                 logger.debug(f"Motion thread sending G-code: {gcode}")
                 state.conn.send(gcode + "\n")
 
-                # Wait for 'ok' response with 1 second timeout
-                start_time = time.time()
-                while time.time() - start_time < 1.0:
-                    # Also check stop_requested while waiting for response
+                # Wait indefinitely for 'ok' - GRBL sends it after move completes
+                while True:
+                    # Check stop_requested while waiting
                     if state.stop_requested:
                         logger.debug("Motion thread: Stop requested while waiting for response")
                         return False
@@ -547,10 +545,6 @@ class MotionControlThread:
                         if response.lower() == "ok":
                             logger.debug("Motion thread: Command execution confirmed.")
                             return True
-
-                # No 'ok' received within timeout, will retry
-                retry_count += 1
-                logger.warning(f"Motion thread: No 'ok' received for {gcode}, resending... (attempt {retry_count})")
 
             except Exception as e:
                 error_str = str(e)
@@ -565,11 +559,9 @@ class MotionControlThread:
                     logger.info("Connection marked as disconnected due to device error")
                     return False
 
-                retry_count += 1
-                logger.warning(f"Motion thread: Exception occurred, retrying... (attempt {retry_count})")
-
-            # Wait 1 second before resending
-            time.sleep(1.0)
+            # Only retry on exception (not on timeout)
+            logger.warning(f"Motion thread: Error sending {gcode}, retrying...")
+            time.sleep(0.1)
 
 # Global motion control thread instance
 motion_controller = MotionControlThread()
