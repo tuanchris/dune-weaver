@@ -1215,7 +1215,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
               <div className="w-full max-w-5xl mx-auto flex flex-col md:flex-row md:items-center md:justify-center gap-3 md:gap-6">
                 {/* Canvas - full width on mobile (click to collapse) */}
                 <div
-                  className="flex items-center justify-center cursor-pointer"
+                  className="flex-1 flex items-center justify-center cursor-pointer"
                   onClick={() => setIsExpanded(false)}
                   title="Click to collapse"
                 >
