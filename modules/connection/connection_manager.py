@@ -391,6 +391,10 @@ def get_status_response() -> str:
     """
     Send a status query ('?') and return the response if available.
     """
+    if state.conn is None or not state.conn.is_connected():
+        logger.warning("Cannot get status response: no active connection")
+        return False
+
     while True:
         try:
             state.conn.send('?')
