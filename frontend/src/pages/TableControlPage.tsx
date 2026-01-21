@@ -377,13 +377,6 @@ export function TableControlPage() {
     fetchMainConnectionStatus()
   }, [])
 
-  // Auto-connect to the main connection port (silent - no toast)
-  useEffect(() => {
-    if (mainConnectionPort && selectedSerialPort === mainConnectionPort && !serialConnected && !serialLoading) {
-      handleSerialConnect(true)
-    }
-  }, [mainConnectionPort, selectedSerialPort])
-
   return (
     <TooltipProvider>
       <div className="flex flex-col w-full max-w-5xl mx-auto gap-6 py-3 sm:py-6 px-0 sm:px-4">
@@ -697,12 +690,19 @@ export function TableControlPage() {
         <Card className="transition-all duration-200 hover:shadow-md hover:border-primary/20">
           <CardHeader className="pb-3 space-y-3">
             <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
+              <div className="min-w-0 space-y-2">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <span className="material-icons-outlined text-xl">terminal</span>
                   Serial Terminal
                 </CardTitle>
                 <CardDescription className="hidden sm:block">Send raw commands to the table controller</CardDescription>
+                {/* Warning about pattern interference */}
+                <Alert className="flex items-start border-amber-500/50 py-2">
+                  <span className="material-icons-outlined text-amber-500 text-base mr-2 shrink-0">warning</span>
+                  <AlertDescription className="text-xs text-amber-600 dark:text-amber-400">
+                    Do not use while a pattern is running. This will interfere with the main connection.
+                  </AlertDescription>
+                </Alert>
               </div>
               {/* Clear button - only show on desktop in header */}
               <div className="hidden sm:flex items-center gap-1">
