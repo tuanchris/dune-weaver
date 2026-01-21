@@ -169,6 +169,15 @@ export function TableControlPage() {
     }
   }
 
+  const handleReset = async () => {
+    try {
+      await handleAction('reset', '/soft_reset')
+      toast.success('Reset sent. Please home the table.')
+    } catch {
+      toast.error('Failed to send reset command')
+    }
+  }
+
   const handleMoveToCenter = async () => {
     if (checkPatternRunning('move to center')) return
     try {
@@ -397,7 +406,7 @@ export function TableControlPage() {
               <CardDescription>Calibrate or stop the table</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -435,6 +444,52 @@ export function TableControlPage() {
                   </TooltipTrigger>
                   <TooltipContent>Gracefully stop</TooltipContent>
                 </Tooltip>
+
+                <Dialog>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <DialogTrigger asChild>
+                        <Button
+                          disabled={isLoading === 'reset'}
+                          variant="secondary"
+                          className="h-16 gap-1 flex-col items-center justify-center"
+                        >
+                          {isLoading === 'reset' ? (
+                            <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                          ) : (
+                            <span className="material-icons-outlined text-2xl">restart_alt</span>
+                          )}
+                          <span className="text-xs">Reset</span>
+                        </Button>
+                      </DialogTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>Send Ctrl+X soft reset</TooltipContent>
+                  </Tooltip>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Reset Controller?</DialogTitle>
+                      <DialogDescription>
+                        This will send a soft reset (Ctrl+X) to the controller.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <Alert className="flex items-center border-amber-500/50">
+                      <span className="material-icons-outlined text-amber-500 text-base mr-2 shrink-0">warning</span>
+                      <AlertDescription className="text-amber-600 dark:text-amber-400">
+                        Homing is required after resetting. The table will lose its position reference.
+                      </AlertDescription>
+                    </Alert>
+                    <DialogFooter className="gap-2 sm:gap-0">
+                      <DialogTrigger asChild>
+                        <Button variant="outline">Cancel</Button>
+                      </DialogTrigger>
+                      <DialogTrigger asChild>
+                        <Button variant="destructive" onClick={handleReset}>
+                          Reset Controller
+                        </Button>
+                      </DialogTrigger>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </div>
             </CardContent>
           </Card>
