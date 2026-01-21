@@ -90,19 +90,8 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
             setActiveTableState(active)
             // Set base URL for remote tables (tables not on the current origin)
             // Use normalized URL comparison to handle port differences (e.g., :80 vs no port)
-            // Don't rely on isCurrent flag as it may be stale from localStorage
-            const normalizedActiveUrl = normalizeUrlOrigin(active.url)
-            const currentOrigin = window.location.origin
-            const isRemoteTable = normalizedActiveUrl !== currentOrigin
-            console.log('[TableContext] Restoring active table:', {
-              activeId,
-              activeUrl: active.url,
-              normalizedActiveUrl,
-              currentOrigin,
-              isRemoteTable,
-              willSetBaseUrl: isRemoteTable,
-            })
-            if (isRemoteTable) {
+            // Note: apiClient pre-initializes from localStorage, but this ensures consistency
+            if (normalizeUrlOrigin(active.url) !== window.location.origin) {
               apiClient.setBaseUrl(active.url)
             }
           }

@@ -35,7 +35,6 @@ class ApiClient {
     const newUrl = url.replace(/\/$/, '')
     // Only notify if the URL actually changed
     if (newUrl === this._baseUrl) return
-    console.log('[ApiClient] setBaseUrl:', { from: this._baseUrl || '(empty)', to: newUrl || '(empty)' })
     this._baseUrl = newUrl
     // Notify listeners
     this._listeners.forEach(listener => listener(this._baseUrl))
@@ -132,12 +131,11 @@ class ApiClient {
     // Ensure endpoint starts with /
     const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
 
-    let wsUrl: string
     if (this._baseUrl) {
       // Parse the base URL to get host
       const url = new URL(this._baseUrl)
       const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-      wsUrl = `${protocol}//${url.host}${path}`
+      return `${protocol}//${url.host}${path}`
     } else {
       // Use current page's host for relative URLs
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -146,10 +144,8 @@ class ApiClient {
       const host = window.location.hostname
       const port = import.meta.env.DEV ? '8080' : window.location.port
       const portSuffix = port ? `:${port}` : ''
-      wsUrl = `${protocol}//${host}${portSuffix}${path}`
+      return `${protocol}//${host}${portSuffix}${path}`
     }
-    console.log('[ApiClient] getWebSocketUrl:', { baseUrl: this._baseUrl || '(empty)', wsUrl })
-    return wsUrl
   }
 
   /**
@@ -236,11 +232,10 @@ function initializeBaseUrlFromStorage(): void {
 
     // Only set base URL for remote tables (different origin)
     if (normalizedActiveUrl !== currentOrigin) {
-      console.log('[ApiClient] Pre-initializing base URL from localStorage:', active.url)
       apiClient.setBaseUrl(active.url)
     }
-  } catch (e) {
-    console.error('[ApiClient] Failed to pre-initialize base URL:', e)
+  } catch {
+    // Silently fail - TableContext will handle initialization as fallback
   }
 }
 
