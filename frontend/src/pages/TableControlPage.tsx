@@ -695,7 +695,7 @@ export function TableControlPage() {
                 </CardTitle>
                 <CardDescription className="hidden sm:block">Send raw commands to the table controller</CardDescription>
                 {/* Warning about pattern interference */}
-                <Alert className="flex items-start border-amber-500/50 py-2">
+                <Alert className="flex items-center border-amber-500/50 py-2">
                   <span className="material-icons-outlined text-amber-500 text-base mr-2 shrink-0">warning</span>
                   <AlertDescription className="text-xs text-amber-600 dark:text-amber-400">
                     Do not use while a pattern is running. This will interfere with the main connection.
