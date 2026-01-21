@@ -43,6 +43,19 @@ const TableContext = createContext<TableContextType | null>(null)
 const STORAGE_KEY = 'duneweaver_tables'
 const ACTIVE_TABLE_KEY = 'duneweaver_active_table'
 
+/**
+ * Normalize a URL to its origin for comparison purposes.
+ * This handles port normalization (e.g., :80 for HTTP is stripped).
+ * Returns the origin or the original string if parsing fails.
+ */
+function normalizeUrlOrigin(url: string): string {
+  try {
+    return new URL(url).origin
+  } catch {
+    return url
+  }
+}
+
 interface StoredTableData {
   tables: Table[]
   activeTableId: string | null
@@ -75,8 +88,10 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
           if (active) {
             restoredActiveIdRef.current = activeId // Mark that we restored a selection
             setActiveTableState(active)
-            // Only set non-empty base URL for remote tables
-            if (!active.isCurrent && active.url !== window.location.origin) {
+            // Set base URL for remote tables (tables not on the current origin)
+            // Use normalized URL comparison to handle port differences (e.g., :80 vs no port)
+            // Don't rely on isCurrent flag as it may be stale from localStorage
+            if (normalizeUrlOrigin(active.url) !== window.location.origin) {
               apiClient.setBaseUrl(active.url)
             }
           }
@@ -127,7 +142,8 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Update API client base URL
-    if (table.isCurrent || table.url === window.location.origin) {
+    // Use normalized URL comparison to handle port differences (e.g., :80 vs no port)
+    if (normalizeUrlOrigin(table.url) === window.location.origin) {
       apiClient.setBaseUrl('')
     } else {
       apiClient.setBaseUrl(table.url)
