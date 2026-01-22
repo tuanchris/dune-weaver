@@ -1221,6 +1221,7 @@ def is_machine_idle() -> bool:
 def get_machine_position(timeout=5):
     """
     Query the device for its position.
+    Supports both MPos and WPos formats (depends on GRBL $10 setting).
     """
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -1228,7 +1229,8 @@ def get_machine_position(timeout=5):
             state.conn.send('?')
             response = state.conn.readline()
             logger.debug(f"Raw status response: {response}")
-            if "MPos" in response:
+            # Accept either MPos or WPos format
+            if "MPos" in response or "WPos" in response:
                 pos = parse_machine_position(response)
                 if pos:
                     machine_x, machine_y = pos
