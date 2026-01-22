@@ -172,12 +172,6 @@ def setup_realtime_thread(tid: Optional[int] = None, priority: int = 50) -> None
         priority: SCHED_RR priority (1-99). Higher = more important.
                   Motion should use higher than LED (e.g., 60 vs 40).
     """
-    # TEMPORARILY DISABLED: Testing if SCHED_RR causes serial timeout on Pi 3B+
-    # The theory is that real-time scheduling on CPU 0 (which handles serial interrupts)
-    # may be blocking the kernel from delivering serial data to the thread.
-    logger.info(f"Real-time scheduling DISABLED for testing (would use priority {priority})")
-    return
-
     cpu_count = get_cpu_count()
 
     # Elevate priority (logs internally on success)

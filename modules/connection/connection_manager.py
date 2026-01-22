@@ -74,6 +74,23 @@ class SerialConnection(BaseConnection):
         self.lock = threading.RLock()
         logger.info(f'Connecting to Serial port {port}')
         self.ser = serial.Serial(port, baudrate, timeout=timeout)
+
+        # Disable serial echo - critical for Pi 3B+ where ttyAMA0 may have echo enabled
+        # Without this, sent commands are echoed back and the motion thread never sees 'ok'
+        try:
+            import termios
+            # Get current terminal attributes
+            attrs = termios.tcgetattr(self.ser.fileno())
+            # Disable echo (ECHO) and other local flags that could cause issues
+            attrs[3] = attrs[3] & ~termios.ECHO & ~termios.ECHOE & ~termios.ECHOK & ~termios.ECHONL
+            # Set raw mode for input (no special processing)
+            attrs[3] = attrs[3] & ~termios.ICANON
+            # Apply the new attributes immediately
+            termios.tcsetattr(self.ser.fileno(), termios.TCSANOW, attrs)
+            logger.info(f'Serial echo disabled on {port}')
+        except Exception as e:
+            logger.warning(f'Could not disable serial echo (may not be needed): {e}')
+
         state.port = port
         logger.info(f'Connected to Serial port {port}')
 
