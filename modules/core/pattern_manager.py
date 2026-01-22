@@ -545,6 +545,8 @@ class MotionControlThread:
                         if response.lower() == "ok":
                             logger.debug("Motion thread: Command execution confirmed.")
                             return True
+                    # Small sleep to prevent CPU spin when readline() times out
+                    time.sleep(0.01)
 
             except Exception as e:
                 error_str = str(e)
