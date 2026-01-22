@@ -8,7 +8,7 @@ from datetime import datetime, time as datetime_time
 from tqdm import tqdm
 from modules.connection import connection_manager
 from modules.core.state import state
-from math import pi
+from math import pi, isnan, isinf
 import asyncio
 import json
 # Import for legacy support, but we'll use LED interface through state
@@ -505,6 +505,14 @@ class MotionControlThread:
 
         # Use provided speed or fall back to state.speed
         actual_speed = speed if speed is not None else state.speed
+
+        # Validate coordinates before sending to prevent GRBL error:2
+        if isnan(new_x_abs) or isnan(new_y_abs) or isinf(new_x_abs) or isinf(new_y_abs):
+            logger.error(f"Motion thread: Invalid coordinates detected - X:{new_x_abs}, Y:{new_y_abs}")
+            logger.error(f"  theta:{theta}, rho:{rho}, current_theta:{state.current_theta}, current_rho:{state.current_rho}")
+            logger.error(f"  x_steps_per_mm:{state.x_steps_per_mm}, y_steps_per_mm:{state.y_steps_per_mm}, gear_ratio:{state.gear_ratio}")
+            state.stop_requested = True
+            return
 
         # Call sync version of send_grbl_coordinates in this thread
         self._send_grbl_coordinates_sync(round(new_x_abs, 3), round(new_y_abs, 3), actual_speed)
