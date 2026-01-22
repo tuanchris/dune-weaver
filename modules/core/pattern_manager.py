@@ -477,6 +477,8 @@ class MotionControlThread:
 
     def _move_polar_sync(self, theta: float, rho: float, speed: Optional[float] = None):
         """Synchronous version of move_polar for use in motion thread."""
+        import math
+
         # This is the original sync logic but running in dedicated thread
         if state.table_type == 'dune_weaver_mini':
             x_scaling_factor = 2
@@ -493,7 +495,12 @@ class MotionControlThread:
         x_total_steps = state.x_steps_per_mm * (100/x_scaling_factor)
         y_total_steps = state.y_steps_per_mm * (100/y_scaling_factor)
 
-        offset = x_increment * (x_total_steps * x_scaling_factor / (state.gear_ratio * y_total_steps * y_scaling_factor))
+        # Protect against division by zero
+        if state.gear_ratio == 0 or y_total_steps == 0:
+            logger.error(f"Invalid state for offset calculation: gear_ratio={state.gear_ratio}, y_total_steps={y_total_steps}")
+            offset = 0
+        else:
+            offset = x_increment * (x_total_steps * x_scaling_factor / (state.gear_ratio * y_total_steps * y_scaling_factor))
 
         if state.table_type == 'dune_weaver_mini' or state.y_steps_per_mm == 546:
             y_increment -= offset
@@ -505,6 +512,14 @@ class MotionControlThread:
 
         # Use provided speed or fall back to state.speed
         actual_speed = speed if speed is not None else state.speed
+
+        # Validate values before sending to GRBL
+        if not math.isfinite(new_x_abs) or not math.isfinite(new_y_abs) or not math.isfinite(actual_speed):
+            logger.error(f"Invalid coordinates detected: X={new_x_abs}, Y={new_y_abs}, F={actual_speed}")
+            logger.error(f"State: theta={theta}, rho={rho}, machine_x={state.machine_x}, machine_y={state.machine_y}")
+            logger.error(f"Steps: x_steps_per_mm={state.x_steps_per_mm}, y_steps_per_mm={state.y_steps_per_mm}")
+            state.stop_requested = True
+            return
 
         # Call sync version of send_grbl_coordinates in this thread
         self._send_grbl_coordinates_sync(round(new_x_abs, 3), round(new_y_abs, 3), actual_speed)
