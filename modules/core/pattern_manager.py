@@ -518,10 +518,12 @@ class MotionControlThread:
     def _send_grbl_coordinates_sync(self, x: float, y: float, speed: int = 600, timeout: int = 2, home: bool = False):
         """Synchronous version of send_grbl_coordinates for motion thread.
 
-        Waits indefinitely for 'ok' because GRBL only responds after the move completes,
-        which can take many seconds at slow speeds.
+        Waits for 'ok' with a timeout. GRBL sends 'ok' after the move completes,
+        which can take many seconds at slow speeds. We use a generous timeout
+        (120 seconds) to handle slow movements, but prevent indefinite hangs.
         """
         gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 G53 X{x} Y{y} F{speed}"
+        max_wait_time = 120  # Maximum seconds to wait for 'ok' response
 
         while True:
             # Check stop_requested at the start of each iteration
@@ -533,18 +535,31 @@ class MotionControlThread:
                 logger.debug(f"Motion thread sending G-code: {gcode}")
                 state.conn.send(gcode + "\n")
 
-                # Wait indefinitely for 'ok' - GRBL sends it after move completes
+                # Wait for 'ok' with timeout
+                wait_start = time.time()
                 while True:
                     # Check stop_requested while waiting
                     if state.stop_requested:
                         logger.debug("Motion thread: Stop requested while waiting for response")
                         return False
+
+                    # Check for timeout
+                    elapsed = time.time() - wait_start
+                    if elapsed > max_wait_time:
+                        logger.error(f"Motion thread: Timeout ({max_wait_time}s) waiting for 'ok' response")
+                        logger.error("Possible serial communication issue - stopping pattern")
+                        state.stop_requested = True
+                        return False
+
                     response = state.conn.readline()
                     if response:
                         logger.debug(f"Motion thread response: {response}")
                         if response.lower() == "ok":
                             logger.debug("Motion thread: Command execution confirmed.")
                             return True
+                        # Log unexpected responses for debugging
+                        if "error" in response.lower() or "alarm" in response.lower():
+                            logger.warning(f"Motion thread: GRBL error/alarm: {response}")
                     # Small sleep to prevent CPU spin when readline() times out
                     time.sleep(0.01)
 
