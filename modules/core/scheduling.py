@@ -172,6 +172,14 @@ def setup_realtime_thread(tid: Optional[int] = None, priority: int = 50) -> None
         priority: SCHED_RR priority (1-99). Higher = more important.
                   Motion should use higher than LED (e.g., 60 vs 40).
     """
+    # DISABLED: SCHED_RR + CPU pinning causes serial buffer corruption on Pi 3B+
+    # The real-time scheduling appears to interfere with serial I/O timing,
+    # causing commands to be merged/corrupted (e.g., "G1 G53" -> "G10G53").
+    # This needs further investigation - may need to pin to a different CPU
+    # or use a different scheduling policy.
+    logger.info(f"Real-time scheduling disabled (was priority {priority}) - causes serial issues on some Pi models")
+    return
+
     cpu_count = get_cpu_count()
 
     # Elevate priority (logs internally on success)
