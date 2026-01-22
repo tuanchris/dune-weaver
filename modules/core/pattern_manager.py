@@ -585,8 +585,13 @@ class MotionControlThread:
                             logger.error("Machine alarm triggered - stopping pattern")
                             state.stop_requested = True
                             return False
-                        # Log unexpected responses that aren't ok/error/alarm
-                        logger.warning(f"Motion thread: Unexpected response (not ok/error/alarm): '{response}'")
+                        # FluidNC may echo commands back before sending 'ok'
+                        # Silently ignore echoed G-code commands (G0, G1, $J, etc.)
+                        if response.startswith(('G0', 'G1', 'G2', 'G3', '$J', 'M')):
+                            logger.debug(f"Motion thread: Ignoring echoed command: {response}")
+                            continue  # Read next line to get 'ok'
+                        # Log truly unexpected responses
+                        logger.warning(f"Motion thread: Unexpected response: '{response}'")
                     else:
                         # Log periodically when waiting for response (every 30s)
                         if int(elapsed) > 0 and int(elapsed) % 30 == 0 and elapsed - int(elapsed) < 0.1:
