@@ -1369,6 +1369,10 @@ async def stop_actions(clear_playlist = True, wait_for_lock = True):
                 if progress_update_task and not progress_update_task.done():
                     progress_update_task.cancel()
 
+                # Cancel the playlist task itself (late import to avoid circular dependency)
+                from modules.core import playlist_manager
+                await playlist_manager.cancel_current_playlist()
+
             state.pause_condition.notify_all()
 
         # Also set the pause event to wake up any paused patterns

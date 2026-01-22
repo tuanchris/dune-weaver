@@ -3,12 +3,16 @@ import os
 import threading
 import logging
 import asyncio
+from typing import Optional
 from modules.core import pattern_manager
 from modules.core.state import state
 from fastapi import HTTPException
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# Track the current playlist task so we can cancel it properly
+_current_playlist_task: Optional[asyncio.Task] = None
 
 # Global state
 PLAYLISTS_FILE = os.path.join(os.getcwd(), "playlists.json")
@@ -113,8 +117,28 @@ def rename_playlist(old_name, new_name):
     logger.info(f"Renamed playlist '{old_name}' to '{new_name}'")
     return True, f"Playlist renamed to '{new_name}'"
 
+async def cancel_current_playlist():
+    """Cancel the current playlist task if one is running."""
+    global _current_playlist_task
+    if _current_playlist_task and not _current_playlist_task.done():
+        logger.info("Cancelling existing playlist task...")
+        _current_playlist_task.cancel()
+        try:
+            await _current_playlist_task
+        except asyncio.CancelledError:
+            logger.info("Playlist task cancelled successfully")
+        except Exception as e:
+            logger.warning(f"Error while cancelling playlist task: {e}")
+        _current_playlist_task = None
+
 async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
     """Run a playlist with the given options."""
+    global _current_playlist_task
+
+    # Cancel any existing playlist task first
+    await cancel_current_playlist()
+
+    # Also stop any running pattern
     if pattern_manager.get_pattern_lock().locked():
         logger.info("Another pattern is running, stopping it first...")
         await pattern_manager.stop_actions()
@@ -135,7 +159,7 @@ async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode
         logger.info(f"Starting playlist '{playlist_name}' with mode={run_mode}, shuffle={shuffle}")
         state.current_playlist = file_paths
         state.current_playlist_name = playlist_name
-        asyncio.create_task(
+        _current_playlist_task = asyncio.create_task(
             pattern_manager.run_theta_rho_files(
                 file_paths,
                 pause_time=pause_time,
