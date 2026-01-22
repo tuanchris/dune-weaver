@@ -386,6 +386,8 @@ def check_and_unlock_alarm():
 def get_status_response() -> str:
     """
     Send a status query ('?') and return the response if available.
+    Accepts both MPos (machine position) and WPos (work position) formats
+    depending on GRBL's $10 setting.
     """
     if state.conn is None or not state.conn.is_connected():
         logger.warning("Cannot get status response: no active connection")
@@ -395,7 +397,8 @@ def get_status_response() -> str:
         try:
             state.conn.send('?')
             response = state.conn.readline()
-            if "MPos" in response:
+            # Accept either MPos or WPos format (depends on GRBL $10 setting)
+            if "MPos" in response or "WPos" in response:
                 logger.debug(f"Status response: {response}")
                 return response
         except Exception as e:
@@ -405,22 +408,30 @@ def get_status_response() -> str:
         
 def parse_machine_position(response: str):
     """
-    Parse the work position (MPos) from a status response.
-    Expected format: "<...|MPos:-994.869,-321.861,0.000|...>"
-    Returns a tuple (work_x, work_y) if found, else None.
+    Parse the position from a status response.
+    Supports both MPos (machine position) and WPos (work position) formats
+    depending on GRBL's $10 setting.
+    Expected formats:
+        "<...|MPos:-994.869,-321.861,0.000|...>"
+        "<...|WPos:0.000,19.000,0.000|...>"
+    Returns a tuple (x, y) if found, else None.
     """
-    if "MPos:" not in response:
+    if "MPos:" not in response and "WPos:" not in response:
         return None
     try:
-        wpos_section = next((part for part in response.split("|") if part.startswith("MPos:")), None)
-        if wpos_section:
-            wpos_str = wpos_section.split(":", 1)[1]
-            wpos_values = wpos_str.split(",")
-            work_x = float(wpos_values[0])
-            work_y = float(wpos_values[1])
-            return work_x, work_y
+        # Try MPos first, then WPos
+        pos_section = next((part for part in response.split("|") if part.startswith("MPos:")), None)
+        if pos_section is None:
+            pos_section = next((part for part in response.split("|") if part.startswith("WPos:")), None)
+
+        if pos_section:
+            pos_str = pos_section.split(":", 1)[1]
+            pos_values = pos_str.split(",")
+            pos_x = float(pos_values[0])
+            pos_y = float(pos_values[1])
+            return pos_x, pos_y
     except Exception as e:
-        logger.error(f"Error parsing work position: {e}")
+        logger.error(f"Error parsing position: {e}")
     return None
 
 

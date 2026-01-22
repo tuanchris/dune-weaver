@@ -477,6 +477,13 @@ class MotionControlThread:
 
     def _move_polar_sync(self, theta: float, rho: float, speed: Optional[float] = None):
         """Synchronous version of move_polar for use in motion thread."""
+        # Check for valid machine position (can be None if homing failed)
+        if state.machine_x is None or state.machine_y is None:
+            logger.error("Cannot execute move: machine position unknown (homing may have failed)")
+            logger.error("Please home the machine before running patterns")
+            state.stop_requested = True
+            return
+
         # This is the original sync logic but running in dedicated thread
         if state.table_type == 'dune_weaver_mini':
             x_scaling_factor = 2
