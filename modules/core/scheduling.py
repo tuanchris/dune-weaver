@@ -164,19 +164,25 @@ def pin_to_cpus(cpu_ids: Set[int], tid: Optional[int] = None) -> bool:
 
 def setup_realtime_thread(tid: Optional[int] = None, priority: int = 50) -> None:
     """Setup for time-critical I/O threads (motion control, LED effects).
-    
+
     Elevates priority and pins to CPU 0.
-    
+
     Args:
         tid: Thread native_id. If None, uses current thread.
         priority: SCHED_RR priority (1-99). Higher = more important.
                   Motion should use higher than LED (e.g., 60 vs 40).
     """
+    # TEMPORARILY DISABLED: Testing if SCHED_RR causes serial timeout on Pi 3B+
+    # The theory is that real-time scheduling on CPU 0 (which handles serial interrupts)
+    # may be blocking the kernel from delivering serial data to the thread.
+    logger.info(f"Real-time scheduling DISABLED for testing (would use priority {priority})")
+    return
+
     cpu_count = get_cpu_count()
-    
+
     # Elevate priority (logs internally on success)
     elevate_priority(tid, realtime_priority=priority)
-    
+
     # Pin to CPU 0 if multi-core
     if cpu_count > 1:
         if pin_to_cpu(0, tid):
