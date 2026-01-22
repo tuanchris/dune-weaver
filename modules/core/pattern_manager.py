@@ -585,8 +585,12 @@ class MotionControlThread:
                             logger.error("Machine alarm triggered - stopping pattern")
                             state.stop_requested = True
                             return False
-                    # Small sleep to prevent CPU spin when readline() times out
-                    time.sleep(0.01)
+                        # Log unexpected responses that aren't ok/error/alarm
+                        logger.warning(f"Motion thread: Unexpected response (not ok/error/alarm): '{response}'")
+                    else:
+                        # Log periodically when waiting for response (every 30s)
+                        if int(elapsed) > 0 and int(elapsed) % 30 == 0 and elapsed - int(elapsed) < 0.1:
+                            logger.warning(f"Motion thread: Still waiting for 'ok' after {int(elapsed)}s for command: {gcode}")
 
             except Exception as e:
                 error_str = str(e)
