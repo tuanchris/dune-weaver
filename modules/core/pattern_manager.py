@@ -1257,7 +1257,9 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                             logger.info("Pause interrupted by skip request")
                             break
                         await asyncio.sleep(1)
+                    # Clear both pause state vars immediately (so UI updates right away)
                     state.pause_time_remaining = 0
+                    state.original_pause_time = None
 
                 # Auto-home after pause time, before next clear pattern starts
                 # Only home if there's a next pattern and we haven't been stopped
@@ -1289,7 +1291,9 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                             logger.info("Pause interrupted by skip request")
                             break
                         await asyncio.sleep(1)
+                    # Clear both pause state vars immediately (so UI updates right away)
                     state.pause_time_remaining = 0
+                    state.original_pause_time = None
                 continue
             else:
                 logger.info("Playlist completed")
