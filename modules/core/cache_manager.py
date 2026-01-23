@@ -5,7 +5,6 @@ import asyncio
 import logging
 from pathlib import Path
 from modules.core.pattern_manager import list_theta_rho_files, THETA_RHO_DIR, parse_theta_rho_file
-from modules.core.process_pool import get_pool as _get_process_pool
 
 logger = logging.getLogger(__name__)
 
@@ -468,17 +467,7 @@ async def generate_image_preview(pattern_file):
             pattern_path = os.path.join(THETA_RHO_DIR, pattern_file)
 
             try:
-                # Use process pool to avoid GIL contention with motion thread
-                # Add timeout protection to prevent hanging on problematic files
-                loop = asyncio.get_running_loop()
-                coordinates = await asyncio.wait_for(
-                    loop.run_in_executor(
-                        _get_process_pool(),
-                        parse_theta_rho_file,
-                        pattern_path
-                    ),
-                    timeout=30.0  # 30 second timeout per file
-                )
+                coordinates = await asyncio.to_thread(parse_theta_rho_file, pattern_path)
 
                 if coordinates:
                     first_coord = {"x": coordinates[0][0], "y": coordinates[0][1]}
@@ -490,8 +479,6 @@ async def generate_image_preview(pattern_file):
                     logger.debug(f"Metadata cached for {pattern_file}: {total_coords} coordinates")
                 else:
                     logger.warning(f"No coordinates found in {pattern_file}")
-            except asyncio.TimeoutError:
-                logger.error(f"Timeout parsing {pattern_file} for metadata - skipping")
             except Exception as e:
                 logger.error(f"Failed to parse {pattern_file} for metadata: {str(e)}")
                 # Continue with image generation even if metadata fails
@@ -650,21 +637,8 @@ async def generate_metadata_cache():
                 cache_progress["current_file"] = file_name
                 
                 try:
-                    # Parse file in separate process to avoid GIL contention with motion thread
-                    # Add timeout protection to prevent hanging on problematic files
-                    try:
-                        loop = asyncio.get_running_loop()
-                        coordinates = await asyncio.wait_for(
-                            loop.run_in_executor(
-                                _get_process_pool(),
-                                parse_theta_rho_file,
-                                pattern_path
-                            ),
-                            timeout=30.0  # 30 second timeout per file
-                        )
-                    except asyncio.TimeoutError:
-                        logger.error(f"Timeout parsing {file_name} - skipping (file may be too large or corrupted)")
-                        continue
+                    # Parse file to get metadata
+                    coordinates = await asyncio.to_thread(parse_theta_rho_file, pattern_path)
 
                     if coordinates:
                         first_coord = {"x": coordinates[0][0], "y": coordinates[0][1]}

@@ -33,7 +33,6 @@ import time
 import argparse
 import subprocess
 import platform
-from modules.core import process_pool as pool_module
 
 # Get log level from environment variable, default to INFO
 log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -101,18 +100,6 @@ async def lifespan(app: FastAPI):
     # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-
-    # Initialize shared process pool for CPU-intensive tasks
-    pool_module.init_pool()
-
-    # Pin main process to CPUs 1-N to keep CPU 0 dedicated to motion/LED
-    from modules.core import scheduling
-    background_cpus = scheduling.get_background_cpus()
-    if background_cpus:
-        scheduling.pin_to_cpus(background_cpus)
-        logger.info(f"FastAPI main process pinned to CPUs {sorted(background_cpus)}")
-    else:
-        logger.info("Single-core system detected, skipping CPU pinning")
 
     # Connect device in background so the web server starts immediately
     async def connect_and_home():
@@ -280,9 +267,6 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down Dune Weaver application...")
-
-    # Shutdown process pool
-    pool_module.shutdown_pool(wait=True)
 
 app = FastAPI(lifespan=lifespan)
 
@@ -3590,9 +3574,6 @@ def signal_handler(signum, frame):
         # Turn off all LEDs on shutdown
         if state.led_controller:
             state.led_controller.set_power(0)
-
-        # Shutdown process pool - wait=True allows workers to release semaphores properly
-        pool_module.shutdown_pool(wait=True)
 
         # Stop pattern manager motion controller
         pattern_manager.motion_controller.stop()
