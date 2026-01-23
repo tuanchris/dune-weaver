@@ -542,8 +542,8 @@ class MotionControlThread:
         """
         gcode = f"$J=G91 G21 Y{y:.2f} F{speed}" if home else f"G1 X{x:.2f} Y{y:.2f} F{speed}"
         max_wait_time = 120  # Maximum seconds to wait for 'ok' response
-        max_corruption_retries = 3  # Max retries for corruption-type errors
-        max_timeout_retries = 2  # Max retries for timeout (lost 'ok' response)
+        max_corruption_retries = 10  # Max retries for corruption-type errors
+        max_timeout_retries = 10  # Max retries for timeout (lost 'ok' response)
         corruption_retry_count = 0
         timeout_retry_count = 0
 
