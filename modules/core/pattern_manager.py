@@ -588,39 +588,71 @@ class MotionControlThread:
                     elapsed = time.time() - wait_start
                     if elapsed > max_wait_time:
                         logger.warning(f"Motion thread: Timeout ({max_wait_time}s) waiting for 'ok' response")
+                        logger.warning(f"Motion thread: Failed command was: {gcode}")
 
                         # Attempt to recover by checking machine status
                         # The 'ok' might have been lost but command may have executed
                         logger.info("Motion thread: Attempting timeout recovery - checking machine status")
+                        logger.info(f"Motion thread: Current retry counts - timeout: {timeout_retry_count}/{max_timeout_retries}, corruption: {corruption_retry_count}/{max_corruption_retries}")
 
                         try:
+                            # Check connection state first
+                            conn_type = type(state.conn).__name__ if state.conn else "None"
+                            logger.info(f"Motion thread: Connection type: {conn_type}")
+
+                            if not state.conn:
+                                logger.error("Motion thread: Connection object is None!")
+                                raise Exception("Connection is None")
+
                             # Clear buffer first
                             if hasattr(state.conn, 'reset_input_buffer'):
                                 state.conn.reset_input_buffer()
+                                logger.info("Motion thread: Input buffer cleared")
+                            else:
+                                logger.warning("Motion thread: Connection has no reset_input_buffer method")
+
+                            # Check if there's data waiting before we send
+                            if hasattr(state.conn, 'in_waiting'):
+                                waiting = state.conn.in_waiting()
+                                logger.info(f"Motion thread: Bytes waiting in buffer after clear: {waiting}")
 
                             # Send status query
+                            logger.info("Motion thread: Sending status query '?'...")
                             state.conn.send("?\n")
                             time.sleep(0.2)
+                            logger.info("Motion thread: Status query sent, reading responses...")
 
                             # Try to read status response
                             status_response = None
-                            for _ in range(10):
+                            responses_received = []
+                            for i in range(10):
                                 resp = state.conn.readline()
                                 if resp:
-                                    logger.debug(f"Motion thread: Status query response: {resp}")
+                                    responses_received.append(resp)
+                                    logger.info(f"Motion thread: Recovery response [{i+1}/10]: '{resp}'")
                                     if '<' in resp or 'Idle' in resp or 'Run' in resp:
                                         status_response = resp
+                                        logger.info(f"Motion thread: Found valid status response: '{resp}'")
                                         break
                                     # Also check for 'ok' that might have been delayed
                                     if resp.lower() == 'ok':
-                                        logger.info("Motion thread: Received delayed 'ok' during recovery")
+                                        logger.info("Motion thread: Received delayed 'ok' during recovery - SUCCESS")
                                         return True
+                                else:
+                                    logger.debug(f"Motion thread: Recovery read [{i+1}/10]: no data (timeout)")
                                 time.sleep(0.05)
+
+                            # Log summary of what we received
+                            if responses_received:
+                                logger.info(f"Motion thread: Total responses received during recovery: {len(responses_received)}")
+                                logger.info(f"Motion thread: All responses: {responses_received}")
+                            else:
+                                logger.warning("Motion thread: No responses received during recovery - connection may be dead")
 
                             if status_response:
                                 if 'Idle' in status_response:
                                     # Machine is idle - command likely completed, 'ok' was lost
-                                    logger.info("Motion thread: Machine is Idle - assuming command completed (ok was lost)")
+                                    logger.info("Motion thread: Machine is Idle - assuming command completed (ok was lost) - SUCCESS")
                                     return True
                                 elif 'Run' in status_response:
                                     # Machine still running - extend timeout
@@ -628,21 +660,35 @@ class MotionControlThread:
                                     wait_start = time.time()  # Reset timeout
                                     continue
                                 else:
-                                    logger.warning(f"Motion thread: Unknown status: {status_response}")
+                                    logger.warning(f"Motion thread: Status response didn't contain Idle or Run: '{status_response}'")
+                            else:
+                                logger.warning("Motion thread: No valid status response found in any received data")
 
                             # No valid status response - connection may be dead
                             timeout_retry_count += 1
                             if timeout_retry_count <= max_timeout_retries:
-                                logger.warning(f"Motion thread: No response, retrying command ({timeout_retry_count}/{max_timeout_retries})")
+                                logger.warning(f"Motion thread: Recovery failed, will retry command ({timeout_retry_count}/{max_timeout_retries})")
                                 time.sleep(0.1)
                                 break  # Break inner loop to resend command
+                            else:
+                                logger.error(f"Motion thread: Max timeout retries ({max_timeout_retries}) exceeded")
 
                         except Exception as e:
                             logger.error(f"Motion thread: Error during timeout recovery: {e}")
+                            import traceback
+                            logger.error(f"Motion thread: Traceback: {traceback.format_exc()}")
 
                         # Max retries exceeded or recovery failed
-                        logger.error("Motion thread: Timeout recovery failed - stopping pattern")
-                        logger.error("Possible serial communication issue")
+                        logger.error("=" * 60)
+                        logger.error("Motion thread: TIMEOUT RECOVERY FAILED - STOPPING PATTERN")
+                        logger.error(f"  Failed command: {gcode}")
+                        logger.error(f"  Timeout retries used: {timeout_retry_count}/{max_timeout_retries}")
+                        logger.error(f"  Corruption retries used: {corruption_retry_count}/{max_corruption_retries}")
+                        logger.error("  Possible causes:")
+                        logger.error("    - Serial connection lost or unstable")
+                        logger.error("    - Hardware controller unresponsive")
+                        logger.error("    - USB power issue (try powered hub)")
+                        logger.error("=" * 60)
                         state.stop_requested = True
                         return False
 
