@@ -200,7 +200,7 @@ def device_init(homing=True):
     try:
         if get_machine_steps():
             logger.info(f"x_steps_per_mm: {state.x_steps_per_mm}, y_steps_per_mm: {state.y_steps_per_mm}, gear_ratio: {state.gear_ratio}")
-        else: 
+        else:
             logger.fatal("Failed to get machine steps")
             state.conn.close()
             return False
@@ -208,6 +208,10 @@ def device_init(homing=True):
         logger.fatal("Not GRBL firmware")
         state.conn.close()
         return False
+
+    # Reset work coordinate offsets for a clean start
+    # This ensures we're using work coordinates (G54) starting from 0
+    reset_work_coordinates()
 
     machine_x, machine_y = get_machine_position()
     if machine_x != state.machine_x or machine_y != state.machine_y:
@@ -469,7 +473,7 @@ async def send_grbl_coordinates(x, y, speed=600, timeout=30, home=False):
             return False
 
         try:
-            gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 G53 X{x} Y{y} F{speed}"
+            gcode = f"$J=G91 G21 Y{y:.2f} F{speed}" if home else f"G1 X{x:.2f} Y{y:.2f} F{speed}"
             await asyncio.to_thread(state.conn.send, gcode + "\n")
             logger.debug(f"Sent command: {gcode}")
 
@@ -1258,6 +1262,88 @@ async def update_machine_position():
             logger.info(f'Machine position saved: {state.machine_x}, {state.machine_y}')
         except Exception as e:
             logger.error(f"Error updating machine position: {e}")
+
+
+def reset_work_coordinates():
+    """
+    Clear all work coordinate offsets for a clean start.
+
+    This ensures the work coordinate system starts fresh on each connection,
+    preventing accumulated offsets from previous sessions from affecting
+    pattern execution.
+
+    G92.1: Clears any G92 offset (resets work coordinates to machine coordinates)
+    G10 L2 P1 X0 Y0: Sets G54 work offset to 0 (for completeness)
+    """
+    if not state.conn or not state.conn.is_connected():
+        logger.warning("Cannot reset work coordinates: no active connection")
+        return False
+
+    try:
+        logger.info("Resetting work coordinate offsets")
+
+        # Clear any stale input data first
+        try:
+            while state.conn.in_waiting() > 0:
+                state.conn.readline()
+        except Exception:
+            pass
+
+        # Clear G92 offset
+        state.conn.send("G92.1\n")
+        time.sleep(0.2)
+
+        # Wait for 'ok' response
+        start_time = time.time()
+        got_ok = False
+        while time.time() - start_time < 2.0:
+            if state.conn.in_waiting() > 0:
+                response = state.conn.readline()
+                if response:
+                    logger.debug(f"G92.1 response: {response}")
+                    if response.lower() == "ok":
+                        got_ok = True
+                        break
+                    elif "error" in response.lower():
+                        logger.warning(f"G92.1 error: {response}")
+                        break
+            time.sleep(0.05)
+
+        if not got_ok:
+            logger.warning("Did not receive 'ok' for G92.1, continuing anyway")
+
+        # Set G54 offset to 0 (optional, for completeness)
+        state.conn.send("G10 L2 P1 X0 Y0\n")
+        time.sleep(0.2)
+
+        # Wait for 'ok' response
+        start_time = time.time()
+        got_ok = False
+        while time.time() - start_time < 2.0:
+            if state.conn.in_waiting() > 0:
+                response = state.conn.readline()
+                if response:
+                    logger.debug(f"G10 response: {response}")
+                    if response.lower() == "ok":
+                        got_ok = True
+                        break
+                    elif "error" in response.lower():
+                        logger.warning(f"G10 error: {response}")
+                        break
+            time.sleep(0.05)
+
+        if not got_ok:
+            logger.warning("Did not receive 'ok' for G10 L2 P1 X0 Y0, continuing anyway")
+
+        # Reset machine_x to 0 since work coordinates now start at 0
+        state.machine_x = 0.0
+        logger.info("Work coordinates reset complete (machine_x set to 0)")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error resetting work coordinates: {e}")
+        return False
+
 
 def restart_connection(homing=False):
     """

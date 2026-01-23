@@ -522,7 +522,8 @@ class MotionControlThread:
             return
 
         # Call sync version of send_grbl_coordinates in this thread
-        self._send_grbl_coordinates_sync(round(new_x_abs, 3), round(new_y_abs, 3), actual_speed)
+        # Use 2 decimal precision to reduce GRBL parsing overhead
+        self._send_grbl_coordinates_sync(round(new_x_abs, 2), round(new_y_abs, 2), actual_speed)
 
         # Update state
         state.current_theta = theta
@@ -539,7 +540,7 @@ class MotionControlThread:
 
         Includes retry logic for serial corruption errors (common on Pi 3B+).
         """
-        gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 G53 X{x} Y{y} F{speed}"
+        gcode = f"$J=G91 G21 Y{y:.2f} F{speed}" if home else f"G1 X{x:.2f} Y{y:.2f} F{speed}"
         max_wait_time = 120  # Maximum seconds to wait for 'ok' response
         max_corruption_retries = 3  # Max retries for corruption-type errors
         max_timeout_retries = 2  # Max retries for timeout (lost 'ok' response)
@@ -1675,8 +1676,40 @@ def resume_execution():
     return True
     
 async def reset_theta():
+    """
+    Reset theta to [0, 2π) range and reset work X coordinate.
+
+    G92 X0 sets current work position to X=0 without moving.
+    This keeps coordinates bounded and prevents soft limit errors.
+    The soft limits check against MPos (machine position), which doesn't
+    change with G92, so this is safe for the hardware.
+    """
     logger.info('Resetting Theta')
     state.current_theta = state.current_theta % (2 * pi)
+
+    # Reset work X coordinate to prevent accumulation
+    if state.conn and state.conn.is_connected():
+        try:
+            logger.info(f"Resetting work X position (was: {state.machine_x:.2f})")
+            state.conn.send("G92 X0\n")
+
+            # Wait for ok response
+            start_time = time.time()
+            while time.time() - start_time < 2.0:
+                response = state.conn.readline()
+                if response:
+                    logger.debug(f"G92 X0 response: {response}")
+                    if response.lower() == "ok":
+                        state.machine_x = 0.0
+                        logger.info("Work X position reset to 0")
+                        break
+                    elif "error" in response.lower():
+                        logger.error(f"G92 X0 error: {response}")
+                        break
+                await asyncio.sleep(0.05)
+        except Exception as e:
+            logger.error(f"Error resetting work position: {e}")
+
     # Call async function directly since we're in async context
     await connection_manager.update_machine_position()
 
