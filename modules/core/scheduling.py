@@ -177,7 +177,6 @@ def setup_realtime_thread(tid: Optional[int] = None, priority: int = 50) -> None
     # causing commands to be merged/corrupted (e.g., "G1 G53" -> "G10G53").
     # This needs further investigation - may need to pin to a different CPU
     # or use a different scheduling policy.
-    logger.info(f"Real-time scheduling disabled (was priority {priority}) - causes serial issues on some Pi models")
     return
 
     cpu_count = get_cpu_count()

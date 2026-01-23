@@ -1337,7 +1337,7 @@ def reset_work_coordinates():
 
         # Reset machine_x to 0 since work coordinates now start at 0
         state.machine_x = 0.0
-        logger.info("Work coordinates reset complete (machine_x set to 0)")
+        logger.info("Work coordinates reset complete")
         return True
 
     except Exception as e:
