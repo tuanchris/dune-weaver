@@ -536,9 +536,24 @@ class MotionControlThread:
         Waits for 'ok' with a timeout. GRBL sends 'ok' after the move completes,
         which can take many seconds at slow speeds. We use a generous timeout
         (120 seconds) to handle slow movements, but prevent indefinite hangs.
+
+        Includes retry logic for serial corruption errors (common on Pi 3B+).
         """
         gcode = f"$J=G91 G21 Y{y} F{speed}" if home else f"G1 G53 X{x} Y{y} F{speed}"
         max_wait_time = 120  # Maximum seconds to wait for 'ok' response
+        max_corruption_retries = 3  # Max retries for corruption-type errors
+        corruption_retry_count = 0
+
+        # GRBL error codes that indicate likely serial corruption (syntax errors)
+        # These are recoverable by resending the command
+        corruption_error_codes = {
+            'error:1',   # Expected command letter
+            'error:2',   # Bad number format
+            'error:20',  # Invalid gcode ID (e.g., G5s instead of G53)
+            'error:21',  # Invalid gcode command value
+            'error:22',  # Invalid gcode command value in negative
+            'error:23',  # Invalid gcode command value in decimal
+        }
 
         while True:
             # Check stop_requested at the start of each iteration
@@ -547,8 +562,17 @@ class MotionControlThread:
                 return False
 
             try:
+                # Clear any stale input data before sending to prevent interleaving
+                # This helps with timing issues on slower UARTs like Pi 3B+
+                if hasattr(state.conn, 'reset_input_buffer'):
+                    state.conn.reset_input_buffer()
+
                 logger.debug(f"Motion thread sending G-code: {gcode}")
                 state.conn.send(gcode + "\n")
+
+                # Small delay for serial buffer to stabilize on slower UARTs
+                # Prevents timing-related corruption on Pi 3B+
+                time.sleep(0.005)
 
                 # Wait for 'ok' with timeout
                 wait_start = time.time()
@@ -571,31 +595,74 @@ class MotionControlThread:
                         logger.debug(f"Motion thread response: {response}")
                         if response.lower() == "ok":
                             logger.debug("Motion thread: Command execution confirmed.")
+                            # Reset corruption retry count on success
+                            if corruption_retry_count > 0:
+                                logger.info(f"Motion thread: Command succeeded after {corruption_retry_count} corruption retry(ies)")
                             return True
-                        # Handle GRBL errors - these mean command failed, stop pattern
+
+                        # Handle GRBL errors
                         if response.lower().startswith("error"):
-                            logger.error(f"Motion thread: GRBL error received: {response}")
-                            logger.error(f"Failed command: {gcode}")
-                            logger.error("Stopping pattern due to GRBL error")
-                            state.stop_requested = True
-                            return False
+                            error_code = response.lower().split()[0] if response else ""
+
+                            # Check if this is a corruption-type error (recoverable)
+                            if error_code in corruption_error_codes:
+                                corruption_retry_count += 1
+                                if corruption_retry_count <= max_corruption_retries:
+                                    logger.warning(f"Motion thread: Likely serial corruption detected ({response})")
+                                    logger.warning(f"Motion thread: Retrying command ({corruption_retry_count}/{max_corruption_retries}): {gcode}")
+                                    # Clear buffer and wait longer before retry
+                                    if hasattr(state.conn, 'reset_input_buffer'):
+                                        state.conn.reset_input_buffer()
+                                    time.sleep(0.02)  # 20ms delay before retry
+                                    break  # Break inner loop to retry send
+                                else:
+                                    logger.error(f"Motion thread: Max corruption retries ({max_corruption_retries}) exceeded")
+                                    logger.error(f"Motion thread: GRBL error received: {response}")
+                                    logger.error(f"Failed command: {gcode}")
+                                    logger.error("Stopping pattern due to persistent serial corruption")
+                                    state.stop_requested = True
+                                    return False
+                            else:
+                                # Non-corruption error - stop immediately
+                                logger.error(f"Motion thread: GRBL error received: {response}")
+                                logger.error(f"Failed command: {gcode}")
+                                logger.error("Stopping pattern due to GRBL error")
+                                state.stop_requested = True
+                                return False
+
                         # Handle GRBL alarms - machine needs attention
                         if "alarm" in response.lower():
                             logger.error(f"Motion thread: GRBL ALARM: {response}")
                             logger.error("Machine alarm triggered - stopping pattern")
                             state.stop_requested = True
                             return False
+
                         # FluidNC may echo commands back before sending 'ok'
                         # Silently ignore echoed G-code commands (G0, G1, $J, etc.)
                         if response.startswith(('G0', 'G1', 'G2', 'G3', '$J', 'M')):
                             logger.debug(f"Motion thread: Ignoring echoed command: {response}")
                             continue  # Read next line to get 'ok'
+
+                        # Check for corruption indicator in MSG:ERR responses
+                        if 'MSG:ERR' in response and 'Bad GCode' in response:
+                            corruption_retry_count += 1
+                            if corruption_retry_count <= max_corruption_retries:
+                                logger.warning(f"Motion thread: Corrupted command detected: {response}")
+                                logger.warning(f"Motion thread: Retrying command ({corruption_retry_count}/{max_corruption_retries}): {gcode}")
+                                # Don't break yet - wait for the error:XX that follows
+                                continue
+                            # If we've exceeded retries, the error:XX handler above will catch it
+
                         # Log truly unexpected responses
                         logger.warning(f"Motion thread: Unexpected response: '{response}'")
                     else:
                         # Log periodically when waiting for response (every 30s)
                         if int(elapsed) > 0 and int(elapsed) % 30 == 0 and elapsed - int(elapsed) < 0.1:
                             logger.warning(f"Motion thread: Still waiting for 'ok' after {int(elapsed)}s for command: {gcode}")
+                else:
+                    # Inner while loop completed without break - shouldn't happen normally
+                    # This means we hit timeout, which is handled above
+                    continue
 
             except Exception as e:
                 error_str = str(e)
@@ -610,8 +677,8 @@ class MotionControlThread:
                     logger.info("Connection marked as disconnected due to device error")
                     return False
 
-            # Only retry on exception (not on timeout)
-            logger.warning(f"Motion thread: Error sending {gcode}, retrying...")
+            # Retry on exception or corruption error
+            logger.warning(f"Motion thread: Retrying {gcode}...")
             time.sleep(0.1)
 
 # Global motion control thread instance

@@ -94,6 +94,12 @@ class SerialConnection(BaseConnection):
         with self.lock:
             return self.ser.in_waiting
 
+    def reset_input_buffer(self) -> None:
+        """Clear any stale data from the serial input buffer."""
+        with self.lock:
+            if self.ser and self.ser.is_open:
+                self.ser.reset_input_buffer()
+
     def is_connected(self) -> bool:
         return self.ser is not None and self.ser.is_open
 

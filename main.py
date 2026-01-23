@@ -488,7 +488,10 @@ async def websocket_status_endpoint(websocket: WebSocket):
                 if "close message has been sent" in str(e):
                     break
                 raise
-            await asyncio.sleep(1)
+            # Use longer interval during pattern execution to reduce asyncio overhead
+            # This helps prevent timing-related serial corruption on Pi 3B+
+            interval = 2.0 if state.current_playing_file else 1.0
+            await asyncio.sleep(interval)
     except WebSocketDisconnect:
         pass
     finally:
