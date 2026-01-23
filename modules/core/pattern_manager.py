@@ -1677,9 +1677,9 @@ def resume_execution():
     
 async def reset_theta():
     """
-    Reset theta to [0, 2π) range and reset work X coordinate.
+    Reset theta to [0, 2π) range and reset work X and Y coordinates.
 
-    G92 X0 sets current work position to X=0 without moving.
+    G92 X0 Y0 sets current work position to X=0 Y=0 without moving.
     This keeps coordinates bounded and prevents soft limit errors.
     The soft limits check against MPos (machine position), which doesn't
     change with G92, so this is safe for the hardware.
@@ -1687,24 +1687,25 @@ async def reset_theta():
     logger.info('Resetting Theta')
     state.current_theta = state.current_theta % (2 * pi)
 
-    # Reset work X coordinate to prevent accumulation
+    # Reset work X and Y coordinates to prevent accumulation
     if state.conn and state.conn.is_connected():
         try:
-            logger.info(f"Resetting work X position (was: {state.machine_x:.2f})")
-            state.conn.send("G92 X0\n")
+            logger.info(f"Resetting work position (was: X={state.machine_x:.2f}, Y={state.machine_y:.2f})")
+            state.conn.send("G92 X0 Y0\n")
 
             # Wait for ok response
             start_time = time.time()
             while time.time() - start_time < 2.0:
                 response = state.conn.readline()
                 if response:
-                    logger.debug(f"G92 X0 response: {response}")
+                    logger.debug(f"G92 X0 Y0 response: {response}")
                     if response.lower() == "ok":
                         state.machine_x = 0.0
-                        logger.info("Work X position reset to 0")
+                        state.machine_y = 0.0
+                        logger.info("Work X and Y position reset to 0")
                         break
                     elif "error" in response.lower():
-                        logger.error(f"G92 X0 error: {response}")
+                        logger.error(f"G92 X0 Y0 error: {response}")
                         break
                 await asyncio.sleep(0.05)
         except Exception as e:
