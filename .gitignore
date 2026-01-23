@@ -22,6 +22,7 @@ patterns/cached_images/custom_*
 .DS_Store
 # Node.js and build files
 node_modules/
+.vite/
 *.log
 *.png
 # Custom branding assets (user uploads)
