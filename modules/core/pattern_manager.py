@@ -1647,6 +1647,17 @@ async def stop_actions(clear_playlist = True, wait_for_lock = True):
             state.current_playing_file = None
             state.execution_progress = None
 
+        # Clear stop_requested now that the pattern has stopped - this allows
+        # check_idle_async to work (it exits early if stop_requested is True)
+        state.stop_requested = False
+
+        # Wait for hardware to reach idle state before returning
+        # This ensures the machine has physically stopped moving
+        if not timed_out:
+            idle = await connection_manager.check_idle_async(timeout=30.0)
+            if not idle:
+                logger.warning("Machine did not reach idle after stop")
+
         # Call async function directly since we're in async context
         await connection_manager.update_machine_position()
         return not timed_out

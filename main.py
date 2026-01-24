@@ -2150,6 +2150,12 @@ async def send_coordinate(request: CoordinateRequest):
     try:
         logger.debug(f"Sending coordinate: theta={request.theta}, rho={request.rho}")
         await pattern_manager.move_polar(request.theta, request.rho)
+
+        # Wait for machine to reach idle before returning
+        idle = await connection_manager.check_idle_async(timeout=60)
+        if not idle:
+            logger.warning("Machine did not reach idle after send_coordinate")
+
         return {"success": True}
     except Exception as e:
         logger.error(f"Failed to send coordinate: {str(e)}")

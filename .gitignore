@@ -31,3 +31,4 @@ static/custom/*
 .claude/
 static/dist/
 .planning
+.coverage
