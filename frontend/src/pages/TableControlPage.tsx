@@ -357,10 +357,10 @@ export function TableControlPage() {
     if (!serialConnected || serialLoading) return
 
     setSerialLoading(true)
-    addSerialHistory('cmd', '[Ctrl+X] Soft Reset')
+    addSerialHistory('cmd', '[Soft Reset]')
 
     try {
-      // Send Ctrl+X (0x18) - GRBL soft reset command
+      // Send soft reset command (backend auto-detects: $Bye for FluidNC, Ctrl+X for GRBL)
       const data = await apiClient.post<{ responses?: string[]; detail?: string }>('/api/debug-serial/send', { port: selectedSerialPort, command: '\x18' })
       if (data.responses && data.responses.length > 0) {
         data.responses.forEach((line: string) => addSerialHistory('resp', line))
@@ -470,13 +470,13 @@ export function TableControlPage() {
                         </Button>
                       </DialogTrigger>
                     </TooltipTrigger>
-                    <TooltipContent>Send Ctrl+X soft reset</TooltipContent>
+                    <TooltipContent>Send soft reset to controller</TooltipContent>
                   </Tooltip>
                   <DialogContent className="sm:max-w-md">
                     <DialogHeader>
                       <DialogTitle>Reset Controller?</DialogTitle>
                       <DialogDescription>
-                        This will send a soft reset (Ctrl+X) to the controller.
+                        This will send a soft reset to the controller.
                       </DialogDescription>
                     </DialogHeader>
                     <Alert className="flex items-center border-amber-500/50">
@@ -827,7 +827,7 @@ export function TableControlPage() {
                     variant="secondary"
                     onClick={handleSerialReset}
                     disabled={serialLoading}
-                    title="Send Ctrl+X soft reset"
+                    title="Send soft reset to controller"
                   >
                     <span className="material-icons-outlined sm:mr-1">restart_alt</span>
                     <span className="hidden sm:inline">Reset</span>
