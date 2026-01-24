@@ -8,8 +8,53 @@ Run with: pytest tests/integration/test_playlist.py --run-hardware -v
 """
 import pytest
 import time
-import asyncio
+import threading
 import os
+
+
+def start_playlist_async(client, playlist_name, pause_time=1, run_mode="single",
+                          clear_pattern=None, shuffle=False):
+    """Helper to start a playlist in a background thread.
+
+    Returns the thread so caller can join() it after stopping.
+    """
+    def run():
+        payload = {
+            "playlist_name": playlist_name,
+            "pause_time": pause_time,
+            "run_mode": run_mode
+        }
+        if clear_pattern:
+            payload["clear_pattern"] = clear_pattern
+        if shuffle:
+            payload["shuffle"] = shuffle
+        client.post("/run_playlist", json=payload)
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    return thread
+
+
+def start_pattern_async(client, file_name="star.thr"):
+    """Helper to start a pattern in a background thread.
+
+    Returns the thread so caller can join() it after stopping.
+    """
+    def run():
+        client.post("/run_theta_rho", json={"file_name": file_name})
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    return thread
+
+
+def stop_pattern(client):
+    """Helper to stop pattern execution.
+
+    Uses force_stop which doesn't wait for locks (avoids event loop issues in tests).
+    """
+    response = client.post("/force_stop")
+    return response
 
 
 @pytest.fixture
@@ -22,19 +67,21 @@ def test_playlist(run_hardware):
 
     playlist_name = "_integration_test_playlist"
 
-    # Find available patterns
-    pattern_dir = './patterns'
+    # Use specific simple patterns for testing
+    test_patterns = [
+        "star.thr",
+        "circle_normalized.thr",
+        "square.thr"
+    ]
+
+    # Verify patterns exist
     available_patterns = []
-    for f in os.listdir(pattern_dir):
-        if f.endswith('.thr') and not f.startswith('.'):
-            path = os.path.join(pattern_dir, f)
-            if os.path.isfile(path):
-                available_patterns.append(path)
-                if len(available_patterns) >= 3:
-                    break
+    for pattern in test_patterns:
+        if os.path.exists(f"./patterns/{pattern}"):
+            available_patterns.append(pattern)
 
     if len(available_patterns) < 2:
-        pytest.skip("Need at least 2 patterns for playlist tests")
+        pytest.skip(f"Need at least 2 of these patterns: {test_patterns}")
 
     # Create the playlist
     playlist_manager.create_playlist(playlist_name, available_patterns)
@@ -57,37 +104,40 @@ class TestPlaylistModes:
     def test_run_playlist_single_mode(self, hardware_port, run_hardware, test_playlist):
         """Test playlist in single mode - plays all patterns once then stops."""
         from modules.connection import connection_manager
-        from modules.core import pattern_manager, playlist_manager
         from modules.core.state import state
+        from fastapi.testclient import TestClient
+        from main import app
 
         conn = connection_manager.SerialConnection(hardware_port)
         state.conn = conn
 
         try:
-            # Run playlist in single mode
-            async def run():
-                success, msg = await playlist_manager.run_playlist(
-                    test_playlist["name"],
-                    pause_time=1,
-                    run_mode="single"
-                )
-                return success
+            client = TestClient(app)
 
-            loop = asyncio.get_event_loop()
+            print(f"Test playlist: {test_playlist}")
 
-            # Start playlist
-            task = asyncio.ensure_future(run())
+            # Try direct API call first to see response
+            response = client.post("/run_playlist", json={
+                "playlist_name": test_playlist["name"],
+                "pause_time": 1,
+                "run_mode": "single"
+            })
+            print(f"API response: {response.status_code} - {response.text}")
 
             # Wait for it to start
             time.sleep(3)
+
+            print(f"state.current_playlist = {state.current_playlist}")
+            print(f"state.playlist_mode = {state.playlist_mode}")
+            print(f"state.current_playing_file = {state.current_playing_file}")
 
             assert state.current_playlist is not None, "Playlist should be running"
             assert state.playlist_mode == "single", f"Mode should be 'single', got: {state.playlist_mode}"
 
             print(f"Playlist running in single mode with {test_playlist['count']} patterns")
 
-            # Stop after verifying mode
-            loop.run_until_complete(pattern_manager.stop_actions())
+            # Clean up
+            stop_pattern(client)
 
         finally:
             conn.close()
@@ -96,23 +146,23 @@ class TestPlaylistModes:
     def test_run_playlist_loop_mode(self, hardware_port, run_hardware, test_playlist):
         """Test playlist in loop mode - continues from start after last pattern."""
         from modules.connection import connection_manager
-        from modules.core import pattern_manager, playlist_manager
         from modules.core.state import state
+        from fastapi.testclient import TestClient
+        from main import app
 
         conn = connection_manager.SerialConnection(hardware_port)
         state.conn = conn
 
         try:
-            async def run():
-                success, msg = await playlist_manager.run_playlist(
-                    test_playlist["name"],
-                    pause_time=1,
-                    run_mode="loop"
-                )
-                return success
+            client = TestClient(app)
 
-            loop = asyncio.get_event_loop()
-            asyncio.ensure_future(run())
+            # Start playlist in background
+            playlist_thread = start_playlist_async(
+                client,
+                test_playlist["name"],
+                pause_time=1,
+                run_mode="loop"
+            )
 
             time.sleep(3)
 
@@ -120,7 +170,9 @@ class TestPlaylistModes:
 
             print("Playlist running in loop mode")
 
-            loop.run_until_complete(pattern_manager.stop_actions())
+            # Clean up
+            stop_pattern(client)
+            playlist_thread.join(timeout=5)
 
         finally:
             conn.close()
@@ -129,24 +181,24 @@ class TestPlaylistModes:
     def test_run_playlist_shuffle(self, hardware_port, run_hardware, test_playlist):
         """Test playlist shuffle mode randomizes order."""
         from modules.connection import connection_manager
-        from modules.core import pattern_manager, playlist_manager
         from modules.core.state import state
+        from fastapi.testclient import TestClient
+        from main import app
 
         conn = connection_manager.SerialConnection(hardware_port)
         state.conn = conn
 
         try:
-            async def run():
-                success, msg = await playlist_manager.run_playlist(
-                    test_playlist["name"],
-                    pause_time=1,
-                    run_mode="single",
-                    shuffle=True
-                )
-                return success
+            client = TestClient(app)
 
-            loop = asyncio.get_event_loop()
-            asyncio.ensure_future(run())
+            # Start playlist in background with shuffle
+            playlist_thread = start_playlist_async(
+                client,
+                test_playlist["name"],
+                pause_time=1,
+                run_mode="single",
+                shuffle=True
+            )
 
             time.sleep(3)
 
@@ -157,7 +209,9 @@ class TestPlaylistModes:
             print(f"Current pattern: {state.current_playing_file}")
             print(f"Playlist order: {state.current_playlist}")
 
-            loop.run_until_complete(pattern_manager.stop_actions())
+            # Clean up
+            stop_pattern(client)
+            playlist_thread.join(timeout=5)
 
         finally:
             conn.close()
@@ -172,25 +226,24 @@ class TestPlaylistPause:
     def test_playlist_pause_between_patterns(self, hardware_port, run_hardware, test_playlist):
         """Test that pause_time is respected between patterns."""
         from modules.connection import connection_manager
-        from modules.core import pattern_manager, playlist_manager
         from modules.core.state import state
+        from fastapi.testclient import TestClient
+        from main import app
 
         conn = connection_manager.SerialConnection(hardware_port)
         state.conn = conn
 
         try:
+            client = TestClient(app)
             pause_time = 5  # 5 seconds between patterns
 
-            async def run():
-                success, msg = await playlist_manager.run_playlist(
-                    test_playlist["name"],
-                    pause_time=pause_time,
-                    run_mode="single"
-                )
-                return success
-
-            loop = asyncio.get_event_loop()
-            asyncio.ensure_future(run())
+            # Start playlist in background
+            playlist_thread = start_playlist_async(
+                client,
+                test_playlist["name"],
+                pause_time=pause_time,
+                run_mode="single"
+            )
 
             # Wait for first pattern to complete (this may take a while)
             # For testing, we'll just verify the pause_time setting is stored
@@ -201,7 +254,9 @@ class TestPlaylistPause:
             print(f"Playlist started with pause_time={pause_time}s")
             print(f"Current pause_time_remaining: {state.pause_time_remaining}")
 
-            loop.run_until_complete(pattern_manager.stop_actions())
+            # Clean up
+            stop_pattern(client)
+            playlist_thread.join(timeout=5)
 
         finally:
             conn.close()
@@ -210,38 +265,35 @@ class TestPlaylistPause:
     def test_stop_during_playlist_pause(self, hardware_port, run_hardware, test_playlist):
         """Test that stop works during the pause between patterns."""
         from modules.connection import connection_manager
-        from modules.core import pattern_manager, playlist_manager
         from modules.core.state import state
+        from fastapi.testclient import TestClient
+        from main import app
 
         conn = connection_manager.SerialConnection(hardware_port)
         state.conn = conn
 
         try:
-            # Use a short pattern and long pause
-            async def run():
-                success, msg = await playlist_manager.run_playlist(
-                    test_playlist["name"],
-                    pause_time=30,  # Long pause
-                    run_mode="single"
-                )
-                return success
+            client = TestClient(app)
 
-            loop = asyncio.get_event_loop()
-            asyncio.ensure_future(run())
+            # Start playlist with long pause
+            playlist_thread = start_playlist_async(
+                client,
+                test_playlist["name"],
+                pause_time=30,  # Long pause
+                run_mode="single"
+            )
 
             time.sleep(3)
 
             # Stop (whether during pattern or pause)
-            async def do_stop():
-                return await pattern_manager.stop_actions()
-
-            success = loop.run_until_complete(do_stop())
-            assert success, "Stop should succeed"
+            response = stop_pattern(client)
+            assert response.status_code == 200, f"Stop failed: {response.text}"
 
             time.sleep(0.5)
             assert state.current_playlist is None, "Playlist should be stopped"
 
             print("Successfully stopped during playlist")
+            playlist_thread.join(timeout=5)
 
         finally:
             conn.close()
@@ -256,25 +308,24 @@ class TestPlaylistClearPattern:
     def test_playlist_with_clear_pattern(self, hardware_port, run_hardware, test_playlist):
         """Test that clear pattern runs between main patterns."""
         from modules.connection import connection_manager
-        from modules.core import pattern_manager, playlist_manager
         from modules.core.state import state
+        from fastapi.testclient import TestClient
+        from main import app
 
         conn = connection_manager.SerialConnection(hardware_port)
         state.conn = conn
 
         try:
-            # Use "clear_from_in" which clears from center outward
-            async def run():
-                success, msg = await playlist_manager.run_playlist(
-                    test_playlist["name"],
-                    pause_time=1,
-                    clear_pattern="clear_from_in",
-                    run_mode="single"
-                )
-                return success
+            client = TestClient(app)
 
-            loop = asyncio.get_event_loop()
-            asyncio.ensure_future(run())
+            # Start playlist with clear pattern
+            playlist_thread = start_playlist_async(
+                client,
+                test_playlist["name"],
+                pause_time=1,
+                clear_pattern="clear_from_in",
+                run_mode="single"
+            )
 
             time.sleep(3)
 
@@ -282,7 +333,9 @@ class TestPlaylistClearPattern:
 
             print("Playlist running with clear_pattern='clear_from_in'")
 
-            loop.run_until_complete(pattern_manager.stop_actions())
+            # Clean up
+            stop_pattern(client)
+            playlist_thread.join(timeout=5)
 
         finally:
             conn.close()
@@ -297,23 +350,23 @@ class TestPlaylistStateUpdates:
     def test_current_file_updates(self, hardware_port, run_hardware, test_playlist):
         """Test that current_playing_file reflects the active pattern."""
         from modules.connection import connection_manager
-        from modules.core import pattern_manager, playlist_manager
         from modules.core.state import state
+        from fastapi.testclient import TestClient
+        from main import app
 
         conn = connection_manager.SerialConnection(hardware_port)
         state.conn = conn
 
         try:
-            async def run():
-                success, msg = await playlist_manager.run_playlist(
-                    test_playlist["name"],
-                    pause_time=1,
-                    run_mode="single"
-                )
-                return success
+            client = TestClient(app)
 
-            loop = asyncio.get_event_loop()
-            asyncio.ensure_future(run())
+            # Start playlist in background
+            playlist_thread = start_playlist_async(
+                client,
+                test_playlist["name"],
+                pause_time=1,
+                run_mode="single"
+            )
 
             time.sleep(3)
 
@@ -333,7 +386,9 @@ class TestPlaylistStateUpdates:
             # (path may differ slightly based on how it's resolved)
             assert current is not None, "Should have a current playing file"
 
-            loop.run_until_complete(pattern_manager.stop_actions())
+            # Clean up
+            stop_pattern(client)
+            playlist_thread.join(timeout=5)
 
         finally:
             conn.close()
@@ -342,23 +397,23 @@ class TestPlaylistStateUpdates:
     def test_playlist_index_updates(self, hardware_port, run_hardware, test_playlist):
         """Test that current_playlist_index updates correctly."""
         from modules.connection import connection_manager
-        from modules.core import pattern_manager, playlist_manager
         from modules.core.state import state
+        from fastapi.testclient import TestClient
+        from main import app
 
         conn = connection_manager.SerialConnection(hardware_port)
         state.conn = conn
 
         try:
-            async def run():
-                success, msg = await playlist_manager.run_playlist(
-                    test_playlist["name"],
-                    pause_time=1,
-                    run_mode="single"
-                )
-                return success
+            client = TestClient(app)
 
-            loop = asyncio.get_event_loop()
-            asyncio.ensure_future(run())
+            # Start playlist in background
+            playlist_thread = start_playlist_async(
+                client,
+                test_playlist["name"],
+                pause_time=1,
+                run_mode="single"
+            )
 
             time.sleep(3)
 
@@ -371,7 +426,9 @@ class TestPlaylistStateUpdates:
             print(f"Current playlist index: {state.current_playlist_index}")
             print(f"Playlist length: {len(state.current_playlist) if state.current_playlist else 0}")
 
-            loop.run_until_complete(pattern_manager.stop_actions())
+            # Clean up
+            stop_pattern(client)
+            playlist_thread.join(timeout=5)
 
         finally:
             conn.close()
@@ -380,20 +437,18 @@ class TestPlaylistStateUpdates:
     def test_progress_updates(self, hardware_port, run_hardware):
         """Test that execution_progress updates during pattern execution."""
         from modules.connection import connection_manager
-        from modules.core import pattern_manager
         from modules.core.state import state
+        from fastapi.testclient import TestClient
+        from main import app
 
         conn = connection_manager.SerialConnection(hardware_port)
         state.conn = conn
 
         try:
-            pattern_path = './patterns/star.thr'
+            client = TestClient(app)
 
-            async def run():
-                await pattern_manager.run_theta_rho_file(pattern_path)
-
-            loop = asyncio.get_event_loop()
-            asyncio.ensure_future(run())
+            # Start pattern in background
+            pattern_thread = start_pattern_async(client, "star.thr")
 
             # Wait for pattern to start
             time.sleep(2)
@@ -417,7 +472,9 @@ class TestPlaylistStateUpdates:
                 if isinstance(first, dict) and isinstance(last, dict):
                     print(f"Progress went from {first} to {last}")
 
-            loop.run_until_complete(pattern_manager.stop_actions())
+            # Clean up
+            stop_pattern(client)
+            pattern_thread.join(timeout=5)
 
         finally:
             conn.close()
@@ -435,7 +492,6 @@ class TestWebSocketStatus:
 
         from fastapi.testclient import TestClient
         from modules.connection import connection_manager
-        from modules.core import pattern_manager
         from modules.core.state import state
         from main import app
 
@@ -443,20 +499,14 @@ class TestWebSocketStatus:
         state.conn = conn
 
         try:
-            pattern_path = './patterns/star.thr'
+            client = TestClient(app)
 
-            # Start pattern
-            async def start():
-                asyncio.create_task(pattern_manager.run_theta_rho_file(pattern_path))
-
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(start())
+            # Start pattern in background
+            pattern_thread = start_pattern_async(client, "star.thr")
 
             time.sleep(2)
 
             # Check WebSocket status
-            client = TestClient(app)
-
             with client.websocket_connect("/ws/status") as websocket:
                 message = websocket.receive_json()
 
@@ -470,7 +520,9 @@ class TestWebSocketStatus:
                 # Should have expected status fields
                 assert "is_running" in data, f"Expected 'is_running' in data"
 
-            loop.run_until_complete(pattern_manager.stop_actions())
+            # Clean up
+            stop_pattern(client)
+            pattern_thread.join(timeout=5)
 
         finally:
             conn.close()

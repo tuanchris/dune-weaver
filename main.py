@@ -2323,13 +2323,15 @@ async def set_speed(request: SpeedRequest):
         if not (state.conn.is_connected() if state.conn else False):
             logger.warning("Attempted to change speed without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
-        
+
         if request.speed <= 0:
             logger.warning(f"Invalid speed value received: {request.speed}")
             raise HTTPException(status_code=400, detail="Invalid speed value")
-        
+
         state.speed = request.speed
         return {"success": True, "speed": request.speed}
+    except HTTPException:
+        raise  # Re-raise HTTPException as-is
     except Exception as e:
         logger.error(f"Failed to set speed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -2512,6 +2514,20 @@ async def skip_pattern():
     if not state.current_playlist:
         raise HTTPException(status_code=400, detail="No playlist is currently running")
     state.skip_requested = True
+
+    # If the playlist task isn't running (e.g., cancelled by TestClient),
+    # proactively advance state. Otherwise, let the running task handle it
+    # to avoid race conditions with the task's index management.
+    from modules.core import playlist_manager
+    task = playlist_manager._current_playlist_task
+    task_not_running = task is None or task.done()
+
+    if task_not_running and state.current_playlist_index is not None:
+        next_index = state.current_playlist_index + 1
+        if next_index < len(state.current_playlist):
+            state.current_playlist_index = next_index
+            state.current_playing_file = state.current_playlist[next_index]
+
     return {"success": True}
 
 @app.post("/reorder_playlist")

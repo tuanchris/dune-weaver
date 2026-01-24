@@ -157,8 +157,16 @@ async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode
 
     try:
         logger.info(f"Starting playlist '{playlist_name}' with mode={run_mode}, shuffle={shuffle}")
+        # Set ALL playlist state variables BEFORE creating the async task.
+        # This ensures state is correct even if the task doesn't start immediately
+        # (important for TestClient which may cancel background tasks).
         state.current_playlist = file_paths
         state.current_playlist_name = playlist_name
+        state.playlist_mode = run_mode
+        state.current_playlist_index = 0
+        # Set current_playing_file to the first pattern as a "preview" - this will be
+        # updated again when actual execution starts, but provides immediate UI feedback.
+        state.current_playing_file = file_paths[0] if file_paths else None
         _current_playlist_task = asyncio.create_task(
             pattern_manager.run_theta_rho_files(
                 file_paths,

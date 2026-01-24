@@ -401,6 +401,7 @@ class AppState:
         timeout_task = asyncio.create_task(asyncio.sleep(timeout), name='timeout')
         tasks.append(timeout_task)
 
+        pending = set()  # Initialize to empty set to avoid UnboundLocalError
         try:
             done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         finally:

@@ -91,3 +91,54 @@ def fast_test_speed(run_hardware):
     yield
 
     state.speed = original_speed  # Restore original speed
+
+
+@pytest.fixture(autouse=True)
+def reset_asyncio_events(run_hardware):
+    """Reset global asyncio primitives before each test.
+
+    The pattern_manager uses global asyncio objects (Lock, Event) that are
+    bound to the event loop where they were created. When TestClient creates
+    its own event loop, these become incompatible.
+
+    This fixture resets them to None so they get recreated in the current loop.
+    Also ensures pause/stop state is cleared so tests start fresh.
+    """
+    if not run_hardware:
+        yield
+        return
+
+    import modules.core.pattern_manager as pm
+    from modules.core.state import state
+
+    # Reset pattern_manager's global async primitives
+    pm.pause_event = None
+    pm.pattern_lock = None  # Will be recreated via get_pattern_lock()
+
+    # Reset state's event loop tracking so events get recreated in new loop
+    state._event_loop = None
+    state._stop_event = None
+    state._skip_event = None
+
+    # Clear any lingering pause/stop state from previous tests
+    state._pause_requested = False
+    state._stop_requested = False
+    state._skip_requested = False
+
+    # Clear playback state
+    state.current_playing_file = None
+    state.current_playlist = None
+    state.playlist_mode = None
+    state.current_playlist_index = None
+
+    yield
+
+    # Clean up after test
+    pm.pause_event = None
+    pm.pattern_lock = None
+    state._event_loop = None
+    state._stop_event = None
+    state._skip_event = None
+    state._pause_requested = False
+    state._stop_requested = False
+    state._skip_requested = False

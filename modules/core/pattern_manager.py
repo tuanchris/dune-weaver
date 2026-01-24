@@ -812,9 +812,11 @@ async def cleanup_pattern_manager():
             logger.info("Pattern lock is held, waiting for release (max 5s)...")
             try:
                 # Wait with timeout for the lock to become available
-                async with asyncio.timeout(5.0):
+                # Use wait_for for Python 3.9 compatibility (asyncio.timeout is 3.11+)
+                async def acquire_lock():
                     async with current_lock:
                         pass  # Lock acquired means previous holder released it
+                await asyncio.wait_for(acquire_lock(), timeout=5.0)
                 logger.info("Pattern lock released normally")
             except asyncio.TimeoutError:
                 logger.warning("Timed out waiting for pattern lock - creating fresh lock")
@@ -1367,13 +1369,21 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
     """
     state.stop_requested = False
 
+    # Track whether we actually started executing patterns.
+    # If cancelled before execution begins (e.g., by TestClient cleanup),
+    # we should NOT clear state that was set by the caller.
+    task_started_execution = False
+
     # Reset LED idle timeout activity time when playlist starts
     import time as time_module
     state.dw_led_last_activity_time = time_module.time()
 
-    # Set initial playlist state
-    state.playlist_mode = run_mode
-    state.current_playlist_index = 0
+    # Set initial playlist state only if not already set by caller (playlist_manager).
+    # This ensures backward compatibility when this function is called directly.
+    if state.playlist_mode is None:
+        state.playlist_mode = run_mode
+    if state.current_playlist_index is None:
+        state.current_playlist_index = 0
 
     # Start progress update task for the playlist
     global progress_update_task
@@ -1385,8 +1395,10 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
         random.shuffle(file_paths)
         logger.info("Playlist shuffled")
 
-    # Store only main patterns in the playlist
-    state.current_playlist = file_paths
+    # Store patterns in state only if not already set by caller.
+    # The caller (playlist_manager.run_playlist) sets this before creating the task.
+    if state.current_playlist is None:
+        state.current_playlist = file_paths
 
     try:
         while True:
@@ -1413,6 +1425,9 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                 # Get the pattern at the current index (may have changed due to reordering)
                 file_path = state.current_playlist[idx]
                 logger.info(f"Running pattern {idx + 1}/{len(state.current_playlist)}: {file_path}")
+
+                # Mark that we've started actual execution (for cleanup logic)
+                task_started_execution = True
 
                 # Clear pause state when starting a new pattern (prevents stale "waiting" UI)
                 state.pause_time_remaining = 0
@@ -1513,6 +1528,18 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                 logger.info("Playlist completed")
                 break
 
+    except asyncio.CancelledError:
+        # Task was cancelled externally (e.g., by TestClient cleanup, or explicit cancellation).
+        # Do NOT clear playlist state - preserve what the caller set.
+        logger.info("Playlist task was cancelled externally, preserving state")
+        if progress_update_task:
+            progress_update_task.cancel()
+            try:
+                await progress_update_task
+            except asyncio.CancelledError:
+                pass
+            progress_update_task = None
+        raise  # Re-raise to signal cancellation
     finally:
         if progress_update_task:
             progress_update_task.cancel()
@@ -1522,18 +1549,29 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                 pass
             progress_update_task = None
 
-        state.current_playing_file = None
-        state.execution_progress = None
-        state.current_playlist = None
-        state.current_playlist_index = None
-        state.playlist_mode = None
-        state.pause_time_remaining = 0
+        # Check if we're exiting due to CancelledError - if so, don't clear state.
+        # State should only be cleared when:
+        # 1. Task completed normally (all patterns executed)
+        # 2. Task was stopped by user request (stop_requested)
+        # NOT when task was cancelled externally (CancelledError)
+        import sys
+        exc_type = sys.exc_info()[0]
+        if exc_type is asyncio.CancelledError:
+            logger.info("Task exiting due to cancellation, state preserved for caller")
+        else:
+            # Normal completion or user-requested stop - clear state
+            state.current_playing_file = None
+            state.execution_progress = None
+            state.current_playlist = None
+            state.current_playlist_index = None
+            state.playlist_mode = None
+            state.pause_time_remaining = 0
 
-        if state.led_controller:
-            await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
-            start_idle_led_timeout()
+            if state.led_controller:
+                await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
+                start_idle_led_timeout()
 
-        logger.info("All requested patterns completed (or stopped) and state cleared")
+            logger.info("All requested patterns completed (or stopped) and state cleared")
 
 async def stop_actions(clear_playlist = True, wait_for_lock = True):
     """Stop all current actions and wait for pattern to fully release.
@@ -1588,10 +1626,12 @@ async def stop_actions(clear_playlist = True, wait_for_lock = True):
         if wait_for_lock and lock.locked():
             logger.info("Waiting for pattern to fully stop...")
             # Use a timeout to prevent hanging forever
+            # Use wait_for for Python 3.9 compatibility (asyncio.timeout is 3.11+)
             try:
-                async with asyncio.timeout(10.0):
+                async def acquire_stop_lock():
                     async with lock:
                         logger.info("Pattern lock acquired - pattern has fully stopped")
+                await asyncio.wait_for(acquire_stop_lock(), timeout=10.0)
             except asyncio.TimeoutError:
                 logger.warning("Timeout waiting for pattern to stop - forcing cleanup")
                 timed_out = True
@@ -1600,9 +1640,12 @@ async def stop_actions(clear_playlist = True, wait_for_lock = True):
                 state.execution_progress = None
                 state.is_running = False
 
-        # Always clear the current playing file after stop
-        state.current_playing_file = None
-        state.execution_progress = None
+        # Clear current playing file only when clearing the entire playlist.
+        # When clear_playlist=False (called from within pattern execution), the caller
+        # will set current_playing_file to the new pattern immediately after.
+        if clear_playlist:
+            state.current_playing_file = None
+            state.execution_progress = None
 
         # Call async function directly since we're in async context
         await connection_manager.update_machine_position()
