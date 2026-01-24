@@ -1,0 +1,18 @@
+# Development and testing dependencies
+# Install: pip install -r requirements-dev.txt
+
+# Core testing
+pytest>=7.0
+pytest-asyncio>=0.23
+pytest-cov>=4.0
+pytest-timeout>=2.0
+
+# HTTP client for API testing
+httpx>=0.25
+
+# Serial port mocking (Linux/macOS only, not Windows)
+mock-serial>=0.0.1
+
+# Test data generation
+factory-boy>=3.3
+faker>=18.0
