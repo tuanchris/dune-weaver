@@ -14,7 +14,7 @@ from modules.led.idle_timeout_manager import idle_timeout_manager
 
 logger = logging.getLogger(__name__)
 
-IGNORE_PORTS = ['/dev/cu.debug-console', '/dev/cu.Bluetooth-Incoming-Port']
+IGNORE_PORTS = ['/dev/cu.debug-console', '/dev/cu.Bluetooth-Incoming-Port', '/dev/ttyS0']
 
 
 async def _check_table_is_idle() -> bool:
