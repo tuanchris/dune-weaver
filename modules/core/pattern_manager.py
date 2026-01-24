@@ -1677,12 +1677,26 @@ async def reset_theta():
     $Bye sends a soft reset to FluidNC which resets the controller and clears
     all position counters to 0. This is more reliable than G92 which only sets
     a work coordinate offset without changing the actual machine position (MPos).
+
+    IMPORTANT: We wait for machine to be idle before sending $Bye to avoid
+    error:25 ("Feed rate not specified in block") which can occur if the
+    controller is still processing commands when reset is triggered.
     """
     logger.info('Resetting Theta')
+
+    # Wait for machine to be idle before reset to prevent error:25
+    if state.conn and state.conn.is_connected():
+        logger.info("Waiting for machine to be idle before reset...")
+        idle = await connection_manager.check_idle_async(timeout=30)
+        if not idle:
+            logger.warning("Machine not idle after 30s, proceeding with reset anyway")
+
     state.current_theta = state.current_theta % (2 * pi)
 
     # Hard reset machine position using $Bye via connection_manager
-    await connection_manager.perform_soft_reset()
+    success = await connection_manager.perform_soft_reset()
+    if not success:
+        logger.error("Soft reset failed - theta reset may be unreliable")
 
 def set_speed(new_speed):
     state.speed = new_speed

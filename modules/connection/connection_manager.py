@@ -1269,7 +1269,7 @@ async def update_machine_position():
             logger.error(f"Error updating machine position: {e}")
 
 
-def perform_soft_reset_sync():
+def perform_soft_reset_sync(max_retries: int = 3):
     """
     Synchronous version of soft reset for use during device initialization.
 
@@ -1277,6 +1277,15 @@ def perform_soft_reset_sync():
     Triggers a software reset which clears position counters to 0.
     This is more reliable than G92 which only sets a work coordinate offset
     without changing the actual machine position (MPos).
+
+    IMPORTANT: Position is only reset to (0,0) if confirmation is received.
+    This prevents position drift from accumulating over long operation periods.
+
+    Args:
+        max_retries: Maximum number of reset attempts (default 3)
+
+    Returns:
+        True if reset confirmed, False if all attempts failed
     """
     if not state.conn or not state.conn.is_connected():
         logger.warning("Cannot perform soft reset: no active connection")
@@ -1286,87 +1295,100 @@ def perform_soft_reset_sync():
         # Detect firmware type to use appropriate reset command
         firmware_type, version = _detect_firmware()
         logger.info(f"Detected firmware: {firmware_type} {version or ''}")
-
         logger.info(f"Performing soft reset (was: X={state.machine_x:.2f}, Y={state.machine_y:.2f})")
 
-        # Clear any pending data first
-        if isinstance(state.conn, SerialConnection) and state.conn.ser:
-            state.conn.ser.reset_input_buffer()
+        for attempt in range(max_retries):
+            # Increasing timeout: 5s, 7s, 9s
+            timeout = 5.0 + (attempt * 2.0)
+            logger.info(f"Reset attempt {attempt + 1}/{max_retries} (timeout: {timeout}s)")
 
-        # Send appropriate reset command based on firmware
-        if firmware_type == 'fluidnc':
-            # FluidNC uses $Bye for soft reset
+            # Clear any pending data first
             if isinstance(state.conn, SerialConnection) and state.conn.ser:
-                state.conn.ser.write(b'$Bye\n')
-                state.conn.ser.flush()
-                logger.info(f"$Bye sent directly via serial to {state.port}")
+                state.conn.ser.reset_input_buffer()
+
+            # Send appropriate reset command based on firmware
+            if firmware_type == 'fluidnc':
+                # FluidNC uses $Bye for soft reset
+                if isinstance(state.conn, SerialConnection) and state.conn.ser:
+                    state.conn.ser.write(b'$Bye\n')
+                    state.conn.ser.flush()
+                    logger.info(f"$Bye sent directly via serial to {state.port}")
+                else:
+                    state.conn.send('$Bye\n')
+                    logger.info("$Bye sent via connection abstraction")
             else:
-                state.conn.send('$Bye\n')
-                logger.info("$Bye sent via connection abstraction")
-        else:
-            # GRBL uses Ctrl+X (0x18) for soft reset
-            if isinstance(state.conn, SerialConnection) and state.conn.ser:
-                state.conn.ser.write(b'\x18')
-                state.conn.ser.flush()
-                logger.info(f"Ctrl+X (0x18) sent directly via serial to {state.port}")
-            else:
-                state.conn.send('\x18')
-                logger.info("Ctrl+X (0x18) sent via connection abstraction")
+                # GRBL uses Ctrl+X (0x18) for soft reset
+                if isinstance(state.conn, SerialConnection) and state.conn.ser:
+                    state.conn.ser.write(b'\x18')
+                    state.conn.ser.flush()
+                    logger.info(f"Ctrl+X (0x18) sent directly via serial to {state.port}")
+                else:
+                    state.conn.send('\x18')
+                    logger.info("Ctrl+X (0x18) sent via connection abstraction")
 
-        # Wait for controller to fully restart
-        # FluidNC sequence: [MSG:INFO: Restarting] -> ... -> "Grbl 3.9 [FluidNC...]"
-        # GRBL sequence: "Grbl 1.1h ['$' for help]"
-        start_time = time.time()
-        reset_confirmed = False
-        while time.time() - start_time < 5.0:  # 5 second timeout for full reboot
-            try:
-                response = state.conn.readline()
-                if response:
-                    logger.debug(f"Reset response: {response}")
-                    # Wait for the "Grbl" startup banner - this means fully ready
-                    if response.startswith("Grbl") or "fluidnc" in response.lower():
-                        reset_confirmed = True
-                        logger.info(f"Controller restart complete: {response}")
-                        break
-            except Exception:
-                pass
-            time.sleep(0.05)
-
-        # Small delay to let controller fully stabilize
-        time.sleep(0.2)
-
-        # Unlock controller in case it's in alarm state after reset
-        if reset_confirmed:
-            logger.info("Sending $X to unlock controller after reset")
-            state.conn.send("$X\n")
-            # Wait for ok response
-            unlock_start = time.time()
-            while time.time() - unlock_start < 1.0:
+            # Wait for controller to fully restart
+            # FluidNC sequence: [MSG:INFO: Restarting] -> ... -> "Grbl 3.9 [FluidNC...]"
+            # GRBL sequence: "Grbl 1.1h ['$' for help]"
+            start_time = time.time()
+            reset_confirmed = False
+            while time.time() - start_time < timeout:
                 try:
                     response = state.conn.readline()
                     if response:
-                        logger.debug(f"$X response: {response}")
-                        if response.lower() == "ok":
-                            logger.info("Controller unlocked")
+                        logger.debug(f"Reset response: {response}")
+                        # Wait for the "Grbl" startup banner - this means fully ready
+                        if response.startswith("Grbl") or "fluidnc" in response.lower():
+                            reset_confirmed = True
+                            logger.info(f"Controller restart complete: {response}")
                             break
                 except Exception:
                     pass
                 time.sleep(0.05)
 
-        # Reset state positions to 0 after soft reset
-        state.machine_x = 0.0
-        state.machine_y = 0.0
+            if reset_confirmed:
+                # Small delay to let controller fully stabilize
+                time.sleep(0.2)
 
-        if reset_confirmed:
-            logger.info(f"Machine position reset to 0 via {'$Bye' if firmware_type == 'fluidnc' else 'Ctrl+X'} soft reset")
-        else:
-            logger.warning("Soft reset sent but no confirmation received, position set to 0 anyway")
+                # Unlock controller in case it's in alarm state after reset
+                logger.info("Sending $X to unlock controller after reset")
+                state.conn.send("$X\n")
+                # Wait for ok response
+                unlock_start = time.time()
+                while time.time() - unlock_start < 1.0:
+                    try:
+                        response = state.conn.readline()
+                        if response:
+                            logger.debug(f"$X response: {response}")
+                            if response.lower() == "ok":
+                                logger.info("Controller unlocked")
+                                break
+                    except Exception:
+                        pass
+                    time.sleep(0.05)
 
-        # Save the reset position
-        state.save()
-        logger.info(f"Machine position saved: {state.machine_x}, {state.machine_y}")
+                # Only reset state positions when confirmation received
+                state.machine_x = 0.0
+                state.machine_y = 0.0
+                reset_cmd = '$Bye' if firmware_type == 'fluidnc' else 'Ctrl+X'
+                logger.info(f"Machine position reset to 0 via {reset_cmd} soft reset")
 
-        return True
+                # Save the reset position
+                state.save()
+                logger.info(f"Machine position saved: {state.machine_x}, {state.machine_y}")
+                return True
+
+            # Retry after failed attempt
+            if attempt < max_retries - 1:
+                logger.warning(f"Reset attempt {attempt + 1}/{max_retries} failed, retrying...")
+                time.sleep(0.5)  # Brief pause before retry
+
+        # All attempts failed - DO NOT reset position to prevent drift
+        logger.error(
+            f"All {max_retries} reset attempts failed - no confirmation received. "
+            f"Position NOT reset (still: X={state.machine_x:.2f}, Y={state.machine_y:.2f}). "
+            "This may indicate communication issues or controller not responding."
+        )
+        return False
 
     except Exception as e:
         logger.error(f"Error performing soft reset: {e}")

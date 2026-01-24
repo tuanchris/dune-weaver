@@ -21,6 +21,9 @@ services:
     build: .
     image: ghcr.io/tuanchris/dune-weaver:feature-react-ui
     restart: always
+    # Pin motion-critical backend to cores 0-2 (Raspberry Pi 4/5 has cores 0-3)
+    # This prevents CPU contention from touch app blocking I/O calls
+    cpuset: "0,1,2"
     ports:
       - "8080:8080"
     # Environment variables for testing (uncomment to enable):
