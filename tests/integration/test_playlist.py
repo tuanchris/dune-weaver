@@ -458,7 +458,7 @@ class TestWebSocketStatus:
             client = TestClient(app)
 
             with client.websocket_connect("/ws/status") as websocket:
-                data = websocket.receive_json(timeout=5)
+                data = websocket.receive_json()
 
                 print(f"WebSocket status: {data}")
 

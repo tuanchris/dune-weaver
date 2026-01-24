@@ -409,7 +409,7 @@ class TestWebSocketConnection:
         # Connect to WebSocket
         with client.websocket_connect("/ws/status") as websocket:
             # Should receive initial status
-            data = websocket.receive_json(timeout=5)
+            data = websocket.receive_json()
 
             # Verify status structure
             assert "is_running" in data or "current_file" in data, \
