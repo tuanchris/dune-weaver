@@ -274,15 +274,15 @@ class TestTableMovement:
             state.conn = None
 
     def test_move_to_perimeter(self, hardware_port, run_hardware):
-        """Test moving ball to perimeter (rho=1.0).
+        """Test moving ball to perimeter (rho=1.0) via API endpoint.
 
-        Moves the ball from current position to the outer edge of the table.
+        Uses the /move_to_perimeter endpoint which waits for idle before returning.
         """
         if not run_hardware:
             pytest.skip("Hardware tests disabled")
 
+        from httpx import Client
         from modules.connection import connection_manager
-        from modules.core import pattern_manager
         from modules.core.state import state
 
         # Connect
@@ -290,23 +290,17 @@ class TestTableMovement:
         state.conn = conn
 
         try:
-            # Start motion controller
-            if not pattern_manager.motion_controller.running:
-                pattern_manager.motion_controller.start()
+            # Use the API endpoint which waits for idle
+            print("Moving to perimeter via API...")
 
-            # Move to perimeter (theta=0, rho=1.0)
-            print("Moving to perimeter (rho=1.0)...")
+            from main import app
+            from fastapi.testclient import TestClient
 
-            async def do_move():
-                await pattern_manager.move_polar(theta=0, rho=1.0, speed=200)
+            client = TestClient(app)
+            response = client.post("/move_to_perimeter")
 
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(do_move())
-
-            # Wait for machine to reach idle state
-            print("Waiting for idle...")
-            idle = loop.run_until_complete(connection_manager.check_idle_async(timeout=30))
-            assert idle, "Machine did not reach idle state after move"
+            assert response.status_code == 200, f"API returned {response.status_code}: {response.text}"
+            assert response.json()["success"] is True
 
             # Verify we're near the perimeter
             assert state.current_rho > 0.9, \
@@ -315,20 +309,18 @@ class TestTableMovement:
             print(f"At perimeter: theta={state.current_theta:.3f}, rho={state.current_rho:.3f}")
 
         finally:
-            pattern_manager.motion_controller.stop()
             conn.close()
             state.conn = None
 
     def test_move_to_center(self, hardware_port, run_hardware):
-        """Test moving ball to center (rho=0.0).
+        """Test moving ball to center (rho=0.0) via API endpoint.
 
-        Moves the ball from current position to the center of the table.
+        Uses the /move_to_center endpoint which waits for idle before returning.
         """
         if not run_hardware:
             pytest.skip("Hardware tests disabled")
 
         from modules.connection import connection_manager
-        from modules.core import pattern_manager
         from modules.core.state import state
 
         # Connect
@@ -336,23 +328,17 @@ class TestTableMovement:
         state.conn = conn
 
         try:
-            # Start motion controller
-            if not pattern_manager.motion_controller.running:
-                pattern_manager.motion_controller.start()
+            # Use the API endpoint which waits for idle
+            print("Moving to center via API...")
 
-            # Move to center (theta=0, rho=0.0)
-            print("Moving to center (rho=0.0)...")
+            from main import app
+            from fastapi.testclient import TestClient
 
-            async def do_move():
-                await pattern_manager.move_polar(theta=0, rho=0.0, speed=200)
+            client = TestClient(app)
+            response = client.post("/move_to_center")
 
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(do_move())
-
-            # Wait for machine to reach idle state
-            print("Waiting for idle...")
-            idle = loop.run_until_complete(connection_manager.check_idle_async(timeout=30))
-            assert idle, "Machine did not reach idle state after move"
+            assert response.status_code == 200, f"API returned {response.status_code}: {response.text}"
+            assert response.json()["success"] is True
 
             # Verify we're near the center
             assert state.current_rho < 0.1, \
@@ -361,7 +347,6 @@ class TestTableMovement:
             print(f"At center: theta={state.current_theta:.3f}, rho={state.current_rho:.3f}")
 
         finally:
-            pattern_manager.motion_controller.stop()
             conn.close()
             state.conn = None
 

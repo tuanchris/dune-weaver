@@ -1937,6 +1937,12 @@ async def move_to_center():
         logger.info("Moving device to center position")
         await pattern_manager.reset_theta()
         await pattern_manager.move_polar(0, 0)
+
+        # Wait for machine to reach idle before returning
+        idle = await connection_manager.check_idle_async(timeout=60)
+        if not idle:
+            logger.warning("Machine did not reach idle after move to center")
+
         return {"success": True}
     except HTTPException:
         raise
@@ -1956,8 +1962,15 @@ async def move_to_perimeter():
         # Clear stop_requested to ensure manual move works after pattern stop
         state.stop_requested = False
 
+        logger.info("Moving device to perimeter position")
         await pattern_manager.reset_theta()
         await pattern_manager.move_polar(0, 1)
+
+        # Wait for machine to reach idle before returning
+        idle = await connection_manager.check_idle_async(timeout=60)
+        if not idle:
+            logger.warning("Machine did not reach idle after move to perimeter")
+
         return {"success": True}
     except HTTPException:
         raise
