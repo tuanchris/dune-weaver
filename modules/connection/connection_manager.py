@@ -943,7 +943,7 @@ def get_machine_steps(timeout=10):
         logger.error(f"Failed to get all machine parameters after {timeout}s. Missing: {', '.join(missing)}")
         return False
 
-def home(timeout=90):
+def home(timeout=120):
     """
     Perform homing sequence based on configured mode:
 
@@ -958,7 +958,8 @@ def home(timeout=90):
         - Set theta to compass offset, rho=0
 
     Args:
-        timeout: Maximum time in seconds to wait for homing to complete (default: 90)
+        timeout: Maximum time in seconds to wait for homing to complete (default: 120)
+                 Increased from 90s to allow buffer after soft reset recovery
     """
     import threading
     import math
