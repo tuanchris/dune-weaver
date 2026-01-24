@@ -1264,6 +1264,93 @@ async def update_machine_position():
             logger.error(f"Error updating machine position: {e}")
 
 
+async def perform_soft_reset():
+    """
+    Send $Bye soft reset to FluidNC controller and reset position counters.
+
+    $Bye triggers a software reset in FluidNC which clears all position counters
+    to 0. This is more reliable than G92 which only sets a work coordinate offset
+    without changing the actual machine position (MPos).
+    """
+    if not state.conn or not state.conn.is_connected():
+        logger.warning("Cannot perform soft reset: no active connection")
+        return False
+
+    try:
+        logger.info(f"Sending $Bye soft reset (was: X={state.machine_x:.2f}, Y={state.machine_y:.2f})")
+
+        # Clear any pending data first
+        if isinstance(state.conn, SerialConnection) and state.conn.ser:
+            state.conn.ser.reset_input_buffer()
+            state.conn.ser.write(b'$Bye\n')
+            state.conn.ser.flush()
+            logger.info(f"$Bye sent directly via serial to {state.port}")
+        else:
+            state.conn.send('$Bye\n')
+            logger.info("$Bye sent via connection abstraction")
+
+        # Wait for controller to fully restart
+        # The restart sequence is:
+        # 1. [MSG:INFO: Restarting] + ok
+        # 2. Many [MSG:INFO: ...] initialization lines
+        # 3. Final: "Grbl 3.9 [FluidNC v3.9.5 ...]" - this means ready
+        start_time = time.time()
+        reset_confirmed = False
+        while time.time() - start_time < 5.0:  # 5 second timeout for full reboot
+            try:
+                response = state.conn.readline()
+                if response:
+                    logger.debug(f"$Bye response: {response}")
+                    # Wait for the final "Grbl" startup banner - this means fully ready
+                    if response.startswith("Grbl") or "fluidnc" in response.lower():
+                        reset_confirmed = True
+                        logger.info(f"Controller restart complete: {response}")
+                        break
+            except Exception:
+                pass
+            await asyncio.sleep(0.05)
+
+        # Small delay to let controller fully stabilize
+        await asyncio.sleep(0.2)
+
+        # Unlock controller in case it's in alarm state after reset
+        if reset_confirmed:
+            logger.info("Sending $X to unlock controller after reset")
+            state.conn.send("$X\n")
+            # Wait for ok response
+            unlock_start = time.time()
+            while time.time() - unlock_start < 1.0:
+                try:
+                    response = state.conn.readline()
+                    if response:
+                        logger.debug(f"$X response: {response}")
+                        if response.lower() == "ok":
+                            logger.info("Controller unlocked")
+                            break
+                except Exception:
+                    pass
+                await asyncio.sleep(0.05)
+
+        # Reset state positions to 0 after soft reset
+        state.machine_x = 0.0
+        state.machine_y = 0.0
+
+        if reset_confirmed:
+            logger.info("Machine position reset to 0 via $Bye soft reset")
+        else:
+            logger.warning("$Bye sent but no reset confirmation received, position set to 0 anyway")
+
+        # Save the reset position
+        await asyncio.to_thread(state.save)
+        logger.info(f"Machine position saved: {state.machine_x}, {state.machine_y}")
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Error performing soft reset: {e}")
+        return False
+
+
 def reset_work_coordinates():
     """
     Clear all work coordinate offsets for a clean start.

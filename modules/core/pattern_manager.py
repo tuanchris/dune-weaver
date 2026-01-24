@@ -1672,42 +1672,17 @@ def resume_execution():
     
 async def reset_theta():
     """
-    Reset theta to [0, 2π) range and reset work X and Y coordinates.
+    Reset theta to [0, 2π) range and hard reset machine position using $Bye.
 
-    G92 X0 Y0 sets current work position to X=0 Y=0 without moving.
-    This keeps coordinates bounded and prevents soft limit errors.
-    The soft limits check against MPos (machine position), which doesn't
-    change with G92, so this is safe for the hardware.
+    $Bye sends a soft reset to FluidNC which resets the controller and clears
+    all position counters to 0. This is more reliable than G92 which only sets
+    a work coordinate offset without changing the actual machine position (MPos).
     """
     logger.info('Resetting Theta')
     state.current_theta = state.current_theta % (2 * pi)
 
-    # Reset work X and Y coordinates to prevent accumulation
-    if state.conn and state.conn.is_connected():
-        try:
-            logger.info(f"Resetting work position (was: X={state.machine_x:.2f}, Y={state.machine_y:.2f})")
-            state.conn.send("G92 X0 Y0\n")
-
-            # Wait for ok response
-            start_time = time.time()
-            while time.time() - start_time < 2.0:
-                response = state.conn.readline()
-                if response:
-                    logger.debug(f"G92 X0 Y0 response: {response}")
-                    if response.lower() == "ok":
-                        state.machine_x = 0.0
-                        state.machine_y = 0.0
-                        logger.info("Work X and Y position reset to 0")
-                        break
-                    elif "error" in response.lower():
-                        logger.error(f"G92 X0 Y0 error: {response}")
-                        break
-                await asyncio.sleep(0.05)
-        except Exception as e:
-            logger.error(f"Error resetting work position: {e}")
-
-    # Call async function directly since we're in async context
-    await connection_manager.update_machine_position()
+    # Hard reset machine position using $Bye via connection_manager
+    await connection_manager.perform_soft_reset()
 
 def set_speed(new_speed):
     state.speed = new_speed

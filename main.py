@@ -1784,7 +1784,7 @@ async def force_stop():
 
 @app.post("/soft_reset")
 async def soft_reset():
-    """Send Ctrl+X soft reset to the controller (DLC32/ESP32). Requires re-homing after."""
+    """Send $Bye soft reset to FluidNC controller. Resets position counters to 0."""
     if not (state.conn and state.conn.is_connected()):
         logger.warning("Attempted to soft reset without a connection")
         raise HTTPException(status_code=400, detail="Connection not established")
@@ -1793,23 +1793,10 @@ async def soft_reset():
         # Stop any running patterns first
         await pattern_manager.stop_actions()
 
-        # Access the underlying serial object directly for more reliable reset
-        # This bypasses the connection abstraction which may have buffering issues
-        from modules.connection.connection_manager import SerialConnection
-        if isinstance(state.conn, SerialConnection) and state.conn.ser:
-            state.conn.ser.reset_input_buffer()  # Clear any pending data
-            state.conn.ser.write(b'\x18')  # Ctrl+X as bytes
-            state.conn.ser.flush()
-            logger.info(f"Soft reset command (Ctrl+X) sent directly via serial to {state.port}")
-        else:
-            # Fallback for WebSocket or other connection types
-            state.conn.send('\x18')
-            logger.info("Soft reset command (Ctrl+X) sent via connection abstraction")
+        # Use the shared soft reset function
+        await connection_manager.perform_soft_reset()
 
-        # Mark as needing homing since position is now unknown
-        state.is_homed = False
-
-        return {"success": True, "message": "Soft reset sent. Homing required."}
+        return {"success": True, "message": "Soft reset sent. Position reset to 0."}
     except Exception as e:
         logger.error(f"Error sending soft reset: {e}")
         raise HTTPException(status_code=500, detail=str(e))
