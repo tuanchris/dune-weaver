@@ -229,6 +229,7 @@ def device_init(homing=True):
     # This clears any pending commands and resets position counters to 0
     logger.info("Performing soft reset for clean controller state...")
     perform_soft_reset_sync()
+    time.sleep(1)  # Extra stabilization after controller restart
 
     # Reset work coordinate offsets for a clean start
     # This ensures we're using work coordinates (G54) starting from 0
@@ -988,12 +989,20 @@ def home(timeout=120):
                 state.homed_x = False
                 state.homed_y = False
 
+                # Clear any stale data from previous operations
+                try:
+                    while state.conn.in_waiting() > 0:
+                        stale = state.conn.readline()
+                        logger.debug(f"Cleared stale data before homing: {stale}")
+                except Exception:
+                    pass
+
                 # Send $H command
                 state.conn.send("$H\n")
                 logger.info("Sent $H command, waiting for homing messages...")
 
                 # Wait for [MSG:Homed:X] and [MSG:Homed:Y] messages
-                max_wait_time = 30  # 30 seconds timeout for homing messages
+                max_wait_time = 60  # 60 seconds - boot recovery needs more time
                 start_time = time.time()
 
                 while (time.time() - start_time) < max_wait_time:
@@ -1034,10 +1043,49 @@ def home(timeout=120):
                     homing_complete.set()
                     return
 
-                # Skip zeroing if X homed but Y failed - moving Y to 0 would crash it
-                # (Y controls rho/radial position which is unknown if Y didn't home)
+                # If X homed but Y failed, fallback to crash homing for Y
                 if state.homed_x and not state.homed_y:
-                    logger.warning("Skipping position zeroing - X homed but Y failed (would crash Y axis)")
+                    logger.warning("Sensor homing incomplete (Y failed) - falling back to crash homing")
+
+                    # Perform crash homing as fallback
+                    logger.info(f"Executing crash homing fallback at {homing_speed} mm/min")
+
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        if effective_table_type == 'dune_weaver_mini':
+                            result = loop.run_until_complete(send_grbl_coordinates(0, -30, homing_speed, home=True))
+                            if result == False:
+                                logger.error("Crash homing fallback failed")
+                                homing_complete.set()
+                                return
+                        else:
+                            result = loop.run_until_complete(send_grbl_coordinates(0, -22, homing_speed, home=True))
+                            if result == False:
+                                logger.error("Crash homing fallback failed")
+                                homing_complete.set()
+                                return
+                    finally:
+                        loop.close()
+
+                    # Wait for idle after crash homing
+                    logger.info("Waiting for device to reach idle state after crash homing fallback...")
+                    idle_reached = check_idle()
+                    if not idle_reached:
+                        logger.error("Device did not reach idle state after crash homing fallback")
+                        homing_complete.set()
+                        return
+
+                    # Set position like crash homing does
+                    state.current_theta = 0
+                    state.current_rho = 0
+                    logger.info("Crash homing fallback completed - theta=0, rho=0")
+
+                elif not state.homed_x and not state.homed_y:
+                    # Neither axis homed - this is a failure, don't proceed
+                    logger.error("Sensor homing failed - neither axis homed")
+                    homing_complete.set()
+                    return
                 else:
                     # Send x0 y0 to zero both positions using send_grbl_coordinates
                     logger.info(f"Zeroing positions with x0 y0 f{homing_speed}")

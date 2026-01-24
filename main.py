@@ -47,7 +47,8 @@ logging.basicConfig(
 )
 
 # Initialize memory log handler for web UI log viewer
-init_memory_handler(max_entries=500)
+# Increased to 5000 entries to support lazy loading in the UI
+init_memory_handler(max_entries=5000)
 
 logger = logging.getLogger(__name__)
 
@@ -572,26 +573,32 @@ async def websocket_logs_endpoint(websocket: WebSocket):
 
 # API endpoint to retrieve logs
 @app.get("/api/logs", tags=["logs"])
-async def get_logs(limit: int = 100, level: str = None):
+async def get_logs(limit: int = 100, level: str = None, offset: int = 0):
     """
-    Retrieve application logs from memory buffer.
+    Retrieve application logs from memory buffer with pagination.
 
     Args:
-        limit: Maximum number of log entries to return (default: 100, max: 500)
+        limit: Maximum number of log entries to return (default: 100)
         level: Filter by log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        offset: Number of entries to skip from newest (for lazy loading older logs)
 
     Returns:
         List of log entries with timestamp, level, logger, and message.
+        Also returns total count and whether there are more logs available.
     """
     handler = get_memory_handler()
     if not handler:
-        return {"logs": [], "error": "Log handler not initialized"}
+        return {"logs": [], "count": 0, "total": 0, "has_more": False, "error": "Log handler not initialized"}
 
-    # Clamp limit to reasonable range
-    limit = max(1, min(limit, 500))
+    # Clamp limit to reasonable range (no max limit for lazy loading)
+    limit = max(1, limit)
+    offset = max(0, offset)
 
-    logs = handler.get_logs(limit=limit, level=level)
-    return {"logs": logs, "count": len(logs)}
+    logs = handler.get_logs(limit=limit, level=level, offset=offset)
+    total = handler.get_total_count(level=level)
+    has_more = offset + len(logs) < total
+
+    return {"logs": logs, "count": len(logs), "total": total, "has_more": has_more}
 
 
 @app.delete("/api/logs", tags=["logs"])
@@ -3162,7 +3169,7 @@ async def preview_thr_batch(request: dict):
     # Convert results to dictionary
     results = dict(file_results)
 
-    logger.info(f"Total batch processing time: {time.time() - start:.2f}s for {len(file_names)} files")
+    logger.debug(f"Total batch processing time: {time.time() - start:.2f}s for {len(file_names)} files")
     return JSONResponse(content=results, headers=headers)
 
 @app.get("/playlists")

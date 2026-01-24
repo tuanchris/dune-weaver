@@ -30,3 +30,4 @@ static/custom/*
 !static/custom/.gitkeep
 .claude/
 static/dist/
+.planning

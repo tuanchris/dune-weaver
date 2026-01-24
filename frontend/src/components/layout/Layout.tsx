@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { toast } from 'sonner'
 import { NowPlayingBar } from '@/components/NowPlayingBar'
 import { Button } from '@/components/ui/button'
@@ -189,8 +189,12 @@ export function Layout() {
   }, [])
   const [logs, setLogs] = useState<Array<{ timestamp: string; level: string; logger: string; message: string }>>([])
   const [logLevelFilter, setLogLevelFilter] = useState<string>('ALL')
+  const [logsTotal, setLogsTotal] = useState(0)
+  const [logsHasMore, setLogsHasMore] = useState(false)
+  const [isLoadingMoreLogs, setIsLoadingMoreLogs] = useState(false)
   const logsWsRef = useRef<WebSocket | null>(null)
   const logsContainerRef = useRef<HTMLDivElement>(null)
+  const logsLoadedCountRef = useRef(0) // Track how many logs we've loaded (for offset)
 
   // Check device connection status via WebSocket
   // This effect runs once on mount and manages its own reconnection logic
@@ -348,17 +352,21 @@ export function Layout() {
 
     let shouldConnect = true
 
-    // Fetch initial logs
+    // Fetch initial logs (most recent)
     const fetchInitialLogs = async () => {
       try {
         type LogEntry = { timestamp: string; level: string; logger: string; message: string }
-        const data = await apiClient.get<{ logs: LogEntry[] }>('/api/logs?limit=200')
+        type LogsResponse = { logs: LogEntry[]; total: number; has_more: boolean }
+        const data = await apiClient.get<LogsResponse>('/api/logs?limit=200')
         // Filter out empty/invalid log entries
         const validLogs = (data.logs || []).filter(
           (log) => log && log.message && log.message.trim() !== ''
         )
         // API returns newest first, reverse to show oldest first (newest at bottom)
         setLogs(validLogs.reverse())
+        setLogsTotal(data.total || 0)
+        setLogsHasMore(data.has_more || false)
+        logsLoadedCountRef.current = validLogs.length
         // Scroll to bottom after initial load
         setTimeout(() => {
           if (logsContainerRef.current) {
@@ -416,18 +424,16 @@ export function Layout() {
           if (!log || !log.message || log.message.trim() === '') {
             return
           }
-          setLogs((prev) => {
-            const newLogs = [...prev, log]
-            // Keep only last 500 logs to prevent memory issues
-            if (newLogs.length > 500) {
-              return newLogs.slice(-500)
-            }
-            return newLogs
-          })
-          // Auto-scroll to bottom
+          // Append new log - no limit, lazy loading handles old logs
+          setLogs((prev) => [...prev, log])
+          // Auto-scroll to bottom if user is near the bottom
           setTimeout(() => {
             if (logsContainerRef.current) {
-              logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight
+              const { scrollTop, scrollHeight, clientHeight } = logsContainerRef.current
+              // Only auto-scroll if user is within 100px of the bottom
+              if (scrollHeight - scrollTop - clientHeight < 100) {
+                logsContainerRef.current.scrollTop = scrollHeight
+              }
             }
           }, 10)
         } catch {
@@ -468,6 +474,62 @@ export function Layout() {
     }
     // Also reconnect when active table changes
   }, [isLogsOpen, activeTable?.id])
+
+  // Load older logs when user scrolls to top (lazy loading)
+  const loadOlderLogs = useCallback(async () => {
+    if (isLoadingMoreLogs || !logsHasMore) return
+
+    setIsLoadingMoreLogs(true)
+    try {
+      type LogEntry = { timestamp: string; level: string; logger: string; message: string }
+      type LogsResponse = { logs: LogEntry[]; total: number; has_more: boolean }
+      const offset = logsLoadedCountRef.current
+      const data = await apiClient.get<LogsResponse>(`/api/logs?limit=100&offset=${offset}`)
+
+      const validLogs = (data.logs || []).filter(
+        (log) => log && log.message && log.message.trim() !== ''
+      )
+
+      if (validLogs.length > 0) {
+        // Prepend older logs (they come newest-first, so reverse them)
+        setLogs((prev) => [...validLogs.reverse(), ...prev])
+        logsLoadedCountRef.current += validLogs.length
+        setLogsHasMore(data.has_more || false)
+        setLogsTotal(data.total || 0)
+
+        // Maintain scroll position after prepending
+        setTimeout(() => {
+          if (logsContainerRef.current) {
+            // Calculate approximate height of new content (rough estimate: 24px per log line)
+            const newContentHeight = validLogs.length * 24
+            logsContainerRef.current.scrollTop = newContentHeight
+          }
+        }, 10)
+      } else {
+        setLogsHasMore(false)
+      }
+    } catch {
+      // Ignore errors
+    } finally {
+      setIsLoadingMoreLogs(false)
+    }
+  }, [isLoadingMoreLogs, logsHasMore])
+
+  // Scroll event handler for lazy loading
+  useEffect(() => {
+    const container = logsContainerRef.current
+    if (!container || !isLogsOpen) return
+
+    const handleScroll = () => {
+      // Load more when scrolled to top (within 50px)
+      if (container.scrollTop < 50 && logsHasMore && !isLoadingMoreLogs) {
+        loadOlderLogs()
+      }
+    }
+
+    container.addEventListener('scroll', handleScroll)
+    return () => container.removeEventListener('scroll', handleScroll)
+  }, [isLogsOpen, logsHasMore, isLoadingMoreLogs, loadOlderLogs])
 
   const handleToggleLogs = () => {
     setIsLogsOpen((prev) => !prev)
@@ -1421,7 +1483,8 @@ export function Layout() {
                   <option value="ERROR">Error</option>
                 </select>
                 <span className="text-xs text-muted-foreground">
-                  {filteredLogs.length} entries
+                  {filteredLogs.length}{logsTotal > 0 ? ` of ${logsTotal}` : ''} entries
+                  {logsHasMore && <span className="text-primary ml-1">↑ scroll for more</span>}
                 </span>
               </div>
 
@@ -1461,6 +1524,19 @@ export function Layout() {
               ref={logsContainerRef}
               className="h-[calc(100%-40px)] overflow-auto overscroll-contain p-3 font-mono text-xs space-y-0.5"
             >
+              {/* Loading indicator for older logs */}
+              {isLoadingMoreLogs && (
+                <div className="flex items-center justify-center gap-2 py-2 text-muted-foreground">
+                  <span className="material-icons-outlined text-sm animate-spin">sync</span>
+                  <span>Loading older logs...</span>
+                </div>
+              )}
+              {/* Load more hint */}
+              {logsHasMore && !isLoadingMoreLogs && (
+                <div className="text-center py-2 text-muted-foreground text-xs">
+                  ↑ Scroll up to load older logs
+                </div>
+              )}
               {filteredLogs.length > 0 ? (
                 filteredLogs.map((log, i) => (
                   <div key={i} className="py-0.5 flex gap-2">
