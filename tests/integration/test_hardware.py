@@ -237,11 +237,12 @@ class TestTableMovement:
         This test:
         1. Connects to hardware
         2. Runs the homing procedure
-        3. Verifies position is reset to origin
+        3. Verifies position matches the configured homing offset
         """
         if not run_hardware:
             pytest.skip("Hardware tests disabled")
 
+        import math
         from modules.connection import connection_manager
         from modules.core.state import state
 
@@ -256,14 +257,17 @@ class TestTableMovement:
 
             assert success, "Homing sequence failed"
 
-            # After homing, position should be at or near origin
-            # Allow small tolerance for mechanical variance
-            assert abs(state.current_theta) < 0.1, \
-                f"Expected theta near 0 after homing, got: {state.current_theta}"
+            # After homing, theta should match the configured angular_homing_offset_degrees
+            # (converted to radians), and rho should be near 0
+            expected_theta = math.radians(state.angular_homing_offset_degrees)
+            theta_diff = abs(state.current_theta - expected_theta)
+
+            assert theta_diff < 0.1, \
+                f"Expected theta near {expected_theta:.3f} rad ({state.angular_homing_offset_degrees}°), got: {state.current_theta:.3f}"
             assert abs(state.current_rho) < 0.1, \
                 f"Expected rho near 0 after homing, got: {state.current_rho}"
 
-            print(f"Homing complete: theta={state.current_theta}, rho={state.current_rho}")
+            print(f"Homing complete: theta={state.current_theta:.3f} rad (offset={state.angular_homing_offset_degrees}°), rho={state.current_rho:.3f}")
 
         finally:
             conn.close()
