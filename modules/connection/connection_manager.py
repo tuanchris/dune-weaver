@@ -197,10 +197,9 @@ def list_serial_ports():
     return available_ports
 
 def device_init(homing=True):
-    # Perform soft reset first to ensure controller is in a known state
-    # This resets position counters to 0 before we query them
-    logger.info("Performing soft reset before device initialization...")
-    perform_soft_reset_sync()
+    # IMPORTANT: Query machine position BEFORE reset to determine if homing is needed
+    # If machine wasn't power cycled, it retains position and we can skip homing
+    # Reset ($Bye) zeroes position counters, so we must check BEFORE reset
 
     try:
         if get_machine_steps():
@@ -214,23 +213,33 @@ def device_init(homing=True):
         state.conn.close()
         return False
 
+    # Check machine position BEFORE reset to decide if homing is needed
+    machine_x, machine_y = get_machine_position()
+    needs_homing = False
+
+    if machine_x != state.machine_x or machine_y != state.machine_y:
+        logger.info(f'Machine position mismatch - machine: ({machine_x}, {machine_y}), saved: ({state.machine_x}, {state.machine_y})')
+        needs_homing = homing
+    else:
+        logger.info('Machine position matches saved state, skipping home')
+        logger.info(f'Theta: {state.current_theta}, rho: {state.current_rho}')
+        logger.info(f'Position: ({machine_x}, {machine_y})')
+
+    # Now perform soft reset to ensure controller is in a clean state
+    # This clears any pending commands and resets position counters to 0
+    logger.info("Performing soft reset for clean controller state...")
+    perform_soft_reset_sync()
+
     # Reset work coordinate offsets for a clean start
     # This ensures we're using work coordinates (G54) starting from 0
     reset_work_coordinates()
 
-    machine_x, machine_y = get_machine_position()
-    if machine_x != state.machine_x or machine_y != state.machine_y:
-        logger.info(f'x, y; {machine_x}, {machine_y}')
-        logger.info(f'State x, y; {state.machine_x}, {state.machine_y}')
-        if homing:
-            success = home()
-            if not success:
-                logger.error("Homing failed during device initialization")
-    else:
-        logger.info('Machine position known, skipping home')
-        logger.info(f'Theta: {state.current_theta}, rho: {state.current_rho}')
-        logger.info(f'x, y; {machine_x}, {machine_y}')
-        logger.info(f'State x, y; {state.machine_x}, {state.machine_y}')
+    # Home if position was mismatched (machine may have been power cycled)
+    if needs_homing:
+        logger.info("Homing required due to position mismatch...")
+        success = home()
+        if not success:
+            logger.error("Homing failed during device initialization")
 
     time.sleep(2)  # Allow time for the connection to establish
     return True
