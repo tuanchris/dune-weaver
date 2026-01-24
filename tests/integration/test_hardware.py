@@ -300,16 +300,19 @@ class TestTableMovement:
             async def do_move():
                 await pattern_manager.move_polar(theta=0, rho=1.0, speed=200)
 
-            asyncio.get_event_loop().run_until_complete(do_move())
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(do_move())
 
-            # Wait for movement to complete
-            time.sleep(2)
+            # Wait for machine to reach idle state
+            print("Waiting for idle...")
+            idle = loop.run_until_complete(connection_manager.check_idle_async(timeout=30))
+            assert idle, "Machine did not reach idle state after move"
 
             # Verify we're near the perimeter
             assert state.current_rho > 0.9, \
                 f"Expected rho near 1.0, got: {state.current_rho}"
 
-            print(f"At perimeter: theta={state.current_theta}, rho={state.current_rho}")
+            print(f"At perimeter: theta={state.current_theta:.3f}, rho={state.current_rho:.3f}")
 
         finally:
             pattern_manager.motion_controller.stop()
@@ -343,16 +346,19 @@ class TestTableMovement:
             async def do_move():
                 await pattern_manager.move_polar(theta=0, rho=0.0, speed=200)
 
-            asyncio.get_event_loop().run_until_complete(do_move())
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(do_move())
 
-            # Wait for movement to complete
-            time.sleep(2)
+            # Wait for machine to reach idle state
+            print("Waiting for idle...")
+            idle = loop.run_until_complete(connection_manager.check_idle_async(timeout=30))
+            assert idle, "Machine did not reach idle state after move"
 
             # Verify we're near the center
             assert state.current_rho < 0.1, \
                 f"Expected rho near 0.0, got: {state.current_rho}"
 
-            print(f"At center: theta={state.current_theta}, rho={state.current_rho}")
+            print(f"At center: theta={state.current_theta:.3f}, rho={state.current_rho:.3f}")
 
         finally:
             pattern_manager.motion_controller.stop()
