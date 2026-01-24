@@ -89,6 +89,7 @@ class AppState:
         self._pause_time = 0
         self._clear_pattern = "none"
         self._clear_pattern_speed = None  # None means use state.speed as default
+        self._shuffle = False  # Shuffle playlist order
         self.custom_clear_from_in = None  # Custom clear from center pattern
         self.custom_clear_from_out = None  # Custom clear from perimeter pattern
         
@@ -221,6 +222,14 @@ class AppState:
     def clear_pattern_speed(self, value):
         self._clear_pattern_speed = value
 
+    @property
+    def shuffle(self):
+        return self._shuffle
+
+    @shuffle.setter
+    def shuffle(self, value):
+        self._shuffle = value
+
     def to_dict(self):
         """Return a dictionary representation of the state."""
         return {
@@ -248,6 +257,7 @@ class AppState:
             "pause_time": self._pause_time,
             "clear_pattern": self._clear_pattern,
             "clear_pattern_speed": self._clear_pattern_speed,
+            "shuffle": self._shuffle,
             "custom_clear_from_in": self.custom_clear_from_in,
             "custom_clear_from_out": self.custom_clear_from_out,
             "port": self.port,
@@ -315,6 +325,7 @@ class AppState:
         self._pause_time = data.get("pause_time", 0)
         self._clear_pattern = data.get("clear_pattern", "none")
         self._clear_pattern_speed = data.get("clear_pattern_speed", None)
+        self._shuffle = data.get("shuffle", False)
         self.custom_clear_from_in = data.get("custom_clear_from_in", None)
         self.custom_clear_from_out = data.get("custom_clear_from_out", None)
         self.port = data.get("port", None)

@@ -248,6 +248,20 @@ class MQTTHandler(BaseMQTTHandler):
         }
         self._publish_discovery("select", "clear_pattern", clear_pattern_config)
 
+        # Shuffle Switch
+        shuffle_config = {
+            "name": f"{self.device_name} Shuffle",
+            "unique_id": f"{self.device_id}_shuffle",
+            "command_topic": f"{self.device_id}/playlist/shuffle/set",
+            "state_topic": f"{self.device_id}/playlist/shuffle/state",
+            "payload_on": "ON",
+            "payload_off": "OFF",
+            "device": base_device,
+            "icon": "mdi:shuffle-variant",
+            "entity_category": "config"
+        }
+        self._publish_discovery("switch", "shuffle", shuffle_config)
+
         # Completion Percentage Sensor
         completion_config = {
             "name": f"{self.device_name} Completion",
@@ -448,6 +462,14 @@ class MQTTHandler(BaseMQTTHandler):
             self.client.publish(self.completion_topic, 0, retain=True)
             self.client.publish(self.time_remaining_topic, 0, retain=True)
 
+    def _publish_playlist_settings_state(self):
+        """Helper to publish playlist settings state (mode, pause_time, clear_pattern, shuffle)."""
+        self.client.publish(f"{self.device_id}/playlist/mode/state", state.playlist_mode, retain=True)
+        self.client.publish(f"{self.device_id}/playlist/pause_time/state", state.pause_time, retain=True)
+        self.client.publish(f"{self.device_id}/playlist/clear_pattern/state", state.clear_pattern, retain=True)
+        shuffle_state = "ON" if state.shuffle else "OFF"
+        self.client.publish(f"{self.device_id}/playlist/shuffle/state", shuffle_state, retain=True)
+
     def _publish_led_state(self):
         """Helper to publish LED state to MQTT (DW LEDs only - WLED has its own MQTT)."""
         if not state.led_controller or state.led_provider != "dw_leds":
@@ -544,6 +566,7 @@ class MQTTHandler(BaseMQTTHandler):
                 (f"{self.device_id}/playlist/mode/set", 0),
                 (f"{self.device_id}/playlist/pause_time/set", 0),
                 (f"{self.device_id}/playlist/clear_pattern/set", 0),
+                (f"{self.device_id}/playlist/shuffle/set", 0),
                 (self.led_power_topic, 0),
                 (self.led_brightness_topic, 0),
                 (self.led_effect_topic, 0),
@@ -599,7 +622,8 @@ class MQTTHandler(BaseMQTTHandler):
                             playlist_name=playlist_name,
                             run_mode=self.state.playlist_mode,
                             pause_time=self.state.pause_time,
-                            clear_pattern=self.state.clear_pattern
+                            clear_pattern=self.state.clear_pattern,
+                            shuffle=self.state.shuffle
                         ),
                         self.main_loop
                     ).add_done_callback(
@@ -652,6 +676,11 @@ class MQTTHandler(BaseMQTTHandler):
                 if clear_pattern in ["none", "random", "adaptive", "clear_from_in", "clear_from_out", "clear_sideway"]:
                     state.clear_pattern = clear_pattern
                     self.client.publish(f"{self.device_id}/playlist/clear_pattern/state", clear_pattern, retain=True)
+            elif msg.topic == f"{self.device_id}/playlist/shuffle/set":
+                payload = msg.payload.decode()
+                shuffle_value = payload == "ON"
+                state.shuffle = shuffle_value
+                self.client.publish(f"{self.device_id}/playlist/shuffle/state", payload, retain=True)
             elif msg.topic == self.led_power_topic:
                 # Handle LED power command (DW LEDs only)
                 payload = msg.payload.decode()
@@ -798,6 +827,7 @@ class MQTTHandler(BaseMQTTHandler):
             self._publish_playlist_state()
             self._publish_serial_state()
             self._publish_progress_state()
+            self._publish_playlist_settings_state()
             self._publish_led_state()
 
             # Setup Home Assistant discovery
