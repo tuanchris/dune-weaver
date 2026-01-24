@@ -1278,7 +1278,7 @@ async def update_machine_position():
             logger.error(f"Error updating machine position: {e}")
 
 
-def perform_soft_reset_sync(max_retries: int = 3):
+def perform_soft_reset_sync(max_retries: int = 5):
     """
     Synchronous version of soft reset for use during device initialization.
 
@@ -1290,8 +1290,15 @@ def perform_soft_reset_sync(max_retries: int = 3):
     IMPORTANT: Position is only reset to (0,0) if confirmation is received.
     This prevents position drift from accumulating over long operation periods.
 
+    Uses exponential backoff for retries:
+    - Attempt 1: 5s timeout
+    - Attempt 2: 7.5s timeout, 1s delay before retry
+    - Attempt 3: 11s timeout, 2s delay before retry
+    - Attempt 4: 17s timeout, 4s delay before retry
+    - Attempt 5: 25s timeout, 8s delay before retry
+
     Args:
-        max_retries: Maximum number of reset attempts (default 3)
+        max_retries: Maximum number of reset attempts (default 5)
 
     Returns:
         True if reset confirmed, False if all attempts failed
@@ -1307,9 +1314,9 @@ def perform_soft_reset_sync(max_retries: int = 3):
         logger.info(f"Performing soft reset (was: X={state.machine_x:.2f}, Y={state.machine_y:.2f})")
 
         for attempt in range(max_retries):
-            # Increasing timeout: 5s, 7s, 9s
-            timeout = 5.0 + (attempt * 2.0)
-            logger.info(f"Reset attempt {attempt + 1}/{max_retries} (timeout: {timeout}s)")
+            # Exponential backoff: 5s * 1.5^attempt → 5s, 7.5s, 11s, 17s, 25s
+            timeout = 5.0 * (1.5 ** attempt)
+            logger.info(f"Reset attempt {attempt + 1}/{max_retries} (timeout: {timeout:.1f}s)")
 
             # Clear any pending data first
             if isinstance(state.conn, SerialConnection) and state.conn.ser:
@@ -1386,10 +1393,11 @@ def perform_soft_reset_sync(max_retries: int = 3):
                 logger.info(f"Machine position saved: {state.machine_x}, {state.machine_y}")
                 return True
 
-            # Retry after failed attempt
+            # Retry after failed attempt with exponential backoff delay
             if attempt < max_retries - 1:
-                logger.warning(f"Reset attempt {attempt + 1}/{max_retries} failed, retrying...")
-                time.sleep(0.5)  # Brief pause before retry
+                backoff_delay = 1.0 * (2 ** attempt)  # 1s, 2s, 4s, 8s
+                logger.warning(f"Reset attempt {attempt + 1}/{max_retries} failed, retrying in {backoff_delay:.0f}s...")
+                time.sleep(backoff_delay)
 
         # All attempts failed - DO NOT reset position to prevent drift
         logger.error(
