@@ -458,13 +458,17 @@ class TestWebSocketStatus:
             client = TestClient(app)
 
             with client.websocket_connect("/ws/status") as websocket:
-                data = websocket.receive_json()
+                message = websocket.receive_json()
 
+                # Status format is {'type': 'status_update', 'data': {...}}
+                assert message.get("type") == "status_update", \
+                    f"Expected type='status_update', got: {message}"
+
+                data = message.get("data", {})
                 print(f"WebSocket status: {data}")
 
-                # Should reflect running state
-                # The exact fields depend on your broadcast_status implementation
-                assert isinstance(data, dict), "Status should be a dict"
+                # Should have expected status fields
+                assert "is_running" in data, f"Expected 'is_running' in data"
 
             loop.run_until_complete(pattern_manager.stop_actions())
 

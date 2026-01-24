@@ -70,3 +70,24 @@ def serial_connection(hardware_port):
     conn = serial.Serial(hardware_port, baudrate=115200, timeout=2)
     yield conn
     conn.close()
+
+
+@pytest.fixture(autouse=True)
+def fast_test_speed(run_hardware):
+    """Set speed to 500 for faster integration tests.
+
+    This fixture runs automatically for all integration tests.
+    Restores original speed after the test.
+    """
+    if not run_hardware:
+        yield
+        return
+
+    from modules.core.state import state
+
+    original_speed = state.speed
+    state.speed = 500  # Fast speed for tests
+
+    yield
+
+    state.speed = original_speed  # Restore original speed

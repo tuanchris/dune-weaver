@@ -409,11 +409,15 @@ class TestWebSocketConnection:
         # Connect to WebSocket
         with client.websocket_connect("/ws/status") as websocket:
             # Should receive initial status
-            data = websocket.receive_json()
+            message = websocket.receive_json()
 
-            # Verify status structure
-            assert "is_running" in data or "current_file" in data, \
-                f"Unexpected status format: {data}"
+            # Status format is {'type': 'status_update', 'data': {...}}
+            assert message.get("type") == "status_update", \
+                f"Expected type='status_update', got: {message}"
+
+            data = message.get("data", {})
+            assert "is_running" in data, \
+                f"Expected 'is_running' in data, got: {data.keys()}"
 
             print(f"Received WebSocket status: {data}")
 
