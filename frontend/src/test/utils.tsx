@@ -1,11 +1,33 @@
 import { render, RenderOptions } from '@testing-library/react'
-import { BrowserRouter } from 'react-router'
+import { BrowserRouter, MemoryRouter, Routes, Route } from 'react-router'
 import { ReactElement, ReactNode } from 'react'
 import { PatternMetadata, PreviewData } from '@/lib/types'
+import { TableProvider } from '@/contexts/TableContext'
+import { Layout } from '@/components/layout/Layout'
+import { BrowsePage } from '@/pages/BrowsePage'
+import { PlaylistsPage } from '@/pages/PlaylistsPage'
+import { TableControlPage } from '@/pages/TableControlPage'
 
 // Wrapper component with required providers
 function AllProviders({ children }: { children: ReactNode }) {
   return <BrowserRouter>{children}</BrowserRouter>
+}
+
+// Integration test wrapper - full app with routing
+function IntegrationWrapper({
+  children,
+  initialEntries = ['/']
+}: {
+  children: ReactNode
+  initialEntries?: string[]
+}) {
+  return (
+    <MemoryRouter initialEntries={initialEntries}>
+      <TableProvider>
+        {children}
+      </TableProvider>
+    </MemoryRouter>
+  )
 }
 
 // Custom render that includes providers
@@ -62,6 +84,27 @@ export function createMockStatus(overrides: Partial<{
 
 export function createMockPlaylists(): string[] {
   return ['default', 'favorites', 'geometric', 'relaxing']
+}
+
+// Render full app for integration tests
+export function renderApp(options?: {
+  initialRoute?: string
+}) {
+  const initialEntries = options?.initialRoute ? [options.initialRoute] : ['/']
+
+  return render(
+    <MemoryRouter initialEntries={initialEntries}>
+      <TableProvider>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<BrowsePage />} />
+            <Route path="playlists" element={<PlaylistsPage />} />
+            <Route path="table-control" element={<TableControlPage />} />
+          </Route>
+        </Routes>
+      </TableProvider>
+    </MemoryRouter>
+  )
 }
 
 // Re-export everything from testing-library

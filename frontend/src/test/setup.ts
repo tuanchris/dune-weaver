@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach } from 'vitest'
 import { setupBrowserMocks, cleanupBrowserMocks } from './mocks/browser'
 import { setupMockWebSocket, cleanupMockWebSocket } from './mocks/websocket'
 import { server } from './mocks/server'
-import { resetMockData } from './mocks/handlers'
+import { resetMockData, resetApiCallLog } from './mocks/handlers'
 
 // Setup browser mocks FIRST (before MSW starts)
 // This ensures WebSocket mock is in place before MSW tries to intercept
@@ -19,6 +19,7 @@ beforeAll(() => {
 // Reset state between tests
 beforeEach(() => {
   resetMockData()
+  resetApiCallLog()
 })
 
 // Cleanup after each test

@@ -2,6 +2,32 @@ import { http, HttpResponse } from 'msw'
 import { PatternMetadata, PreviewData } from '@/lib/types'
 
 // ============================================
+// API Call Tracking for Integration Tests
+// ============================================
+
+// Track API calls for integration test verification
+export const apiCallLog: Array<{
+  endpoint: string
+  method: string
+  body?: unknown
+  timestamp: number
+}> = []
+
+export function resetApiCallLog() {
+  apiCallLog.length = 0
+}
+
+// Helper to log API calls
+function logApiCall(endpoint: string, method: string, body?: unknown) {
+  apiCallLog.push({
+    endpoint,
+    method,
+    body,
+    timestamp: Date.now(),
+  })
+}
+
+// ============================================
 // Mock Data Store (mutable for test scenarios)
 // ============================================
 
@@ -104,6 +130,7 @@ export const handlers = [
   http.post('/run_theta_rho', async ({ request }) => {
     const body = await request.json() as { file_name?: string; file?: string; pre_execution?: string }
     const file = body.file_name || body.file
+    logApiCall('/run_theta_rho', 'POST', body)
     mockData.status.is_running = true
     mockData.status.current_file = file || null
     return HttpResponse.json({ success: true })
@@ -144,21 +171,26 @@ export const handlers = [
   }),
 
   http.post('/create_playlist', async ({ request }) => {
-    const body = await request.json() as { name: string; files?: string[] }
-    mockData.playlists[body.name] = body.files || []
+    const body = await request.json() as { name: string; playlist_name?: string; files?: string[] }
+    const name = body.playlist_name || body.name
+    logApiCall('/create_playlist', 'POST', body)
+    mockData.playlists[name] = body.files || []
     return HttpResponse.json({ success: true })
   }),
 
   http.post('/modify_playlist', async ({ request }) => {
-    const body = await request.json() as { name: string; files: string[] }
-    if (mockData.playlists[body.name]) {
-      mockData.playlists[body.name] = body.files
+    const body = await request.json() as { name?: string; playlist_name?: string; files: string[] }
+    const name = body.playlist_name || body.name || ''
+    logApiCall('/modify_playlist', 'POST', body)
+    if (mockData.playlists[name]) {
+      mockData.playlists[name] = body.files
     }
     return HttpResponse.json({ success: true })
   }),
 
   http.post('/rename_playlist', async ({ request }) => {
     const body = await request.json() as { old_name: string; new_name: string }
+    logApiCall('/rename_playlist', 'POST', body)
     if (mockData.playlists[body.old_name]) {
       mockData.playlists[body.new_name] = mockData.playlists[body.old_name]
       delete mockData.playlists[body.old_name]
@@ -167,18 +199,22 @@ export const handlers = [
   }),
 
   http.delete('/delete_playlist', async ({ request }) => {
-    const body = await request.json() as { name: string }
-    delete mockData.playlists[body.name]
+    const body = await request.json() as { name?: string; playlist_name?: string }
+    const name = body.playlist_name || body.name || ''
+    logApiCall('/delete_playlist', 'DELETE', body)
+    delete mockData.playlists[name]
     return HttpResponse.json({ success: true })
   }),
 
   http.post('/run_playlist', async ({ request }) => {
-    const body = await request.json() as { name: string }
-    const playlist = mockData.playlists[body.name]
+    const body = await request.json() as { name?: string; playlist_name?: string }
+    const name = body.playlist_name || body.name || ''
+    logApiCall('/run_playlist', 'POST', body)
+    const playlist = mockData.playlists[name]
     if (playlist && playlist.length > 0) {
       mockData.status.is_running = true
       mockData.status.playlist_mode = true
-      mockData.status.playlist_name = body.name
+      mockData.status.playlist_name = name
       mockData.status.current_file = playlist[0]
       mockData.status.queue = playlist.slice(1)
     }
@@ -218,20 +254,24 @@ export const handlers = [
   // Playback Control Endpoints
   // ----------------
   http.post('/pause_execution', () => {
+    logApiCall('/pause_execution', 'POST')
     mockData.status.is_paused = true
     return HttpResponse.json({ success: true })
   }),
 
   http.post('/resume_execution', () => {
+    logApiCall('/resume_execution', 'POST')
     mockData.status.is_paused = false
     return HttpResponse.json({ success: true })
   }),
 
   http.post('/stop_execution', () => {
+    logApiCall('/stop_execution', 'POST')
     mockData.status.is_running = false
     mockData.status.is_paused = false
     mockData.status.current_file = null
     mockData.status.playlist_mode = false
+    mockData.status.playlist_name = null
     mockData.status.queue = []
     return HttpResponse.json({ success: true })
   }),
@@ -246,6 +286,7 @@ export const handlers = [
   }),
 
   http.post('/skip_pattern', () => {
+    logApiCall('/skip_pattern', 'POST')
     if (mockData.status.queue.length > 0) {
       mockData.status.current_file = mockData.status.queue.shift() || null
     } else {
