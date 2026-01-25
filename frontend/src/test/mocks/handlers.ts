@@ -105,9 +105,10 @@ export const handlers = [
   }),
 
   http.post('/preview_thr_batch', async ({ request }) => {
-    const body = await request.json() as { files: string[] }
+    const body = await request.json() as { files?: string[]; file_names?: string[] }
+    const files = body.files || body.file_names || []
     const previews: Record<string, PreviewData> = {}
-    for (const file of body.files) {
+    for (const file of files) {
       previews[file] = {
         image_data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
         first_coordinate: { x: 0, y: 0 },
