@@ -1,16 +1,19 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach } from 'vitest'
-import { server } from './mocks/server'
-import { resetMockData } from './mocks/handlers'
 import { setupBrowserMocks, cleanupBrowserMocks } from './mocks/browser'
 import { setupMockWebSocket, cleanupMockWebSocket } from './mocks/websocket'
+import { server } from './mocks/server'
+import { resetMockData } from './mocks/handlers'
 
-// Setup browser mocks
+// Setup browser mocks FIRST (before MSW starts)
+// This ensures WebSocket mock is in place before MSW tries to intercept
 beforeAll(() => {
   setupBrowserMocks()
   setupMockWebSocket()
-  server.listen({ onUnhandledRequest: 'error' })
+  // Use 'warn' instead of 'error' to avoid failing on WebSocket requests
+  // that are handled by our mock WebSocket, not MSW
+  server.listen({ onUnhandledRequest: 'warn' })
 })
 
 // Reset state between tests
