@@ -24,12 +24,13 @@ test.describe('Playlist Flow E2E', () => {
     // Click playlist to select
     await page.getByText('default').click()
 
-    // Wait for selection
-    await page.waitForTimeout(500)
+    // Wait for the playlist patterns to load
+    // The Play button should become enabled once patterns are loaded
+    await page.waitForTimeout(1000)
 
-    // Find and click run button
-    const runButton = page.getByRole('button', { name: /run|play|start/i }).first()
-    await expect(runButton).toBeVisible()
+    // Find and click run button by its title attribute
+    const runButton = page.locator('button[title="Run Playlist"]')
+    await expect(runButton).toBeVisible({ timeout: 5000 })
     await runButton.click()
 
     // Verify playlist is running

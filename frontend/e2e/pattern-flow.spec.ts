@@ -26,10 +26,8 @@ test.describe('Pattern Flow E2E', () => {
     await page.getByText('star.thr').click()
 
     // Detail panel should open (Sheet component)
-    // Look for common detail panel indicators
-    await expect(
-      page.getByRole('dialog').or(page.locator('[data-state="open"]'))
-    ).toBeVisible({ timeout: 5000 })
+    // The sheet contains a "Play" button with exact text (not "Play Next")
+    await expect(page.getByRole('button', { name: 'play_arrow Play' })).toBeVisible({ timeout: 5000 })
   })
 
   test('can run pattern and UI shows running state', async ({ page }) => {
