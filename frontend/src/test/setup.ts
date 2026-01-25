@@ -1,16 +1,32 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach } from 'vitest'
 import { server } from './mocks/server'
+import { resetMockData } from './mocks/handlers'
+import { setupBrowserMocks, cleanupBrowserMocks } from './mocks/browser'
+import { setupMockWebSocket, cleanupMockWebSocket } from './mocks/websocket'
 
-// Start MSW server before tests
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+// Setup browser mocks
+beforeAll(() => {
+  setupBrowserMocks()
+  setupMockWebSocket()
+  server.listen({ onUnhandledRequest: 'error' })
+})
 
-// Reset handlers after each test
+// Reset state between tests
+beforeEach(() => {
+  resetMockData()
+})
+
+// Cleanup after each test
 afterEach(() => {
   cleanup()
   server.resetHandlers()
 })
 
-// Close server after all tests
-afterAll(() => server.close())
+// Teardown after all tests
+afterAll(() => {
+  server.close()
+  cleanupMockWebSocket()
+  cleanupBrowserMocks()
+})
