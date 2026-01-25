@@ -3,12 +3,12 @@
 ## Current Position
 
 Milestone: v2-frontend-testing
-Phase: 03-integration-tests (3 of 4)
+Phase: 04-e2e-ci (4 of 4)
 Plan: 01 of 1 - COMPLETE
-Status: Phase complete
-Last activity: 2026-01-25 - Completed 03-01-PLAN.md (22 integration tests)
+Status: Milestone complete
+Last activity: 2026-01-25 - Completed 04-01-PLAN.md (E2E & CI)
 
-Progress: [#######---] 75%
+Progress: [##########] 100%
 
 ## Phase Overview
 
@@ -17,13 +17,14 @@ Progress: [#######---] 75%
 | 01 | Test Infrastructure | **Complete** |
 | 02 | Component Tests | **Complete** |
 | 03 | Integration Tests | **Complete** |
-| 04 | E2E & CI | Pending |
+| 04 | E2E & CI | **Complete** |
 
 ## Completed Milestones
 
 | Version | Name | Completed | Archive |
 |---------|------|-----------|---------|
 | v1 | Backend Testing | 2026-01-24 | [v1-backend-testing.md](milestones/v1-backend-testing.md) |
+| v2 | Frontend Testing | 2026-01-25 | (pending archive) |
 
 ## Accumulated Decisions
 
@@ -43,6 +44,8 @@ Progress: [#######---] 75%
 | Observable behavior testing | Focus on what renders, clicks, API calls not implementation | 2026-01-25 |
 | apiCallLog for API verification | Track API calls in MSW handlers for integration test assertions | 2026-01-25 |
 | Button finding via textContent | More reliable than getByRole for buttons with similar names | 2026-01-25 |
+| WebSocket mocking via routeWebSocket | Required to bypass blocking "Connecting to Backend" overlay | 2026-01-25 |
+| Dedicated port 5174 for E2E | Avoids conflict with other dev servers on 5173 | 2026-01-25 |
 
 ## Blockers/Concerns
 
@@ -51,8 +54,8 @@ None currently.
 ## Session Continuity
 
 Last session: 2026-01-25
-Stopped at: Completed 03-01-PLAN.md (Integration Tests)
-Resume file: .planning/phases/04-e2e-ci/04-01-PLAN.md (when created)
+Stopped at: Completed 04-01-PLAN.md (E2E & CI)
+Resume file: None - milestone complete
 
 ## Test Summary
 
@@ -60,4 +63,15 @@ Resume file: .planning/phases/04-e2e-ci/04-01-PLAN.md (when created)
 |----------|-------|
 | Component tests | 42 |
 | Integration tests | 22 |
-| **Total frontend tests** | **64** |
+| E2E tests | 13 |
+| **Total frontend tests** | **77** |
+| Backend tests | 17 |
+| **Grand total** | **94** |
+
+## CI Coverage
+
+GitHub Actions workflow runs:
+- Backend: pytest with coverage
+- Backend: Ruff linting
+- Frontend: Vitest unit/integration tests
+- Frontend: Playwright E2E tests
