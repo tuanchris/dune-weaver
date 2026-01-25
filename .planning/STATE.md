@@ -3,12 +3,12 @@
 ## Current Position
 
 Milestone: v2-frontend-testing
-Phase: 02-component-tests (2 of 4)
+Phase: 03-integration-tests (3 of 4)
 Plan: 01 of 1 - COMPLETE
 Status: Phase complete
-Last activity: 2026-01-25 - Completed 02-01-PLAN.md
+Last activity: 2026-01-25 - Completed 03-01-PLAN.md (22 integration tests)
 
-Progress: [#####-----] 50%
+Progress: [#######---] 75%
 
 ## Phase Overview
 
@@ -16,7 +16,7 @@ Progress: [#####-----] 50%
 |-------|------|--------|
 | 01 | Test Infrastructure | **Complete** |
 | 02 | Component Tests | **Complete** |
-| 03 | Integration Tests | Pending |
+| 03 | Integration Tests | **Complete** |
 | 04 | E2E & CI | Pending |
 
 ## Completed Milestones
@@ -41,6 +41,8 @@ Progress: [#####-----] 50%
 | MSW onUnhandledRequest: warn | Changed from error due to WebSocket conflicts | 2026-01-25 |
 | Chromium only (initial) | Faster CI, can add browsers later | 2026-01-24 |
 | Observable behavior testing | Focus on what renders, clicks, API calls not implementation | 2026-01-25 |
+| apiCallLog for API verification | Track API calls in MSW handlers for integration test assertions | 2026-01-25 |
+| Button finding via textContent | More reliable than getByRole for buttons with similar names | 2026-01-25 |
 
 ## Blockers/Concerns
 
@@ -49,5 +51,13 @@ None currently.
 ## Session Continuity
 
 Last session: 2026-01-25
-Stopped at: Completed 02-01-PLAN.md (Component Tests)
-Resume file: None
+Stopped at: Completed 03-01-PLAN.md (Integration Tests)
+Resume file: .planning/phases/04-e2e-ci/04-01-PLAN.md (when created)
+
+## Test Summary
+
+| Category | Tests |
+|----------|-------|
+| Component tests | 42 |
+| Integration tests | 22 |
+| **Total frontend tests** | **64** |
