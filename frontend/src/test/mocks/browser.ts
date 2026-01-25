@@ -1,9 +1,14 @@
 import { vi } from 'vitest'
 
 // Mock IntersectionObserver
-export class MockIntersectionObserver {
+export class MockIntersectionObserver implements IntersectionObserver {
   callback: IntersectionObserverCallback
   elements: Set<Element> = new Set()
+
+  // Required IntersectionObserver properties
+  readonly root: Element | Document | null = null
+  readonly rootMargin: string = '0px'
+  readonly thresholds: ReadonlyArray<number> = [0]
 
   constructor(callback: IntersectionObserverCallback) {
     this.callback = callback
@@ -24,6 +29,10 @@ export class MockIntersectionObserver {
 
   disconnect() {
     this.elements.clear()
+  }
+
+  takeRecords(): IntersectionObserverEntry[] {
+    return []
   }
 }
 

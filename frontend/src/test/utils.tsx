@@ -1,7 +1,8 @@
-import { render, RenderOptions } from '@testing-library/react'
+import { render } from '@testing-library/react'
+import type { RenderOptions } from '@testing-library/react'
 import { BrowserRouter, MemoryRouter, Routes, Route } from 'react-router'
-import { ReactElement, ReactNode } from 'react'
-import { PatternMetadata, PreviewData } from '@/lib/types'
+import type { ReactElement, ReactNode } from 'react'
+import type { PatternMetadata, PreviewData } from '@/lib/types'
 import { TableProvider } from '@/contexts/TableContext'
 import { Layout } from '@/components/layout/Layout'
 import { BrowsePage } from '@/pages/BrowsePage'
@@ -14,7 +15,7 @@ function AllProviders({ children }: { children: ReactNode }) {
 }
 
 // Integration test wrapper - full app with routing
-function IntegrationWrapper({
+export function IntegrationWrapper({
   children,
   initialEntries = ['/']
 }: {

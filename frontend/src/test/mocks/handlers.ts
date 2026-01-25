@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw'
-import { PatternMetadata, PreviewData } from '@/lib/types'
+import type { PatternMetadata, PreviewData } from '@/lib/types'
 
 // ============================================
 // API Call Tracking for Integration Tests
