@@ -30,7 +30,7 @@ static/custom/*
 !static/custom/.gitkeep
 .claude/
 static/dist/
-.planning
+.planning/
 .coverage
 # Frontend test artifacts
 frontend/coverage/
