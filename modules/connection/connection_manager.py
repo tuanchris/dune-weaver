@@ -241,6 +241,13 @@ def device_init(homing=True):
         success = home()
         if not success:
             logger.error("Homing failed during device initialization")
+            # If sensor homing failed, close connection and return False
+            # This prevents auto-connection from completing until user takes action
+            if state.sensor_homing_failed:
+                logger.error("Sensor homing failed - closing connection. User must check sensor or switch to crash homing.")
+                state.conn.close()
+                state.conn = None
+                return False
 
     time.sleep(2)  # Allow time for the connection to establish
     return True
@@ -1083,7 +1090,9 @@ def home(timeout=120):
 
                 elif not state.homed_x and not state.homed_y:
                     # Neither axis homed - this is a failure, don't proceed
-                    logger.error("Sensor homing failed - neither axis homed")
+                    # Set sensor_homing_failed flag to notify UI for user action
+                    logger.error("Sensor homing failed - neither axis homed. User action required.")
+                    state.sensor_homing_failed = True
                     homing_complete.set()
                     return
                 else:
@@ -1173,6 +1182,8 @@ def home(timeout=120):
                 logger.error(f"Error updating machine position after homing: {e}")
 
             homing_success = True
+            # Clear sensor_homing_failed flag on successful homing
+            state.sensor_homing_failed = False
             homing_complete.set()
 
         except Exception as e:

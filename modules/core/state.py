@@ -63,6 +63,10 @@ class AppState:
         # Homing in progress flag - blocks other movement operations
         self.is_homing = False
 
+        # Sensor homing failure flag - set when sensor homing fails
+        # This indicates to the UI that sensor homing failed and user action is needed
+        self.sensor_homing_failed = False
+
         # Angular homing compass reference point
         # This is the angular offset in degrees where the sensor is placed
         # After homing, theta will be set to this value

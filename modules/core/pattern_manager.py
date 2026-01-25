@@ -1765,6 +1765,7 @@ def get_status():
         "scheduled_pause": is_in_scheduled_pause_period(),
         "is_running": bool(state.current_playing_file and not state.stop_requested),
         "is_homing": state.is_homing,
+        "sensor_homing_failed": state.sensor_homing_failed,
         "is_clearing": state.is_clearing,
         "progress": None,
         "playlist": None,

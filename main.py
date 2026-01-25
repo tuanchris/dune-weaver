@@ -117,6 +117,13 @@ async def lifespan(app: FastAPI):
                     success = await asyncio.to_thread(connection_manager.home)
                     if not success:
                         logger.warning("Background homing failed or was skipped")
+                        # If sensor homing failed, close connection and wait for user action
+                        if state.sensor_homing_failed:
+                            logger.error("Sensor homing failed - closing connection. User must check sensor or switch to crash homing.")
+                            if state.conn:
+                                await asyncio.to_thread(state.conn.close)
+                                state.conn = None
+                            return  # Don't proceed with auto-play
                 finally:
                     state.is_homing = False
                     logger.info("Background homing completed")
@@ -1868,6 +1875,77 @@ async def send_home():
         raise
     except Exception as e:
         logger.error(f"Failed to send home command: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class SensorHomingRecoveryRequest(BaseModel):
+    switch_to_crash_homing: bool = False
+
+@app.post("/recover_sensor_homing")
+async def recover_sensor_homing(request: SensorHomingRecoveryRequest):
+    """
+    Recover from sensor homing failure.
+
+    If switch_to_crash_homing is True, changes homing mode to crash homing (mode 0)
+    and saves the setting. Then attempts to reconnect and home the device.
+
+    If switch_to_crash_homing is False, just clears the failure flag and retries
+    with sensor homing.
+    """
+    try:
+        # Clear the sensor homing failure flag first
+        state.sensor_homing_failed = False
+
+        if request.switch_to_crash_homing:
+            # Switch to crash homing mode
+            logger.info("Switching to crash homing mode per user request")
+            state.homing = 0
+            state.homing_user_override = True
+            state.save()
+
+        # If already connected, just perform homing
+        if state.conn and state.conn.is_connected():
+            logger.info("Device already connected, performing homing...")
+            state.is_homing = True
+            try:
+                success = await asyncio.to_thread(connection_manager.home)
+                if not success:
+                    # Check if sensor homing failed again
+                    if state.sensor_homing_failed:
+                        return {
+                            "success": False,
+                            "sensor_homing_failed": True,
+                            "message": "Sensor homing failed again. Please check sensor position or switch to crash homing."
+                        }
+                    return {"success": False, "message": "Homing failed"}
+                return {"success": True, "message": "Homing completed successfully"}
+            finally:
+                state.is_homing = False
+        else:
+            # Need to reconnect
+            logger.info("Reconnecting device and performing homing...")
+            state.is_homing = True
+            try:
+                # connect_device includes homing
+                await asyncio.to_thread(connection_manager.connect_device, True)
+
+                # Check if sensor homing failed during connection
+                if state.sensor_homing_failed:
+                    return {
+                        "success": False,
+                        "sensor_homing_failed": True,
+                        "message": "Sensor homing failed. Please check sensor position or switch to crash homing."
+                    }
+
+                if state.conn and state.conn.is_connected():
+                    return {"success": True, "message": "Connected and homed successfully"}
+                else:
+                    return {"success": False, "message": "Failed to establish connection"}
+            finally:
+                state.is_homing = False
+
+    except Exception as e:
+        logger.error(f"Error during sensor homing recovery: {e}")
+        state.is_homing = False
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/run_theta_rho_file/{file_name}")

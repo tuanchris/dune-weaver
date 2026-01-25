@@ -143,6 +143,7 @@ export default defineConfig({
       '/list_serial_ports': 'http://localhost:8080',
       '/connect': 'http://localhost:8080',
       '/disconnect': 'http://localhost:8080',
+      '/recover_sensor_homing': 'http://localhost:8080',
       // Patterns
       '/list_theta_rho_files': 'http://localhost:8080',
       '/list_theta_rho_files_with_metadata': 'http://localhost:8080',

@@ -66,6 +66,10 @@ export function Layout() {
   const [connectionAttempts, setConnectionAttempts] = useState(0)
   const wsRef = useRef<WebSocket | null>(null)
 
+  // Sensor homing failure state
+  const [sensorHomingFailed, setSensorHomingFailed] = useState(false)
+  const [isRecoveringHoming, setIsRecoveringHoming] = useState(false)
+
   // Fetch app settings
   const fetchAppSettings = () => {
     apiClient.get<{ app?: { name?: string; custom_logo?: string } }>('/api/settings')
@@ -253,12 +257,19 @@ export function Layout() {
               // Detect transition from homing to not homing
               if (wasHomingRef.current && !newIsHoming) {
                 // Homing just completed - show completion state with countdown
-                setHomingJustCompleted(true)
-                setHomingCountdown(5)
-                setHomingDismissed(false)
+                // But not if sensor homing failed (that shows a different dialog)
+                if (!data.data.sensor_homing_failed) {
+                  setHomingJustCompleted(true)
+                  setHomingCountdown(5)
+                  setHomingDismissed(false)
+                }
               }
               wasHomingRef.current = newIsHoming
               setIsHoming(newIsHoming)
+            }
+            // Update sensor homing failure status
+            if (data.data.sensor_homing_failed !== undefined) {
+              setSensorHomingFailed(data.data.sensor_homing_failed)
             }
             // Auto-open/close Now Playing bar based on playback state
             // Track current file - this is the most reliable indicator of playback
@@ -319,6 +330,7 @@ export function Layout() {
         setCurrentPlayingFile(null) // Reset playback state for new table
         setIsConnected(false) // Reset connection status until new table reports
         setIsBackendConnected(false) // Show connecting state
+        setSensorHomingFailed(false) // Reset sensor homing failure state for new table
         connectWebSocket()
       }
     })
@@ -619,6 +631,34 @@ export function Layout() {
       toast.success('System is shutting down...')
     } catch {
       toast.error('Failed to shutdown system')
+    }
+  }
+
+  // Handle sensor homing recovery
+  const handleSensorHomingRecovery = async (switchToCrashHoming: boolean) => {
+    setIsRecoveringHoming(true)
+    try {
+      const response = await apiClient.post<{
+        success: boolean
+        sensor_homing_failed?: boolean
+        message?: string
+      }>('/recover_sensor_homing', {
+        switch_to_crash_homing: switchToCrashHoming
+      })
+
+      if (response.success) {
+        toast.success(response.message || 'Homing completed successfully')
+        setSensorHomingFailed(false)
+      } else if (response.sensor_homing_failed) {
+        // Sensor homing failed again
+        toast.error(response.message || 'Sensor homing failed again')
+      } else {
+        toast.error(response.message || 'Recovery failed')
+      }
+    } catch {
+      toast.error('Failed to recover from sensor homing failure')
+    } finally {
+      setIsRecoveringHoming(false)
     }
   }
 
@@ -950,6 +990,72 @@ export function Layout() {
 
   return (
     <div className="min-h-dvh bg-background flex flex-col">
+      {/* Sensor Homing Failure Popup */}
+      {sensorHomingFailed && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-background rounded-lg shadow-xl w-full max-w-md border border-destructive/30">
+            <div className="p-6">
+              <div className="text-center space-y-4">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-destructive/10 mb-2">
+                  <span className="material-icons-outlined text-4xl text-destructive">
+                    error_outline
+                  </span>
+                </div>
+                <h2 className="text-xl font-semibold">Sensor Homing Failed</h2>
+                <p className="text-muted-foreground text-sm">
+                  The sensor homing process could not complete. The limit sensors may not be positioned correctly or may be malfunctioning.
+                </p>
+
+                <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-lg text-sm text-left">
+                  <p className="text-amber-600 dark:text-amber-400 font-medium mb-2">
+                    Troubleshooting steps:
+                  </p>
+                  <ul className="text-amber-600 dark:text-amber-400 space-y-1 list-disc list-inside">
+                    <li>Check that the limit sensors are properly connected</li>
+                    <li>Verify the sensor positions are correct</li>
+                    <li>Ensure nothing is blocking the sensor path</li>
+                    <li>Check for loose wiring connections</li>
+                  </ul>
+                </div>
+
+                <p className="text-muted-foreground text-sm">
+                  Connection will not be established until this is resolved.
+                </p>
+
+                {/* Action Buttons */}
+                {!isRecoveringHoming ? (
+                  <div className="flex flex-col gap-2 pt-2">
+                    <Button
+                      onClick={() => handleSensorHomingRecovery(false)}
+                      className="w-full gap-2"
+                    >
+                      <span className="material-icons text-base">refresh</span>
+                      Retry Sensor Homing
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => handleSensorHomingRecovery(true)}
+                      className="w-full gap-2"
+                    >
+                      <span className="material-icons text-base">sync_alt</span>
+                      Switch to Crash Homing
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      Crash homing moves the arm to a physical stop without using sensors.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center gap-2 py-4">
+                    <span className="material-icons-outlined text-primary animate-spin">sync</span>
+                    <span className="text-muted-foreground">Attempting recovery...</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Cache Progress Blocking Overlay */}
       {cacheProgress?.is_running && (
         <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center p-4">
@@ -1072,7 +1178,8 @@ export function Layout() {
       )}
 
       {/* Backend Connection / Homing Blocking Overlay */}
-      {(!isBackendConnected || (isHoming && !homingDismissed) || homingJustCompleted) && (
+      {/* Don't show this overlay when sensor homing failed - that has its own dialog */}
+      {!sensorHomingFailed && (!isBackendConnected || (isHoming && !homingDismissed) || homingJustCompleted) && (
         <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center p-4">
           <div className="w-full max-w-2xl space-y-6">
             {/* Status Header */}
