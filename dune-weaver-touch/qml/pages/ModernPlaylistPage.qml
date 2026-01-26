@@ -545,17 +545,11 @@ Page {
                                         anchors.fill: parent
                                         onClicked: {
                                             if (backend) {
-                                                    pauseTime: pauseTime,
-                                                    clearPattern: clearPattern,
-                                                    runMode: runMode,
-                                                    shuffle: shuffle
-                                                })
                                                 backend.executePlaylist(selectedPlaylist, pauseTime, clearPattern, runMode, shuffle)
-                                                
+
                                                 // Navigate to execution page
                                                 if (mainWindow) {
                                                     mainWindow.shouldNavigateToExecution = true
-                                                } else {
                                                 }
                                             }
                                         }
