@@ -104,6 +104,9 @@ class Backend(QObject):
         self._backend_connected = False
         self._reconnect_status = "Connecting to backend..."
 
+        # Preview path cache to avoid repeated filesystem lookups
+        self._preview_cache = {}  # filename -> preview_path
+
         # LED control state
         self._led_provider = "none"  # "none", "wled", or "dw_leds"
         self._led_connected = False
@@ -138,11 +141,13 @@ class Backend(QObject):
         self._last_screen_change = 0  # Track last state change time
         self._use_touch_script = False  # Disable external touch-monitor script (too sensitive)
         self._screen_timer = QTimer()
-        self._screen_timer.timeout.connect(self._check_screen_timeout)
-        self._screen_timer.start(1000)  # Check every second
+        self._screen_timer.setSingleShot(True)  # Event-driven, fires only once per timeout
+        self._screen_timer.timeout.connect(self._screen_timeout_triggered)
         # Load local settings first
         self._load_local_settings()
-        print(f"🖥️ Screen management initialized: timeout={self._screen_timeout}s, timer started")
+        # Start the initial timeout timer if enabled
+        if self._screen_timeout > 0:
+            self._screen_timer.start(self._screen_timeout * 1000)
         
         # HTTP session - initialize lazily
         self.session = None
@@ -316,10 +321,8 @@ class Backend(QObject):
 
                 # Detect pattern change and emit executionStarted signal
                 if new_file and new_file != self._current_file:
-                    print(f"🎯 Pattern changed from '{self._current_file}' to '{new_file}'")
                     # Find preview for the new pattern
                     preview_path = self._find_pattern_preview(new_file)
-                    print(f"🖼️ Preview path for new pattern: {preview_path}")
                     # Emit signal so UI can update
                     self.executionStarted.emit(new_file, preview_path)
 
@@ -329,14 +332,12 @@ class Backend(QObject):
                 # Handle pause state from WebSocket
                 new_paused = status.get("is_paused", False)
                 if new_paused != self._is_paused:
-                    print(f"⏸️ Pause state changed: {self._is_paused} -> {new_paused}")
                     self._is_paused = new_paused
                     self.pausedChanged.emit(new_paused)
 
                 # Handle serial connection status from WebSocket
                 ws_connection_status = status.get("connection_status", False)
                 if ws_connection_status != self._serial_connected:
-                    print(f"🔌 WebSocket serial connection status changed: {ws_connection_status}")
                     self._serial_connected = ws_connection_status
                     self.serialConnectionChanged.emit(ws_connection_status)
 
@@ -351,7 +352,6 @@ class Backend(QObject):
                 # Handle speed updates from WebSocket
                 ws_speed = status.get("speed", None)
                 if ws_speed and ws_speed != self._current_speed:
-                    print(f"⚡ WebSocket speed changed: {ws_speed}")
                     self._current_speed = ws_speed
                     self.speedChanged.emit(ws_speed)
 
@@ -426,11 +426,14 @@ class Backend(QObject):
             self.errorOccurred.emit(str(e))
     
     def _find_pattern_preview(self, fileName):
-        """Find the preview image for a pattern"""
+        """Find the preview image for a pattern (with caching)"""
+        # Check cache first
+        if fileName in self._preview_cache:
+            return self._preview_cache[fileName]
+
         try:
             # Extract just the filename from the path (remove any directory prefixes)
             clean_filename = fileName.split('/')[-1]  # Get last part of path
-            print(f"🔍 Original fileName: {fileName}, clean filename: {clean_filename}")
 
             # Check multiple possible locations for patterns directory
             # Use relative paths that work across different environments
@@ -443,8 +446,6 @@ class Backend(QObject):
             for patterns_dir in possible_dirs:
                 cache_dir = patterns_dir / "cached_images"
                 if cache_dir.exists():
-                    print(f"🔍 Searching for preview in cache directory: {cache_dir}")
-
                     # Extensions to try - PNG first for better kiosk compatibility
                     extensions = [".png", ".webp", ".jpg", ".jpeg"]
 
@@ -457,11 +458,11 @@ class Backend(QObject):
                         for ext in extensions:
                             preview_file = cache_dir / (filename + ext)
                             if preview_file.exists():
-                                print(f"✅ Found preview (direct): {preview_file}")
-                                return str(preview_file.absolute())
+                                preview_path = str(preview_file.absolute())
+                                self._preview_cache[fileName] = preview_path
+                                return preview_path
 
                     # If not found directly, search recursively through subdirectories
-                    print(f"🔍 Searching recursively in {cache_dir}...")
                     for filename in filenames_to_try:
                         for ext in extensions:
                             target_name = filename + ext
@@ -469,15 +470,17 @@ class Backend(QObject):
                             matches = list(cache_dir.rglob(target_name))
                             if matches:
                                 # Return the first match found
-                                preview_file = matches[0]
-                                print(f"✅ Found preview (recursive): {preview_file}")
-                                return str(preview_file.absolute())
+                                preview_path = str(matches[0].absolute())
+                                self._preview_cache[fileName] = preview_path
+                                return preview_path
 
-            print("❌ No preview image found")
             return ""
         except Exception as e:
-            print(f"💥 Exception finding preview: {e}")
             return ""
+
+    def _clear_preview_cache(self):
+        """Clear the preview path cache (call when patterns might change)"""
+        self._preview_cache = {}
     
     @Slot()
     def stopExecution(self):
@@ -1128,27 +1131,19 @@ class Backend(QObject):
             traceback.print_exc()
     
     def _reset_activity_timer(self):
-        """Reset the last activity timestamp"""
-        old_time = self._last_activity
+        """Reset the screen timeout timer (event-driven approach)"""
         self._last_activity = time.time()
-        time_since_last = self._last_activity - old_time
-        if time_since_last > 1:  # Only log if it's been more than 1 second
-            print(f"🖥️ Activity detected - timer reset (was idle for {time_since_last:.1f}s)")
-    
-    def _check_screen_timeout(self):
-        """Check if screen should be turned off due to inactivity"""
-        if self._screen_on and self._screen_timeout > 0:  # Only check if timeout is enabled
-            idle_time = time.time() - self._last_activity
-            # Log every 10 seconds when getting close to timeout
-            if idle_time > self._screen_timeout - 10 and idle_time % 10 < 1:
-                print(f"🖥️ Screen idle for {idle_time:.0f}s (timeout at {self._screen_timeout}s)")
-            
-            if idle_time > self._screen_timeout:
-                print(f"🖥️ Screen timeout reached! Idle for {idle_time:.0f}s (timeout: {self._screen_timeout}s)")
-                self._turn_screen_off()
-                # Add delay before starting touch monitoring to avoid catching residual events
-                QTimer.singleShot(1000, self._start_touch_monitoring)  # 1 second delay
-        # If timeout is 0 (Never), screen stays on indefinitely
+        # Stop existing timer and restart with full timeout duration
+        self._screen_timer.stop()
+        if self._screen_timeout > 0 and self._screen_on:
+            self._screen_timer.start(self._screen_timeout * 1000)
+
+    def _screen_timeout_triggered(self):
+        """Handle screen timeout - timer has already waited the full duration"""
+        if self._screen_on and self._screen_timeout > 0:
+            self._turn_screen_off()
+            # Add delay before starting touch monitoring to avoid catching residual events
+            QTimer.singleShot(1000, self._start_touch_monitoring)
     
     def _start_touch_monitoring(self):
         """Start monitoring touch input for wake-up"""
