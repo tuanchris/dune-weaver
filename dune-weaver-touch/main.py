@@ -96,8 +96,12 @@ def is_pi5():
     except:
         return False
 
-async def async_main(app, first_touch_filter):
-    """Main async function that runs the Qt application using qasync.run() pattern"""
+async def async_main(app):
+    """Main async function that runs the Qt application.
+
+    Uses qasync's event loop integration - do NOT call app.processEvents()
+    manually as qasync handles Qt/asyncio integration automatically.
+    """
     # Register types
     qmlRegisterType(Backend, "DuneWeaver", 1, 0, "Backend")
     qmlRegisterType(PatternModel, "DuneWeaver", 1, 0, "PatternModel")
@@ -107,7 +111,6 @@ async def async_main(app, first_touch_filter):
     engine = QQmlApplicationEngine()
 
     # Set rotation flag for Pi 5 (display needs 180° rotation via QML)
-    # This applies regardless of Qt backend (eglfs or linuxfb)
     rotate_display = is_pi5()
     engine.rootContext().setContextProperty("rotateDisplay", rotate_display)
     if rotate_display:
@@ -125,12 +128,17 @@ async def async_main(app, first_touch_filter):
 
     logger.info("✅ Qt application started successfully")
 
-    # Keep running until app quits
-    # This is the recommended qasync pattern that avoids CPU spinning
-    while engine.rootObjects():
-        await asyncio.sleep(0.1)
-        # Process Qt events
-        app.processEvents()
+    # Create an asyncio event that will be set when the app quits
+    # This is the proper way to wait - qasync handles event loop integration
+    quit_event = asyncio.Event()
+    app.aboutToQuit.connect(quit_event.set)
+
+    # Wait for the app to quit
+    # This properly yields to the event loop, allowing:
+    # - Qt events to be processed (handled by qasync)
+    # - Other async tasks (like aiohttp in Backend) to run
+    # - No CPU spinning since we're awaiting an event, not polling
+    await quit_event.wait()
 
     logger.info("🛑 Application shutdown complete")
     return 0
@@ -142,7 +150,6 @@ def main():
     app = QGuiApplication(sys.argv)
 
     # Install first-touch filter to ignore wake-up touches
-    # Ignores the first touch after 2 seconds of inactivity
     first_touch_filter = FirstTouchFilter(idle_threshold_seconds=2.0)
     app.installEventFilter(first_touch_filter)
     logger.info("✅ First-touch filter installed on application")
@@ -155,10 +162,10 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Use the recommended qasync.run() pattern
-    # This properly integrates Qt and asyncio event loops without CPU spinning
+    # Use qasync.run() to properly integrate Qt and asyncio event loops
+    # qasync handles all event loop integration - we just await the quit signal
     try:
-        qasync.run(async_main(app, first_touch_filter))
+        qasync.run(async_main(app))
     except KeyboardInterrupt:
         logger.info("🛑 KeyboardInterrupt received")
 
