@@ -429,10 +429,10 @@ Page {
                                     
                                     // Speed buttons
                                     Repeater {
-                                        model: ["100", "150", "200", "300", "500"]
-                                        
+                                        model: ["50", "100", "150", "200", "300", "500"]
+
                                         Rectangle {
-                                            width: (speedControlRow.width - 32) / 5  // Distribute evenly with spacing
+                                            width: (speedControlRow.width - 40) / 6  // Distribute evenly with spacing
                                             height: 50
                                             color: speedControlRow.currentSelection === modelData ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
                                             border.color: speedControlRow.currentSelection === modelData ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder

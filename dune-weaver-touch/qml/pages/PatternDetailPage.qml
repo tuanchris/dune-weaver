@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import DuneWeaver 1.0
 import "../components"
 import "../components" as Components
 
@@ -10,6 +11,12 @@ Page {
     property string patternPath: ""
     property string patternPreview: ""
     property var backend: null
+    property bool showAddedFeedback: false
+
+    // Playlist model for selecting which playlist to add to
+    PlaylistModel {
+        id: playlistModel
+    }
 
     Rectangle {
         anchors.fill: parent
@@ -141,7 +148,7 @@ Page {
                         height: 50
                         radius: 8
                         color: playMouseArea.pressed ? "#1e40af" : (backend ? "#2563eb" : "#9ca3af")
-                        
+
                         Text {
                             anchors.centerIn: parent
                             text: "▶ Play Pattern"
@@ -149,7 +156,7 @@ Page {
                             font.pixelSize: 16
                             font.bold: true
                         }
-                        
+
                         MouseArea {
                             id: playMouseArea
                             anchors.fill: parent
@@ -160,13 +167,49 @@ Page {
                                     if (centerRadio.checked) preExecution = "clear_center"
                                     else if (perimeterRadio.checked) preExecution = "clear_perimeter"
                                     else if (noneRadio.checked) preExecution = "none"
-                                    
+
                                     backend.executePattern(patternName, preExecution)
                                 }
                             }
                         }
                     }
-                    
+
+                    // Add to Playlist Button
+                    Rectangle {
+                        width: parent.width
+                        height: 45
+                        radius: 8
+                        color: addToPlaylistArea.pressed ? "#065f46" : "#059669"
+
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 8
+
+                            Text {
+                                text: showAddedFeedback ? "✓" : "♪"
+                                font.pixelSize: 16
+                                color: "white"
+                            }
+
+                            Text {
+                                text: showAddedFeedback ? "Added!" : "Add to Playlist"
+                                color: "white"
+                                font.pixelSize: 14
+                                font.bold: true
+                            }
+                        }
+
+                        MouseArea {
+                            id: addToPlaylistArea
+                            anchors.fill: parent
+                            enabled: backend !== null && !showAddedFeedback
+                            onClicked: {
+                                playlistModel.refresh()  // Refresh playlist list
+                                playlistSelectorPopup.open()
+                            }
+                        }
+                    }
+
                     // Pre-Execution Options
                     Rectangle {
                         width: parent.width
@@ -293,5 +336,170 @@ Page {
             }
             }
         }
+    }
+
+    // ==================== Playlist Selector Popup ====================
+
+    Popup {
+        id: playlistSelectorPopup
+        modal: true
+        x: (parent.width - width) / 2
+        y: (parent.height - height) / 2
+        width: 320
+        height: Math.min(400, 120 + playlistModel.rowCount() * 50)
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        background: Rectangle {
+            color: Components.ThemeManager.surfaceColor
+            radius: 16
+            border.color: Components.ThemeManager.borderColor
+            border.width: 1
+        }
+
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 15
+            spacing: 10
+
+            Label {
+                text: "Add to Playlist"
+                font.pixelSize: 18
+                font.bold: true
+                color: Components.ThemeManager.textPrimary
+                Layout.alignment: Qt.AlignHCenter
+            }
+
+            // Playlist list
+            ListView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                model: playlistModel
+                spacing: 6
+
+                delegate: Rectangle {
+                    width: ListView.view.width
+                    height: 45
+                    radius: 8
+                    color: playlistItemArea.pressed ? Components.ThemeManager.selectedBackground : Components.ThemeManager.cardColor
+                    border.color: Components.ThemeManager.borderColor
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 10
+
+                        Text {
+                            text: "♪"
+                            font.pixelSize: 16
+                            color: "#2196F3"
+                        }
+
+                        Label {
+                            text: model.name
+                            font.pixelSize: 14
+                            color: Components.ThemeManager.textPrimary
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                        }
+
+                        Label {
+                            text: model.itemCount + " patterns"
+                            font.pixelSize: 11
+                            color: Components.ThemeManager.textTertiary
+                        }
+                    }
+
+                    MouseArea {
+                        id: playlistItemArea
+                        anchors.fill: parent
+                        onClicked: {
+                            if (backend) {
+                                backend.addPatternToPlaylist(model.name, patternName)
+                            }
+                            playlistSelectorPopup.close()
+                        }
+                    }
+                }
+            }
+
+            // Empty state
+            Column {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: 10
+                visible: playlistModel.rowCount() === 0
+
+                Item { Layout.fillHeight: true }
+
+                Text {
+                    text: "♪"
+                    font.pixelSize: 32
+                    color: Components.ThemeManager.placeholderText
+                    anchors.horizontalCenter: parent.horizontalCenter
+                }
+
+                Label {
+                    text: "No playlists yet"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    color: Components.ThemeManager.textSecondary
+                    font.pixelSize: 14
+                }
+
+                Label {
+                    text: "Create a playlist first"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    color: Components.ThemeManager.textTertiary
+                    font.pixelSize: 12
+                }
+
+                Item { Layout.fillHeight: true }
+            }
+
+            // Cancel button
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 40
+                radius: 8
+                color: cancelArea.pressed ? Components.ThemeManager.buttonBackgroundHover : Components.ThemeManager.cardColor
+                border.color: Components.ThemeManager.borderColor
+                border.width: 1
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "Cancel"
+                    color: Components.ThemeManager.textPrimary
+                    font.pixelSize: 14
+                }
+
+                MouseArea {
+                    id: cancelArea
+                    anchors.fill: parent
+                    onClicked: playlistSelectorPopup.close()
+                }
+            }
+        }
+    }
+
+    // ==================== Backend Signal Handlers ====================
+
+    Connections {
+        target: backend
+
+        function onPatternAddedToPlaylist(success, message) {
+            console.log("➕ Pattern added to playlist:", success, message)
+            if (success) {
+                // Show feedback
+                showAddedFeedback = true
+                feedbackTimer.start()
+            }
+        }
+    }
+
+    Timer {
+        id: feedbackTimer
+        interval: 2000  // Show "Added!" for 2 seconds
+        onTriggered: showAddedFeedback = false
     }
 }

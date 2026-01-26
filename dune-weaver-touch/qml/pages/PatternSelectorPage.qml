@@ -1,37 +1,49 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import DuneWeaver 1.0
 import "../components"
 import "../components" as Components
 
 Page {
     id: page
 
-    property var patternModel
-    property var backend
-    property var stackView
-    property bool searchExpanded: false
-    property bool isRefreshing: false
-    property int patternCount: patternModel ? patternModel.rowCount() : 0
+    property var backend: null
+    property var stackView: null
+    property string playlistName: ""
+    property var existingPatterns: []  // Raw pattern names already in playlist
 
-    // Handle pattern refresh completion from backend
-    Connections {
-        target: backend
-        function onPatternsRefreshCompleted(success, message) {
-            console.log("🔄 Pattern refresh completed:", success, message)
-            if (patternModel) {
-                patternModel.refresh()
-            }
-            isRefreshing = false
-        }
+    // Track patterns added in this session for immediate visual feedback
+    property var sessionAddedPatterns: []
+
+    // Local pattern model for this page
+    PatternModel {
+        id: patternModel
     }
 
-    // Update pattern count when model resets (rowCount() is not reactive)
+    // Search state
+    property bool searchExpanded: false
+    property int patternCount: patternModel ? patternModel.rowCount() : 0
+
+    // Update pattern count when model resets
     Connections {
         target: patternModel
         function onModelReset() {
             patternCount = patternModel.rowCount()
         }
+    }
+
+    // Check if a pattern is already in the playlist
+    function isPatternInPlaylist(patternName) {
+        // Check original existing patterns
+        if (existingPatterns.indexOf(patternName) !== -1) {
+            return true
+        }
+        // Check patterns added during this session
+        if (sessionAddedPatterns.indexOf(patternName) !== -1) {
+            return true
+        }
+        return false
     }
 
     Rectangle {
@@ -43,7 +55,7 @@ Page {
         anchors.fill: parent
         spacing: 0
 
-        // Header with integrated search
+        // Header with back button
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 50
@@ -61,18 +73,33 @@ Page {
                 anchors.fill: parent
                 anchors.leftMargin: 15
                 anchors.rightMargin: 10
+                spacing: 10
 
-                ConnectionStatus {
-                    backend: page.backend
-                    Layout.rightMargin: 8
+                // Back button
+                Button {
+                    text: "← Back"
+                    font.pixelSize: 14
+                    flat: true
                     visible: !searchExpanded
+                    onClicked: stackView.pop()
+
+                    contentItem: Text {
+                        text: parent.text
+                        font: parent.font
+                        color: Components.ThemeManager.textPrimary
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
                 }
 
+                // Title
                 Label {
-                    text: "Browse Patterns"
-                    font.pixelSize: 18
+                    text: "Add to \"" + playlistName + "\""
+                    font.pixelSize: 16
                     font.bold: true
                     color: Components.ThemeManager.textPrimary
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
                     visible: !searchExpanded
                 }
 
@@ -84,50 +111,12 @@ Page {
                     visible: !searchExpanded
                 }
 
-                // Refresh button
-                Rectangle {
-                    Layout.preferredWidth: 32
-                    Layout.preferredHeight: 32
-                    radius: 16
-                    color: refreshMouseArea.pressed ? Components.ThemeManager.buttonBackgroundHover :
-                           (refreshMouseArea.containsMouse ? Components.ThemeManager.cardColor : "transparent")
-                    visible: !searchExpanded
-
-                    Text {
-                        id: refreshIcon
-                        anchors.centerIn: parent
-                        text: "↻"
-                        font.pixelSize: 16
-                        color: isRefreshing ? Components.ThemeManager.accentBlue : Components.ThemeManager.textSecondary
-
-                        SequentialAnimation on opacity {
-                            running: isRefreshing
-                            loops: Animation.Infinite
-                            NumberAnimation { to: 0.4; duration: 500 }
-                            NumberAnimation { to: 1.0; duration: 500 }
-                        }
-                    }
-
-                    MouseArea {
-                        id: refreshMouseArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        enabled: !isRefreshing
-                        onClicked: {
-                            if (backend) {
-                                isRefreshing = true
-                                backend.refreshPatterns()
-                            }
-                        }
-                    }
-                }
-
                 Item {
                     Layout.fillWidth: true
                     visible: !searchExpanded
                 }
-                
-                // Expandable search
+
+                // Expandable search (matching ModernPatternListPage)
                 Rectangle {
                     Layout.fillWidth: searchExpanded
                     Layout.preferredWidth: searchExpanded ? parent.width - 60 : 120
@@ -153,7 +142,7 @@ Page {
                             font.family: "sans-serif"
                             color: searchExpanded ? "#2563eb" : Components.ThemeManager.textSecondary
                         }
-                        
+
                         TextField {
                             id: searchField
                             Layout.fillWidth: true
@@ -161,67 +150,55 @@ Page {
                             font.pixelSize: 14
                             color: Components.ThemeManager.textPrimary
                             visible: searchExpanded || text.length > 0
-                            
+
                             property string lastSearchText: ""
                             property bool hasUnappliedSearch: text !== lastSearchText && text.length > 0
-                            
-                            background: Rectangle { 
+
+                            background: Rectangle {
                                 color: "transparent"
                                 border.color: searchField.hasUnappliedSearch ? "#f59e0b" : "transparent"
                                 border.width: searchField.hasUnappliedSearch ? 1 : 0
                                 radius: 4
                             }
-                            
-                            // Remove automatic filtering on text change
-                            // onTextChanged: patternModel.filter(text)
-                            
-                            // Only filter when user presses Enter or field loses focus
+
                             onAccepted: {
                                 patternModel.filter(text)
                                 lastSearchText = text
                                 Qt.inputMethod.hide()
                                 focus = false
                             }
-                            
-                            // Enable virtual keyboard
+
                             activeFocusOnPress: true
                             selectByMouse: true
                             inputMethodHints: Qt.ImhNoPredictiveText
-                            
-                            // Direct MouseArea for touch events
+
                             MouseArea {
                                 anchors.fill: parent
                                 onPressed: {
                                     searchField.forceActiveFocus()
                                     Qt.inputMethod.show()
-                                    mouse.accepted = false // Pass through to TextField
+                                    mouse.accepted = false
                                 }
                             }
-                            
+
                             onActiveFocusChanged: {
                                 if (activeFocus) {
                                     searchExpanded = true
-                                    // Force virtual keyboard to show
                                     Qt.inputMethod.show()
                                 } else {
-                                    // Apply search when focus is lost
                                     if (text !== lastSearchText) {
                                         patternModel.filter(text)
                                         lastSearchText = text
                                     }
                                 }
                             }
-                            
-                            // Handle Enter key - triggers onAccepted
+
                             Keys.onReturnPressed: {
-                                // onAccepted will be called automatically
-                                // Just hide keyboard and unfocus
                                 Qt.inputMethod.hide()
                                 focus = false
                             }
-                            
+
                             Keys.onEscapePressed: {
-                                // Clear search and hide keyboard
                                 text = ""
                                 lastSearchText = ""
                                 patternModel.filter("")
@@ -229,7 +206,7 @@ Page {
                                 focus = false
                             }
                         }
-                        
+
                         Text {
                             text: searchExpanded || searchField.text.length > 0 ? "Search" : ""
                             font.pixelSize: 12
@@ -237,7 +214,7 @@ Page {
                             visible: !searchExpanded && searchField.text.length === 0
                         }
                     }
-                    
+
                     MouseArea {
                         anchors.fill: parent
                         enabled: !searchExpanded
@@ -248,8 +225,8 @@ Page {
                         }
                     }
                 }
-                
-                // Close button when expanded
+
+                // Close button when search expanded
                 Button {
                     text: "✕"
                     font.pixelSize: 18
@@ -262,14 +239,13 @@ Page {
                         searchField.text = ""
                         searchField.lastSearchText = ""
                         searchField.focus = false
-                        // Clear the filter when closing search
                         patternModel.filter("")
                     }
                 }
             }
         }
-        
-        // Content - Pattern Grid
+
+        // Pattern Grid
         GridView {
             id: gridView
             Layout.fillWidth: true
@@ -278,39 +254,70 @@ Page {
             cellHeight: 220
             model: patternModel
             clip: true
-            
-            // Add smooth scrolling
+
             ScrollBar.vertical: ScrollBar {
                 active: true
                 policy: ScrollBar.AsNeeded
             }
-            
-            delegate: ModernPatternCard {
+
+            delegate: Item {
                 width: gridView.cellWidth - 10
                 height: gridView.cellHeight - 10
-                name: model.name
-                preview: model.preview
-                
-                onClicked: {
-                    if (stackView && backend) {
-                        stackView.push("PatternDetailPage.qml", {
-                            patternName: model.name,
-                            patternPath: model.path,
-                            patternPreview: model.preview,
-                            backend: backend
-                        })
+
+                // Check if pattern is already in playlist
+                property bool isInPlaylist: isPatternInPlaylist(model.name)
+
+                ModernPatternCard {
+                    id: patternCard
+                    anchors.fill: parent
+                    name: model.name
+                    preview: model.preview
+
+                    onClicked: {
+                        // Use the tracking function for immediate visual feedback
+                        page.addPatternToPlaylist(model.name)
+                    }
+                }
+
+                // Selection overlay for patterns already in playlist
+                Rectangle {
+                    anchors.fill: parent
+                    color: "transparent"
+                    border.color: isInPlaylist ? "#2563eb" : "transparent"
+                    border.width: isInPlaylist ? 3 : 0
+                    radius: 12
+
+                    // Checkmark badge for selected patterns
+                    Rectangle {
+                        visible: isInPlaylist
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        anchors.topMargin: 12
+                        anchors.rightMargin: 12
+                        width: 28
+                        height: 28
+                        radius: 14
+                        color: "#2563eb"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "✓"
+                            font.pixelSize: 16
+                            font.bold: true
+                            color: "white"
+                        }
                     }
                 }
             }
-            
+
             // Add scroll animations
             add: Transition {
                 NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 300 }
                 NumberAnimation { property: "scale"; from: 0.8; to: 1; duration: 300 }
             }
         }
-        
-        // Empty state
+
+        // Empty state when searching
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -341,6 +348,46 @@ Page {
                     font.pixelSize: 14
                 }
             }
+        }
+    }
+
+    // Handle pattern added signal for live updates
+    Connections {
+        target: backend
+
+        function onPatternAddedToPlaylist(success, message) {
+            if (success) {
+                console.log("Pattern added to playlist, refreshing selection state")
+                // Extract the pattern name from the message if possible
+                // The message format is typically "Pattern added to playlist"
+                // We'll track additions in sessionAddedPatterns instead
+
+                // Re-trigger binding evaluation by updating the array reference
+                var temp = sessionAddedPatterns.slice()
+                // Try to extract pattern name from recent action
+                // Since we don't get the pattern name directly, we need another approach
+                sessionAddedPatterns = temp
+            }
+        }
+    }
+
+    // Track which pattern was last clicked for visual feedback
+    property string lastClickedPattern: ""
+
+    // Override the click handler to track additions
+    Component.onCompleted: {
+        console.log("PatternSelectorPage loaded for playlist:", playlistName)
+        console.log("Existing patterns:", existingPatterns)
+    }
+
+    // Function to add pattern and track it
+    function addPatternToPlaylist(patternName) {
+        if (!isPatternInPlaylist(patternName) && backend) {
+            backend.addPatternToPlaylist(playlistName, patternName)
+            // Immediately add to session tracking for instant visual feedback
+            var temp = sessionAddedPatterns.slice()
+            temp.push(patternName)
+            sessionAddedPatterns = temp
         }
     }
 }

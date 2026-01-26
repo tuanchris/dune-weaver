@@ -31,10 +31,11 @@ class Backend(QObject):
         "Never": 0  # 0 means never timeout
     }
     
-    # Predefined speed options 
+    # Predefined speed options
     SPEED_OPTIONS = {
         "50": 50,
         "100": 100,
+        "150": 150,
         "200": 200,
         "300": 300,
         "500": 500
@@ -72,6 +73,13 @@ class Backend(QObject):
     screenTimeoutChanged = Signal(int)  # New signal for timeout changes
     pauseBetweenPatternsChanged = Signal(int)  # New signal for pause changes
     pausedChanged = Signal(bool)  # Signal when pause state changes
+    patternsRefreshCompleted = Signal(bool, str)  # (success, message) for pattern refresh
+
+    # Playlist management signals
+    playlistCreated = Signal(bool, str)      # (success, message)
+    playlistDeleted = Signal(bool, str)      # (success, message)
+    patternAddedToPlaylist = Signal(bool, str)  # (success, message)
+    playlistModified = Signal(bool, str)     # (success, message)
 
     # Backend connection status signals
     backendConnectionChanged = Signal(bool)  # True = backend reachable, False = unreachable
@@ -1661,3 +1669,203 @@ class Backend(QObject):
         except Exception as e:
             print(f"💥 Exception setting LED palette: {e}")
             self.errorOccurred.emit(str(e))
+
+    # ==================== Pattern Refresh Methods ====================
+
+    @Slot()
+    def refreshPatterns(self):
+        """Refresh pattern cache - converts new WebPs to PNG and rescans patterns"""
+        print("🔄 Refreshing patterns...")
+        asyncio.create_task(self._refresh_patterns())
+
+    async def _refresh_patterns(self):
+        """Async implementation of pattern refresh"""
+        try:
+            from png_cache_manager import PngCacheManager
+            cache_manager = PngCacheManager()
+            success = await cache_manager.ensure_png_cache_available()
+
+            message = "Patterns refreshed" if success else "Refreshed with warnings"
+            print(f"✅ Pattern refresh completed: {message}")
+            self.patternsRefreshCompleted.emit(True, message)
+        except Exception as e:
+            print(f"❌ Pattern refresh failed: {e}")
+            self.patternsRefreshCompleted.emit(False, str(e))
+
+    # ==================== System Control Methods ====================
+
+    @Slot()
+    def restartBackend(self):
+        """Restart the dune-weaver backend via API"""
+        print("🔄 Requesting backend restart via API...")
+        asyncio.create_task(self._restart_backend())
+
+    async def _restart_backend(self):
+        """Async implementation of backend restart"""
+        if not self.session:
+            self.errorOccurred.emit("Backend not ready")
+            return
+
+        try:
+            async with self.session.post(f"{self.base_url}/api/system/restart") as resp:
+                if resp.status == 200:
+                    print("✅ Backend restart initiated via API")
+                else:
+                    response_text = await resp.text()
+                    print(f"❌ Failed to restart backend: {resp.status} - {response_text}")
+                    self.errorOccurred.emit(f"Failed to restart: {response_text}")
+        except Exception as e:
+            print(f"💥 Exception restarting backend: {e}")
+            self.errorOccurred.emit(str(e))
+
+    @Slot()
+    def shutdownPi(self):
+        """Shutdown the Raspberry Pi via API"""
+        print("⏻ Requesting Pi shutdown via API...")
+        asyncio.create_task(self._shutdown_pi())
+
+    async def _shutdown_pi(self):
+        """Async implementation of Pi shutdown"""
+        if not self.session:
+            self.errorOccurred.emit("Backend not ready")
+            return
+
+        try:
+            async with self.session.post(f"{self.base_url}/api/system/shutdown") as resp:
+                if resp.status == 200:
+                    print("✅ Shutdown initiated via API")
+                else:
+                    response_text = await resp.text()
+                    print(f"❌ Failed to shutdown: {resp.status} - {response_text}")
+                    self.errorOccurred.emit(f"Failed to shutdown: {response_text}")
+        except Exception as e:
+            print(f"💥 Exception during shutdown: {e}")
+            self.errorOccurred.emit(str(e))
+
+    # ==================== Playlist Management Methods ====================
+
+    @Slot(str)
+    def createPlaylist(self, playlistName):
+        """Create a new empty playlist"""
+        print(f"📋 Creating playlist: {playlistName}")
+        asyncio.create_task(self._create_playlist(playlistName))
+
+    async def _create_playlist(self, playlistName):
+        """Async implementation of playlist creation"""
+        if not self.session:
+            self.playlistCreated.emit(False, "Backend not ready")
+            return
+
+        try:
+            async with self.session.post(
+                f"{self.base_url}/create_playlist",
+                json={"playlist_name": playlistName, "files": []}
+            ) as resp:
+                if resp.status == 200:
+                    print(f"✅ Playlist created: {playlistName}")
+                    self.playlistCreated.emit(True, f"Created: {playlistName}")
+                else:
+                    response_text = await resp.text()
+                    print(f"❌ Failed to create playlist: {resp.status} - {response_text}")
+                    self.playlistCreated.emit(False, f"Failed: {response_text}")
+        except Exception as e:
+            print(f"💥 Exception creating playlist: {e}")
+            self.playlistCreated.emit(False, str(e))
+
+    @Slot(str)
+    def deletePlaylist(self, playlistName):
+        """Delete a playlist"""
+        print(f"🗑️ Deleting playlist: {playlistName}")
+        asyncio.create_task(self._delete_playlist(playlistName))
+
+    async def _delete_playlist(self, playlistName):
+        """Async implementation of playlist deletion"""
+        if not self.session:
+            self.playlistDeleted.emit(False, "Backend not ready")
+            return
+
+        try:
+            async with self.session.request(
+                "DELETE",
+                f"{self.base_url}/delete_playlist",
+                json={"playlist_name": playlistName}
+            ) as resp:
+                if resp.status == 200:
+                    print(f"✅ Playlist deleted: {playlistName}")
+                    self.playlistDeleted.emit(True, f"Deleted: {playlistName}")
+                else:
+                    response_text = await resp.text()
+                    print(f"❌ Failed to delete playlist: {resp.status} - {response_text}")
+                    self.playlistDeleted.emit(False, f"Failed: {response_text}")
+        except Exception as e:
+            print(f"💥 Exception deleting playlist: {e}")
+            self.playlistDeleted.emit(False, str(e))
+
+    @Slot(str, str)
+    def addPatternToPlaylist(self, playlistName, patternPath):
+        """Add a pattern to an existing playlist"""
+        print(f"➕ Adding pattern to playlist: {patternPath} -> {playlistName}")
+        asyncio.create_task(self._add_pattern_to_playlist(playlistName, patternPath))
+
+    async def _add_pattern_to_playlist(self, playlistName, patternPath):
+        """Async implementation of adding pattern to playlist"""
+        if not self.session:
+            self.patternAddedToPlaylist.emit(False, "Backend not ready")
+            return
+
+        try:
+            async with self.session.post(
+                f"{self.base_url}/add_to_playlist",
+                json={"playlist_name": playlistName, "pattern": patternPath}
+            ) as resp:
+                if resp.status == 200:
+                    print(f"✅ Pattern added to {playlistName}")
+                    self.patternAddedToPlaylist.emit(True, f"Added to {playlistName}")
+                else:
+                    response_text = await resp.text()
+                    print(f"❌ Failed to add pattern: {resp.status} - {response_text}")
+                    self.patternAddedToPlaylist.emit(False, f"Failed: {response_text}")
+        except Exception as e:
+            print(f"💥 Exception adding pattern: {e}")
+            self.patternAddedToPlaylist.emit(False, str(e))
+
+    @Slot(str, list)
+    def updatePlaylistPatterns(self, playlistName, patterns):
+        """Update a playlist with a new list of patterns (used for removing patterns)"""
+        print(f"📝 Updating playlist patterns: {playlistName} -> {len(patterns)} patterns")
+        asyncio.create_task(self._update_playlist_patterns(playlistName, patterns))
+
+    async def _update_playlist_patterns(self, playlistName, patterns):
+        """Async implementation of playlist pattern update"""
+        if not self.session:
+            self.playlistModified.emit(False, "Backend not ready")
+            return
+
+        try:
+            async with self.session.post(
+                f"{self.base_url}/modify_playlist",
+                json={"playlist_name": playlistName, "files": patterns}
+            ) as resp:
+                if resp.status == 200:
+                    print(f"✅ Playlist updated: {playlistName}")
+                    self.playlistModified.emit(True, f"Updated: {playlistName}")
+                else:
+                    response_text = await resp.text()
+                    print(f"❌ Failed to update playlist: {resp.status} - {response_text}")
+                    self.playlistModified.emit(False, f"Failed: {response_text}")
+        except Exception as e:
+            print(f"💥 Exception updating playlist: {e}")
+            self.playlistModified.emit(False, str(e))
+
+    @Slot(result=list)
+    def getPlaylistNames(self):
+        """Get list of all playlist names (synchronous, reads from local file)"""
+        try:
+            playlists_file = Path("../playlists.json")
+            if playlists_file.exists():
+                with open(playlists_file, 'r') as f:
+                    data = json.load(f)
+                    return sorted(list(data.keys()))
+        except Exception as e:
+            print(f"💥 Error reading playlists: {e}")
+        return []

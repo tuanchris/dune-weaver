@@ -581,6 +581,59 @@ Page {
                     }
                 }
 
+                // System Controls Section
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 100
+                    Layout.margins: 5
+                    radius: 8
+                    color: Components.ThemeManager.surfaceColor
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 15
+                        spacing: 10
+
+                        Label {
+                            text: "System Controls"
+                            font.pixelSize: 14
+                            font.bold: true
+                            color: Components.ThemeManager.textPrimary
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+
+                            ModernControlButton {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 45
+                                text: "Restart Backend"
+                                icon: "↻"
+                                buttonColor: "#f59e0b"
+                                fontSize: 11
+
+                                onClicked: {
+                                    if (backend) backend.restartBackend()
+                                }
+                            }
+
+                            ModernControlButton {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 45
+                                text: "Shutdown Pi"
+                                icon: "⏻"
+                                buttonColor: "#dc2626"
+                                fontSize: 11
+
+                                onClicked: {
+                                    if (backend) backend.shutdownPi()
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Add some bottom spacing for better scrolling
                 Item {
                     Layout.preferredHeight: 20
