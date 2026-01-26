@@ -622,7 +622,7 @@ Page {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 45
                                 text: "Shutdown Pi"
-                                icon: "⏻"
+                                icon: ""
                                 buttonColor: "#dc2626"
                                 fontSize: 11
 

@@ -338,7 +338,7 @@ Page {
                     Text {
                         text: "✕"
                         font.pixelSize: 20
-                        color: deletePlaylistMouseArea.pressed ? "#dc2626" : Components.ThemeManager.textSecondary
+                        color: deletePlaylistMouseArea.pressed ? "#991b1b" : "#dc2626"
 
                         MouseArea {
                             id: deletePlaylistMouseArea
