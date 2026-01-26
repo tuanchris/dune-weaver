@@ -134,6 +134,7 @@ class Backend(QObject):
         self._screen_timeout = self.DEFAULT_SCREEN_TIMEOUT  # Will be loaded from settings
         self._last_activity = time.time()
         self._touch_monitor_thread = None
+        self._stop_touch_monitor = threading.Event()  # Signal to stop touch monitoring thread
         self._screen_transition_lock = threading.Lock()  # Prevent rapid state changes
         self._last_screen_change = 0  # Track last state change time
         self._use_touch_script = False  # Disable external touch-monitor script (too sensitive)
@@ -1070,7 +1071,17 @@ class Backend(QObject):
                 self._screen_on = True
                 self._last_screen_change = time.time()
                 self.screenStateChanged.emit(True)
-            
+
+                # Signal touch monitor thread to stop
+                self._stop_touch_monitor.set()
+
+                # Give thread time to exit gracefully
+                if self._touch_monitor_thread and self._touch_monitor_thread.is_alive():
+                    print("🖥️ Waiting for touch monitor thread to stop...")
+                    self._touch_monitor_thread.join(timeout=1.0)
+                    if self._touch_monitor_thread.is_alive():
+                        print("⚠️ Touch monitor thread still running (subprocess will be killed)")
+
             except Exception as e:
                 print(f"❌ Failed to turn screen on: {e}")
     
@@ -1153,65 +1164,83 @@ class Backend(QObject):
     def _start_touch_monitoring(self):
         """Start monitoring touch input for wake-up"""
         if self._touch_monitor_thread is None or not self._touch_monitor_thread.is_alive():
+            # Reset stop flag before starting new thread
+            self._stop_touch_monitor.clear()
             self._touch_monitor_thread = threading.Thread(target=self._monitor_touch_input, daemon=True)
             self._touch_monitor_thread.start()
     
     def _monitor_touch_input(self):
         """Monitor touch input to wake up the screen"""
+        import select
+
         print("👆 Starting touch monitoring for wake-up")
-        # Add delay to let any residual touch events clear
-        time.sleep(2)
-        
-        # Flush touch device to clear any buffered events
+        process = None
+
         try:
-            # Find and flush touch device
-            for i in range(5):
-                device = f'/dev/input/event{i}'
-                if Path(device).exists():
-                    try:
-                        # Read and discard any pending events
-                        with open(device, 'rb') as f:
-                            import fcntl
-                            import os
-                            fcntl.fcntl(f.fileno(), fcntl.F_SETFL, os.O_NONBLOCK)
-                            while True:
-                                try:
-                                    f.read(24)  # Standard input_event size
-                                except:
-                                    break
-                        print(f"👆 Flushed touch device: {device}")
-                        break
-                    except:
-                        continue
-        except Exception as e:
-            print(f"👆 Could not flush touch device: {e}")
-        
-        print("👆 Touch monitoring active")
-        try:
+            # Add delay to let any residual touch events clear
+            # Check stop flag during delay to allow quick exit
+            for _ in range(20):  # 2 seconds in 100ms increments
+                if self._stop_touch_monitor.is_set() or self._screen_on:
+                    print("👆 Touch monitoring cancelled during startup delay")
+                    return
+                time.sleep(0.1)
+
+            # Flush touch device to clear any buffered events
+            try:
+                import fcntl
+                # Find and flush touch device
+                for i in range(5):
+                    device = f'/dev/input/event{i}'
+                    if Path(device).exists():
+                        try:
+                            # Read and discard any pending events
+                            with open(device, 'rb') as f:
+                                fcntl.fcntl(f.fileno(), fcntl.F_SETFL, os.O_NONBLOCK)
+                                while True:
+                                    try:
+                                        f.read(24)  # Standard input_event size
+                                    except:
+                                        break
+                            print(f"👆 Flushed touch device: {device}")
+                            break
+                        except:
+                            continue
+            except Exception as e:
+                print(f"👆 Could not flush touch device: {e}")
+
+            # Check again before starting monitoring
+            if self._stop_touch_monitor.is_set() or self._screen_on:
+                print("👆 Touch monitoring cancelled before starting")
+                return
+
+            print("👆 Touch monitoring active")
+
             # Use external touch monitor script if available - but only if not too sensitive
             touch_monitor_script = Path('/usr/local/bin/touch-monitor')
             use_script = touch_monitor_script.exists() and hasattr(self, '_use_touch_script') and self._use_touch_script
-            
+
             if use_script:
                 print("👆 Using touch-monitor script")
                 # Add extra delay for script-based monitoring since it's more sensitive
-                time.sleep(3)
+                for _ in range(30):  # 3 seconds in 100ms increments
+                    if self._stop_touch_monitor.is_set() or self._screen_on:
+                        print("👆 Touch monitoring cancelled during script delay")
+                        return
+                    time.sleep(0.1)
+
                 print("👆 Starting touch-monitor script after flush delay")
-                process = subprocess.Popen(['sudo', '/usr/local/bin/touch-monitor'], 
-                                         stdout=subprocess.PIPE, 
+                process = subprocess.Popen(['sudo', '/usr/local/bin/touch-monitor'],
+                                         stdout=subprocess.PIPE,
                                          stderr=subprocess.PIPE)
-                
+
                 # Wait for script to detect touch and wake screen
-                while not self._screen_on:
+                while not self._screen_on and not self._stop_touch_monitor.is_set():
                     if process.poll() is not None:  # Script exited (touch detected)
                         print("👆 Touch detected by monitor script")
                         self._turn_screen_on()
                         self._reset_activity_timer()
                         break
                     time.sleep(0.1)
-                
-                if process.poll() is None:
-                    process.terminate()
             else:
                 # Fallback: Direct monitoring
                 # Find touch input device
@@ -1221,80 +1250,93 @@ class Backend(QObject):
                     if Path(device).exists():
                         # Check if it's a touch device
                         try:
-                            info = subprocess.run(['udevadm', 'info', '--query=all', f'--name={device}'], 
+                            info = subprocess.run(['udevadm', 'info', '--query=all', f'--name={device}'],
                                                 capture_output=True, text=True, timeout=2)
                             if 'touch' in info.stdout.lower() or 'ft5406' in info.stdout.lower():
                                 touch_device = device
                                 break
                         except:
                             pass
-                
+
                 if not touch_device:
                     touch_device = '/dev/input/event0'  # Default fallback
-                
+
                 print(f"👆 Monitoring touch device: {touch_device}")
-                
+
                 # Try evtest first (more responsive to single taps)
-                evtest_available = subprocess.run(['which', 'evtest'], 
+                evtest_available = subprocess.run(['which', 'evtest'],
                                                  capture_output=True).returncode == 0
-                
+
                 if evtest_available:
                     # Use evtest which is more sensitive to single touches
-                    print("👆 Using evtest for touch detection")
-                    process = subprocess.Popen(['sudo', 'evtest', touch_device], 
-                                             stdout=subprocess.PIPE, 
+                    print("👆 Using evtest for touch detection (non-blocking)")
+                    process = subprocess.Popen(['sudo', 'evtest', touch_device],
+                                             stdout=subprocess.PIPE,
                                              stderr=subprocess.DEVNULL,
                                              text=True)
-                    
-                    # Wait for any event line
-                    while not self._screen_on:
-                        try:
-                            line = process.stdout.readline()
-                            if line and 'Event:' in line:
-                                print("👆 Touch detected via evtest - waking screen")
-                                process.terminate()
-                                self._turn_screen_on()
-                                self._reset_activity_timer()
-                                break
-                        except:
-                            pass
-                        
+
+                    # Wait for any event line using select for non-blocking reads
+                    while not self._screen_on and not self._stop_touch_monitor.is_set():
+                        # Check if process exited
                         if process.poll() is not None:
+                            print("👆 evtest process exited unexpectedly")
                             break
-                        time.sleep(0.01)  # Small sleep to prevent CPU spinning
+
+                        # Use select with timeout for non-blocking read
+                        try:
+                            ready, _, _ = select.select([process.stdout], [], [], 0.5)
+                            if ready:
+                                line = process.stdout.readline()
+                                if line and 'Event:' in line:
+                                    print("👆 Touch detected via evtest - waking screen")
+                                    self._turn_screen_on()
+                                    self._reset_activity_timer()
+                                    break
+                        except Exception as e:
+                            print(f"👆 Error reading evtest output: {e}")
+                            break
                 else:
                     # Fallback: Use cat with single byte read (more responsive)
                     print("👆 Using cat for touch detection")
-                    process = subprocess.Popen(['sudo', 'cat', touch_device], 
-                                             stdout=subprocess.PIPE, 
+                    process = subprocess.Popen(['sudo', 'cat', touch_device],
+                                             stdout=subprocess.PIPE,
                                              stderr=subprocess.DEVNULL)
-                    
+
                     # Wait for any data (even 1 byte indicates touch)
-                    while not self._screen_on:
+                    while not self._screen_on and not self._stop_touch_monitor.is_set():
+                        # Check if process exited
+                        if process.poll() is not None:
+                            print("👆 cat process exited unexpectedly")
+                            break
+
                         try:
-                            # Non-blocking check for data
-                            import select
-                            ready, _, _ = select.select([process.stdout], [], [], 0.1)
+                            # Non-blocking check for data with timeout
+                            ready, _, _ = select.select([process.stdout], [], [], 0.5)
                             if ready:
                                 data = process.stdout.read(1)  # Read just 1 byte
                                 if data:
                                     print("👆 Touch detected - waking screen")
-                                    process.terminate()
                                     self._turn_screen_on()
                                     self._reset_activity_timer()
                                     break
-                        except:
-                            pass
-                        
-                        # Check if screen was turned on by other means
-                        if self._screen_on:
-                            process.terminate()
+                        except Exception as e:
+                            print(f"👆 Error reading touch input: {e}")
                             break
-                        
-                        time.sleep(0.1)
-                
+
         except Exception as e:
             print(f"❌ Error monitoring touch input: {e}")
+
+        finally:
+            # Always clean up subprocess
+            if process is not None and process.poll() is None:
+                print("👆 Terminating touch monitoring subprocess")
+                process.terminate()
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    print("👆 Force killing touch monitoring subprocess")
+                    process.kill()
+                    process.wait()
 
         print("👆 Touch monitoring stopped")
 
