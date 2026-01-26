@@ -19,6 +19,7 @@ Environment=QT_QPA_EGLFS_KMS_ATOMIC=1
 # CPU isolation: Pin touch app to core 3, lower priority to prevent starving motion backend
 # Backend runs in Docker pinned to cores 0-2 for serial I/O timing reliability
 Nice=10
+CPUQuota=25%
 ExecStart=/usr/bin/taskset -c 3 /home/pi/dune-weaver-touch/venv/bin/python /home/pi/dune-weaver-touch/main.py
 Restart=always
 RestartSec=10

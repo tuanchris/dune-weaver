@@ -1269,13 +1269,27 @@ class Backend(QObject):
 
                 if evtest_available:
                     # Use evtest which is more sensitive to single touches
-                    print("👆 Using evtest for touch detection (non-blocking)")
+                    # Run in binary mode to avoid Python text buffering issues with select()
+                    print("👆 Using evtest for touch detection (binary mode)")
                     process = subprocess.Popen(['sudo', 'evtest', touch_device],
                                              stdout=subprocess.PIPE,
-                                             stderr=subprocess.DEVNULL,
-                                             text=True)
+                                             stderr=subprocess.DEVNULL)
 
-                    # Wait for any event line using select for non-blocking reads
+                    # Skip initial device info output (wait for "Testing ..." line)
+                    # This prevents tight looping during evtest startup
+                    print("👆 Waiting for evtest initialization...")
+                    init_timeout = time.time() + 5  # 5 second timeout for init
+                    while time.time() < init_timeout:
+                        if self._stop_touch_monitor.is_set() or self._screen_on:
+                            break
+                        ready, _, _ = select.select([process.stdout], [], [], 0.5)
+                        if ready:
+                            line = process.stdout.readline()
+                            if line and b'Testing' in line:
+                                print("👆 evtest initialized, now monitoring for touch events")
+                                break
+
+                    # Now monitor for actual touch events
                     while not self._screen_on and not self._stop_touch_monitor.is_set():
                         # Check if process exited
                         if process.poll() is not None:
@@ -1287,7 +1301,7 @@ class Backend(QObject):
                             ready, _, _ = select.select([process.stdout], [], [], 0.5)
                             if ready:
                                 line = process.stdout.readline()
-                                if line and 'Event:' in line:
+                                if line and b'Event:' in line:
                                     print("👆 Touch detected via evtest - waking screen")
                                     self._turn_screen_on()
                                     self._reset_activity_timer()
