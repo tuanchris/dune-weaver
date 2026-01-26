@@ -4,9 +4,9 @@
 
 Milestone: v3 Touch App CPU Optimization
 Phase: 1 — CPU Optimization
-Plan: Not yet created (run /gsd:plan-phase 1)
-Status: Ready to plan
-Last activity: 2026-01-25 — Roadmap created
+Plan: 01-cpu-optimization-PLAN.md (ready to execute)
+Status: Ready to execute
+Last activity: 2026-01-25 — Phase 1 plan created
 
 Progress: Phase 1 of 1
 
@@ -47,16 +47,17 @@ None currently.
 ## Session Continuity
 
 Last session: 2026-01-25
-Stopped at: Created v3 roadmap
+Stopped at: Created Phase 1 execution plan
 Resume file: None
 
 ## v3 Milestone Context
 
 **Target:** < 20% CPU when idle on Pi 3B+, Pi 4, Pi 5
 
-**Phase 1 covers all 16 requirements:**
-- QML logging cleanup (6 requirements)
-- Timer optimization (2 requirements)
-- WebSocket optimization (2 requirements)
-- Preview cache (2 requirements)
-- Verification (4 requirements)
+**Phase 1 Plan:** 6 tasks covering all 16 requirements
+1. Remove console.log from main.qml MouseArea handlers
+2. Remove other debug console.log from main.qml
+3. Remove debug console.log from ConnectionStatus.qml
+4. Remove debug console.log from ExecutionPage.qml
+5. Remove debug console.log from other QML files
+6. Optimize backend.py (timer, WebSocket, preview cache)
