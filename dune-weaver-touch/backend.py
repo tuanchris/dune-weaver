@@ -73,6 +73,7 @@ class Backend(QObject):
     screenTimeoutChanged = Signal(int)  # New signal for timeout changes
     pauseBetweenPatternsChanged = Signal(int)  # New signal for pause changes
     pausedChanged = Signal(bool)  # Signal when pause state changes
+    playlistSettingsChanged = Signal()  # Signal when any playlist setting changes
     patternsRefreshCompleted = Signal(bool, str)  # (success, message) for pattern refresh
 
     # Playlist management signals
@@ -106,7 +107,12 @@ class Backend(QObject):
         self._current_port = ""
         self._current_speed = 130
         self._auto_play_on_boot = False
-        self._pause_between_patterns = 0  # Default: no pause (0 seconds)
+        self._pause_between_patterns = 10800  # Default: 3 hours (10800 seconds)
+
+        # Playlist settings (persisted locally)
+        self._playlist_shuffle = True  # Default: shuffle on
+        self._playlist_run_mode = "loop"  # Default: loop mode
+        self._playlist_clear_pattern = "adaptive"  # Default: adaptive
         
         # Backend connection status
         self._backend_connected = False
@@ -771,7 +777,7 @@ class Backend(QObject):
             if os.path.exists(self.SETTINGS_FILE):
                 with open(self.SETTINGS_FILE, 'r') as f:
                     settings = json.load(f)
-                    
+
                 screen_timeout = settings.get('screen_timeout', self.DEFAULT_SCREEN_TIMEOUT)
                 if isinstance(screen_timeout, (int, float)) and screen_timeout >= 0:
                     self._screen_timeout = int(screen_timeout)
@@ -781,23 +787,34 @@ class Backend(QObject):
                         print(f"🖥️ Loaded screen timeout from local settings: {self._screen_timeout}s")
                 else:
                     print(f"⚠️ Invalid screen timeout in settings, using default: {self.DEFAULT_SCREEN_TIMEOUT}s")
+
+                # Load playlist settings
+                self._pause_between_patterns = settings.get('pause_between_patterns', 10800)  # Default 3h
+                self._playlist_shuffle = settings.get('playlist_shuffle', True)
+                self._playlist_run_mode = settings.get('playlist_run_mode', "loop")
+                self._playlist_clear_pattern = settings.get('playlist_clear_pattern', "adaptive")
+                print(f"🎵 Loaded playlist settings: pause={self._pause_between_patterns}s, shuffle={self._playlist_shuffle}, mode={self._playlist_run_mode}, clear={self._playlist_clear_pattern}")
             else:
                 print(f"📄 No local settings file found, creating with defaults")
                 self._save_local_settings()
         except Exception as e:
             print(f"❌ Error loading local settings: {e}, using defaults")
             self._screen_timeout = self.DEFAULT_SCREEN_TIMEOUT
-    
+
     def _save_local_settings(self):
         """Save settings to local JSON file"""
         try:
             settings = {
                 'screen_timeout': self._screen_timeout,
-                'version': '1.0'
+                'pause_between_patterns': self._pause_between_patterns,
+                'playlist_shuffle': self._playlist_shuffle,
+                'playlist_run_mode': self._playlist_run_mode,
+                'playlist_clear_pattern': self._playlist_clear_pattern,
+                'version': '1.1'
             }
             with open(self.SETTINGS_FILE, 'w') as f:
                 json.dump(settings, f, indent=2)
-            print(f"💾 Saved local settings: screen_timeout={self._screen_timeout}s")
+            print(f"💾 Saved local settings: screen_timeout={self._screen_timeout}s, playlist settings saved")
         except Exception as e:
             print(f"❌ Error saving local settings: {e}")
 
@@ -1002,17 +1019,64 @@ class Backend(QObject):
                 old_pause = self._pause_between_patterns
                 self._pause_between_patterns = pause_value
                 print(f"⏸️ Pause between patterns changed from {old_pause}s to {pause_value}s ({option})")
-                
+
+                # Save to local settings
+                self._save_local_settings()
+
                 # Emit change signal for QML
                 self.pauseBetweenPatternsChanged.emit(pause_value)
         else:
             print(f"⚠️ Unknown pause option: {option}")
-    
+
     # Property for pause between patterns
     @Property(int, notify=pauseBetweenPatternsChanged)
     def pauseBetweenPatterns(self):
         """Get current pause between patterns in seconds"""
         return self._pause_between_patterns
+
+    # Playlist Settings Properties and Slots
+    @Property(bool, notify=playlistSettingsChanged)
+    def playlistShuffle(self):
+        """Get playlist shuffle setting"""
+        return self._playlist_shuffle
+
+    @Slot(bool)
+    def setPlaylistShuffle(self, enabled):
+        """Set playlist shuffle setting"""
+        if self._playlist_shuffle != enabled:
+            self._playlist_shuffle = enabled
+            print(f"🔀 Playlist shuffle changed to: {enabled}")
+            self._save_local_settings()
+            self.playlistSettingsChanged.emit()
+
+    @Property(str, notify=playlistSettingsChanged)
+    def playlistRunMode(self):
+        """Get playlist run mode (single/loop)"""
+        return self._playlist_run_mode
+
+    @Slot(str)
+    def setPlaylistRunMode(self, mode):
+        """Set playlist run mode"""
+        if mode in ["single", "loop"] and self._playlist_run_mode != mode:
+            self._playlist_run_mode = mode
+            print(f"🔁 Playlist run mode changed to: {mode}")
+            self._save_local_settings()
+            self.playlistSettingsChanged.emit()
+
+    @Property(str, notify=playlistSettingsChanged)
+    def playlistClearPattern(self):
+        """Get playlist clear pattern setting"""
+        return self._playlist_clear_pattern
+
+    @Slot(str)
+    def setPlaylistClearPattern(self, pattern):
+        """Set playlist clear pattern"""
+        valid_patterns = ["adaptive", "clear_center", "clear_perimeter", "none"]
+        if pattern in valid_patterns and self._playlist_clear_pattern != pattern:
+            self._playlist_clear_pattern = pattern
+            print(f"🧹 Playlist clear pattern changed to: {pattern}")
+            self._save_local_settings()
+            self.playlistSettingsChanged.emit()
     
     # Screen Control Methods
     @Slot()

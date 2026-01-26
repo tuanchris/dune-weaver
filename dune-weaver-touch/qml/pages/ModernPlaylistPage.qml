@@ -19,11 +19,11 @@ Page {
     property var currentPlaylistPatterns: []
     property var currentPlaylistRawPatterns: []  // Raw patterns with full paths for API calls
     
-    // Playlist execution settings
-    property real pauseTime: backend ? backend.pauseBetweenPatterns : 0
-    property string clearPattern: "adaptive"
-    property string runMode: "single"
-    property bool shuffle: false
+    // Playlist execution settings (loaded from backend/persisted settings)
+    property real pauseTime: backend ? backend.pauseBetweenPatterns : 10800
+    property string clearPattern: backend ? backend.playlistClearPattern : "adaptive"
+    property string runMode: backend ? backend.playlistRunMode : "loop"
+    property bool shuffle: backend ? backend.playlistShuffle : true
     
     PlaylistModel {
         id: playlistModel
@@ -587,7 +587,9 @@ Page {
                                         id: shuffleMouseArea
                                         anchors.fill: parent
                                         onClicked: {
-                                            shuffle = !shuffle
+                                            var newValue = !shuffle
+                                            shuffle = newValue
+                                            if (backend) backend.setPlaylistShuffle(newValue)
                                             console.log("Shuffle toggled:", shuffle)
                                         }
                                     }
@@ -648,9 +650,10 @@ Page {
                                                 id: singleModeRadio
                                                 text: "Single"
                                                 font.pixelSize: 11
-                                                checked: true  // Default
+                                                checked: runMode === "single"
                                                 onClicked: {
                                                     runMode = "single"
+                                                    if (backend) backend.setPlaylistRunMode("single")
                                                     console.log("Run mode set to:", runMode)
                                                 }
 
@@ -667,9 +670,10 @@ Page {
                                                 id: loopModeRadio
                                                 text: "Loop"
                                                 font.pixelSize: 11
-                                                checked: false
+                                                checked: runMode === "loop"
                                                 onClicked: {
                                                     runMode = "loop"
+                                                    if (backend) backend.setPlaylistRunMode("loop")
                                                     console.log("Run mode set to:", runMode)
                                                 }
 
@@ -1093,9 +1097,10 @@ Page {
                                                 id: adaptiveRadio
                                                 text: "Adaptive"
                                                 font.pixelSize: 11
-                                                checked: true  // Default
+                                                checked: clearPattern === "adaptive"
                                                 onClicked: {
                                                     clearPattern = "adaptive"
+                                                    if (backend) backend.setPlaylistClearPattern("adaptive")
                                                     console.log("Clear pattern set to:", clearPattern)
                                                 }
 
@@ -1112,9 +1117,10 @@ Page {
                                                 id: clearCenterRadio
                                                 text: "Clear Center"
                                                 font.pixelSize: 11
-                                                checked: false
+                                                checked: clearPattern === "clear_center"
                                                 onClicked: {
                                                     clearPattern = "clear_center"
+                                                    if (backend) backend.setPlaylistClearPattern("clear_center")
                                                     console.log("Clear pattern set to:", clearPattern)
                                                 }
 
@@ -1131,9 +1137,10 @@ Page {
                                                 id: clearEdgeRadio
                                                 text: "Clear Edge"
                                                 font.pixelSize: 11
-                                                checked: false
+                                                checked: clearPattern === "clear_perimeter"
                                                 onClicked: {
                                                     clearPattern = "clear_perimeter"
+                                                    if (backend) backend.setPlaylistClearPattern("clear_perimeter")
                                                     console.log("Clear pattern set to:", clearPattern)
                                                 }
 
@@ -1150,9 +1157,10 @@ Page {
                                                 id: noneRadio
                                                 text: "None"
                                                 font.pixelSize: 11
-                                                checked: false
+                                                checked: clearPattern === "none"
                                                 onClicked: {
                                                     clearPattern = "none"
+                                                    if (backend) backend.setPlaylistClearPattern("none")
                                                     console.log("Clear pattern set to:", clearPattern)
                                                 }
 
