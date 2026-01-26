@@ -213,6 +213,7 @@ Page {
                                 Layout.preferredHeight: 40
                                 text: isSerialConnected ? "Disconnect" : "Connect"
                                 icon: isSerialConnected ? "◉" : "○"
+                                iconSize: 20
                                 buttonColor: isSerialConnected ? "#dc2626" : "#059669"
                                 fontSize: 11
                                 enabled: isSerialConnected || selectedPort !== ""
@@ -239,6 +240,7 @@ Page {
                                 Layout.preferredHeight: 35
                                 text: "Refresh Ports"
                                 icon: "↻"
+                                iconSize: 18
                                 buttonColor: "#6b7280"
                                 fontSize: 10
                                 
@@ -279,6 +281,7 @@ Page {
                                 Layout.preferredHeight: 45
                                 text: "Home"
                                 icon: "⌂"
+                                iconSize: 20
                                 buttonColor: "#2563eb"
                                 fontSize: 12
                                 enabled: isSerialConnected
@@ -293,6 +296,7 @@ Page {
                                 Layout.preferredHeight: 45
                                 text: "Center"
                                 icon: "◎"
+                                iconSize: 20
                                 buttonColor: "#2563eb"
                                 fontSize: 12
                                 enabled: isSerialConnected
@@ -307,6 +311,7 @@ Page {
                                 Layout.preferredHeight: 45
                                 text: "Perimeter"
                                 icon: "○"
+                                iconSize: 20
                                 buttonColor: "#2563eb"
                                 fontSize: 12
                                 enabled: isSerialConnected
@@ -610,6 +615,7 @@ Page {
                                 Layout.preferredHeight: 45
                                 text: "Restart Backend"
                                 icon: "↻"
+                                iconSize: 20
                                 buttonColor: "#f59e0b"
                                 fontSize: 11
 
