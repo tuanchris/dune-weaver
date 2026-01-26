@@ -171,7 +171,16 @@ cmd_update() {
         echo ""
         echo -e "${BLUE}Updating touch app...${NC}"
         cd "$touch_dir"
-        git pull
+
+        # Update Python dependencies (code already pulled with main repo)
+        if [[ -f "requirements.txt" ]] && [[ -d ".venv" ]]; then
+            echo "Updating touch app dependencies..."
+            source .venv/bin/activate
+            pip install -q -r requirements.txt
+            deactivate
+        fi
+
+        # Restart to apply changes
         sudo systemctl restart dune-weaver-touch
         echo -e "${GREEN}Touch app updated!${NC}"
     fi
