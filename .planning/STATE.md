@@ -3,12 +3,12 @@
 ## Current Position
 
 Milestone: v3 Touch App CPU Optimization
-Phase: Not started (run /gsd:create-roadmap)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-01-25 — Milestone v3 started
+Phase: 1 — CPU Optimization
+Plan: Not yet created (run /gsd:plan-phase 1)
+Status: Ready to plan
+Last activity: 2026-01-25 — Roadmap created
 
-Progress: N/A
+Progress: Phase 1 of 1
 
 ## Completed Milestones
 
@@ -37,6 +37,8 @@ Progress: N/A
 | Button finding via textContent | More reliable than getByRole for buttons with similar names | 2026-01-25 |
 | WebSocket mocking via routeWebSocket | Required to bypass blocking "Connecting to Backend" overlay | 2026-01-25 |
 | Dedicated port 5174 for E2E | Avoids conflict with other dev servers on 5173 | 2026-01-25 |
+| Remove debug logs (not flag) | Decided to remove all debug console.log rather than add conditional flag | 2026-01-25 |
+| Event-driven screen timeout | Replace 1-sec polling with event-driven timeout scheduling | 2026-01-25 |
 
 ## Blockers/Concerns
 
@@ -45,16 +47,16 @@ None currently.
 ## Session Continuity
 
 Last session: 2026-01-25
-Stopped at: Started v3 milestone - CPU optimization
+Stopped at: Created v3 roadmap
 Resume file: None
 
 ## v3 Milestone Context
 
-**Issues identified during audit:**
-1. `onPositionChanged` in main.qml logs every pixel of touch movement
-2. Screen timeout timer runs every 1 second continuously
-3. Debug console.log statements throughout QML components
-4. WebSocket message handler triggers multiple signals per message
-5. Pattern preview checks filesystem on every access
-
 **Target:** < 20% CPU when idle on Pi 3B+, Pi 4, Pi 5
+
+**Phase 1 covers all 16 requirements:**
+- QML logging cleanup (6 requirements)
+- Timer optimization (2 requirements)
+- WebSocket optimization (2 requirements)
+- Preview cache (2 requirements)
+- Verification (4 requirements)
