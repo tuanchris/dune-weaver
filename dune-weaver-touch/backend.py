@@ -1157,8 +1157,9 @@ class Backend(QObject):
             if idle_time > self._screen_timeout:
                 print(f"🖥️ Screen timeout reached! Idle for {idle_time:.0f}s (timeout: {self._screen_timeout}s)")
                 self._turn_screen_off()
+                # DISABLED FOR TESTING - verify touch monitoring causes 100% CPU
                 # Add delay before starting touch monitoring to avoid catching residual events
-                QTimer.singleShot(1000, self._start_touch_monitoring)  # 1 second delay
+                # QTimer.singleShot(1000, self._start_touch_monitoring)  # 1 second delay
         # If timeout is 0 (Never), screen stays on indefinitely
     
     def _start_touch_monitoring(self):
