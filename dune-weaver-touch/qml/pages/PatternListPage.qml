@@ -65,7 +65,7 @@ Page {
         anchors.centerIn: parent
         text: "No patterns found"
         visible: patternModel.rowCount() === 0 && searchField.text !== ""
-        color: "#999"
+        color: Components.ThemeManager.textTertiary
         font.pixelSize: 18
     }
 }

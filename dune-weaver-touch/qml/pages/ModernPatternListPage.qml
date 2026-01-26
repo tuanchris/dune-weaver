@@ -252,8 +252,7 @@ Page {
                 
                 // Close button when expanded
                 Button {
-                    text: "✕"
-                    font.pixelSize: 18
+                    id: searchCloseBtn
                     flat: true
                     visible: searchExpanded
                     Layout.preferredWidth: 32
@@ -265,6 +264,17 @@ Page {
                         searchField.focus = false
                         // Clear the filter when closing search
                         patternModel.filter("")
+                    }
+                    contentItem: Text {
+                        text: "✕"
+                        font.pixelSize: 18
+                        color: Components.ThemeManager.textSecondary
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        color: searchCloseBtn.pressed ? Components.ThemeManager.buttonBackgroundHover : "transparent"
+                        radius: 4
                     }
                 }
             }
