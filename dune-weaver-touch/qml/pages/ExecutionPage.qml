@@ -12,41 +12,11 @@ Page {
     property string patternName: ""
     property string patternPreview: ""  // Backend provides this via executionStarted signal
     
-    // Debug backend connection
-    onBackendChanged: {
-        console.log("ExecutionPage: backend changed to", backend)
-        if (backend) {
-            console.log("ExecutionPage: backend.serialConnected =", backend.serialConnected)
-            console.log("ExecutionPage: backend.isConnected =", backend.isConnected)
-        }
-    }
-    
-    Component.onCompleted: {
-        console.log("ExecutionPage: Component completed, backend =", backend)
-        if (backend) {
-            console.log("ExecutionPage: initial serialConnected =", backend.serialConnected)
-        }
-    }
-    
-    // Direct connection to backend signals
+    // Backend signal connections
     Connections {
         target: backend
 
-        function onSerialConnectionChanged(connected) {
-            console.log("ExecutionPage: received serialConnectionChanged signal:", connected)
-        }
-
-        function onConnectionChanged() {
-            console.log("ExecutionPage: received connectionChanged signal")
-            if (backend) {
-                console.log("ExecutionPage: after connectionChanged, serialConnected =", backend.serialConnected)
-            }
-        }
-
         function onExecutionStarted(fileName, preview) {
-            console.log("🎯 ExecutionPage: executionStarted signal received!")
-            console.log("🎯 Pattern:", fileName)
-            console.log("🎯 Preview path:", preview)
             // Update preview directly from backend signal
             patternName = fileName
             patternPreview = preview
@@ -118,36 +88,8 @@ Page {
                     Image {
                         anchors.fill: parent
                         anchors.margins: 10
-                        source: {
-                            var finalSource = ""
-
-                            // Trust the backend's preview path - it already has recursive search
-                            if (patternPreview) {
-                                // Backend returns absolute path, just add file:// prefix
-                                finalSource = "file://" + patternPreview
-                                console.log("🖼️ Using backend patternPreview:", finalSource)
-                            } else {
-                                console.log("🖼️ No preview from backend")
-                            }
-
-                            return finalSource
-                        }
+                        source: patternPreview ? "file://" + patternPreview : ""
                         fillMode: Image.PreserveAspectFit
-
-                        onStatusChanged: {
-                            console.log("📷 Image status:", status, "for source:", source)
-                            if (status === Image.Error) {
-                                console.log("❌ Image failed to load:", source)
-                            } else if (status === Image.Ready) {
-                                console.log("✅ Image loaded successfully:", source)
-                            } else if (status === Image.Loading) {
-                                console.log("🔄 Image loading:", source)
-                            }
-                        }
-
-                        onSourceChanged: {
-                            console.log("🔄 Image source changed to:", source)
-                        }
                         
                         Rectangle {
                             anchors.fill: parent
