@@ -25,22 +25,17 @@ ApplicationWindow {
     property string currentPatternPreview: ""
 
     onCurrentPageIndexChanged: {
-        console.log("📱 currentPageIndex changed to:", currentPageIndex)
+        // Page index changed - no debug logging needed
     }
 
     onShouldNavigateToExecutionChanged: {
         if (shouldNavigateToExecution) {
-            console.log("🎯 Navigating to execution page")
-            console.log("🎯 Current stack depth:", stackView.depth)
-
             // If we're in a sub-page (like PatternDetailPage), pop back to main view first
             if (stackView.depth > 1) {
-                console.log("🎯 Popping back to main view first")
                 stackView.pop()
             }
 
             // Then navigate to ExecutionPage tab (index 4)
-            console.log("🎯 Setting currentPageIndex to 4")
             currentPageIndex = 4
             shouldNavigateToExecution = false
         }
@@ -50,14 +45,11 @@ ApplicationWindow {
         id: backend
         
         onExecutionStarted: function(patternName, patternPreview) {
-            console.log("🎯 QML: ExecutionStarted signal received! patternName='" + patternName + "', preview='" + patternPreview + "'")
-            console.log("🎯 Setting shouldNavigateToExecution = true")
             // Store pattern info for ExecutionPage
             window.currentPatternName = patternName
             window.currentPatternPreview = patternPreview
-            // Navigate to Execution tab (index 3) instead of pushing page
+            // Navigate to Execution tab (index 4)
             shouldNavigateToExecution = true
-            console.log("🎯 shouldNavigateToExecution set to:", shouldNavigateToExecution)
         }
         
         onErrorOccurred: function(error) {
@@ -72,16 +64,13 @@ ApplicationWindow {
         }
         
         onScreenStateChanged: function(isOn) {
-            console.log("🖥️ Screen state changed:", isOn ? "ON" : "OFF")
+            // Screen state changed - handled by backend
         }
         
         onBackendConnectionChanged: function(connected) {
-            console.log("🔗 Backend connection changed:", connected)
             if (connected && stackView.currentItem.toString().indexOf("ConnectionSplash") !== -1) {
-                console.log("✅ Backend connected, switching to main view")
                 stackView.replace(mainSwipeView)
             } else if (!connected && stackView.currentItem.toString().indexOf("ConnectionSplash") === -1) {
-                console.log("❌ Backend disconnected, switching to splash screen")
                 stackView.replace(connectionSplash)
             }
         }
@@ -131,7 +120,6 @@ ApplicationWindow {
                 showRetryButton: backend.reconnectStatus === "Cannot connect to backend"
                 
                 onRetryConnection: {
-                    console.log("🔄 Manual retry requested")
                     backend.retryConnection()
                 }
             }
@@ -151,7 +139,7 @@ ApplicationWindow {
                     currentIndex: window.currentPageIndex
                     
                     Component.onCompleted: {
-                        console.log("📱 StackLayout created with currentIndex:", currentIndex, "bound to window.currentPageIndex:", window.currentPageIndex)
+                        // StackLayout initialized
                     }
                     
                     // Patterns Page
@@ -211,7 +199,6 @@ ApplicationWindow {
                     currentIndex: window.currentPageIndex
                     
                     onTabClicked: function(index) {
-                        console.log("📱 Tab clicked:", index)
                         window.currentPageIndex = index
                     }
                 }
