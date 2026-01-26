@@ -340,11 +340,31 @@ async def check_table_is_idle() -> bool:
     return await asyncio.to_thread(connection_manager.is_machine_idle)
 
 
-def start_idle_led_timeout():
+async def start_idle_led_timeout(check_still_sands: bool = True):
     """
-    Start the idle LED timeout if enabled.
-    Should be called whenever the idle effect is activated.
+    Set LED to idle state and start timeout if enabled.
+    Handles Still Sands: if in scheduled pause period with LED control enabled,
+    turns off LEDs instead of showing idle effect.
+    Should be called whenever the table goes idle.
+
+    Args:
+        check_still_sands: If True, checks Still Sands period and turns off LEDs if applicable.
+                          Set to False when caller already handles Still Sands logic
+                          (e.g., during pause with "finish pattern first" mode).
     """
+    if not state.led_controller:
+        return
+
+    # Still Sands with LED control: turn off instead of idle effect
+    if check_still_sands and is_in_scheduled_pause_period() and state.scheduled_pause_control_wled:
+        logger.info("Turning off LED lights during Still Sands period")
+        await state.led_controller.set_power_async(0)
+        return
+
+    # Normal flow: show idle effect
+    await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
+
+    # Start timeout if enabled
     if not state.dw_led_idle_timeout_enabled:
         logger.debug("Idle LED timeout not enabled")
         return
@@ -1209,17 +1229,13 @@ async def _execute_pattern_internal(file_path):
             theta, rho = coordinate
             if state.stop_requested:
                 logger.info("Execution stopped by user")
-                if state.led_controller:
-                    await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
-                    start_idle_led_timeout()
+                await start_idle_led_timeout()
                 break
 
             if state.skip_requested:
                 logger.info("Skipping pattern...")
                 await connection_manager.check_idle_async()
-                if state.led_controller:
-                    await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
-                    start_idle_led_timeout()
+                await start_idle_led_timeout()
                 break
 
             # Wait for resume if paused (manual or scheduled)
@@ -1240,11 +1256,10 @@ async def _execute_pattern_internal(file_path):
                         logger.info("Turning off LED lights during Still Sands period")
                         await state.led_controller.set_power_async(0)
 
-                # Only show idle effect if NOT in scheduled pause with LED control
-                # (manual pause always shows idle effect)
-                if state.led_controller and not (scheduled_pause and state.scheduled_pause_control_wled):
-                    await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
-                    start_idle_led_timeout()
+                # Show idle effect for manual pause or scheduled pause without LED control
+                # (skip Still Sands check since we handle it above with local scheduled_pause variable)
+                if not (scheduled_pause and state.scheduled_pause_control_wled):
+                    await start_idle_led_timeout(check_still_sands=False)
 
                 # Remember if we turned off LED controller for scheduled pause
                 wled_was_off_for_scheduled = scheduled_pause and state.scheduled_pause_control_wled and not manual_pause
@@ -1363,11 +1378,9 @@ async def _execute_pattern_internal(file_path):
     await connection_manager.check_idle_async()
 
     # Set LED back to idle when pattern completes normally (not stopped early)
-    if state.led_controller and not state.stop_requested:
-        logger.info(f"Setting LED to idle effect: {state.dw_led_idle_effect}")
-        await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
-        start_idle_led_timeout()
-        logger.debug("LED effect set to idle after pattern completion")
+    # This also handles Still Sands: turns off LEDs if in scheduled pause period with LED control
+    if not state.stop_requested:
+        await start_idle_led_timeout()
 
     return was_completed
 
@@ -1528,9 +1541,9 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                         logger.info("Turning off LED lights during Still Sands period")
                         await state.led_controller.set_power_async(0)
                         wled_was_off_for_scheduled = True
-                    elif state.led_controller:
-                        await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
-                        start_idle_led_timeout()
+                    else:
+                        # Show idle effect (WLED control not enabled)
+                        await start_idle_led_timeout(check_still_sands=False)
 
                     # Wait for scheduled pause to end, but allow stop/skip to interrupt
                     result = await wait_with_interrupt(
@@ -1641,9 +1654,7 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
             state.playlist_mode = None
             state.pause_time_remaining = 0
 
-            if state.led_controller:
-                await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
-                start_idle_led_timeout()
+            await start_idle_led_timeout()
 
             logger.info("All requested patterns completed (or stopped) and state cleared")
 
