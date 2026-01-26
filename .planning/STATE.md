@@ -2,9 +2,11 @@
 
 ## Current Position
 
-Milestone: None active
-Status: Ready for new milestone
-Last activity: 2026-01-25 — Completed v2-frontend-testing
+Milestone: v3 Touch App CPU Optimization
+Phase: Not started (run /gsd:create-roadmap)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-01-25 — Milestone v3 started
 
 Progress: N/A
 
@@ -43,25 +45,16 @@ None currently.
 ## Session Continuity
 
 Last session: 2026-01-25
-Stopped at: Completed v2-frontend-testing milestone
+Stopped at: Started v3 milestone - CPU optimization
 Resume file: None
 
-## Test Summary
+## v3 Milestone Context
 
-| Category | Tests |
-|----------|-------|
-| Component tests | 42 |
-| Integration tests | 22 |
-| E2E tests | 13 |
-| **Total frontend tests** | **77** |
-| Backend tests | 17 |
-| **Grand total** | **94** |
+**Issues identified during audit:**
+1. `onPositionChanged` in main.qml logs every pixel of touch movement
+2. Screen timeout timer runs every 1 second continuously
+3. Debug console.log statements throughout QML components
+4. WebSocket message handler triggers multiple signals per message
+5. Pattern preview checks filesystem on every access
 
-## CI Coverage
-
-GitHub Actions workflow runs:
-
-- Backend: pytest with coverage
-- Backend: Ruff linting
-- Frontend: Vitest unit/integration tests
-- Frontend: Playwright E2E tests
+**Target:** < 20% CPU when idle on Pi 3B+, Pi 4, Pi 5
