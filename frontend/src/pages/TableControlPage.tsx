@@ -1,5 +1,24 @@
 import { useState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
+import {
+  Loader2,
+  Home,
+  StopCircle,
+  RotateCcw,
+  RotateCw,
+  AlertTriangle,
+  Check,
+  Target,
+  Circle,
+  Compass,
+  Maximize2,
+  ArrowLeftRight,
+  Terminal,
+  Trash2,
+  Power,
+  PowerOff,
+  Send,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -423,9 +442,9 @@ export function TableControlPage() {
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'home' ? (
-                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                        <Loader2 className="h-6 w-6 animate-spin" />
                       ) : (
-                        <span className="material-icons-outlined text-2xl">home</span>
+                        <Home className="h-6 w-6" />
                       )}
                       <span className="text-xs">Home</span>
                     </Button>
@@ -442,9 +461,9 @@ export function TableControlPage() {
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'stop' ? (
-                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                        <Loader2 className="h-6 w-6 animate-spin" />
                       ) : (
-                        <span className="material-icons-outlined text-2xl">stop_circle</span>
+                        <StopCircle className="h-6 w-6" />
                       )}
                       <span className="text-xs">Stop</span>
                     </Button>
@@ -462,9 +481,9 @@ export function TableControlPage() {
                           className="h-16 gap-1 flex-col items-center justify-center"
                         >
                           {isLoading === 'reset' ? (
-                            <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                            <Loader2 className="h-6 w-6 animate-spin" />
                           ) : (
-                            <span className="material-icons-outlined text-2xl">restart_alt</span>
+                            <RotateCcw className="h-6 w-6" />
                           )}
                           <span className="text-xs">Reset</span>
                         </Button>
@@ -480,7 +499,7 @@ export function TableControlPage() {
                       </DialogDescription>
                     </DialogHeader>
                     <Alert className="flex items-center border-amber-500/50">
-                      <span className="material-icons-outlined text-amber-500 text-base mr-2 shrink-0">warning</span>
+                      <AlertTriangle className="h-4 w-4 text-amber-500 mr-2 shrink-0" />
                       <AlertDescription className="text-amber-600 dark:text-amber-400">
                         Homing is required after resetting. The table will lose its position reference.
                       </AlertDescription>
@@ -532,9 +551,9 @@ export function TableControlPage() {
                   className="gap-2"
                 >
                   {isLoading === 'speed' ? (
-                    <span className="material-icons-outlined animate-spin">sync</span>
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <span className="material-icons-outlined">check</span>
+                    <Check className="h-4 w-4" />
                   )}
                   Set
                 </Button>
@@ -559,9 +578,9 @@ export function TableControlPage() {
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'center' ? (
-                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                        <Loader2 className="h-6 w-6 animate-spin" />
                       ) : (
-                        <span className="material-icons-outlined text-2xl">center_focus_strong</span>
+                        <Target className="h-6 w-6" />
                       )}
                       <span className="text-xs">Center</span>
                     </Button>
@@ -578,9 +597,9 @@ export function TableControlPage() {
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'perimeter' ? (
-                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                        <Loader2 className="h-6 w-6 animate-spin" />
                       ) : (
-                        <span className="material-icons-outlined text-2xl">trip_origin</span>
+                        <Circle className="h-6 w-6" />
                       )}
                       <span className="text-xs">Perimeter</span>
                     </Button>
@@ -596,7 +615,7 @@ export function TableControlPage() {
                           variant="secondary"
                           className="h-16 gap-1 flex-col items-center justify-center"
                         >
-                          <span className="material-icons-outlined text-2xl">screen_rotation</span>
+                          <Compass className="h-6 w-6" />
                           <span className="text-xs">Align</span>
                         </Button>
                       </DialogTrigger>
@@ -633,9 +652,7 @@ export function TableControlPage() {
                     <Separator />
 
                     <Alert className="flex items-start border-amber-500/50">
-                      <span className="material-icons-outlined text-amber-500 text-base mr-2 shrink-0">
-                        warning
-                      </span>
+                      <AlertTriangle className="h-4 w-4 text-amber-500 mr-2 shrink-0" />
                       <AlertDescription className="text-amber-600 dark:text-amber-400">
                         Only perform this when you want to change the orientation reference.
                       </AlertDescription>
@@ -649,7 +666,7 @@ export function TableControlPage() {
                           onClick={() => handleRotate(-10)}
                           disabled={isLoading === 'rotate'}
                         >
-                          <span className="material-icons text-lg mr-1">rotate_left</span>
+                          <RotateCcw className="h-5 w-5 mr-1" />
                           CCW 10°
                         </Button>
                         <Button
@@ -658,7 +675,7 @@ export function TableControlPage() {
                           disabled={isLoading === 'rotate'}
                         >
                           CW 10°
-                          <span className="material-icons text-lg ml-1">rotate_right</span>
+                          <RotateCw className="h-5 w-5 ml-1" />
                         </Button>
                       </div>
                       <p className="text-xs text-muted-foreground text-center">
@@ -694,9 +711,9 @@ export function TableControlPage() {
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'clear_from_in.thr' ? (
-                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                        <Loader2 className="h-6 w-6 animate-spin" />
                       ) : (
-                        <span className="material-icons-outlined text-2xl">center_focus_strong</span>
+                        <Target className="h-6 w-6" />
                       )}
                       <span className="text-xs">Clear Center</span>
                     </Button>
@@ -713,9 +730,9 @@ export function TableControlPage() {
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'clear_from_out.thr' ? (
-                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                        <Loader2 className="h-6 w-6 animate-spin" />
                       ) : (
-                        <span className="material-icons-outlined text-2xl">all_out</span>
+                        <Maximize2 className="h-6 w-6" />
                       )}
                       <span className="text-xs">Clear Edge</span>
                     </Button>
@@ -732,9 +749,9 @@ export function TableControlPage() {
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'clear_sideway.thr' ? (
-                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                        <Loader2 className="h-6 w-6 animate-spin" />
                       ) : (
-                        <span className="material-icons-outlined text-2xl">swap_horiz</span>
+                        <ArrowLeftRight className="h-6 w-6" />
                       )}
                       <span className="text-xs">Clear Sideway</span>
                     </Button>
@@ -752,13 +769,13 @@ export function TableControlPage() {
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 space-y-2">
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <span className="material-icons-outlined text-xl">terminal</span>
+                  <Terminal className="h-5 w-5" />
                   Serial Terminal
                 </CardTitle>
                 <CardDescription className="hidden sm:block">Send raw commands to the table controller</CardDescription>
                 {/* Warning about pattern interference */}
                 <Alert className="flex items-center border-amber-500/50 py-2">
-                  <span className="material-icons-outlined text-amber-500 text-base mr-2 shrink-0">warning</span>
+                  <AlertTriangle className="h-4 w-4 text-amber-500 mr-2 shrink-0" />
                   <AlertDescription className="text-xs text-amber-600 dark:text-amber-400">
                     Do not use while a pattern is running. This will interfere with the main connection.
                   </AlertDescription>
@@ -773,7 +790,7 @@ export function TableControlPage() {
                     onClick={() => setSerialHistory([])}
                     title="Clear history"
                   >
-                    <span className="material-icons-outlined">delete_sweep</span>
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 )}
               </div>
@@ -804,9 +821,9 @@ export function TableControlPage() {
                   title="Connect"
                 >
                   {serialLoading ? (
-                    <span className="material-icons-outlined animate-spin sm:mr-1">sync</span>
+                    <Loader2 className="h-4 w-4 animate-spin sm:mr-1" />
                   ) : (
-                    <span className="material-icons-outlined sm:mr-1">power</span>
+                    <Power className="h-4 w-4 sm:mr-1" />
                   )}
                   <span className="hidden sm:inline">Connect</span>
                 </Button>
@@ -819,7 +836,7 @@ export function TableControlPage() {
                     disabled={serialLoading}
                     title="Disconnect"
                   >
-                    <span className="material-icons-outlined sm:mr-1">power_off</span>
+                    <PowerOff className="h-4 w-4 sm:mr-1" />
                     <span className="hidden sm:inline">Disconnect</span>
                   </Button>
                   <Button
@@ -829,7 +846,7 @@ export function TableControlPage() {
                     disabled={serialLoading}
                     title="Send soft reset to controller"
                   >
-                    <span className="material-icons-outlined sm:mr-1">restart_alt</span>
+                    <RotateCcw className="h-4 w-4 sm:mr-1" />
                     <span className="hidden sm:inline">Reset</span>
                   </Button>
                 </>
@@ -843,7 +860,7 @@ export function TableControlPage() {
                   onClick={() => setSerialHistory([])}
                   title="Clear history"
                 >
-                  <span className="material-icons-outlined">delete</span>
+                  <Trash2 className="h-4 w-4" />
                 </Button>
               )}
             </div>
@@ -898,9 +915,9 @@ export function TableControlPage() {
                 className="h-11 px-6"
               >
                 {serialLoading ? (
-                  <span className="material-icons-outlined animate-spin">sync</span>
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <span className="material-icons-outlined">send</span>
+                  <Send className="h-4 w-4" />
                 )}
               </Button>
             </div>
