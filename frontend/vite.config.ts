@@ -137,7 +137,6 @@ export default defineConfig({
       '/move_to_perimeter': 'http://localhost:8080',
       // Speed
       '/set_speed': 'http://localhost:8080',
-      '/get_speed': 'http://localhost:8080',
       // Connection
       '/serial_status': 'http://localhost:8080',
       '/list_serial_ports': 'http://localhost:8080',
@@ -151,6 +150,7 @@ export default defineConfig({
       '/preview_thr_batch': 'http://localhost:8080',
       '/get_theta_rho_coordinates': 'http://localhost:8080',
       '/delete_theta_rho_file': 'http://localhost:8080',
+      '/upload_theta_rho': 'http://localhost:8080',
       // Playlists
       '/list_all_playlists': 'http://localhost:8080',
       '/get_playlist': 'http://localhost:8080',
