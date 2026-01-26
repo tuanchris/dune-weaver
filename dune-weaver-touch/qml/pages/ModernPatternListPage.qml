@@ -18,7 +18,6 @@ Page {
     Connections {
         target: backend
         function onPatternsRefreshCompleted(success, message) {
-            console.log("🔄 Pattern refresh completed:", success, message)
             if (patternModel) {
                 patternModel.refresh()
             }

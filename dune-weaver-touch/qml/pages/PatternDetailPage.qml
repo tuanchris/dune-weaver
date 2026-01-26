@@ -488,7 +488,6 @@ Page {
         target: backend
 
         function onPatternAddedToPlaylist(success, message) {
-            console.log("➕ Pattern added to playlist:", success, message)
             if (success) {
                 // Show feedback
                 showAddedFeedback = true

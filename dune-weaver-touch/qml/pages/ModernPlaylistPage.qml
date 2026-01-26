@@ -34,7 +34,6 @@ Page {
         if (selectedPlaylist) {
             currentPlaylistPatterns = playlistModel.getPatternsForPlaylist(selectedPlaylist)
             currentPlaylistRawPatterns = playlistModel.getRawPatternsForPlaylist(selectedPlaylist)
-            console.log("Loaded patterns for", selectedPlaylist + ":", currentPlaylistPatterns)
         } else {
             currentPlaylistPatterns = []
             currentPlaylistRawPatterns = []
@@ -52,8 +51,6 @@ Page {
     
     // Debug playlist loading
     Component.onCompleted: {
-        console.log("ModernPlaylistPage completed, playlist count:", playlistModel.rowCount())
-        console.log("showingPlaylistDetail:", showingPlaylistDetail)
     }
     
     // Function to navigate to playlist detail
@@ -548,7 +545,6 @@ Page {
                                         anchors.fill: parent
                                         onClicked: {
                                             if (backend) {
-                                                console.log("Playing playlist:", selectedPlaylist, "with settings:", {
                                                     pauseTime: pauseTime,
                                                     clearPattern: clearPattern,
                                                     runMode: runMode,
@@ -557,12 +553,9 @@ Page {
                                                 backend.executePlaylist(selectedPlaylist, pauseTime, clearPattern, runMode, shuffle)
                                                 
                                                 // Navigate to execution page
-                                                console.log("🎵 Navigating to execution page after playlist start")
                                                 if (mainWindow) {
-                                                    console.log("🎵 Setting shouldNavigateToExecution = true")
                                                     mainWindow.shouldNavigateToExecution = true
                                                 } else {
-                                                    console.log("🎵 ERROR: mainWindow is null, cannot navigate")
                                                 }
                                             }
                                         }
@@ -590,7 +583,6 @@ Page {
                                             var newValue = !shuffle
                                             shuffle = newValue
                                             if (backend) backend.setPlaylistShuffle(newValue)
-                                            console.log("Shuffle toggled:", shuffle)
                                         }
                                     }
                                 }
@@ -654,7 +646,6 @@ Page {
                                                 onClicked: {
                                                     runMode = "single"
                                                     if (backend) backend.setPlaylistRunMode("single")
-                                                    console.log("Run mode set to:", runMode)
                                                 }
 
                                                 contentItem: Text {
@@ -674,7 +665,6 @@ Page {
                                                 onClicked: {
                                                     runMode = "loop"
                                                     if (backend) backend.setPlaylistRunMode("loop")
-                                                    console.log("Run mode set to:", runMode)
                                                 }
 
                                                 contentItem: Text {
@@ -1101,7 +1091,6 @@ Page {
                                                 onClicked: {
                                                     clearPattern = "adaptive"
                                                     if (backend) backend.setPlaylistClearPattern("adaptive")
-                                                    console.log("Clear pattern set to:", clearPattern)
                                                 }
 
                                                 contentItem: Text {
@@ -1121,7 +1110,6 @@ Page {
                                                 onClicked: {
                                                     clearPattern = "clear_center"
                                                     if (backend) backend.setPlaylistClearPattern("clear_center")
-                                                    console.log("Clear pattern set to:", clearPattern)
                                                 }
 
                                                 contentItem: Text {
@@ -1141,7 +1129,6 @@ Page {
                                                 onClicked: {
                                                     clearPattern = "clear_perimeter"
                                                     if (backend) backend.setPlaylistClearPattern("clear_perimeter")
-                                                    console.log("Clear pattern set to:", clearPattern)
                                                 }
 
                                                 contentItem: Text {
@@ -1161,7 +1148,6 @@ Page {
                                                 onClicked: {
                                                     clearPattern = "none"
                                                     if (backend) backend.setPlaylistClearPattern("none")
-                                                    console.log("Clear pattern set to:", clearPattern)
                                                 }
 
                                                 contentItem: Text {
@@ -1407,7 +1393,6 @@ Page {
         target: backend
 
         function onPlaylistCreated(success, message) {
-            console.log("📋 Playlist created:", success, message)
             if (success) {
                 playlistModel.refresh()
             }
@@ -1416,7 +1401,6 @@ Page {
         }
 
         function onPlaylistDeleted(success, message) {
-            console.log("🗑️ Playlist deleted:", success, message)
             if (success) {
                 playlistModel.refresh()
                 showPlaylistList()  // Navigate back to list
@@ -1424,7 +1408,6 @@ Page {
         }
 
         function onPatternAddedToPlaylist(success, message) {
-            console.log("➕ Pattern added to playlist:", success, message)
             if (success) {
                 playlistModel.refresh()
                 // Refresh current playlist patterns if we're viewing one
@@ -1436,7 +1419,6 @@ Page {
         }
 
         function onPlaylistModified(success, message) {
-            console.log("📝 Playlist modified:", success, message)
             if (success) {
                 playlistModel.refresh()
                 // Refresh current playlist patterns

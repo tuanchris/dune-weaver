@@ -18,17 +18,14 @@ Page {
         target: backend
         
         function onSerialPortsUpdated(ports) {
-            console.log("Serial ports updated:", ports)
             serialPorts = ports
         }
         
         function onSerialConnectionChanged(connected) {
-            console.log("Serial connection changed:", connected)
             isSerialConnected = connected
         }
         
         function onCurrentPortChanged(port) {
-            console.log("Current port changed:", port)
             if (port) {
                 selectedPort = port
             }
@@ -36,7 +33,6 @@ Page {
         
         
         function onSettingsLoaded() {
-            console.log("Settings loaded")
             if (backend) {
                 autoPlayOnBoot = backend.autoPlayOnBoot
                 isSerialConnected = backend.serialConnected

@@ -368,7 +368,6 @@ Page {
 
         function onPatternAddedToPlaylist(success, message) {
             if (success) {
-                console.log("Pattern added to playlist, refreshing selection state")
                 // Extract the pattern name from the message if possible
                 // The message format is typically "Pattern added to playlist"
                 // We'll track additions in sessionAddedPatterns instead
@@ -387,8 +386,6 @@ Page {
 
     // Override the click handler to track additions
     Component.onCompleted: {
-        console.log("PatternSelectorPage loaded for playlist:", playlistName)
-        console.log("Existing patterns:", existingPatterns)
     }
 
     // Function to add pattern and track it
