@@ -31,9 +31,6 @@ Rectangle {
         Text {
             property string iconValue: parent.parent.icon
             text: {
-                // Debug log the icon value
-                console.log("BottomNavTab icon value:", iconValue)
-
                 // Map icon names to Unicode symbols that work on Raspberry Pi
                 switch(iconValue) {
                     case "search": return "⌕"      // U+2315 - Works better than magnifying glass
@@ -41,10 +38,7 @@ Rectangle {
                     case "table_chart": return "⚙"  // U+2699 - Gear without variant selector
                     case "play_arrow": return "▶"   // U+25B6 - Play without variant selector
                     case "lightbulb": return "☀"   // U+2600 - Sun symbol for LED
-                    default: {
-                        console.log("Unknown icon:", iconValue, "- using default")
-                        return "□"  // U+25A1 - Simple box, universally supported
-                    }
+                    default: return "□"  // U+25A1 - Simple box, universally supported
                 }
             }
             font.pixelSize: 20
