@@ -3,12 +3,12 @@
 ## Current Position
 
 Milestone: v3 Touch App CPU Optimization
-Phase: 1 — CPU Optimization
-Plan: 01-cpu-optimization-PLAN.md (ready to execute)
-Status: Ready to execute
-Last activity: 2026-01-25 — Phase 1 plan created
+Phase: 1 — CPU Optimization ✅ COMPLETE
+Plan: All plans executed
+Status: Phase complete, awaiting hardware verification
+Last activity: 2026-01-25 — Phase 1 executed and verified
 
-Progress: Phase 1 of 1
+Progress: Phase 1 of 1 complete
 
 ## Completed Milestones
 
@@ -39,25 +39,33 @@ Progress: Phase 1 of 1
 | Dedicated port 5174 for E2E | Avoids conflict with other dev servers on 5173 | 2026-01-25 |
 | Remove debug logs (not flag) | Decided to remove all debug console.log rather than add conditional flag | 2026-01-25 |
 | Event-driven screen timeout | Replace 1-sec polling with event-driven timeout scheduling | 2026-01-25 |
+| Single-shot QTimer | Screen timeout timer fires once after inactivity period | 2026-01-25 |
+| Preview cache dictionary | Cache pattern preview paths to avoid repeated filesystem lookups | 2026-01-25 |
 
 ## Blockers/Concerns
 
-None currently.
+**Hardware verification pending:** Need to test on actual Raspberry Pi to confirm CPU < 20%
 
 ## Session Continuity
 
 Last session: 2026-01-25
-Stopped at: Created Phase 1 execution plan
+Stopped at: Phase 1 complete, ready for milestone audit
 Resume file: None
 
-## v3 Milestone Context
+## v3 Phase 1 Summary
 
-**Target:** < 20% CPU when idle on Pi 3B+, Pi 4, Pi 5
+**Commits:** 6
+- `e3b1f2a` - Remove MouseArea console.log spam
+- `455ed5c` - Remove remaining debug logs from main.qml
+- `bf3729e` - Remove debug logs from ConnectionStatus.qml
+- `e1b5994` - Remove debug logs from ExecutionPage.qml
+- `e2e0c82` - Remove debug logs from remaining QML files
+- `bd48ed4` - Optimize timer, WebSocket, and preview cache
 
-**Phase 1 Plan:** 6 tasks covering all 16 requirements
-1. Remove console.log from main.qml MouseArea handlers
-2. Remove other debug console.log from main.qml
-3. Remove debug console.log from ConnectionStatus.qml
-4. Remove debug console.log from ExecutionPage.qml
-5. Remove debug console.log from other QML files
-6. Optimize backend.py (timer, WebSocket, preview cache)
+**Files modified:** 8
+- main.qml, ConnectionStatus.qml, ExecutionPage.qml
+- TableControlPage.qml, ModernPlaylistPage.qml
+- ThemeManager.qml, BottomNavTab.qml
+- backend.py
+
+**Verification:** 6/6 must-haves passed (code inspection)
