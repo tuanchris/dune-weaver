@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
+import { Trash2 } from 'lucide-react'
 import { apiClient } from '@/lib/apiClient'
 import {
   initPreviewCacheDB,
@@ -602,7 +603,7 @@ export function PlaylistsPage() {
                       handleDeletePlaylist(name)
                     }}
                   >
-                    <span className="material-icons-outlined text-base">delete</span>
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
