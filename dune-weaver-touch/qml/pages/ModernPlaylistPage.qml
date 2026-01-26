@@ -32,9 +32,16 @@ Page {
     onSelectedPlaylistChanged: {
         if (selectedPlaylist) {
             currentPlaylistPatterns = playlistModel.getPatternsForPlaylist(selectedPlaylist)
+            console.log("Loaded patterns for", selectedPlaylist + ":", currentPlaylistPatterns)
         } else {
             currentPlaylistPatterns = []
         }
+    }
+    
+    // Debug playlist loading
+    Component.onCompleted: {
+        console.log("ModernPlaylistPage completed, playlist count:", playlistModel.rowCount())
+        console.log("showingPlaylistDetail:", showingPlaylistDetail)
     }
     
     // Function to navigate to playlist detail
@@ -451,11 +458,21 @@ Page {
                                         anchors.fill: parent
                                         onClicked: {
                                             if (backend) {
+                                                console.log("Playing playlist:", selectedPlaylist, "with settings:", {
+                                                    pauseTime: pauseTime,
+                                                    clearPattern: clearPattern,
+                                                    runMode: runMode,
+                                                    shuffle: shuffle
+                                                })
                                                 backend.executePlaylist(selectedPlaylist, pauseTime, clearPattern, runMode, shuffle)
-
+                                                
                                                 // Navigate to execution page
+                                                console.log("🎵 Navigating to execution page after playlist start")
                                                 if (mainWindow) {
+                                                    console.log("🎵 Setting shouldNavigateToExecution = true")
                                                     mainWindow.shouldNavigateToExecution = true
+                                                } else {
+                                                    console.log("🎵 ERROR: mainWindow is null, cannot navigate")
                                                 }
                                             }
                                         }
@@ -481,6 +498,7 @@ Page {
                                         anchors.fill: parent
                                         onClicked: {
                                             shuffle = !shuffle
+                                            console.log("Shuffle toggled:", shuffle)
                                         }
                                     }
                                 }
@@ -543,6 +561,7 @@ Page {
                                                 checked: true  // Default
                                                 onClicked: {
                                                     runMode = "single"
+                                                    console.log("Run mode set to:", runMode)
                                                 }
 
                                                 contentItem: Text {
@@ -561,6 +580,7 @@ Page {
                                                 checked: false
                                                 onClicked: {
                                                     runMode = "loop"
+                                                    console.log("Run mode set to:", runMode)
                                                 }
 
                                                 contentItem: Text {
@@ -986,6 +1006,7 @@ Page {
                                                 checked: true  // Default
                                                 onClicked: {
                                                     clearPattern = "adaptive"
+                                                    console.log("Clear pattern set to:", clearPattern)
                                                 }
 
                                                 contentItem: Text {
@@ -1004,6 +1025,7 @@ Page {
                                                 checked: false
                                                 onClicked: {
                                                     clearPattern = "clear_center"
+                                                    console.log("Clear pattern set to:", clearPattern)
                                                 }
 
                                                 contentItem: Text {
@@ -1022,6 +1044,7 @@ Page {
                                                 checked: false
                                                 onClicked: {
                                                     clearPattern = "clear_perimeter"
+                                                    console.log("Clear pattern set to:", clearPattern)
                                                 }
 
                                                 contentItem: Text {
@@ -1040,6 +1063,7 @@ Page {
                                                 checked: false
                                                 onClicked: {
                                                     clearPattern = "none"
+                                                    console.log("Clear pattern set to:", clearPattern)
                                                 }
 
                                                 contentItem: Text {

@@ -67,6 +67,7 @@ QtObject {
     onDarkModeChanged: {
         // Save preference
         settings.darkMode = darkMode
+        console.log("🎨 Dark mode:", darkMode ? "enabled" : "disabled")
     }
 
     // Helper function to get contrast color

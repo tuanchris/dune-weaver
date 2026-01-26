@@ -73,7 +73,7 @@ class FirstTouchFilter(QObject):
 async def startup_tasks():
     """Run async startup tasks"""
     logger.info("🚀 Starting dune-weaver-touch async initialization...")
-
+    
     # Ensure PNG cache is available for all WebP previews
     try:
         logger.info("🎨 Checking PNG preview cache...")
@@ -84,7 +84,7 @@ async def startup_tasks():
             logger.warning("⚠️ PNG cache check completed with warnings")
     except Exception as e:
         logger.error(f"❌ PNG cache check failed: {e}")
-
+    
     logger.info("✨ dune-weaver-touch startup tasks completed")
 
 def is_pi5():
@@ -103,24 +103,25 @@ def main():
     app = QGuiApplication(sys.argv)
 
     # Install first-touch filter to ignore wake-up touches
+    # Ignores the first touch after 2 seconds of inactivity
     first_touch_filter = FirstTouchFilter(idle_threshold_seconds=2.0)
     app.installEventFilter(first_touch_filter)
     logger.info("✅ First-touch filter installed on application")
 
-    # Setup async event loop using QEventLoop
-    # This properly integrates Qt and asyncio, including QTimer callbacks
+    # Setup async event loop
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
-
+    
     # Register types
     qmlRegisterType(Backend, "DuneWeaver", 1, 0, "Backend")
     qmlRegisterType(PatternModel, "DuneWeaver", 1, 0, "PatternModel")
     qmlRegisterType(PlaylistModel, "DuneWeaver", 1, 0, "PlaylistModel")
-
+    
     # Load QML
     engine = QQmlApplicationEngine()
 
     # Set rotation flag for Pi 5 (display needs 180° rotation via QML)
+    # This applies regardless of Qt backend (eglfs or linuxfb)
     rotate_display = is_pi5()
     engine.rootContext().setContextProperty("rotateDisplay", rotate_display)
     if rotate_display:
@@ -128,16 +129,25 @@ def main():
 
     qml_file = Path(__file__).parent / "qml" / "main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_file)))
-
+    
     if not engine.rootObjects():
-        logger.error("❌ Failed to load QML - no root objects")
         return -1
-
-    # Schedule startup tasks after event loop starts
+    
+    # Schedule startup tasks after a brief delay to ensure event loop is running
     def schedule_startup():
-        asyncio.create_task(startup_tasks())
-
-    QTimer.singleShot(100, schedule_startup)
+        try:
+            # Check if we're in an event loop context
+            current_loop = asyncio.get_running_loop()
+            current_loop.create_task(startup_tasks())
+        except RuntimeError:
+            # No running loop, create task directly
+            asyncio.create_task(startup_tasks())
+    
+    # Use QTimer to delay startup tasks
+    startup_timer = QTimer()
+    startup_timer.timeout.connect(schedule_startup)
+    startup_timer.setSingleShot(True)
+    startup_timer.start(100)  # 100ms delay
 
     # Setup signal handlers for clean shutdown
     def signal_handler(signum, frame):
@@ -148,10 +158,6 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    logger.info("✅ Qt application started successfully")
-
-    # Run the event loop
-    # Using qasync 0.28.0 which should have CPU spin fixes
     try:
         with loop:
             loop.run_forever()
@@ -160,7 +166,6 @@ def main():
     finally:
         loop.close()
 
-    logger.info("🛑 Application shutdown complete")
     return 0
 
 if __name__ == "__main__":
