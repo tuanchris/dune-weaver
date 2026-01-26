@@ -626,7 +626,7 @@ class MotionControlThread:
                                 if resp:
                                     responses_received.append(resp)
                                     logger.info(f"Motion thread: Recovery response [{i+1}/10]: '{resp}'")
-                                    if '<' in resp or 'Idle' in resp or 'Run' in resp:
+                                    if '<' in resp or 'Idle' in resp or 'Run' in resp or 'Hold' in resp or 'Alarm' in resp:
                                         status_response = resp
                                         logger.info(f"Motion thread: Found valid status response: '{resp}'")
                                         break
@@ -655,8 +655,82 @@ class MotionControlThread:
                                     logger.info("Motion thread: Machine still running, extending wait time")
                                     wait_start = time.time()  # Reset timeout
                                     continue
+                                elif 'Hold' in status_response:
+                                    # Machine is in Hold state - attempt to resume
+                                    logger.warning(f"Motion thread: Machine in Hold state: '{status_response}'")
+                                    logger.info("Motion thread: Sending cycle start command '~' to resume from Hold...")
+
+                                    # Send cycle start command to resume
+                                    state.conn.send("~\n")
+                                    time.sleep(0.3)  # Give time for resume to process
+
+                                    # Re-check status after resume attempt
+                                    state.conn.send("?\n")
+                                    time.sleep(0.2)
+
+                                    # Read new status
+                                    resume_response = None
+                                    for _ in range(5):
+                                        resp = state.conn.readline()
+                                        if resp:
+                                            logger.info(f"Motion thread: Post-resume response: '{resp}'")
+                                            if '<' in resp:
+                                                resume_response = resp
+                                                break
+                                        time.sleep(0.05)
+
+                                    if resume_response:
+                                        if 'Idle' in resume_response:
+                                            logger.info("Motion thread: Machine resumed and is now Idle - SUCCESS")
+                                            return True
+                                        elif 'Run' in resume_response:
+                                            logger.info("Motion thread: Machine resumed and running, extending wait time")
+                                            wait_start = time.time()
+                                            continue
+                                        elif 'Hold' in resume_response:
+                                            # Still in Hold - may need user intervention
+                                            logger.warning(f"Motion thread: Still in Hold after resume: '{resume_response}'")
+                                    else:
+                                        logger.warning("Motion thread: No response after resume attempt")
+                                elif 'Alarm' in status_response:
+                                    # Machine is in Alarm state - attempt to unlock
+                                    logger.warning(f"Motion thread: Machine in ALARM state: '{status_response}'")
+                                    logger.info("Motion thread: Sending $X to unlock from Alarm...")
+
+                                    # Send unlock command
+                                    state.conn.send("$X\n")
+                                    time.sleep(0.5)  # Give time for unlock to process
+
+                                    # Re-check status after unlock attempt
+                                    state.conn.send("?\n")
+                                    time.sleep(0.2)
+
+                                    # Read new status
+                                    unlock_response = None
+                                    for _ in range(5):
+                                        resp = state.conn.readline()
+                                        if resp:
+                                            logger.info(f"Motion thread: Post-unlock response: '{resp}'")
+                                            if '<' in resp:
+                                                unlock_response = resp
+                                                break
+                                        time.sleep(0.05)
+
+                                    if unlock_response:
+                                        if 'Idle' in unlock_response:
+                                            logger.info("Motion thread: Machine unlocked and is now Idle - retrying command")
+                                            # Don't return True - we need to resend the failed command
+                                            break  # Break inner loop to retry the command
+                                        elif 'Alarm' in unlock_response:
+                                            # Still in Alarm - underlying issue persists (e.g., sensor triggered)
+                                            logger.error(f"Motion thread: Still in ALARM after unlock: '{unlock_response}'")
+                                            logger.error("Motion thread: Machine may need physical attention")
+                                            state.stop_requested = True
+                                            return False
+                                    else:
+                                        logger.warning("Motion thread: No response after unlock attempt")
                                 else:
-                                    logger.warning(f"Motion thread: Status response didn't contain Idle or Run: '{status_response}'")
+                                    logger.warning(f"Motion thread: Unrecognized status response: '{status_response}'")
                             else:
                                 logger.warning("Motion thread: No valid status response found in any received data")
 
