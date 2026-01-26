@@ -1132,7 +1132,11 @@ class Backend(QObject):
     
     def _reset_activity_timer(self):
         """Reset the screen timeout timer (event-driven approach)"""
-        self._last_activity = time.time()
+        current_time = time.time()
+        # Throttle: only reset if more than 100ms since last reset
+        if current_time - self._last_activity < 0.1:
+            return
+        self._last_activity = current_time
         # Stop existing timer and restart with full timeout duration
         self._screen_timer.stop()
         if self._screen_timeout > 0 and self._screen_on:
@@ -1236,45 +1240,40 @@ class Backend(QObject):
                 if evtest_available:
                     # Use evtest which is more sensitive to single touches
                     print("👆 Using evtest for touch detection")
-                    process = subprocess.Popen(['sudo', 'evtest', touch_device],
-                                             stdout=subprocess.PIPE,
+                    process = subprocess.Popen(['sudo', 'evtest', touch_device], 
+                                             stdout=subprocess.PIPE, 
                                              stderr=subprocess.DEVNULL,
-                                             text=False)  # Binary mode for select()
-
-                    # Use select() with timeout for CPU-efficient blocking
-                    import select
+                                             text=True)
+                    
+                    # Wait for any event line
                     while not self._screen_on:
                         try:
-                            # Block up to 1 second waiting for input (CPU efficient)
-                            ready, _, _ = select.select([process.stdout], [], [], 1.0)
-                            if ready:
-                                # Data available - read a chunk
-                                data = process.stdout.read(1024)
-                                if data and b'Event:' in data:
-                                    print("👆 Touch detected via evtest - waking screen")
-                                    process.terminate()
-                                    self._turn_screen_on()
-                                    self._reset_activity_timer()
-                                    break
-                        except Exception as e:
-                            print(f"👆 Error in evtest select: {e}")
-                            break
-
+                            line = process.stdout.readline()
+                            if line and 'Event:' in line:
+                                print("👆 Touch detected via evtest - waking screen")
+                                process.terminate()
+                                self._turn_screen_on()
+                                self._reset_activity_timer()
+                                break
+                        except:
+                            pass
+                        
                         if process.poll() is not None:
                             break
+                        time.sleep(0.01)  # Small sleep to prevent CPU spinning
                 else:
-                    # Fallback: Use cat with blocking read via select
+                    # Fallback: Use cat with single byte read (more responsive)
                     print("👆 Using cat for touch detection")
-                    process = subprocess.Popen(['sudo', 'cat', touch_device],
-                                             stdout=subprocess.PIPE,
+                    process = subprocess.Popen(['sudo', 'cat', touch_device], 
+                                             stdout=subprocess.PIPE, 
                                              stderr=subprocess.DEVNULL)
-
+                    
                     # Wait for any data (even 1 byte indicates touch)
-                    import select
                     while not self._screen_on:
                         try:
-                            # Block up to 1 second waiting for data (CPU efficient)
-                            ready, _, _ = select.select([process.stdout], [], [], 1.0)
+                            # Non-blocking check for data
+                            import select
+                            ready, _, _ = select.select([process.stdout], [], [], 0.1)
                             if ready:
                                 data = process.stdout.read(1)  # Read just 1 byte
                                 if data:
@@ -1283,13 +1282,15 @@ class Backend(QObject):
                                     self._turn_screen_on()
                                     self._reset_activity_timer()
                                     break
-                        except Exception as e:
-                            print(f"👆 Error in cat select: {e}")
+                        except:
+                            pass
+                        
+                        # Check if screen was turned on by other means
+                        if self._screen_on:
+                            process.terminate()
                             break
-
-                        # Check if process died
-                        if process.poll() is not None:
-                            break
+                        
+                        time.sleep(0.1)
                 
         except Exception as e:
             print(f"❌ Error monitoring touch input: {e}")

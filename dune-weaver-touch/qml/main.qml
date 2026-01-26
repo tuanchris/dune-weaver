@@ -80,14 +80,9 @@ ApplicationWindow {
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.NoButton  // Don't interfere with other mouse areas
-        hoverEnabled: true
         propagateComposedEvents: true
-        
-        onPressed: {
-            backend.resetActivityTimer()
-        }
 
-        onPositionChanged: {
+        onPressed: {
             backend.resetActivityTimer()
         }
 

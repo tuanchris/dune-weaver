@@ -8,7 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QUrl, QTimer, QObject, QEvent
 from PySide6.QtGui import QGuiApplication, QTouchEvent, QMouseEvent
 from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterType, QQmlContext
-from qasync import QEventLoop
+import qasync
 
 # Load environment variables from .env file if it exists
 from dotenv import load_dotenv
@@ -73,7 +73,7 @@ class FirstTouchFilter(QObject):
 async def startup_tasks():
     """Run async startup tasks"""
     logger.info("🚀 Starting dune-weaver-touch async initialization...")
-    
+
     # Ensure PNG cache is available for all WebP previews
     try:
         logger.info("🎨 Checking PNG preview cache...")
@@ -84,7 +84,7 @@ async def startup_tasks():
             logger.warning("⚠️ PNG cache check completed with warnings")
     except Exception as e:
         logger.error(f"❌ PNG cache check failed: {e}")
-    
+
     logger.info("✨ dune-weaver-touch startup tasks completed")
 
 def is_pi5():
@@ -95,6 +95,45 @@ def is_pi5():
             return 'Pi 5' in model
     except:
         return False
+
+async def async_main(app, first_touch_filter):
+    """Main async function that runs the Qt application using qasync.run() pattern"""
+    # Register types
+    qmlRegisterType(Backend, "DuneWeaver", 1, 0, "Backend")
+    qmlRegisterType(PatternModel, "DuneWeaver", 1, 0, "PatternModel")
+    qmlRegisterType(PlaylistModel, "DuneWeaver", 1, 0, "PlaylistModel")
+
+    # Load QML
+    engine = QQmlApplicationEngine()
+
+    # Set rotation flag for Pi 5 (display needs 180° rotation via QML)
+    # This applies regardless of Qt backend (eglfs or linuxfb)
+    rotate_display = is_pi5()
+    engine.rootContext().setContextProperty("rotateDisplay", rotate_display)
+    if rotate_display:
+        logger.info("🔄 Pi 5 detected - enabling QML rotation (180°)")
+
+    qml_file = Path(__file__).parent / "qml" / "main.qml"
+    engine.load(QUrl.fromLocalFile(str(qml_file)))
+
+    if not engine.rootObjects():
+        logger.error("❌ Failed to load QML - no root objects")
+        return -1
+
+    # Schedule startup tasks
+    asyncio.create_task(startup_tasks())
+
+    logger.info("✅ Qt application started successfully")
+
+    # Keep running until app quits
+    # This is the recommended qasync pattern that avoids CPU spinning
+    while engine.rootObjects():
+        await asyncio.sleep(0.1)
+        # Process Qt events
+        app.processEvents()
+
+    logger.info("🛑 Application shutdown complete")
+    return 0
 
 def main():
     # Enable virtual keyboard
@@ -108,63 +147,20 @@ def main():
     app.installEventFilter(first_touch_filter)
     logger.info("✅ First-touch filter installed on application")
 
-    # Setup async event loop
-    loop = QEventLoop(app)
-    asyncio.set_event_loop(loop)
-    
-    # Register types
-    qmlRegisterType(Backend, "DuneWeaver", 1, 0, "Backend")
-    qmlRegisterType(PatternModel, "DuneWeaver", 1, 0, "PatternModel")
-    qmlRegisterType(PlaylistModel, "DuneWeaver", 1, 0, "PlaylistModel")
-    
-    # Load QML
-    engine = QQmlApplicationEngine()
-
-    # Set rotation flag for Pi 5 (display needs 180° rotation via QML)
-    # This applies regardless of Qt backend (eglfs or linuxfb)
-    rotate_display = is_pi5()
-    engine.rootContext().setContextProperty("rotateDisplay", rotate_display)
-    if rotate_display:
-        logger.info("🔄 Pi 5 detected - enabling QML rotation (180°)")
-
-    qml_file = Path(__file__).parent / "qml" / "main.qml"
-    engine.load(QUrl.fromLocalFile(str(qml_file)))
-    
-    if not engine.rootObjects():
-        return -1
-    
-    # Schedule startup tasks after a brief delay to ensure event loop is running
-    def schedule_startup():
-        try:
-            # Check if we're in an event loop context
-            current_loop = asyncio.get_running_loop()
-            current_loop.create_task(startup_tasks())
-        except RuntimeError:
-            # No running loop, create task directly
-            asyncio.create_task(startup_tasks())
-    
-    # Use QTimer to delay startup tasks
-    startup_timer = QTimer()
-    startup_timer.timeout.connect(schedule_startup)
-    startup_timer.setSingleShot(True)
-    startup_timer.start(100)  # 100ms delay
-
     # Setup signal handlers for clean shutdown
     def signal_handler(signum, frame):
         logger.info("🛑 Received shutdown signal, exiting...")
-        loop.stop()
         app.quit()
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
+    # Use the recommended qasync.run() pattern
+    # This properly integrates Qt and asyncio event loops without CPU spinning
     try:
-        with loop:
-            loop.run_forever()
+        qasync.run(async_main(app, first_touch_filter))
     except KeyboardInterrupt:
-        logger.info("🛑 KeyboardInterrupt received, shutting down...")
-    finally:
-        loop.close()
+        logger.info("🛑 KeyboardInterrupt received")
 
     return 0
 
