@@ -95,17 +95,14 @@ ApplicationWindow {
         propagateComposedEvents: true
         
         onPressed: {
-            console.log("🖥️ QML: Touch/press detected - resetting activity timer")
             backend.resetActivityTimer()
         }
-        
+
         onPositionChanged: {
-            console.log("🖥️ QML: Mouse movement detected - resetting activity timer")
             backend.resetActivityTimer()
         }
-        
+
         onClicked: {
-            console.log("🖥️ QML: Click detected - resetting activity timer")
             backend.resetActivityTimer()
         }
     }
