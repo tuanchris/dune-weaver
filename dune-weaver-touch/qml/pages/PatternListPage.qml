@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import "../components"
+import "../components" as Components
 
 Page {
     id: page
@@ -15,6 +16,8 @@ Page {
                 id: searchField
                 Layout.fillWidth: true
                 placeholderText: "Search patterns..."
+                placeholderTextColor: Components.ThemeManager.textTertiary
+                color: Components.ThemeManager.textPrimary
                 onTextChanged: patternModel.filter(text)
                 font.pixelSize: 16
             }

@@ -147,6 +147,7 @@ Page {
                             id: searchField
                             Layout.fillWidth: true
                             placeholderText: searchExpanded ? "Search patterns... (press Enter)" : "Search"
+                            placeholderTextColor: Components.ThemeManager.textTertiary
                             font.pixelSize: 14
                             color: Components.ThemeManager.textPrimary
                             visible: searchExpanded || text.length > 0
