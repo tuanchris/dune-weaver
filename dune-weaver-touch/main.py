@@ -8,7 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QUrl, QTimer, QObject, QEvent
 from PySide6.QtGui import QGuiApplication, QTouchEvent, QMouseEvent
 from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterType, QQmlContext
-import qasync
+from qasync import QEventLoop
 
 # Load environment variables from .env file if it exists
 from dotenv import load_dotenv
@@ -96,12 +96,22 @@ def is_pi5():
     except:
         return False
 
-async def async_main(app):
-    """Main async function that runs the Qt application.
+def main():
+    # Enable virtual keyboard
+    os.environ['QT_IM_MODULE'] = 'qtvirtualkeyboard'
 
-    Uses qasync's event loop integration - do NOT call app.processEvents()
-    manually as qasync handles Qt/asyncio integration automatically.
-    """
+    app = QGuiApplication(sys.argv)
+
+    # Install first-touch filter to ignore wake-up touches
+    first_touch_filter = FirstTouchFilter(idle_threshold_seconds=2.0)
+    app.installEventFilter(first_touch_filter)
+    logger.info("✅ First-touch filter installed on application")
+
+    # Setup async event loop using QEventLoop
+    # This properly integrates Qt and asyncio, including QTimer callbacks
+    loop = QEventLoop(app)
+    asyncio.set_event_loop(loop)
+
     # Register types
     qmlRegisterType(Backend, "DuneWeaver", 1, 0, "Backend")
     qmlRegisterType(PatternModel, "DuneWeaver", 1, 0, "PatternModel")
@@ -123,52 +133,34 @@ async def async_main(app):
         logger.error("❌ Failed to load QML - no root objects")
         return -1
 
-    # Schedule startup tasks
-    asyncio.create_task(startup_tasks())
+    # Schedule startup tasks after event loop starts
+    def schedule_startup():
+        asyncio.create_task(startup_tasks())
 
-    logger.info("✅ Qt application started successfully")
-
-    # Create an asyncio event that will be set when the app quits
-    # This is the proper way to wait - qasync handles event loop integration
-    quit_event = asyncio.Event()
-    app.aboutToQuit.connect(quit_event.set)
-
-    # Wait for the app to quit
-    # This properly yields to the event loop, allowing:
-    # - Qt events to be processed (handled by qasync)
-    # - Other async tasks (like aiohttp in Backend) to run
-    # - No CPU spinning since we're awaiting an event, not polling
-    await quit_event.wait()
-
-    logger.info("🛑 Application shutdown complete")
-    return 0
-
-def main():
-    # Enable virtual keyboard
-    os.environ['QT_IM_MODULE'] = 'qtvirtualkeyboard'
-
-    app = QGuiApplication(sys.argv)
-
-    # Install first-touch filter to ignore wake-up touches
-    first_touch_filter = FirstTouchFilter(idle_threshold_seconds=2.0)
-    app.installEventFilter(first_touch_filter)
-    logger.info("✅ First-touch filter installed on application")
+    QTimer.singleShot(100, schedule_startup)
 
     # Setup signal handlers for clean shutdown
     def signal_handler(signum, frame):
         logger.info("🛑 Received shutdown signal, exiting...")
+        loop.stop()
         app.quit()
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Use qasync.run() to properly integrate Qt and asyncio event loops
-    # qasync handles all event loop integration - we just await the quit signal
-    try:
-        qasync.run(async_main(app))
-    except KeyboardInterrupt:
-        logger.info("🛑 KeyboardInterrupt received")
+    logger.info("✅ Qt application started successfully")
 
+    # Run the event loop
+    # Using qasync 0.28.0 which should have CPU spin fixes
+    try:
+        with loop:
+            loop.run_forever()
+    except KeyboardInterrupt:
+        logger.info("🛑 KeyboardInterrupt received, shutting down...")
+    finally:
+        loop.close()
+
+    logger.info("🛑 Application shutdown complete")
     return 0
 
 if __name__ == "__main__":
