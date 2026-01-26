@@ -1,36 +1,6 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { toast } from 'sonner'
-import {
-  Power,
-  RotateCcw,
-  RefreshCw,
-  Loader2,
-  CheckCircle,
-  Terminal,
-  Copy,
-  Eye,
-  EyeOff,
-  X,
-  Menu,
-  FileText,
-  Download,
-  HardDriveDownload,
-  Grid,
-  ListMusic,
-  SlidersHorizontal,
-  Lightbulb,
-  Settings as SettingsIcon,
-  Wifi,
-  WifiOff,
-  AlertCircle,
-  Home,
-  Sun,
-  Moon,
-  ChevronDown,
-  PlayCircle,
-  StopCircle,
-} from 'lucide-react'
 import { NowPlayingBar } from '@/components/NowPlayingBar'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -42,11 +12,11 @@ import { apiClient } from '@/lib/apiClient'
 import ShinyText from '@/components/ShinyText'
 
 const navItems = [
-  { path: '/', label: 'Browse', icon: Grid, title: 'Browse Patterns' },
-  { path: '/playlists', label: 'Playlists', icon: ListMusic, title: 'Playlists' },
-  { path: '/table-control', label: 'Control', icon: SlidersHorizontal, title: 'Table Control' },
-  { path: '/led', label: 'LED', icon: Lightbulb, title: 'LED Control' },
-  { path: '/settings', label: 'Settings', icon: SettingsIcon, title: 'Settings' },
+  { path: '/', label: 'Browse', icon: 'grid_view', title: 'Browse Patterns' },
+  { path: '/playlists', label: 'Playlists', icon: 'playlist_play', title: 'Playlists' },
+  { path: '/table-control', label: 'Control', icon: 'tune', title: 'Table Control' },
+  { path: '/led', label: 'LED', icon: 'lightbulb', title: 'LED Control' },
+  { path: '/settings', label: 'Settings', icon: 'settings', title: 'Settings' },
 ]
 
 const DEFAULT_APP_NAME = 'Dune Weaver'
@@ -1027,7 +997,9 @@ export function Layout() {
             <div className="p-6">
               <div className="text-center space-y-4">
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-destructive/10 mb-2">
-<AlertCircle className="h-10 w-10 text-destructive" />
+                  <span className="material-icons-outlined text-4xl text-destructive">
+                    error_outline
+                  </span>
                 </div>
                 <h2 className="text-xl font-semibold">Sensor Homing Failed</h2>
                 <p className="text-muted-foreground text-sm">
@@ -1057,7 +1029,7 @@ export function Layout() {
                       onClick={() => handleSensorHomingRecovery(false)}
                       className="w-full gap-2"
                     >
-                      <RefreshCw className="h-4 w-4" />
+                      <span className="material-icons text-base">refresh</span>
                       Retry Sensor Homing
                     </Button>
                     <Button
@@ -1065,7 +1037,7 @@ export function Layout() {
                       onClick={() => handleSensorHomingRecovery(true)}
                       className="w-full gap-2"
                     >
-                      <RefreshCw className="h-4 w-4" />
+                      <span className="material-icons text-base">sync_alt</span>
                       Switch to Crash Homing
                     </Button>
                     <p className="text-xs text-muted-foreground">
@@ -1074,7 +1046,7 @@ export function Layout() {
                   </div>
                 ) : (
                   <div className="flex items-center justify-center gap-2 py-4">
-                    <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                    <span className="material-icons-outlined text-primary animate-spin">sync</span>
                     <span className="text-muted-foreground">Attempting recovery...</span>
                   </div>
                 )}
@@ -1090,7 +1062,9 @@ export function Layout() {
           <div className="w-full max-w-md space-y-6">
             <div className="text-center space-y-4">
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-2">
-<RefreshCw className="h-10 w-10 text-primary animate-pulse" />
+                <span className="material-icons-outlined text-4xl text-primary animate-pulse">
+                  cached
+                </span>
               </div>
               <h2 className="text-2xl font-bold">Initializing Pattern Cache</h2>
               <p className="text-muted-foreground">
@@ -1139,7 +1113,9 @@ export function Layout() {
             <div className="p-6">
               <div className="text-center space-y-4">
                 <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-2">
-<HardDriveDownload className="h-6 w-6 text-primary" />
+                  <span className="material-icons-outlined text-2xl text-primary">
+                    download_for_offline
+                  </span>
                 </div>
                 <h2 className="text-xl font-semibold">Cache All Pattern Previews?</h2>
                 <p className="text-muted-foreground text-sm">
@@ -1159,7 +1135,7 @@ export function Layout() {
                       Skip for now
                     </Button>
                     <Button variant="secondary" onClick={handleCacheAllPreviews} className="gap-2">
-                      <RefreshCw className="h-5 w-5" />
+                      <span className="material-icons-outlined text-lg">cached</span>
                       Cache All
                     </Button>
                   </div>
@@ -1187,7 +1163,7 @@ export function Layout() {
                 {cacheAllProgress?.done && (
                   <div className="space-y-4">
                     <p className="text-green-600 dark:text-green-400 flex items-center justify-center gap-2">
-                      <CheckCircle className="h-4 w-4" />
+                      <span className="material-icons text-base">check_circle</span>
                       All {cacheAllProgress.total} previews cached successfully!
                     </p>
                     <Button onClick={handleCloseCacheAllDone} className="w-full">
@@ -1215,13 +1191,15 @@ export function Layout() {
                     ? 'bg-primary/10'
                     : 'bg-amber-500/10'
               }`}>
-{homingJustCompleted ? (
-                  <CheckCircle className="h-10 w-10 text-green-500" />
-                ) : isHoming ? (
-                  <Loader2 className="h-10 w-10 text-primary animate-spin" />
-                ) : (
-                  <Home className="h-10 w-10 text-amber-500 animate-pulse" />
-                )}
+                <span className={`material-icons-outlined text-4xl ${
+                  homingJustCompleted
+                    ? 'text-green-500'
+                    : isHoming
+                      ? 'text-primary animate-spin'
+                      : 'text-amber-500 animate-pulse'
+                }`}>
+                  {homingJustCompleted ? 'check_circle' : 'sync'}
+                </span>
               </div>
               <h2 className="text-2xl font-bold">
                 {homingJustCompleted
@@ -1266,7 +1244,7 @@ export function Layout() {
             <div className="bg-muted/50 rounded-lg border overflow-hidden">
               <div className="flex items-center justify-between px-4 py-2 border-b bg-muted">
                 <div className="flex items-center gap-2">
-                  <Terminal className="h-4 w-4" />
+                  <span className="material-icons-outlined text-base">terminal</span>
                   <span className="text-sm font-medium">
                     {isHoming || homingJustCompleted ? 'Homing Log' : 'Connection Log'}
                   </span>
@@ -1282,7 +1260,7 @@ export function Layout() {
                     className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
                     title="Copy logs to clipboard"
                   >
-                    <Copy className="h-3.5 w-3.5" />
+                    <span className="material-icons text-sm">content_copy</span>
                     Copy
                   </button>
                   <span className="text-xs text-muted-foreground">
@@ -1323,7 +1301,7 @@ export function Layout() {
                       onClick={() => setKeepHomingLogsOpen(true)}
                       className="gap-2"
                     >
-                      <Eye className="h-4 w-4" />
+                      <span className="material-icons text-base">visibility</span>
                       Keep Open
                     </Button>
                     <Button
@@ -1333,7 +1311,7 @@ export function Layout() {
                       }}
                       className="gap-2"
                     >
-                      <X className="h-4 w-4" />
+                      <span className="material-icons text-base">close</span>
                       Dismiss
                     </Button>
                   </>
@@ -1345,7 +1323,7 @@ export function Layout() {
                     }}
                     className="gap-2"
                   >
-                    <X className="h-4 w-4" />
+                    <span className="material-icons text-base">close</span>
                     Close Logs
                   </Button>
                 )}
@@ -1360,7 +1338,7 @@ export function Layout() {
                   onClick={() => setHomingDismissed(true)}
                   className="gap-2 text-muted-foreground"
                 >
-                  <EyeOff className="h-4 w-4" />
+                  <span className="material-icons text-base">visibility_off</span>
                   Dismiss
                 </Button>
               </div>
@@ -1405,7 +1383,9 @@ export function Layout() {
                   shineColor={isDark ? '#ffffff' : '#999999'}
                   spread={75}
                 />
-<ChevronDown className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                <span className="material-icons-outlined text-muted-foreground text-sm group-hover:text-foreground transition-colors">
+                  expand_more
+                </span>
                 <span
                   className={`w-2 h-2 rounded-full ${
                     !isBackendConnected
@@ -1436,7 +1416,7 @@ export function Layout() {
                   className="rounded-full"
                   aria-label="Open menu"
                 >
-                  <Menu className="h-5 w-5" />
+                  <span className="material-icons-outlined">menu</span>
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-56 p-2">
@@ -1445,14 +1425,16 @@ export function Layout() {
                     onClick={() => setIsDark(!isDark)}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
                   >
-                    {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                    <span className="material-icons-outlined text-xl">
+                      {isDark ? 'light_mode' : 'dark_mode'}
+                    </span>
                     {isDark ? 'Light Mode' : 'Dark Mode'}
                   </button>
                   <button
                     onClick={handleToggleLogs}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
                   >
-                    <FileText className="h-5 w-5" />
+                    <span className="material-icons-outlined text-xl">article</span>
                     View Logs
                   </button>
                   <Separator className="my-1" />
@@ -1460,14 +1442,14 @@ export function Layout() {
                     onClick={handleRestart}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-amber-500"
                   >
-                    <RotateCcw className="h-5 w-5" />
+                    <span className="material-icons-outlined text-xl">restart_alt</span>
                     Restart Docker
                   </button>
                   <button
                     onClick={handleShutdown}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-red-500"
                   >
-                    <Power className="h-5 w-5" />
+                    <span className="material-icons-outlined text-xl">power_settings_new</span>
                     Shutdown
                   </button>
                 </div>
@@ -1485,7 +1467,9 @@ export function Layout() {
                   className="rounded-full"
                   aria-label="Open menu"
                 >
-{isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+                  <span className="material-icons-outlined">
+                    {isMobileMenuOpen ? 'close' : 'menu'}
+                  </span>
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-56 p-2">
@@ -1497,7 +1481,9 @@ export function Layout() {
                     }}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
                   >
-                    {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                    <span className="material-icons-outlined text-xl">
+                      {isDark ? 'light_mode' : 'dark_mode'}
+                    </span>
                     {isDark ? 'Light Mode' : 'Dark Mode'}
                   </button>
                   <button
@@ -1507,7 +1493,7 @@ export function Layout() {
                     }}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
                   >
-                    <FileText className="h-5 w-5" />
+                    <span className="material-icons-outlined text-xl">article</span>
                     View Logs
                   </button>
                   <Separator className="my-1" />
@@ -1518,7 +1504,7 @@ export function Layout() {
                     }}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-amber-500"
                   >
-                    <RotateCcw className="h-5 w-5" />
+                    <span className="material-icons-outlined text-xl">restart_alt</span>
                     Restart Docker
                   </button>
                   <button
@@ -1528,7 +1514,7 @@ export function Layout() {
                     }}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-red-500"
                   >
-                    <Power className="h-5 w-5" />
+                    <span className="material-icons-outlined text-xl">power_settings_new</span>
                     Shutdown
                   </button>
                 </div>
@@ -1617,7 +1603,7 @@ export function Layout() {
                   className="rounded-full"
                   title="Copy logs"
                 >
-                  <Copy className="h-4 w-4" />
+                  <span className="material-icons-outlined text-base">content_copy</span>
                 </Button>
                 <Button
                   variant="ghost"
@@ -1626,7 +1612,7 @@ export function Layout() {
                   className="rounded-full"
                   title="Download logs"
                 >
-                  <Download className="h-4 w-4" />
+                  <span className="material-icons-outlined text-base">download</span>
                 </Button>
                 <Button
                   variant="ghost"
@@ -1635,7 +1621,7 @@ export function Layout() {
                   className="rounded-full"
                   title="Close"
                 >
-                  <X className="h-4 w-4" />
+                  <span className="material-icons-outlined text-base">close</span>
                 </Button>
               </div>
             </div>
@@ -1648,7 +1634,7 @@ export function Layout() {
               {/* Loading indicator for older logs */}
               {isLoadingMoreLogs && (
                 <div className="flex items-center justify-center gap-2 py-2 text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span className="material-icons-outlined text-sm animate-spin">sync</span>
                   <span>Loading older logs...</span>
                 </div>
               )}
@@ -1691,11 +1677,9 @@ export function Layout() {
           style={{ bottom: 'calc(4.5rem + env(safe-area-inset-bottom, 0px))' }}
           aria-label={isCurrentlyPlaying ? 'Now Playing' : 'Not Playing'}
         >
-{isCurrentlyPlaying ? (
-            <PlayCircle className="h-5 w-5 text-primary" />
-          ) : (
-            <StopCircle className="h-5 w-5 text-muted-foreground" />
-          )}
+          <span className={`material-icons-outlined text-xl ${isCurrentlyPlaying ? 'text-primary' : 'text-muted-foreground'}`}>
+            {isCurrentlyPlaying ? 'play_circle' : 'stop_circle'}
+          </span>
           <span className="text-sm font-medium">
             {isCurrentlyPlaying ? 'Now Playing' : 'Not Playing'}
           </span>
@@ -1721,7 +1705,9 @@ export function Layout() {
                 {isActive && (
                   <span className="absolute -top-0.5 w-8 h-1 rounded-full bg-primary" />
                 )}
-                <item.icon className="h-5 w-5" strokeWidth={isActive ? 2.5 : 1.5} />
+                <span className={`text-xl ${isActive ? 'material-icons' : 'material-icons-outlined'}`}>
+                  {item.icon}
+                </span>
                 <span className="text-xs font-medium">{item.label}</span>
               </Link>
             )

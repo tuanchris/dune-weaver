@@ -1,32 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
-import {
-  Trash2,
-  Plus,
-  ListPlus,
-  ListMusic,
-  Pencil,
-  ArrowLeft,
-  Hand,
-  Music,
-  X,
-  Shuffle,
-  Repeat,
-  Minus,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  Loader2,
-  Play,
-  Save,
-  Search,
-  SearchX,
-  Folder,
-  CheckCircle,
-  Check,
-  Image,
-  Sparkles,
-} from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { apiClient } from '@/lib/apiClient'
 import {
   initPreviewCacheDB,
@@ -577,7 +551,7 @@ export function PlaylistsPage() {
                 setIsCreateModalOpen(true)
               }}
             >
-              <Plus className="h-5 w-5" />
+              <span className="material-icons-outlined text-xl">add</span>
             </Button>
           </div>
 
@@ -588,7 +562,7 @@ export function PlaylistsPage() {
             </div>
           ) : playlists.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-muted-foreground gap-2">
-              <ListPlus className="h-8 w-8" />
+              <span className="material-icons-outlined text-3xl">playlist_add</span>
               <span className="text-sm">No playlists yet</span>
             </div>
           ) : (
@@ -603,7 +577,7 @@ export function PlaylistsPage() {
                 onClick={() => handleSelectPlaylist(name)}
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <ListMusic className="h-5 w-5" />
+                  <span className="material-icons-outlined text-lg">playlist_play</span>
                   <span className="truncate text-sm font-medium">{name}</span>
                 </div>
                 <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
@@ -618,7 +592,7 @@ export function PlaylistsPage() {
                       setIsRenameModalOpen(true)
                     }}
                   >
-                    <Pencil className="h-4 w-4" />
+                    <span className="material-icons-outlined text-base">edit</span>
                   </Button>
                   <Button
                     variant="ghost"
@@ -656,7 +630,7 @@ export function PlaylistsPage() {
                 className="h-8 w-8 lg:hidden shrink-0"
                 onClick={handleMobileBack}
               >
-                <ArrowLeft className="h-5 w-5" />
+                <span className="material-icons-outlined">arrow_back</span>
               </Button>
               <div className="min-w-0">
                 <h2 className="text-lg font-semibold truncate">
@@ -675,7 +649,7 @@ export function PlaylistsPage() {
               size="sm"
               className="gap-2"
             >
-              <Plus className="h-4 w-4" />
+              <span className="material-icons-outlined text-base">add</span>
               <span className="hidden sm:inline">Add Patterns</span>
             </Button>
           </header>
@@ -685,7 +659,7 @@ export function PlaylistsPage() {
             {!selectedPlaylist ? (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
                 <div className="p-4 rounded-full bg-muted">
-                  <Hand className="h-12 w-12" />
+                  <span className="material-icons-outlined text-5xl">touch_app</span>
                 </div>
                 <div className="text-center">
                   <p className="font-medium">No playlist selected</p>
@@ -695,14 +669,14 @@ export function PlaylistsPage() {
             ) : playlistPatterns.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
                 <div className="p-4 rounded-full bg-muted">
-                  <Music className="h-12 w-12" />
+                  <span className="material-icons-outlined text-5xl">library_music</span>
                 </div>
                 <div className="text-center">
                   <p className="font-medium">Empty playlist</p>
                   <p className="text-sm">Add patterns to get started</p>
                 </div>
                 <Button variant="secondary" className="mt-2 gap-2" onClick={openPatternPicker}>
-                  <Plus className="h-4 w-4" />
+                  <span className="material-icons-outlined text-base">add</span>
                   Add Patterns
                 </Button>
               </div>
@@ -727,7 +701,7 @@ export function PlaylistsPage() {
                         onClick={() => handleRemovePattern(path)}
                         title="Remove from playlist"
                       >
-                        <X className="h-3 w-3" />
+                        <span className="material-icons" style={{ fontSize: '12px' }}>close</span>
                       </button>
                     </div>
                     <p className="text-[10px] sm:text-xs truncate font-medium w-full text-center">{getPatternName(path)}</p>
@@ -758,7 +732,7 @@ export function PlaylistsPage() {
                       }`}
                       title="Shuffle"
                     >
-                      <Shuffle className="h-5 w-5 sm:h-6 sm:w-6" />
+                      <span className="material-icons-outlined text-lg sm:text-xl">shuffle</span>
                     </button>
                     <button
                       onClick={() => setRunMode(runMode === 'indefinite' ? 'single' : 'indefinite')}
@@ -769,7 +743,7 @@ export function PlaylistsPage() {
                       }`}
                       title={runMode === 'indefinite' ? 'Loop mode' : 'Play once mode'}
                     >
-                      <Repeat className="h-5 w-5 sm:h-6 sm:w-6" />
+                      <span className="material-icons-outlined text-lg sm:text-xl">repeat</span>
                     </button>
                   </div>
 
@@ -786,7 +760,7 @@ export function PlaylistsPage() {
                           setPauseTime(Math.max(0, pauseTime - step))
                         }}
                       >
-                        <Minus className="h-3 w-3" />
+                        <span className="material-icons-outlined text-sm">remove</span>
                       </Button>
                       <button
                         onClick={() => {
@@ -798,7 +772,7 @@ export function PlaylistsPage() {
                         title="Click to change unit"
                       >
                         {pauseTime}{pauseUnit === 'sec' ? 's' : pauseUnit === 'min' ? 'm' : 'h'}
-                        <ArrowUpDown className="h-2.5 w-2.5 opacity-50 ml-0.5" />
+                        <span className="material-icons-outlined text-xs opacity-50 scale-75 ml-0.5">swap_vert</span>
                       </button>
                       <Button
                         variant="secondary"
@@ -809,7 +783,7 @@ export function PlaylistsPage() {
                           setPauseTime(pauseTime + step)
                         }}
                       >
-                        <Plus className="h-3 w-3" />
+                        <span className="material-icons-outlined text-sm">add</span>
                       </Button>
                     </div>
                   </div>
@@ -820,9 +794,9 @@ export function PlaylistsPage() {
                       <SelectTrigger className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-0 p-0 shadow-none focus:ring-0 justify-center [&>svg]:hidden transition ${
                         clearPattern !== 'none' ? '!bg-primary/10' : '!bg-transparent hover:!bg-muted'
                       }`}>
-                        <Sparkles className={`h-5 w-5 sm:h-6 sm:w-6 ${
+                        <span className={`material-icons-outlined text-lg sm:text-xl ${
                           clearPattern !== 'none' ? 'text-primary' : 'text-muted-foreground'
-                        }`} />
+                        }`}>cleaning_services</span>
                       </SelectTrigger>
                       <SelectContent>
                         {preExecutionOptions.map(opt => (
@@ -843,9 +817,9 @@ export function PlaylistsPage() {
                   title="Run Playlist"
                 >
                   {isRunning ? (
-                    <Loader2 className="h-5 w-5 sm:h-6 sm:w-6 animate-spin" />
+                    <span className="material-icons-outlined text-xl sm:text-2xl animate-spin">sync</span>
                   ) : (
-                    <Play className="h-5 w-5 sm:h-6 sm:w-6 ml-0.5" />
+                    <span className="material-icons text-xl sm:text-2xl ml-0.5">play_arrow</span>
                   )}
                 </button>
               </div>
@@ -859,7 +833,7 @@ export function PlaylistsPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <ListPlus className="h-5 w-5 text-primary" />
+              <span className="material-icons-outlined text-primary">playlist_add</span>
               Create New Playlist
             </DialogTitle>
           </DialogHeader>
@@ -881,7 +855,7 @@ export function PlaylistsPage() {
               Cancel
             </Button>
             <Button onClick={handleCreatePlaylist} className="gap-2">
-              <Plus className="h-4 w-4" />
+              <span className="material-icons-outlined text-base">add</span>
               Create Playlist
             </Button>
           </DialogFooter>
@@ -893,7 +867,7 @@ export function PlaylistsPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Pencil className="h-5 w-5 text-primary" />
+              <span className="material-icons-outlined text-primary">edit</span>
               Rename Playlist
             </DialogTitle>
           </DialogHeader>
@@ -915,7 +889,7 @@ export function PlaylistsPage() {
               Cancel
             </Button>
             <Button onClick={handleRenamePlaylist} className="gap-2">
-              <Save className="h-4 w-4" />
+              <span className="material-icons-outlined text-base">save</span>
               Save Name
             </Button>
           </DialogFooter>
@@ -927,7 +901,7 @@ export function PlaylistsPage() {
         <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <ListPlus className="h-5 w-5 text-primary" />
+              <span className="material-icons-outlined text-primary">playlist_add</span>
               Add Patterns to {selectedPlaylist}
             </DialogTitle>
           </DialogHeader>
@@ -935,7 +909,9 @@ export function PlaylistsPage() {
           {/* Search and Filters */}
           <div className="space-y-3 py-2">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-5 w-5" />
+              <span className="material-icons-outlined absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-lg">
+                search
+              </span>
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -947,7 +923,7 @@ export function PlaylistsPage() {
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   onClick={() => setSearchQuery('')}
                 >
-                  <X className="h-5 w-5" />
+                  <span className="material-icons-outlined text-lg">close</span>
                 </button>
               )}
             </div>
@@ -956,7 +932,7 @@ export function PlaylistsPage() {
               {/* Folder dropdown - icon only on mobile, with text on sm+ */}
               <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                 <SelectTrigger className="h-9 w-9 sm:w-auto rounded-full bg-card border-border shadow-sm text-sm px-0 sm:px-3 justify-center sm:justify-between [&>svg]:hidden sm:[&>svg]:block [&>span:last-of-type]:hidden sm:[&>span:last-of-type]:inline gap-2">
-                  <Folder className="h-5 w-5 shrink-0" />
+                  <span className="material-icons-outlined text-lg shrink-0">folder</span>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -971,7 +947,7 @@ export function PlaylistsPage() {
               {/* Sort dropdown - icon only on mobile, with text on sm+ */}
               <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
                 <SelectTrigger className="h-9 w-9 sm:w-auto rounded-full bg-card border-border shadow-sm text-sm px-0 sm:px-3 justify-center sm:justify-between [&>svg]:hidden sm:[&>svg]:block [&>span:last-of-type]:hidden sm:[&>span:last-of-type]:inline gap-2">
-                  <ArrowUpDown className="h-5 w-5 shrink-0" />
+                  <span className="material-icons-outlined text-lg shrink-0">sort</span>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -990,14 +966,16 @@ export function PlaylistsPage() {
                 onClick={() => setSortAsc(!sortAsc)}
                 title={sortAsc ? 'Ascending' : 'Descending'}
               >
-                {sortAsc ? <ArrowUp className="h-5 w-5" /> : <ArrowDown className="h-5 w-5" />}
+                <span className="material-icons-outlined text-lg">
+                  {sortAsc ? 'arrow_upward' : 'arrow_downward'}
+                </span>
               </Button>
 
               <div className="flex-1" />
 
               {/* Selection count - compact on mobile */}
               <div className="flex items-center gap-1 sm:gap-2 text-sm bg-card rounded-full px-2 sm:px-3 py-2 shadow-sm border">
-                <CheckCircle className="h-4 w-4 text-primary" />
+                <span className="material-icons-outlined text-base text-primary">check_circle</span>
                 <span className="font-medium">{selectedPatternPaths.size}</span>
                 <span className="hidden sm:inline text-muted-foreground">selected</span>
               </div>
@@ -1009,7 +987,7 @@ export function PlaylistsPage() {
             {filteredPatterns.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
                 <div className="p-4 rounded-full bg-muted">
-                  <SearchX className="h-12 w-12" />
+                  <span className="material-icons-outlined text-5xl">search_off</span>
                 </div>
                 <span className="text-sm">No patterns found</span>
               </div>
@@ -1038,7 +1016,9 @@ export function PlaylistsPage() {
                         />
                         {isSelected && (
                           <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-primary flex items-center justify-center shadow-md">
-                            <Check className="h-3.5 w-3.5 text-primary-foreground" />
+                            <span className="material-icons text-primary-foreground" style={{ fontSize: '14px' }}>
+                              check
+                            </span>
                           </div>
                         )}
                       </div>
@@ -1057,7 +1037,7 @@ export function PlaylistsPage() {
               Cancel
             </Button>
             <Button onClick={handleSavePatterns} className="gap-2">
-              <Save className="h-4 w-4" />
+              <span className="material-icons-outlined text-base">save</span>
               Save Selection
             </Button>
           </DialogFooter>
@@ -1111,7 +1091,9 @@ function LazyPatternPreview({ path, previewUrl, requestPreview, alt, className =
           className="w-full h-full object-cover pattern-preview"
         />
       ) : (
-        <Image className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
+        <span className="material-icons-outlined text-muted-foreground text-sm sm:text-base">
+          image
+        </span>
       )}
     </div>
   )

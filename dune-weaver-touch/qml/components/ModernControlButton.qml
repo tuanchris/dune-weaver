@@ -52,6 +52,7 @@ Rectangle {
         Text {
             text: parent.parent.icon
             font.pixelSize: parent.parent.fontSize + 2
+            color: "white"
             visible: parent.parent.icon !== ""
         }
         

@@ -336,7 +336,7 @@ Page {
 
                     // Delete playlist button
                     Text {
-                        text: "🗑"
+                        text: "✕"
                         font.pixelSize: 20
                         color: deletePlaylistMouseArea.pressed ? "#dc2626" : Components.ThemeManager.textSecondary
 
