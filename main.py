@@ -2798,7 +2798,61 @@ async def set_app_name(request: dict):
 
 CUSTOM_BRANDING_DIR = os.path.join("static", "custom")
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
-MAX_LOGO_SIZE = 5 * 1024 * 1024  # 5MB
+MAX_LOGO_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_LOGO_DIMENSION = 512  # Max width/height for optimized logo
+
+
+def optimize_logo_image(content: bytes, original_ext: str) -> tuple[bytes, str]:
+    """Optimize logo image by resizing and converting to WebP.
+
+    Args:
+        content: Original image bytes
+        original_ext: Original file extension (e.g., '.png', '.jpg')
+
+    Returns:
+        Tuple of (optimized_bytes, new_extension)
+
+    For SVG files, returns the original content unchanged.
+    For raster images, resizes to MAX_LOGO_DIMENSION and converts to WebP.
+    """
+    # SVG files are already lightweight vectors - keep as-is
+    if original_ext.lower() == ".svg":
+        return content, original_ext
+
+    try:
+        from PIL import Image
+        import io
+
+        with Image.open(io.BytesIO(content)) as img:
+            # Convert to RGBA for transparency support
+            if img.mode in ('P', 'LA') or (img.mode == 'RGBA' and 'transparency' in img.info):
+                img = img.convert('RGBA')
+            elif img.mode != 'RGBA':
+                img = img.convert('RGB')
+
+            # Resize if larger than max dimension (maintain aspect ratio)
+            width, height = img.size
+            if width > MAX_LOGO_DIMENSION or height > MAX_LOGO_DIMENSION:
+                ratio = min(MAX_LOGO_DIMENSION / width, MAX_LOGO_DIMENSION / height)
+                new_size = (int(width * ratio), int(height * ratio))
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
+                logger.info(f"Logo resized from {width}x{height} to {new_size[0]}x{new_size[1]}")
+
+            # Save as WebP with good quality/size balance
+            output = io.BytesIO()
+            img.save(output, format='WEBP', quality=85, method=6)
+            optimized_bytes = output.getvalue()
+
+            original_size = len(content)
+            new_size = len(optimized_bytes)
+            reduction = ((original_size - new_size) / original_size) * 100
+            logger.info(f"Logo optimized: {original_size:,} bytes -> {new_size:,} bytes ({reduction:.1f}% reduction)")
+
+            return optimized_bytes, ".webp"
+
+    except Exception as e:
+        logger.warning(f"Logo optimization failed, using original: {str(e)}")
+        return content, original_ext
 
 def generate_favicon_from_logo(logo_path: str, output_dir: str) -> bool:
     """Generate circular favicons with transparent background from the uploaded logo.
@@ -2912,10 +2966,14 @@ async def upload_logo(file: UploadFile = File(...)):
     """Upload a custom logo image.
 
     Supported formats: PNG, JPG, JPEG, GIF, WebP, SVG
-    Maximum size: 5MB
+    Maximum upload size: 10MB
 
-    The uploaded file will be stored and used as the application logo.
-    A favicon will be automatically generated from the logo.
+    Images are automatically optimized:
+    - Resized to max 512x512 pixels
+    - Converted to WebP format for smaller file size
+    - SVG files are kept as-is (already lightweight)
+
+    A favicon and PWA icons will be automatically generated from the logo.
     """
     try:
         # Validate file extension
@@ -2947,19 +3005,22 @@ async def upload_logo(file: UploadFile = File(...)):
             if os.path.exists(old_favicon_path):
                 os.remove(old_favicon_path)
 
+        # Optimize the image (resize + convert to WebP for smaller file size)
+        optimized_content, optimized_ext = optimize_logo_image(content, file_ext)
+
         # Generate a unique filename to prevent caching issues
         import uuid
-        filename = f"logo-{uuid.uuid4().hex[:8]}{file_ext}"
+        filename = f"logo-{uuid.uuid4().hex[:8]}{optimized_ext}"
         file_path = os.path.join(CUSTOM_BRANDING_DIR, filename)
 
-        # Save the logo file
+        # Save the optimized logo file
         with open(file_path, "wb") as f:
-            f.write(content)
+            f.write(optimized_content)
 
         # Generate favicon and PWA icons from logo (for non-SVG files)
         favicon_generated = False
         pwa_icons_generated = False
-        if file_ext != ".svg":
+        if optimized_ext != ".svg":
             favicon_generated = generate_favicon_from_logo(file_path, CUSTOM_BRANDING_DIR)
             pwa_icons_generated = generate_pwa_icons_from_logo(file_path, CUSTOM_BRANDING_DIR)
 

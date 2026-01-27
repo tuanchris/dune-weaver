@@ -176,6 +176,21 @@ export function Layout() {
   const [currentPlayingFile, setCurrentPlayingFile] = useState<string | null>(null) // Track current file for header button
   const wasPlayingRef = useRef<boolean | null>(null) // Track previous playing state (null = first message)
 
+  // Draggable Now Playing button state
+  type SnapPosition = 'left' | 'center' | 'right'
+  const [nowPlayingButtonPos, setNowPlayingButtonPos] = useState<SnapPosition>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('nowPlayingButtonPos')
+      if (saved === 'left' || saved === 'center' || saved === 'right') return saved
+    }
+    return 'center'
+  })
+  const [isDraggingButton, setIsDraggingButton] = useState(false)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const dragStartRef = useRef<{ x: number; y: number; buttonX: number } | null>(null)
+  const wasDraggingRef = useRef(false) // Track if a meaningful drag occurred
+
   // Derive isCurrentlyPlaying from currentPlayingFile
   const isCurrentlyPlaying = Boolean(currentPlayingFile)
 
@@ -984,6 +999,128 @@ export function Layout() {
     setCacheAllProgress(null)
   }
 
+  // Now Playing button drag handlers
+  const getSnapPositions = useCallback(() => {
+    const padding = 16
+    const buttonWidth = buttonRef.current?.offsetWidth || 140
+    return {
+      left: padding + buttonWidth / 2,
+      center: window.innerWidth / 2,
+      right: window.innerWidth - padding - buttonWidth / 2,
+    }
+  }, [])
+
+  const handleButtonDragStart = useCallback((clientX: number, clientY: number) => {
+    if (!buttonRef.current) return
+    const rect = buttonRef.current.getBoundingClientRect()
+    const buttonCenterX = rect.left + rect.width / 2
+    dragStartRef.current = { x: clientX, y: clientY, buttonX: buttonCenterX }
+    wasDraggingRef.current = false // Reset drag flag
+    setIsDraggingButton(true)
+    setDragOffset({ x: 0, y: 0 })
+  }, [])
+
+  const handleButtonDragMove = useCallback((clientX: number) => {
+    if (!dragStartRef.current || !isDraggingButton) return
+    const deltaX = clientX - dragStartRef.current.x
+    // Mark as dragging if moved more than 8px (to distinguish from clicks)
+    if (Math.abs(deltaX) > 8) {
+      wasDraggingRef.current = true
+    }
+    setDragOffset({ x: deltaX, y: 0 })
+  }, [isDraggingButton])
+
+  const handleButtonDragEnd = useCallback(() => {
+    if (!dragStartRef.current || !buttonRef.current) {
+      setIsDraggingButton(false)
+      setDragOffset({ x: 0, y: 0 })
+      return
+    }
+
+    // Calculate current position
+    const currentX = dragStartRef.current.buttonX + dragOffset.x
+    const snapPositions = getSnapPositions()
+
+    // Find nearest snap position
+    const distances = {
+      left: Math.abs(currentX - snapPositions.left),
+      center: Math.abs(currentX - snapPositions.center),
+      right: Math.abs(currentX - snapPositions.right),
+    }
+
+    let nearest: SnapPosition = 'center'
+    let minDistance = distances.center
+    if (distances.left < minDistance) {
+      nearest = 'left'
+      minDistance = distances.left
+    }
+    if (distances.right < minDistance) {
+      nearest = 'right'
+    }
+
+    // Update position and persist
+    setNowPlayingButtonPos(nearest)
+    localStorage.setItem('nowPlayingButtonPos', nearest)
+
+    // Reset drag state
+    setIsDraggingButton(false)
+    setDragOffset({ x: 0, y: 0 })
+    dragStartRef.current = null
+  }, [dragOffset.x, getSnapPositions])
+
+  // Mouse drag handlers
+  useEffect(() => {
+    if (!isDraggingButton) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      e.preventDefault()
+      handleButtonDragMove(e.clientX)
+    }
+
+    const handleMouseUp = () => {
+      handleButtonDragEnd()
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDraggingButton, handleButtonDragMove, handleButtonDragEnd])
+
+  // Get button position style
+  const getButtonPositionStyle = useCallback((): React.CSSProperties => {
+    const baseStyle: React.CSSProperties = {
+      bottom: 'calc(4.5rem + env(safe-area-inset-bottom, 0px))',
+    }
+
+    if (isDraggingButton && dragStartRef.current) {
+      // During drag, use transform for smooth movement
+      const snapPositions = getSnapPositions()
+      const startX = snapPositions[nowPlayingButtonPos]
+      return {
+        ...baseStyle,
+        left: startX,
+        transform: `translateX(calc(-50% + ${dragOffset.x}px))`,
+        transition: 'none',
+        cursor: 'grabbing',
+      }
+    }
+
+    // Snapped positions
+    switch (nowPlayingButtonPos) {
+      case 'left':
+        return { ...baseStyle, left: '1rem', transform: 'translateX(0)' }
+      case 'right':
+        return { ...baseStyle, right: '1rem', left: 'auto', transform: 'translateX(0)' }
+      case 'center':
+      default:
+        return { ...baseStyle, left: '50%', transform: 'translateX(-50%)' }
+    }
+  }, [isDraggingButton, dragOffset.x, nowPlayingButtonPos, getSnapPositions])
+
   const cacheAllPercentage = cacheAllProgress?.total
     ? Math.round((cacheAllProgress.completed / cacheAllProgress.total) * 100)
     : 0
@@ -1669,12 +1806,38 @@ export function Layout() {
         )}
       </div>
 
-      {/* Floating Now Playing Button - hidden when Now Playing bar is open */}
+      {/* Floating Now Playing Button - draggable, snaps to left/center/right */}
       {!isNowPlayingOpen && (
         <button
-          onClick={() => setIsNowPlayingOpen(true)}
-          className="fixed z-40 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full bg-card border border-border shadow-lg transition-all hover:shadow-xl hover:scale-105 active:scale-95"
-          style={{ bottom: 'calc(4.5rem + env(safe-area-inset-bottom, 0px))' }}
+          ref={buttonRef}
+          onClick={() => {
+            // Only open if it wasn't a drag (to distinguish click from drag)
+            if (!wasDraggingRef.current) {
+              setIsNowPlayingOpen(true)
+            }
+            wasDraggingRef.current = false
+          }}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            handleButtonDragStart(e.clientX, e.clientY)
+          }}
+          onTouchStart={(e) => {
+            const touch = e.touches[0]
+            handleButtonDragStart(touch.clientX, touch.clientY)
+          }}
+          onTouchMove={(e) => {
+            const touch = e.touches[0]
+            handleButtonDragMove(touch.clientX)
+          }}
+          onTouchEnd={() => {
+            handleButtonDragEnd()
+          }}
+          className={`fixed z-40 flex items-center gap-2 px-4 py-2 rounded-full bg-card border border-border shadow-lg select-none touch-none ${
+            isDraggingButton
+              ? 'cursor-grabbing scale-105 shadow-xl'
+              : 'cursor-grab transition-all duration-300 hover:shadow-xl hover:scale-105 active:scale-95'
+          }`}
+          style={getButtonPositionStyle()}
           aria-label={isCurrentlyPlaying ? 'Now Playing' : 'Not Playing'}
         >
           <span className={`material-icons-outlined text-xl ${isCurrentlyPlaying ? 'text-primary' : 'text-muted-foreground'}`}>
