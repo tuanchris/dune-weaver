@@ -574,9 +574,9 @@ Page {
                                         id: shuffleMouseArea
                                         anchors.fill: parent
                                         onClicked: {
-                                            var newValue = !shuffle
-                                            shuffle = newValue
-                                            if (backend) backend.setPlaylistShuffle(newValue)
+                                            // Don't assign directly to shuffle - that breaks the binding
+                                            // Just update backend and let the binding propagate the change
+                                            if (backend) backend.setPlaylistShuffle(!backend.playlistShuffle)
                                         }
                                     }
                                 }

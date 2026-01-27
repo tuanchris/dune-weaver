@@ -156,11 +156,8 @@ class Backend(QObject):
         self._screen_on = True
         self._screen_timeout = self.DEFAULT_SCREEN_TIMEOUT  # Will be loaded from settings
         self._last_activity = time.time()
-        self._touch_monitor_thread = None
-        self._stop_touch_monitor = threading.Event()  # Signal to stop touch monitoring thread
         self._screen_transition_lock = threading.Lock()  # Prevent rapid state changes
         self._last_screen_change = 0  # Track last state change time
-        self._use_touch_script = False  # Disable external touch-monitor script (too sensitive)
         self._screen_timer = QTimer()
         self._screen_timer.timeout.connect(self._check_screen_timeout)
         self._screen_timer.start(1000)  # Check every second
@@ -514,8 +511,9 @@ class Backend(QObject):
         
         try:
             logger.info("Calling stop_execution endpoint...")
-            # Add timeout to prevent hanging
-            timeout = aiohttp.ClientTimeout(total=10)  # 10 second timeout
+            # Backend stop_actions() waits up to 10s for pattern lock + 30s for idle check
+            # Use 45s timeout to accommodate worst-case scenario
+            timeout = aiohttp.ClientTimeout(total=45)
             async with self.session.post(f"{self.base_url}/stop_execution", timeout=timeout) as resp:
                 logger.info(f"Stop execution response status: {resp.status}")
                 if resp.status == 200:
@@ -1097,10 +1095,8 @@ class Backend(QObject):
     
     @Slot()
     def turnScreenOff(self):
-        """Turn the screen off"""
+        """Turn the screen off (QML MouseArea handles wake-on-touch)"""
         self._turn_screen_off()
-        # Start touch monitoring after manual screen off
-        QTimer.singleShot(1000, self._start_touch_monitoring)  # 1 second delay
     
     @Slot()
     def resetActivityTimer(self):
@@ -1152,16 +1148,6 @@ class Backend(QObject):
                 self._screen_on = True
                 self._last_screen_change = time.time()
                 self.screenStateChanged.emit(True)
-
-                # Signal touch monitor thread to stop
-                self._stop_touch_monitor.set()
-
-                # Give thread time to exit gracefully
-                if self._touch_monitor_thread and self._touch_monitor_thread.is_alive():
-                    logger.debug("Waiting for touch monitor thread to stop...")
-                    self._touch_monitor_thread.join(timeout=1.0)
-                    if self._touch_monitor_thread.is_alive():
-                        logger.warning("Touch monitor thread still running (subprocess will be killed)")
 
             except Exception as e:
                 logger.error(f"Failed to turn screen on: {e}")
@@ -1228,213 +1214,21 @@ class Backend(QObject):
             logger.debug(f"Activity detected - timer reset (was idle for {time_since_last:.1f}s)")
     
     def _check_screen_timeout(self):
-        """Check if screen should be turned off due to inactivity"""
+        """Check if screen should be turned off due to inactivity.
+
+        Wake-on-touch is handled by QML's global MouseArea which calls
+        resetActivityTimer() on any touch event, even when screen is off.
+        """
         if self._screen_on and self._screen_timeout > 0:  # Only check if timeout is enabled
             idle_time = time.time() - self._last_activity
             # Log every 10 seconds when getting close to timeout
             if idle_time > self._screen_timeout - 10 and idle_time % 10 < 1:
                 logger.debug(f"Screen idle for {idle_time:.0f}s (timeout at {self._screen_timeout}s)")
-            
+
             if idle_time > self._screen_timeout:
                 logger.debug(f"Screen timeout reached! Idle for {idle_time:.0f}s (timeout: {self._screen_timeout}s)")
                 self._turn_screen_off()
-                # DISABLED FOR TESTING - verify touch monitoring causes 100% CPU
-                # Add delay before starting touch monitoring to avoid catching residual events
-                # QTimer.singleShot(1000, self._start_touch_monitoring)  # 1 second delay
         # If timeout is 0 (Never), screen stays on indefinitely
-    
-    def _start_touch_monitoring(self):
-        """Start monitoring touch input for wake-up"""
-        if self._touch_monitor_thread is None or not self._touch_monitor_thread.is_alive():
-            # Reset stop flag before starting new thread
-            self._stop_touch_monitor.clear()
-            self._touch_monitor_thread = threading.Thread(target=self._monitor_touch_input, daemon=True)
-            self._touch_monitor_thread.start()
-    
-    def _monitor_touch_input(self):
-        """Monitor touch input to wake up the screen"""
-        import select
-
-        logger.debug("Starting touch monitoring for wake-up")
-        process = None
-
-        try:
-            # Add delay to let any residual touch events clear
-            # Check stop flag during delay to allow quick exit
-            for _ in range(20):  # 2 seconds in 100ms increments
-                if self._stop_touch_monitor.is_set() or self._screen_on:
-                    logger.debug("Touch monitoring cancelled during startup delay")
-                    return
-                time.sleep(0.1)
-
-            # Flush touch device to clear any buffered events
-            try:
-                import fcntl
-                # Find and flush touch device
-                for i in range(5):
-                    device = f'/dev/input/event{i}'
-                    if Path(device).exists():
-                        try:
-                            # Read and discard any pending events
-                            with open(device, 'rb') as f:
-                                fcntl.fcntl(f.fileno(), fcntl.F_SETFL, os.O_NONBLOCK)
-                                while True:
-                                    try:
-                                        f.read(24)  # Standard input_event size
-                                    except:
-                                        break
-                            logger.debug(f"Flushed touch device: {device}")
-                            break
-                        except:
-                            continue
-            except Exception as e:
-                logger.debug(f"Could not flush touch device: {e}")
-
-            # Check again before starting monitoring
-            if self._stop_touch_monitor.is_set() or self._screen_on:
-                logger.debug("Touch monitoring cancelled before starting")
-                return
-
-            logger.debug("Touch monitoring active")
-
-            # Use external touch monitor script if available - but only if not too sensitive
-            touch_monitor_script = Path('/usr/local/bin/touch-monitor')
-            use_script = touch_monitor_script.exists() and hasattr(self, '_use_touch_script') and self._use_touch_script
-
-            if use_script:
-                logger.debug("Using touch-monitor script")
-                # Add extra delay for script-based monitoring since it's more sensitive
-                for _ in range(30):  # 3 seconds in 100ms increments
-                    if self._stop_touch_monitor.is_set() or self._screen_on:
-                        logger.debug("Touch monitoring cancelled during script delay")
-                        return
-                    time.sleep(0.1)
-
-                logger.debug("Starting touch-monitor script after flush delay")
-                process = subprocess.Popen(['sudo', '/usr/local/bin/touch-monitor'],
-                                         stdout=subprocess.PIPE,
-                                         stderr=subprocess.PIPE)
-
-                # Wait for script to detect touch and wake screen
-                while not self._screen_on and not self._stop_touch_monitor.is_set():
-                    if process.poll() is not None:  # Script exited (touch detected)
-                        logger.debug("Touch detected by monitor script")
-                        self._turn_screen_on()
-                        self._reset_activity_timer()
-                        break
-                    time.sleep(0.1)
-            else:
-                # Fallback: Direct monitoring
-                # Find touch input device
-                touch_device = None
-                for i in range(5):  # Check event0 through event4
-                    device = f'/dev/input/event{i}'
-                    if Path(device).exists():
-                        # Check if it's a touch device
-                        try:
-                            info = subprocess.run(['udevadm', 'info', '--query=all', f'--name={device}'],
-                                                capture_output=True, text=True, timeout=2)
-                            if 'touch' in info.stdout.lower() or 'ft5406' in info.stdout.lower():
-                                touch_device = device
-                                break
-                        except:
-                            pass
-
-                if not touch_device:
-                    touch_device = '/dev/input/event0'  # Default fallback
-
-                logger.debug(f"Monitoring touch device: {touch_device}")
-
-                # Try evtest first (more responsive to single taps)
-                evtest_available = subprocess.run(['which', 'evtest'],
-                                                 capture_output=True).returncode == 0
-
-                if evtest_available:
-                    # Use evtest which is more sensitive to single touches
-                    # Run in binary mode to avoid Python text buffering issues with select()
-                    logger.debug("Using evtest for touch detection (binary mode)")
-                    process = subprocess.Popen(['sudo', 'evtest', touch_device],
-                                             stdout=subprocess.PIPE,
-                                             stderr=subprocess.DEVNULL)
-
-                    # Skip initial device info output (wait for "Testing ..." line)
-                    # This prevents tight looping during evtest startup
-                    logger.debug("Waiting for evtest initialization...")
-                    init_timeout = time.time() + 5  # 5 second timeout for init
-                    while time.time() < init_timeout:
-                        if self._stop_touch_monitor.is_set() or self._screen_on:
-                            break
-                        ready, _, _ = select.select([process.stdout], [], [], 0.5)
-                        if ready:
-                            line = process.stdout.readline()
-                            if line and b'Testing' in line:
-                                logger.debug("evtest initialized, now monitoring for touch events")
-                                break
-
-                    # Now monitor for actual touch events
-                    while not self._screen_on and not self._stop_touch_monitor.is_set():
-                        # Check if process exited
-                        if process.poll() is not None:
-                            logger.debug("evtest process exited unexpectedly")
-                            break
-
-                        # Use select with timeout for non-blocking read
-                        try:
-                            ready, _, _ = select.select([process.stdout], [], [], 0.5)
-                            if ready:
-                                line = process.stdout.readline()
-                                if line and b'Event:' in line:
-                                    logger.debug("Touch detected via evtest - waking screen")
-                                    self._turn_screen_on()
-                                    self._reset_activity_timer()
-                                    break
-                        except Exception as e:
-                            logger.debug(f"Error reading evtest output: {e}")
-                            break
-                else:
-                    # Fallback: Use cat with single byte read (more responsive)
-                    logger.debug("Using cat for touch detection")
-                    process = subprocess.Popen(['sudo', 'cat', touch_device],
-                                             stdout=subprocess.PIPE,
-                                             stderr=subprocess.DEVNULL)
-
-                    # Wait for any data (even 1 byte indicates touch)
-                    while not self._screen_on and not self._stop_touch_monitor.is_set():
-                        # Check if process exited
-                        if process.poll() is not None:
-                            logger.debug("cat process exited unexpectedly")
-                            break
-
-                        try:
-                            # Non-blocking check for data with timeout
-                            ready, _, _ = select.select([process.stdout], [], [], 0.5)
-                            if ready:
-                                data = process.stdout.read(1)  # Read just 1 byte
-                                if data:
-                                    logger.debug("Touch detected - waking screen")
-                                    self._turn_screen_on()
-                                    self._reset_activity_timer()
-                                    break
-                        except Exception as e:
-                            logger.debug(f"Error reading touch input: {e}")
-                            break
-
-        except Exception as e:
-            logger.error(f"Error monitoring touch input: {e}")
-
-        finally:
-            # Always clean up subprocess
-            if process is not None and process.poll() is None:
-                logger.debug("Terminating touch monitoring subprocess")
-                process.terminate()
-                try:
-                    process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    logger.debug("Force killing touch monitoring subprocess")
-                    process.kill()
-                    process.wait()
-
-        logger.debug("Touch monitoring stopped")
 
     # ==================== LED Control Methods ====================
 
