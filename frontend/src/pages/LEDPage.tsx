@@ -389,7 +389,7 @@ export function LEDPage() {
   // WLED iframe view
   if (ledConfig.provider === 'wled' && ledConfig.wled_ip) {
     return (
-      <div className="flex flex-col w-full h-[calc(100vh-180px)] py-4">
+      <div className="flex flex-col w-full py-4" style={{ height: 'calc(100vh - 180px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))' }}>
         <iframe
           src={`http://${ledConfig.wled_ip}`}
           className="w-full h-full rounded-lg border border-border"

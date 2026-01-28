@@ -78,6 +78,11 @@ class AppState:
         self.auto_home_after_patterns = 5  # Number of patterns after which to auto-home
         self.patterns_since_last_home = 0  # Counter for patterns played since last home
 
+        # Hard reset on theta reset (sends $Bye to FluidNC to reset machine position)
+        # When False (default), only normalizes theta to [0, 2π) without machine reset
+        # When True, also performs soft reset which clears all position counters
+        self.hard_reset_theta = False
+
         self.STATE_FILE = "state.json"
         self.mqtt_handler = None  # Will be set by the MQTT handler
         self.conn = None
@@ -447,6 +452,7 @@ class AppState:
             "angular_homing_offset_degrees": self.angular_homing_offset_degrees,
             "auto_home_enabled": self.auto_home_enabled,
             "auto_home_after_patterns": self.auto_home_after_patterns,
+            "hard_reset_theta": self.hard_reset_theta,
             "current_playlist": self._current_playlist,
             "current_playlist_name": self._current_playlist_name,
             "current_playlist_index": self.current_playlist_index,
@@ -519,6 +525,7 @@ class AppState:
         self.angular_homing_offset_degrees = data.get('angular_homing_offset_degrees', 0.0)
         self.auto_home_enabled = data.get('auto_home_enabled', False)
         self.auto_home_after_patterns = data.get('auto_home_after_patterns', 5)
+        self.hard_reset_theta = data.get('hard_reset_theta', False)
         self._current_playlist = data.get("current_playlist", None)
         self._current_playlist_name = data.get("current_playlist_name", None)
         self.current_playlist_index = data.get("current_playlist_index", None)

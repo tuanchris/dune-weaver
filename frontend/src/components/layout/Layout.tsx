@@ -1664,17 +1664,16 @@ export function Layout() {
 
       {/* Main Content */}
       <main
-        className={`container mx-auto px-4 transition-all duration-300 ${
-          !isLogsOpen && !isNowPlayingOpen ? 'pb-20' :
-          !isLogsOpen && isNowPlayingOpen ? 'pb-80' : ''
-        }`}
+        className="container mx-auto px-4 transition-all duration-300"
         style={{
           paddingTop: 'calc(4.5rem + env(safe-area-inset-top, 0px))',
           paddingBottom: isLogsOpen
             ? isNowPlayingOpen
-              ? logsDrawerHeight + 256 + 64 // drawer + now playing + nav
-              : logsDrawerHeight + 64 // drawer + nav
-            : undefined
+              ? `calc(${logsDrawerHeight + 256 + 64}px + env(safe-area-inset-bottom, 0px))` // drawer + now playing + nav + safe area
+              : `calc(${logsDrawerHeight + 64}px + env(safe-area-inset-bottom, 0px))` // drawer + nav + safe area
+            : isNowPlayingOpen
+              ? 'calc(20rem + env(safe-area-inset-bottom, 0px))' // now playing bar + nav + safe area
+              : 'calc(8rem + env(safe-area-inset-bottom, 0px))' // floating pill + nav + safe area
         }}
       >
         <Outlet />

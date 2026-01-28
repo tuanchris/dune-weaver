@@ -415,6 +415,7 @@ class HomingSettingsUpdate(BaseModel):
     angular_offset_degrees: Optional[float] = None
     auto_home_enabled: Optional[bool] = None
     auto_home_after_patterns: Optional[int] = None
+    hard_reset_theta: Optional[bool] = None  # Enable hard reset ($Bye) when resetting theta
 
 class DwLedSettingsUpdate(BaseModel):
     num_leds: Optional[int] = None
@@ -676,7 +677,8 @@ async def get_all_settings():
             "user_override": state.homing_user_override,  # True if user explicitly set, False if auto-detected
             "angular_offset_degrees": state.angular_homing_offset_degrees,
             "auto_home_enabled": state.auto_home_enabled,
-            "auto_home_after_patterns": state.auto_home_after_patterns
+            "auto_home_after_patterns": state.auto_home_after_patterns,
+            "hard_reset_theta": state.hard_reset_theta  # Enable hard reset when resetting theta
         },
         "led": {
             "provider": state.led_provider,
@@ -757,6 +759,18 @@ async def get_dynamic_manifest():
                 "sizes": "512x512",
                 "type": "image/png",
                 "purpose": "any"
+            },
+            {
+                "src": f"{icon_base}/android-chrome-192x192.png",
+                "sizes": "192x192",
+                "type": "image/png",
+                "purpose": "maskable"
+            },
+            {
+                "src": f"{icon_base}/android-chrome-512x512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "maskable"
             }
         ],
         "start_url": "/",
@@ -858,6 +872,8 @@ async def update_settings(settings_update: SettingsUpdate):
             state.auto_home_enabled = h.auto_home_enabled
         if h.auto_home_after_patterns is not None:
             state.auto_home_after_patterns = h.auto_home_after_patterns
+        if h.hard_reset_theta is not None:
+            state.hard_reset_theta = h.hard_reset_theta
         updated_categories.append("homing")
 
     # LED settings
@@ -2920,6 +2936,8 @@ def generate_pwa_icons_from_logo(logo_path: str, output_dir: str) -> bool:
     """Generate square PWA app icons from the uploaded logo.
 
     Creates square icons (no circular crop) - OS will apply its own mask.
+    Composites onto a solid background to avoid transparency issues
+    (iOS fills transparent areas with white on home screen icons).
 
     Generates:
     - apple-touch-icon.png (180x180)
@@ -2952,8 +2970,12 @@ def generate_pwa_icons_from_logo(logo_path: str, output_dir: str) -> bool:
 
             for filename, size in icon_sizes.items():
                 resized = img.resize((size, size), Image.Resampling.LANCZOS)
+                # Composite onto solid background to eliminate transparency
+                # (iOS shows white behind transparent areas on home screen)
+                background = Image.new('RGB', (size, size), (10, 10, 10))  # #0a0a0a theme color
+                background.paste(resized, (0, 0), resized)  # Use resized as its own alpha mask
                 icon_path = os.path.join(output_dir, filename)
-                resized.save(icon_path, format='PNG')
+                background.save(icon_path, format='PNG')
                 logger.info(f"Generated PWA icon: {filename}")
 
         return True

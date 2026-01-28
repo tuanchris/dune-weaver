@@ -1811,31 +1811,41 @@ def resume_execution():
     
 async def reset_theta():
     """
-    Reset theta to [0, 2π) range and hard reset machine position using $Bye.
+    Reset theta to [0, 2π) range and optionally hard reset machine position using $Bye.
 
-    $Bye sends a soft reset to FluidNC which resets the controller and clears
-    all position counters to 0. This is more reliable than G92 which only sets
-    a work coordinate offset without changing the actual machine position (MPos).
+    When state.hard_reset_theta is True:
+    - $Bye sends a soft reset to FluidNC which resets the controller and clears
+      all position counters to 0. This is more reliable than G92 which only sets
+      a work coordinate offset without changing the actual machine position (MPos).
+    - We wait for machine to be idle before sending $Bye to avoid error:25
 
-    IMPORTANT: We wait for machine to be idle before sending $Bye to avoid
-    error:25 ("Feed rate not specified in block") which can occur if the
-    controller is still processing commands when reset is triggered.
+    When state.hard_reset_theta is False (default):
+    - Only normalizes theta to [0, 2π) range without affecting machine position
+    - Faster and doesn't interrupt machine state
     """
     logger.info('Resetting Theta')
 
-    # Wait for machine to be idle before reset to prevent error:25
-    if state.conn and state.conn.is_connected():
-        logger.info("Waiting for machine to be idle before reset...")
-        idle = await connection_manager.check_idle_async(timeout=30)
-        if not idle:
-            logger.warning("Machine not idle after 30s, proceeding with reset anyway")
-
+    # Always normalize theta to [0, 2π) range
     state.current_theta = state.current_theta % (2 * pi)
+    logger.info(f'Theta normalized to {state.current_theta:.4f} radians')
 
-    # Hard reset machine position using $Bye via connection_manager
-    success = await connection_manager.perform_soft_reset()
-    if not success:
-        logger.error("Soft reset failed - theta reset may be unreliable")
+    # Only perform hard reset if enabled
+    if state.hard_reset_theta:
+        logger.info('Hard reset enabled - performing machine soft reset')
+
+        # Wait for machine to be idle before reset to prevent error:25
+        if state.conn and state.conn.is_connected():
+            logger.info("Waiting for machine to be idle before reset...")
+            idle = await connection_manager.check_idle_async(timeout=30)
+            if not idle:
+                logger.warning("Machine not idle after 30s, proceeding with reset anyway")
+
+        # Hard reset machine position using $Bye via connection_manager
+        success = await connection_manager.perform_soft_reset()
+        if not success:
+            logger.error("Soft reset failed - theta reset may be unreliable")
+    else:
+        logger.info('Hard reset disabled - skipping machine soft reset')
 
 def set_speed(new_speed):
     state.speed = new_speed

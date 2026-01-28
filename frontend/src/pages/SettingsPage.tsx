@@ -46,6 +46,7 @@ interface Settings {
   angular_offset?: number
   auto_home_enabled?: boolean
   auto_home_after_patterns?: number
+  hard_reset_theta?: boolean
   // Pattern clearing settings
   clear_pattern_speed?: number
   custom_clear_from_in?: string
@@ -350,6 +351,7 @@ export function SettingsPage() {
         angular_offset: data.homing?.angular_offset_degrees,
         auto_home_enabled: data.homing?.auto_home_enabled,
         auto_home_after_patterns: data.homing?.auto_home_after_patterns,
+        hard_reset_theta: data.homing?.hard_reset_theta,
         // Pattern clearing settings
         clear_pattern_speed: data.patterns?.clear_pattern_speed,
         custom_clear_from_in: data.patterns?.custom_clear_from_in,
@@ -646,6 +648,7 @@ export function SettingsPage() {
           angular_offset_degrees: settings.angular_offset,
           auto_home_enabled: settings.auto_home_enabled,
           auto_home_after_patterns: settings.auto_home_after_patterns,
+          hard_reset_theta: settings.hard_reset_theta,
         },
       })
       toast.success('Homing configuration saved')
@@ -1085,6 +1088,31 @@ export function SettingsPage() {
                   </p>
                 </div>
               )}
+            </div>
+
+            {/* Machine Reset on Theta Normalization */}
+            <div className="p-4 rounded-lg border space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium flex items-center gap-2">
+                    <span className="material-icons-outlined text-base">restart_alt</span>
+                    Reset Machine on Theta Normalization
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Also reset the machine controller when normalizing theta
+                  </p>
+                </div>
+                <Switch
+                  checked={settings.hard_reset_theta || false}
+                  onCheckedChange={(checked) =>
+                    setSettings({ ...settings, hard_reset_theta: checked })
+                  }
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                When disabled (default), theta normalization only adjusts the angle mathematically.
+                When enabled, also resets the machine controller to clear position counters.
+              </p>
             </div>
 
             <Button
