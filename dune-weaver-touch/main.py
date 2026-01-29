@@ -6,18 +6,18 @@ import time
 import signal
 from pathlib import Path
 from PySide6.QtCore import QUrl, QTimer, QObject, QEvent
-from PySide6.QtGui import QGuiApplication, QTouchEvent, QMouseEvent
-from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterType, QQmlContext
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterType
 from qasync import QEventLoop
-
-# Load environment variables from .env file if it exists
 from dotenv import load_dotenv
-load_dotenv(Path(__file__).parent / ".env")
 
 from backend import Backend
 from models.pattern_model import PatternModel
 from models.playlist_model import PlaylistModel
 from png_cache_manager import ensure_png_cache_startup
+
+# Load environment variables from .env file if it exists
+load_dotenv(Path(__file__).parent / ".env")
 
 # Configure logging
 logging.basicConfig(

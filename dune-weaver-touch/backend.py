@@ -789,7 +789,7 @@ class Backend(QObject):
                 if isinstance(screen_timeout, (int, float)) and screen_timeout >= 0:
                     self._screen_timeout = int(screen_timeout)
                     if screen_timeout == 0:
-                        logger.debug(f"Loaded screen timeout from local settings: Never (0s)")
+                        logger.debug("Loaded screen timeout from local settings: Never (0s)")
                     else:
                         logger.debug(f"Loaded screen timeout from local settings: {self._screen_timeout}s")
                 else:
@@ -802,7 +802,7 @@ class Backend(QObject):
                 self._playlist_clear_pattern = settings.get('playlist_clear_pattern', "adaptive")
                 logger.info(f"Loaded playlist settings: pause={self._pause_between_patterns}s, shuffle={self._playlist_shuffle}, mode={self._playlist_run_mode}, clear={self._playlist_clear_pattern}")
             else:
-                logger.debug(f"No local settings file found, creating with defaults")
+                logger.debug("No local settings file found, creating with defaults")
                 self._save_local_settings()
         except Exception as e:
             logger.error(f"Error loading local settings: {e}, using defaults")
@@ -1137,7 +1137,7 @@ class Backend(QObject):
                                               shell=True, capture_output=True, text=True, timeout=2)
                         if result.returncode == 0 and result.stdout.strip():
                             max_brightness = int(result.stdout.strip())
-                    except:
+                    except Exception:
                         pass
                     
                     subprocess.run(['sudo', 'sh', '-c', 
