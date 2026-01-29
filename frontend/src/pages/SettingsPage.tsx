@@ -716,7 +716,7 @@ export function SettingsPage() {
       ...stillSandsSettings,
       time_slots: [
         ...stillSandsSettings.time_slots,
-        { start_time: '22:00', end_time: '06:00', days: 'daily' },
+        { start_time: '22:00', end_time: '06:00', days: 'daily', custom_days: [] },
       ],
     })
   }
@@ -2055,8 +2055,8 @@ export function SettingsPage() {
                             </Button>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1.5 min-w-0">
+                          <div className="grid grid-cols-[1fr_1fr] gap-2">
+                            <div className="space-y-1.5 min-w-0 overflow-hidden">
                               <Label className="text-xs">Start Time</Label>
                               <Input
                                 type="time"
@@ -2064,10 +2064,10 @@ export function SettingsPage() {
                                 onChange={(e) =>
                                   updateTimeSlot(index, { start_time: e.target.value })
                                 }
-                                className="text-xs"
+                                className="text-xs w-full"
                               />
                             </div>
-                            <div className="space-y-1.5 min-w-0">
+                            <div className="space-y-1.5 min-w-0 overflow-hidden">
                               <Label className="text-xs">End Time</Label>
                               <Input
                                 type="time"
@@ -2075,7 +2075,7 @@ export function SettingsPage() {
                                 onChange={(e) =>
                                   updateTimeSlot(index, { end_time: e.target.value })
                                 }
-                                className="text-xs"
+                                className="text-xs w-full"
                               />
                             </div>
                           </div>
@@ -2087,6 +2087,7 @@ export function SettingsPage() {
                               onValueChange={(value) =>
                                 updateTimeSlot(index, {
                                   days: value as TimeSlot['days'],
+                                  ...(value !== 'custom' ? { custom_days: [] } : {}),
                                 })
                               }
                             >
@@ -2101,6 +2102,45 @@ export function SettingsPage() {
                               </SelectContent>
                             </Select>
                           </div>
+
+                          {slot.days === 'custom' && (
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Select Days</Label>
+                              <div className="flex flex-wrap gap-1.5">
+                                {[
+                                  { key: 'monday', label: 'Mon' },
+                                  { key: 'tuesday', label: 'Tue' },
+                                  { key: 'wednesday', label: 'Wed' },
+                                  { key: 'thursday', label: 'Thu' },
+                                  { key: 'friday', label: 'Fri' },
+                                  { key: 'saturday', label: 'Sat' },
+                                  { key: 'sunday', label: 'Sun' },
+                                ].map((day) => {
+                                  const isSelected = slot.custom_days?.includes(day.key)
+                                  return (
+                                    <button
+                                      key={day.key}
+                                      type="button"
+                                      onClick={() => {
+                                        const currentDays = slot.custom_days || []
+                                        const newDays = isSelected
+                                          ? currentDays.filter((d) => d !== day.key)
+                                          : [...currentDays, day.key]
+                                        updateTimeSlot(index, { custom_days: newDays })
+                                      }}
+                                      className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                                        isSelected
+                                          ? 'bg-primary text-primary-foreground border-primary'
+                                          : 'bg-background text-muted-foreground border-input hover:bg-accent'
+                                      }`}
+                                    >
+                                      {day.label}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
