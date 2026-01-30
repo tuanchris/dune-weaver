@@ -8,7 +8,8 @@
     "dev:frontend": "cd frontend && npm run dev",
     "dev:backend": "python main.py",
     "build": "cd frontend && npm run build",
-    "start": "npm run build && python main.py"
+    "start": "npm run build && python main.py",
+    "prepare": "cp scripts/pre-commit .git/hooks/pre-commit 2>/dev/null && chmod +x .git/hooks/pre-commit 2>/dev/null || true"
   },
   "devDependencies": {
     "concurrently": "^9.0.0"
