@@ -724,6 +724,17 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                 state.execution_progress = None
             return
 
+        # Pre-calculate rho-based weights for more accurate time estimation
+        # Moves near center (low rho) are slower than perimeter moves due to
+        # polar geometry - less linear distance per theta change at low rho
+        def calc_move_weight(rho):
+            # Weight inversely proportional to rho, with floor to avoid extreme values
+            # At rho=0: weight≈6.7, at rho=0.5: weight≈1.5, at rho=1.0: weight≈0.87
+            return 1.0 / (rho + 0.15)
+
+        coord_weights = [calc_move_weight(rho) for _, rho in coordinates]
+        total_weight = sum(coord_weights)
+
         # Determine if this is a clearing pattern
         is_clear_file = is_clear_pattern(file_path)
         
@@ -751,6 +762,8 @@ async def run_theta_rho_file(file_path, is_playlist=False):
 
         start_time = time.time()
         total_pause_time = 0  # Track total time spent paused (manual + scheduled)
+        completed_weight = 0.0  # Track rho-weighted progress
+        smoothed_rate = None  # For exponential smoothing of time-per-unit-weight rate
         if state.led_controller:
             logger.info(f"Setting LED to playing effect: {state.dw_led_playing_effect}")
             await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
@@ -845,8 +858,33 @@ async def run_theta_rho_file(file_path, is_playlist=False):
                 # Update progress for all coordinates including the first one
                 pbar.update(1)
                 elapsed_time = time.time() - start_time
-                estimated_remaining_time = (total_coordinates - (i + 1)) / pbar.format_dict['rate'] if pbar.format_dict['rate'] and total_coordinates else 0
-                state.execution_progress = (i + 1, total_coordinates, estimated_remaining_time, elapsed_time)
+                completed = i + 1
+
+                # Track rho-weighted progress for accurate time estimation
+                completed_weight += coord_weights[i]
+                remaining_weight = total_weight - completed_weight
+
+                # Calculate actual execution time (excluding pauses)
+                active_time = elapsed_time - total_pause_time
+
+                # Need minimum samples for stable estimate (at least 100 coords and 10 seconds)
+                if completed >= 100 and active_time > 10:
+                    # Rate is time per unit weight (accounts for slower moves near center)
+                    current_rate = active_time / completed_weight
+
+                    # Smooth the RATE for stability
+                    if smoothed_rate is not None:
+                        alpha = 0.02  # Very smooth - 2% new, 98% old
+                        smoothed_rate = alpha * current_rate + (1 - alpha) * smoothed_rate
+                    else:
+                        smoothed_rate = current_rate
+
+                    # Remaining time based on weighted remaining work
+                    estimated_remaining_time = smoothed_rate * remaining_weight
+                else:
+                    estimated_remaining_time = None
+
+                state.execution_progress = (completed, total_coordinates, estimated_remaining_time, elapsed_time)
                 
                 # Add a small delay to allow other async operations
                 await asyncio.sleep(0.001)
