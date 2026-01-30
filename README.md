@@ -1,192 +1,102 @@
 # Dune Weaver
 
-[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/tuanchris)
+[![Patreon](https://img.shields.io/badge/Patreon-F96854?style=for-the-badge&logo=patreon&logoColor=white)](https://www.patreon.com/cw/DuneWeaver)
 
-![Dune Weaver Gif](./static/IMG_7404.gif)
+![Dune Weaver](./static/og-image.jpg)
 
-Dune Weaver is a web-controlled kinetic sand table system that creates mesmerizing patterns in sand using a steel ball guided by magnets beneath the surface. This project seamlessly integrates hardware control with a modern web interface, featuring real-time pattern execution, playlist management, and synchronized lighting effects.
+**An open-source kinetic sand art table that creates mesmerizing patterns using a ball controlled by precision motors.**
 
-## 🌟 Key Features
+## Features
 
-- **Web-Based Control Interface**: Modern, responsive web UI for pattern management and table control
-- **Real-Time Pattern Execution**: Live preview and control of pattern drawing with progress tracking
-- **Playlist System**: Queue multiple patterns for continuous execution
-- **WLED Integration**: Synchronized lighting effects during pattern execution
-- **Pattern Library**: Browse, upload, and manage custom patterns with preview generation
-- **Polar Coordinate System**: Specialized θ-ρ coordinate system optimized for radial designs
-- **Auto-Update System**: GitHub-integrated version management with update notifications
+- **Modern React UI** — A responsive, touch-friendly web interface that installs as a PWA on any device
+- **Pattern Library** — Browse, upload, and manage hundreds of sand patterns with auto-generated previews
+- **Live Preview** — Watch your pattern come to life in real time with progress tracking
+- **Playlists** — Queue up multiple patterns with configurable pause times and automatic clearing between drawings
+- **LED Integration** — Synchronized lighting via native DW LEDs or WLED, with separate idle, playing, and scheduled modes
+- **Still Sands Scheduling** — Set quiet hours so the table pauses automatically on your schedule
+- **Multi-Table Support** — Control several sand tables from a single interface
+- **Home Assistant Integration** — Connect to Home Assistant or other home automation systems using MQTT
+- **Auto-Updates** — One-click software updates right from the settings page
+- **Add-Ons** — Optional [Desert Compass](https://duneweaver.com/docs) for auto-homing and [DW Touch](https://duneweaver.com/docs) for dedicated touchscreen control
 
-### **📚 Complete Documentation: [Dune Weaver Wiki](https://github.com/tuanchris/dune-weaver/wiki)**
+## How It Works
 
----
-
-The Dune Weaver comes in two versions:
-
-1. **Small Version (Mini Dune Weaver)**:
-   - Uses two **28BYJ-48 DC 5V stepper motors**.
-   - Controlled via **ULN2003 motor drivers**.
-   - Powered by an **ESP32**.
-
-2. **Larger Version (Dune Weaver)**:
-   - Uses two **NEMA 17 or NEMA 23 stepper motors**.
-   - Controlled via **TMC2209 or DRV8825 motor drivers**.
-   - Powered by an **Arduino UNO with a CNC shield**.
-
-Each version operates similarly but differs in power, precision, and construction cost.
-
-The sand table consists of two main bases:
-1. **Lower Base**: Houses all the electronic components, including motor drivers, and power connections.
-2. **Upper Base**: Contains the sand and the marble, which is moved by a magnet beneath.
-
-Both versions of the table use two stepper motors:
-
-- **Radial Axis Motor**: Controls the in-and-out movement of the arm.
-- **Angular Axis Motor**: Controls the rotational movement of the arm.
-
-The small version uses **28BYJ-48 motors** driven by **ULN2003 drivers**, while the larger version uses **NEMA 17 or NEMA 23 motors** with **TMC2209 or DRV8825 drivers**.: Controls the in-and-out movement of the arm.
-- **Angular Axis Motor**: Controls the rotational movement of the arm.
-
-Each motor is connected to a motor driver that dictates step and direction. The motor drivers are, in turn, connected to the ESP32 board, which serves as the system's main controller. The entire table is powered by a single USB cable attached to the ESP32.
-
----
-
-## Coordinate System
-Unlike traditional CNC machines that use an **X-Y coordinate system**, the sand table operates on a **theta-rho (θ, ρ) coordinate system**:
-- **Theta (θ)**: Represents the angular position of the arm, with **2π radians (360 degrees) for one full revolution**.
-- **Rho (ρ)**: Represents the radial distance of the marble from the center, with **0 at the center and 1 at the perimeter**.
-
-This system allows the table to create intricate radial designs that differ significantly from traditional Cartesian-based CNC machines.
-
----
-
-## Homing and Position Tracking
-Unlike conventional CNC machines, the sand table **does not have a limit switch** for homing. Instead, it uses a **crash-homing method**:
-1. Upon power-on, the radial axis moves inward to its physical limit, ensuring the marble is positioned at the center.
-2. The software then assumes this as the **home position (0,0 in polar coordinates)**.
-3. The system continuously tracks all executed coordinates to maintain an accurate record of the marble’s position.
-
----
-
-## Mechanical Constraints and Software Adjustments
-### Coupled Angular and Radial Motion
-Due to the **hardware design choice**, the angular axis **does not move independently**. This means that when the angular motor moves one full revolution, the radial axis **also moves slightly**—either inwards or outwards, depending on the rotation direction.
-
-To counteract this behavior, the software:
-- Monitors how many revolutions the angular axis has moved.
-- Applies an offset to the radial axis to compensate for unintended movements.
-
-This correction ensures that the table accurately follows the intended path without accumulating errors over time.
-
----
-
-Each pattern file consists of lines with theta and rho values (in degrees and normalized units, respectively), separated by a space. Comments start with #.
-
-Example:
+The system is split across two devices connected via USB:
 
 ```
-# Example pattern
-0 0.5
-90 0.7
-180 0.5
-270 0.7
+┌─────────────────┐         USB          ┌─────────────────┐
+│  Raspberry Pi   │ ◄──────────────────► │  DLC32 / ESP32  │
+│  (Dune Weaver   │                      │  (FluidNC)      │
+│   Backend)      │                      │                 │
+└─────────────────┘                      └─────────────────┘
+        │                                        │
+        │ Wi-Fi                                  │ Motor signals
+        ▼                                        ▼
+   Web Browser                            Stepper Motors
+   (Control UI)                           (Theta & Rho)
 ```
 
-## API Endpoints
+The **Raspberry Pi** runs the web UI, manages pattern files and playlists, and converts patterns into G-code. The **DLC32/ESP32** running [FluidNC](https://github.com/bdring/FluidNC) firmware receives that G-code and drives the stepper motors in real time.
 
-The project exposes RESTful APIs for various actions. Here are some key endpoints:
- • List Serial Ports: /list_serial_ports (GET)
- • Connect to Serial: /connect (POST)
- • Upload Pattern: /upload_theta_rho (POST)
- • Run Pattern: /run_theta_rho (POST)
- • Stop Execution: /stop_execution (POST)
+## Hardware
 
-## 🚀 Quick Start
+Dune Weaver comes in three premium models:
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/tuanchris/dune-weaver.git
-   cd dune-weaver
-   ```
+| | [DW Pro](https://duneweaver.com/products/dwp) | [DW Mini Pro](https://duneweaver.com/products/dwmp) | [DW Gold](https://duneweaver.com/products/dwg) |
+|---|---|---|---|
+| **Size** | 75 cm (29.5") | 25 cm (10") | 45 cm (17") |
+| **Enclosure** | IKEA VITTSJÖ table | IKEA BLANDA bowl | IKEA TORSJÖ side table |
+| **Motors** | 2 × NEMA 17 | 2 × NEMA 17 | 2 × NEMA 17 |
+| **Controller** | DLC32 | DLC32 | DLC32 |
+| **Best for** | Living rooms | Desktops | Side-table accent piece |
 
-2. **Install dependencies**:
+All models run the same software with [FluidNC](https://github.com/bdring/FluidNC) firmware — only the mechanical parts differ.
 
-   **On Raspberry Pi (full hardware support):**
-   ```bash
-   pip install -r requirements.txt
-   npm install
-   ```
+Free 3D-printable models on MakerWorld: [DW OG](https://makerworld.com/en/models/841332-dune-weaver-a-3d-printed-kinetic-sand-table#profileId-787553) · [DW Mini](https://makerworld.com/en/models/896314-mini-dune-weaver-not-your-typical-marble-run#profileId-854412)
 
-   **On Windows/Linux/macOS (development/testing):**
-   ```bash
-   pip install -r requirements-nonrpi.txt
-   npm install
-   ```
-   > **Note**: The development installation excludes Raspberry Pi GPIO libraries. The application will run fully but DW LED features will be disabled. WLED integration will still work.
+> **Build guides, BOMs, and wiring diagrams** are in the [Dune Weaver Docs](https://duneweaver.com/docs).
 
-3. **Build CSS**:
-   ```bash
-   npm run build-css
-   ```
+## Quick Start
 
-4. **Start the application**:
-   ```bash
-   python main.py
-   ```
+The fastest way to get running on a Raspberry Pi:
 
-5. **Open your browser** and navigate to `http://localhost:8080`
-
-## 📁 Project Structure
-
-```
-dune-weaver/
-├── main.py                     # FastAPI application entry point
-├── VERSION                     # Current software version
-├── modules/
-│   ├── connection/             # Serial & WebSocket connection management
-│   ├── core/                   # Core business logic
-│   │   ├── cache_manager.py    # Pattern preview caching
-│   │   ├── pattern_manager.py  # Pattern file handling
-│   │   ├── playlist_manager.py # Playlist system
-│   │   ├── state.py           # Global state management
-│   │   └── version_manager.py  # GitHub version checking
-│   ├── led/                    # WLED integration
-│   ├── mqtt/                   # MQTT support
-│   └── update/                 # Software update management
-├── patterns/                   # Pattern files (.thr format)
-├── static/                     # Web assets (CSS, JS, images)
-├── templates/                  # HTML templates
-├── firmware/                   # Hardware controller firmware
-└── requirements.txt            # Python dependencies
+```bash
+curl -fsSL https://raw.githubusercontent.com/tuanchris/dune-weaver/main/setup-pi.sh | bash
 ```
 
-## 🔧 Configuration
+This installs Docker, clones the repo, and starts the application. Once it finishes, open **http://\<hostname\>.local** in your browser.
 
-The application uses several configuration methods:
-- **Environment Variables**: `LOG_LEVEL`, connection settings
-- **State Persistence**: Settings saved to `state.json`
-- **Version Management**: Automatic GitHub release checking
+For full deployment options (Docker, manual install, development setup, Windows, and more), see the **[Deploying Backend](https://duneweaver.com/docs/deploying-backend)** guide.
 
-## 🌐 API Endpoints
+### Polar coordinates
 
-Core API endpoints for integration:
+The sand table uses **polar coordinates** instead of the typical X-Y grid:
 
-- **Pattern Management**: `/upload_theta_rho`, `/list_theta_rho_files`
-- **Execution Control**: `/run_theta_rho`, `/pause_execution`, `/stop_execution`
-- **Hardware Control**: `/connect`, `/send_home`, `/set_speed`
-- **Version Management**: `/api/version`, `/api/update`
-- **Real-time Updates**: WebSocket at `/ws/status`
+- **Theta (θ)** — the angle in radians (2π = one full revolution)
+- **Rho (ρ)** — the distance from the center (0.0 = center, 1.0 = edge)
 
-## 🤝 Contributing
+Patterns are stored as `.thr` text files — one coordinate pair per line:
 
-We welcome contributions! Please check out our [Contributing Guide](https://github.com/tuanchris/dune-weaver/wiki/Contributing) for details.
+```
+# A simple four-point star
+0.000 0.5
+1.571 0.7
+3.142 0.5
+4.712 0.7
+```
 
-## 📖 Documentation
+The same pattern file works on any table size thanks to the normalized coordinate system. You can create patterns by hand, generate them with code, or browse the built-in library.
 
-For detailed setup instructions, hardware assembly, and advanced configuration:
+## Documentation
 
-**🔗 [Visit the Complete Wiki](https://github.com/tuanchris/dune-weaver/wiki)**
+Full setup instructions, hardware assembly, firmware flashing, and advanced configuration:
+
+**[Dune Weaver Docs](https://duneweaver.com/docs)**
+
+## Contributing
+
+We welcome contributions! See the [Contributing Guide](CONTRIBUTING.md) for how to get started.
 
 ---
 
-**Happy sand drawing with Dune Weaver! ✨**
-
+**Happy sand drawing!**
