@@ -39,7 +39,7 @@ interface PlaybackStatus {
   progress: {
     current: number
     total: number
-    remaining_time: number
+    remaining_time: number | null
     elapsed_time: number
     percentage: number
     last_completed_time?: {
