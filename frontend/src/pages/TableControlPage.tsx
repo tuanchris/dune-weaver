@@ -736,7 +736,7 @@ export function TableControlPage() {
                       ) : (
                         <span className="material-icons-outlined text-2xl">swap_horiz</span>
                       )}
-                      <span className="text-xs">Clear Sideway</span>
+                      <span className="text-xs">Clear Sideways</span>
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Clear with side-to-side motion</TooltipContent>

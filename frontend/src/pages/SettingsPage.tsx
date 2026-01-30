@@ -1833,7 +1833,7 @@ export function SettingsPage() {
                         <SelectItem value="adaptive">Adaptive</SelectItem>
                         <SelectItem value="clear_from_in">Clear From Center</SelectItem>
                         <SelectItem value="clear_from_out">Clear From Perimeter</SelectItem>
-                        <SelectItem value="clear_sideway">Clear Sideway</SelectItem>
+                        <SelectItem value="clear_sideway">Clear Sideways</SelectItem>
                         <SelectItem value="random">Random</SelectItem>
                       </SelectContent>
                     </Select>

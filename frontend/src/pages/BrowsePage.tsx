@@ -53,7 +53,7 @@ const preExecutionOptions: { value: PreExecution; label: string }[] = [
   { value: 'adaptive', label: 'Adaptive' },
   { value: 'clear_from_in', label: 'Clear From Center' },
   { value: 'clear_from_out', label: 'Clear From Perimeter' },
-  { value: 'clear_sideway', label: 'Clear Sideway' },
+  { value: 'clear_sideway', label: 'Clear Sideways' },
   { value: 'none', label: 'None' },
 ]
 
