@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { toast } from 'sonner'
 import { NowPlayingBar } from '@/components/NowPlayingBar'
 import { Button } from '@/components/ui/button'
@@ -127,6 +127,8 @@ export function Layout() {
   const isResizingRef = useRef(false)
   const startYRef = useRef(0)
   const startHeightRef = useRef(0)
+
+  const [logSearchQuery, setLogSearchQuery] = useState('')
 
   // Handle drawer resize
   const handleResizeStart = (e: React.MouseEvent | React.TouchEvent) => {
@@ -562,10 +564,20 @@ export function Layout() {
     setIsLogsOpen((prev) => !prev)
   }
 
-  // Filter logs by level
-  const filteredLogs = logLevelFilter === 'ALL'
-    ? logs
-    : logs.filter((log) => log.level === logLevelFilter)
+  // Filter logs by level and search query
+  const filteredLogs = useMemo(() => {
+    let result = logLevelFilter === 'ALL'
+      ? logs
+      : logs.filter((log) => log.level === logLevelFilter)
+    if (logSearchQuery) {
+      const q = logSearchQuery.toLowerCase()
+      result = result.filter((log) =>
+        log.message?.toLowerCase().includes(q) ||
+        log.logger?.toLowerCase().includes(q)
+      )
+    }
+    return result
+  }, [logs, logLevelFilter, logSearchQuery])
 
   // Format timestamp safely
   const formatTimestamp = (timestamp: string) => {
@@ -1711,9 +1723,9 @@ export function Layout() {
             </div>
 
             {/* Logs Header */}
-            <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/50">
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium">Application Logs</span>
+            <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/50 gap-2">
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap min-w-0">
+                <span className="text-sm font-medium whitespace-nowrap">Application Logs</span>
                 <select
                   value={logLevelFilter}
                   onChange={(e) => setLogLevelFilter(e.target.value)}
@@ -1725,13 +1737,25 @@ export function Layout() {
                   <option value="WARNING">Warning</option>
                   <option value="ERROR">Error</option>
                 </select>
+                <input
+                  type="text"
+                  value={logSearchQuery}
+                  onChange={(e) => setLogSearchQuery(e.target.value)}
+                  placeholder="Search logs..."
+                  className="text-xs bg-background border rounded px-2 py-1 w-28 sm:w-40"
+                />
+                {logSearchQuery && (
+                  <Button variant="ghost" size="icon-sm" onClick={() => setLogSearchQuery('')} className="rounded-full" title="Clear search">
+                    <span className="material-icons-outlined text-sm">close</span>
+                  </Button>
+                )}
                 <span className="text-xs text-muted-foreground">
                   {filteredLogs.length}{logsTotal > 0 ? ` of ${logsTotal}` : ''} entries
                   {logsHasMore && <span className="text-primary ml-1">↑ scroll for more</span>}
                 </span>
               </div>
 
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 shrink-0">
                 <Button
                   variant="ghost"
                   size="icon-sm"

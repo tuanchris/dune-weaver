@@ -103,6 +103,11 @@ body {
   min-height: 100dvh; /* Use dynamic viewport height for mobile */
 }
 
+/* Push Sonner toasts below the Dynamic Island / notch in PWA mode */
+[data-sonner-toaster][data-y-position="top"] {
+  top: env(safe-area-inset-top, 0px) !important;
+}
+
 /* Safe area utilities for iOS notch/Dynamic Island/home indicator */
 .pt-safe {
   padding-top: env(safe-area-inset-top, 0px);
