@@ -172,9 +172,9 @@ describe('PlaylistsPage', () => {
         expect(screen.getByText('geometric')).toBeInTheDocument()
       })
 
-      // Find delete buttons (trash icons) - each playlist item should have one
+      // Find delete buttons (Trash2 icon) - each playlist item should have one
       const deleteButtons = screen.getAllByRole('button').filter(btn =>
-        btn.querySelector('.material-icons-outlined')?.textContent?.includes('delete')
+        btn.classList.contains('text-destructive') || btn.className.includes('text-destructive')
       )
 
       // Should have at least one delete button (for each playlist)

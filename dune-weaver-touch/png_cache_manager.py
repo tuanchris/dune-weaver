@@ -7,7 +7,7 @@ import asyncio
 import os
 import logging
 from pathlib import Path
-from typing import List, Tuple
+from typing import List
 try:
     from PIL import Image
 except ImportError:

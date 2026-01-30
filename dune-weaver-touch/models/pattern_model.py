@@ -1,4 +1,4 @@
-from PySide6.QtCore import QAbstractListModel, Qt, Slot, Signal
+from PySide6.QtCore import QAbstractListModel, Qt, Slot
 from PySide6.QtQml import QmlElement
 from pathlib import Path
 

@@ -93,7 +93,7 @@ def is_pi5():
         with open('/proc/device-tree/model', 'r') as f:
             model = f.read()
             return 'Pi 5' in model
-    except:
+    except Exception:
         return False
 
 def main():

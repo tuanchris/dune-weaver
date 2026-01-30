@@ -192,10 +192,10 @@ describe('Playlist Flow Integration', () => {
       const parentDiv = playlistItem.closest('[class*="group"]')
       expect(parentDiv).toBeTruthy()
 
-      // Find delete button within the same row
+      // Find delete button within the same row (uses Trash2 lucide icon with text-destructive class)
       const deleteButtons = parentDiv!.querySelectorAll('button')
       const deleteButton = Array.from(deleteButtons).find(btn =>
-        btn.querySelector('.material-icons-outlined')?.textContent === 'delete'
+        btn.classList.contains('text-destructive') || btn.className.includes('text-destructive')
       )
 
       expect(deleteButton).toBeTruthy()
