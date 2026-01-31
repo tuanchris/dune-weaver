@@ -3525,8 +3525,8 @@ async def dw_leds_effects():
     try:
         controller = state.led_controller.get_controller()
         effects = controller.get_effects()
-        # Convert tuples to lists for JSON serialization
-        effects_list = [[eid, name] for eid, name in effects]
+        # Convert tuples to lists for JSON serialization (includes uses_palette flag)
+        effects_list = [[eid, name, uses_palette] for eid, name, uses_palette in effects]
         return {
             "success": True,
             "effects": effects_list
