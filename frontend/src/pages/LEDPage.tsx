@@ -62,7 +62,7 @@ export function LEDPage() {
 
   // DW LEDs state
   const [dwStatus, setDwStatus] = useState<DWLedsStatus | null>(null)
-  const [effects, setEffects] = useState<[number, string][]>([])
+  const [effects, setEffects] = useState<[number, string, boolean][]>([])
   const [palettes, setPalettes] = useState<[number, string][]>([])
   const [brightness, setBrightness] = useState(35)
   const [speed, setSpeed] = useState(128)
@@ -77,6 +77,11 @@ export function LEDPage() {
 
   // Ref for debouncing color picker API calls
   const colorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Check if current effect uses palette
+  const currentEffectUsesPalette = effects.find(
+    (e) => e[0] === parseInt(selectedEffect)
+  )?.[2] ?? true
 
   // Effect automation state
   const [idleEffect, setIdleEffect] = useState<EffectSettings | null>(null)
@@ -142,7 +147,7 @@ export function LEDPage() {
   const fetchEffectsAndPalettes = async () => {
     try {
       const [effectsData, palettesData] = await Promise.all([
-        apiClient.get<{ effects?: [number, string][] }>('/api/dw_leds/effects'),
+        apiClient.get<{ effects?: [number, string, boolean][] }>('/api/dw_leds/effects'),
         apiClient.get<{ palettes?: [number, string][] }>('/api/dw_leds/palettes'),
       ])
 
@@ -498,8 +503,17 @@ export function LEDPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Palette</Label>
-                  <Select value={selectedPalette} onValueChange={handlePaletteChange}>
+                  <Label className={!currentEffectUsesPalette ? 'text-muted-foreground' : ''}>
+                    Palette
+                    {!currentEffectUsesPalette && (
+                      <span className="text-xs ml-2 font-normal">(not used by this effect)</span>
+                    )}
+                  </Label>
+                  <Select
+                    value={selectedPalette}
+                    onValueChange={handlePaletteChange}
+                    disabled={!currentEffectUsesPalette}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select palette..." />
                     </SelectTrigger>
