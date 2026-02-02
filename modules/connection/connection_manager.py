@@ -7,14 +7,13 @@ import websocket
 import asyncio
 import os
 
-from modules.core import pattern_manager
 from modules.core.state import state
 from modules.led.led_interface import LEDInterface
 from modules.led.idle_timeout_manager import idle_timeout_manager
 
 logger = logging.getLogger(__name__)
 
-IGNORE_PORTS = ['/dev/cu.debug-console', '/dev/cu.Bluetooth-Incoming-Port']
+IGNORE_PORTS = ['/dev/cu.debug-console', '/dev/cu.Bluetooth-Incoming-Port', '/dev/ttyS0']
 
 # Ports to deprioritize during auto-connect (shown in UI but not auto-selected)
 DEPRIORITIZED_PORTS = ['/dev/ttyS0']
@@ -113,7 +112,7 @@ class SerialConnection(BaseConnection):
         # Schedule async position update if event loop exists, otherwise skip
         # This avoids creating nested event loops which causes RuntimeError
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             # We're in async context - schedule as task (fire-and-forget)
             asyncio.create_task(update_machine_position())
             logger.debug("Scheduled async machine position update")
@@ -176,7 +175,7 @@ class WebSocketConnection(BaseConnection):
         # Schedule async position update if event loop exists, otherwise skip
         # This avoids creating nested event loops which causes RuntimeError
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             # We're in async context - schedule as task (fire-and-forget)
             asyncio.create_task(update_machine_position())
             logger.debug("Scheduled async machine position update")
@@ -188,6 +187,7 @@ class WebSocketConnection(BaseConnection):
         with self.lock:
             if self.ws:
                 self.ws.close()
+                self.ws = None
 
 def list_serial_ports():
     """Return a list of available serial ports."""
@@ -208,7 +208,7 @@ def device_init(homing=True):
             logger.fatal("Failed to get machine steps")
             state.conn.close()
             return False
-    except:
+    except Exception:
         logger.fatal("Not GRBL firmware")
         state.conn.close()
         return False
@@ -506,7 +506,7 @@ async def send_grbl_coordinates(x, y, speed=600, timeout=30, home=False):
             while time.time() - response_start < response_timeout:
                 # Check overall timeout
                 if time.time() - overall_start_time > timeout:
-                    logger.error(f"Overall timeout waiting for 'ok' response")
+                    logger.error("Overall timeout waiting for 'ok' response")
                     return False
 
                 response = await asyncio.to_thread(state.conn.readline)
@@ -717,7 +717,6 @@ def _get_steps_fluidnc():
                         try:
                             homing_cycle = int(float(response.split('=')[1].strip()))
                             # cycle >= 1 means homing is enabled in firmware
-                            firmware_homing = 1 if homing_cycle >= 1 else 0
                             logger.info(f"Firmware homing setting (cycle): {homing_cycle}, using user preference: {state.homing}")
                         except (ValueError, IndexError):
                             pass
@@ -853,14 +852,12 @@ def get_machine_steps(timeout=10):
         time.sleep(0.2)
         ready_check_attempts = 5
         controller_ready = False
-        in_alarm = False
         for _ in range(ready_check_attempts):
             if state.conn.in_waiting() > 0:
                 response = state.conn.readline()
                 if response and ('<' in response or 'Idle' in response or 'Alarm' in response):
                     controller_ready = True
                     if 'Alarm' in response:
-                        in_alarm = True
                         logger.info(f"Controller in ALARM state (likely limit switch active), proceeding with settings query: {response.strip()}")
                     else:
                         logger.debug(f"Controller ready, status: {response}")
@@ -908,7 +905,7 @@ def get_machine_steps(timeout=10):
             state.table_type = 'dune_weaver_mini'
         elif y_steps_per_mm == 210 and x_steps_per_mm == 256:
             state.table_type = 'dune_weaver_mini_pro_byj'
-        elif y_steps_per_mm == 270 and x_steps_per_mm == 200:
+        elif (y_steps_per_mm == 270 or y_steps_per_mm == 250) and x_steps_per_mm == 200:
             state.table_type = 'dune_weaver_gold'
         elif y_steps_per_mm == 287:
             state.table_type = 'dune_weaver'
@@ -946,8 +943,10 @@ def get_machine_steps(timeout=10):
         return True
     else:
         missing = []
-        if x_steps_per_mm is None: missing.append("X steps/mm")
-        if y_steps_per_mm is None: missing.append("Y steps/mm")
+        if x_steps_per_mm is None:
+            missing.append("X steps/mm")
+        if y_steps_per_mm is None:
+            missing.append("Y steps/mm")
         logger.error(f"Failed to get all machine parameters after {timeout}s. Missing: {', '.join(missing)}")
         return False
 
@@ -1062,13 +1061,13 @@ def home(timeout=120):
                     try:
                         if effective_table_type == 'dune_weaver_mini':
                             result = loop.run_until_complete(send_grbl_coordinates(0, -30, homing_speed, home=True))
-                            if result == False:
+                            if not result:
                                 logger.error("Crash homing fallback failed")
                                 homing_complete.set()
                                 return
                         else:
                             result = loop.run_until_complete(send_grbl_coordinates(0, -22, homing_speed, home=True))
-                            if result == False:
+                            if not result:
                                 logger.error("Crash homing fallback failed")
                                 homing_complete.set()
                                 return
@@ -1105,7 +1104,7 @@ def home(timeout=120):
                     try:
                         # Send G1 X0 Y0 F{homing_speed}
                         result = loop.run_until_complete(send_grbl_coordinates(0, 0, homing_speed))
-                        if result == False:
+                        if not result:
                             logger.error("Position zeroing failed - send_grbl_coordinates returned False")
                             homing_complete.set()
                             return
@@ -1138,14 +1137,14 @@ def home(timeout=120):
                 try:
                     if effective_table_type == 'dune_weaver_mini':
                         result = loop.run_until_complete(send_grbl_coordinates(0, -30, homing_speed, home=True))
-                        if result == False:
+                        if not result:
                             logger.error("Crash homing failed - send_grbl_coordinates returned False")
                             homing_complete.set()
                             return
                         state.machine_y -= 30
                     else:
                         result = loop.run_until_complete(send_grbl_coordinates(0, -22, homing_speed, home=True))
-                        if result == False:
+                        if not result:
                             logger.error("Crash homing failed - send_grbl_coordinates returned False")
                             homing_complete.set()
                             return
@@ -1228,7 +1227,7 @@ def check_idle():
             try:
                 # Try to schedule in existing event loop if available
                 try:
-                    loop = asyncio.get_running_loop()
+                    asyncio.get_running_loop()
                     # Create a task but don't await it (fire and forget)
                     asyncio.create_task(update_machine_position())
                     logger.debug("Scheduled machine position update task")
