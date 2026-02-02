@@ -1,10 +1,9 @@
-# TODO: Revert image tags from feature-react-ui to main before merging to main branch
 services:
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    image: ghcr.io/tuanchris/dune-weaver-frontend:feature-react-ui
+    image: ghcr.io/tuanchris/dune-weaver-frontend:main
     restart: always
     cap_add:
       - SYS_NICE  # Enable real-time thread priority for smooth UART communication
@@ -19,7 +18,7 @@ services:
 
   backend:
     build: .
-    image: ghcr.io/tuanchris/dune-weaver:feature-react-ui
+    image: ghcr.io/tuanchris/dune-weaver:main
     restart: always
     # Pin motion-critical backend to cores 0-2 (Raspberry Pi 4/5 has cores 0-3)
     # This prevents CPU contention from touch app blocking I/O calls

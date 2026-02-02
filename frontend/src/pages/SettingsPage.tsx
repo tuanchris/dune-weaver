@@ -2208,7 +2208,16 @@ export function SettingsPage() {
               <div className="flex-1">
                 <p className="font-medium">Latest Version</p>
                 <p className={`text-sm ${versionInfo?.update_available ? 'text-green-600 dark:text-green-400 font-medium' : 'text-muted-foreground'}`}>
-                  {versionInfo?.latest ? `v${versionInfo.latest}` : 'Checking...'}
+                  {versionInfo?.latest ? (
+                    <a
+                      href={`https://github.com/tuanchris/dune-weaver/releases/tag/v${versionInfo.latest}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline underline-offset-2 hover:opacity-80 transition-opacity"
+                    >
+                      v{versionInfo.latest}
+                    </a>
+                  ) : 'Checking...'}
                   {versionInfo?.update_available && ' (Update available!)'}
                 </p>
               </div>

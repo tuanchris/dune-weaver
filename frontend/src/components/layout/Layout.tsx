@@ -70,6 +70,9 @@ export function Layout() {
   const [sensorHomingFailed, setSensorHomingFailed] = useState(false)
   const [isRecoveringHoming, setIsRecoveringHoming] = useState(false)
 
+  // Update availability
+  const [updateAvailable, setUpdateAvailable] = useState(false)
+
   // Fetch app settings
   const fetchAppSettings = () => {
     apiClient.get<{ app?: { name?: string; custom_logo?: string } }>('/api/settings')
@@ -97,6 +100,17 @@ export function Layout() {
       window.removeEventListener('branding-updated', handleBrandingUpdate)
     }
     // Refetch when active table changes
+  }, [activeTable?.id])
+
+  // Check for software updates on mount
+  useEffect(() => {
+    apiClient.get<{ update_available?: boolean }>('/api/version')
+      .then((data) => {
+        if (data.update_available) {
+          setUpdateAvailable(true)
+        }
+      })
+      .catch(() => {})
   }, [activeTable?.id])
 
   // Homing completion countdown timer
@@ -1557,6 +1571,14 @@ export function Layout() {
 
           {/* Desktop actions */}
           <div className="hidden md:flex items-center gap-0 ml-2">
+            {updateAvailable && (
+              <Link to="/settings?section=version" title="Software update available">
+                <span className="relative flex items-center justify-center w-8 h-8 rounded-full hover:bg-accent transition-colors">
+                  <span className="material-icons-outlined text-xl">download</span>
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                </span>
+              </Link>
+            )}
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -1608,6 +1630,14 @@ export function Layout() {
 
           {/* Mobile actions */}
           <div className="flex md:hidden items-center gap-0 ml-2">
+            {updateAvailable && (
+              <Link to="/settings?section=version" title="Software update available">
+                <span className="relative flex items-center justify-center w-8 h-8 rounded-full hover:bg-accent transition-colors">
+                  <span className="material-icons-outlined text-xl">download</span>
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                </span>
+              </Link>
+            )}
             <Popover open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
               <PopoverTrigger asChild>
                 <Button
