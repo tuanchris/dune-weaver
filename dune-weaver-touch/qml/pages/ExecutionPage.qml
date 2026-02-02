@@ -14,17 +14,12 @@ Page {
     
     // Debug backend connection
     onBackendChanged: {
-        console.log("ExecutionPage: backend changed to", backend)
         if (backend) {
-            console.log("ExecutionPage: backend.serialConnected =", backend.serialConnected)
-            console.log("ExecutionPage: backend.isConnected =", backend.isConnected)
         }
     }
     
     Component.onCompleted: {
-        console.log("ExecutionPage: Component completed, backend =", backend)
         if (backend) {
-            console.log("ExecutionPage: initial serialConnected =", backend.serialConnected)
         }
     }
     
@@ -33,20 +28,14 @@ Page {
         target: backend
 
         function onSerialConnectionChanged(connected) {
-            console.log("ExecutionPage: received serialConnectionChanged signal:", connected)
         }
 
         function onConnectionChanged() {
-            console.log("ExecutionPage: received connectionChanged signal")
             if (backend) {
-                console.log("ExecutionPage: after connectionChanged, serialConnected =", backend.serialConnected)
             }
         }
 
         function onExecutionStarted(fileName, preview) {
-            console.log("🎯 ExecutionPage: executionStarted signal received!")
-            console.log("🎯 Pattern:", fileName)
-            console.log("🎯 Preview path:", preview)
             // Update preview directly from backend signal
             patternName = fileName
             patternPreview = preview
@@ -125,9 +114,7 @@ Page {
                             if (patternPreview) {
                                 // Backend returns absolute path, just add file:// prefix
                                 finalSource = "file://" + patternPreview
-                                console.log("🖼️ Using backend patternPreview:", finalSource)
                             } else {
-                                console.log("🖼️ No preview from backend")
                             }
 
                             return finalSource
@@ -135,18 +122,13 @@ Page {
                         fillMode: Image.PreserveAspectFit
 
                         onStatusChanged: {
-                            console.log("📷 Image status:", status, "for source:", source)
                             if (status === Image.Error) {
-                                console.log("❌ Image failed to load:", source)
                             } else if (status === Image.Ready) {
-                                console.log("✅ Image loaded successfully:", source)
                             } else if (status === Image.Loading) {
-                                console.log("🔄 Image loading:", source)
                             }
                         }
 
                         onSourceChanged: {
-                            console.log("🔄 Image source changed to:", source)
                         }
                         
                         Rectangle {
@@ -429,10 +411,10 @@ Page {
                                     
                                     // Speed buttons
                                     Repeater {
-                                        model: ["100", "150", "200", "300", "500"]
-                                        
+                                        model: ["50", "100", "150", "200", "300", "500"]
+
                                         Rectangle {
-                                            width: (speedControlRow.width - 32) / 5  // Distribute evenly with spacing
+                                            width: (speedControlRow.width - 40) / 6  // Distribute evenly with spacing
                                             height: 50
                                             color: speedControlRow.currentSelection === modelData ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
                                             border.color: speedControlRow.currentSelection === modelData ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder

@@ -9,6 +9,7 @@ Rectangle {
     property color buttonColor: "#2196F3"
     property bool enabled: true
     property int fontSize: 16
+    property int iconSize: -1  // -1 means use fontSize + 2
 
     signal clicked()
 
@@ -51,7 +52,8 @@ Rectangle {
         
         Text {
             text: parent.parent.icon
-            font.pixelSize: parent.parent.fontSize + 2
+            font.pixelSize: parent.parent.iconSize > 0 ? parent.parent.iconSize : parent.parent.fontSize + 2
+            color: "white"
             visible: parent.parent.icon !== ""
         }
         

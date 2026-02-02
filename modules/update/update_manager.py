@@ -50,46 +50,76 @@ def check_git_updates():
         }
 
 def update_software():
-    """Update the software to the latest version."""
+    """Update the software to the latest version.
+
+    This runs inside the Docker container, so it:
+    1. Pulls latest code via git (mounted volume at /app)
+    2. Pulls new Docker image for the backend
+    3. Restarts the container to apply updates
+
+    Note: For a complete update including container recreation,
+    run 'dw update' from the host machine instead.
+    """
     error_log = []
     logger.info("Starting software update process")
 
-    def run_command(command, error_message):
+    def run_command(command, error_message, capture_output=False, cwd=None):
         try:
             logger.debug(f"Running command: {' '.join(command)}")
-            subprocess.run(command, check=True)
+            result = subprocess.run(command, check=True, capture_output=capture_output, text=True, cwd=cwd)
+            return result.stdout if capture_output else True
         except subprocess.CalledProcessError as e:
             logger.error(f"{error_message}: {e}")
             error_log.append(error_message)
+            return None
 
-    try:
-        subprocess.run(["git", "fetch", "--tags"], check=True)
-        latest_remote_tag = subprocess.check_output(
-            ["git", "describe", "--tags", "--abbrev=0", "origin/main"]
-        ).strip().decode()
-        logger.info(f"Latest remote tag: {latest_remote_tag}")
-    except subprocess.CalledProcessError as e:
-        error_msg = f"Failed to fetch tags or get latest remote tag: {e}"
-        logger.error(error_msg)
-        error_log.append(error_msg)
-        return False, error_msg, error_log
+    # Step 1: Pull latest code via git (works because /app is mounted from host)
+    logger.info("Pulling latest code from git...")
+    git_result = run_command(
+        ["git", "pull", "--ff-only"],
+        "Failed to pull latest code from git",
+        cwd="/app"
+    )
+    if git_result:
+        logger.info("Git pull completed successfully")
 
-    run_command(["git", "checkout", latest_remote_tag, '--force'], f"Failed to checkout version {latest_remote_tag}")
+    # Step 2: Pull new Docker image for the backend only
+    # Note: There is no separate frontend image - it's either bundled or built locally
+    logger.info("Pulling latest Docker image...")
+    run_command(
+        ["docker", "pull", "ghcr.io/tuanchris/dune-weaver:main"],
+        "Failed to pull backend Docker image"
+    )
 
-    # Pull new image and restart container using direct docker commands
-    # Note: docker restart reuses the existing container, so code changes (via volume mount)
-    # are picked up immediately. For image changes (new dependencies), manual recreation is needed.
-    run_command(["docker", "pull", "ghcr.io/tuanchris/dune-weaver:main"], "Failed to pull Docker image")
-    run_command(["docker", "restart", "dune-weaver"], "Failed to restart Docker container")
+    # Step 3: Restart the backend container to apply updates
+    # We can't recreate ourselves from inside the container, so we just restart
+    # For full container recreation with new images, use 'dw update' from host
+    logger.info("Restarting backend container...")
 
-    update_status = check_git_updates()
+    # Use docker restart which works from inside the container
+    restart_result = run_command(
+        ["docker", "restart", "dune-weaver-backend"],
+        "Failed to restart backend container"
+    )
 
-    if (
-        update_status["updates_available"] is False
-        and update_status["latest_local_tag"] == update_status["latest_remote_tag"]
-    ):
-        logger.info("Software update completed successfully")
-        return True, None, None
-    else:
-        logger.error("Software update incomplete")
-        return False, "Update incomplete", error_log
+    if not restart_result:
+        # If docker restart fails, try a graceful approach
+        logger.info("Attempting graceful restart via compose...")
+        try:
+            # Just restart, don't try to recreate (which would fail)
+            subprocess.run(
+                ["docker", "compose", "restart", "backend"],
+                check=True,
+                cwd="/app"
+            )
+            logger.info("Container restarted successfully via compose")
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            logger.warning(f"Compose restart also failed: {e}")
+            error_log.append("Container restart failed - please run 'dw update' from host")
+
+    if error_log:
+        logger.error(f"Software update completed with errors: {error_log}")
+        return False, "Update completed with errors. For best results, run 'dw update' from the host machine.", error_log
+
+    logger.info("Software update completed successfully")
+    return True, None, None

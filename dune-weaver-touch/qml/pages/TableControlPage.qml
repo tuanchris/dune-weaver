@@ -18,17 +18,14 @@ Page {
         target: backend
         
         function onSerialPortsUpdated(ports) {
-            console.log("Serial ports updated:", ports)
             serialPorts = ports
         }
         
         function onSerialConnectionChanged(connected) {
-            console.log("Serial connection changed:", connected)
             isSerialConnected = connected
         }
         
         function onCurrentPortChanged(port) {
-            console.log("Current port changed:", port)
             if (port) {
                 selectedPort = port
             }
@@ -36,7 +33,6 @@ Page {
         
         
         function onSettingsLoaded() {
-            console.log("Settings loaded")
             if (backend) {
                 autoPlayOnBoot = backend.autoPlayOnBoot
                 isSerialConnected = backend.serialConnected
@@ -213,6 +209,7 @@ Page {
                                 Layout.preferredHeight: 40
                                 text: isSerialConnected ? "Disconnect" : "Connect"
                                 icon: isSerialConnected ? "◉" : "○"
+                                iconSize: 20
                                 buttonColor: isSerialConnected ? "#dc2626" : "#059669"
                                 fontSize: 11
                                 enabled: isSerialConnected || selectedPort !== ""
@@ -239,6 +236,7 @@ Page {
                                 Layout.preferredHeight: 35
                                 text: "Refresh Ports"
                                 icon: "↻"
+                                iconSize: 18
                                 buttonColor: "#6b7280"
                                 fontSize: 10
                                 
@@ -279,6 +277,7 @@ Page {
                                 Layout.preferredHeight: 45
                                 text: "Home"
                                 icon: "⌂"
+                                iconSize: 20
                                 buttonColor: "#2563eb"
                                 fontSize: 12
                                 enabled: isSerialConnected
@@ -293,6 +292,7 @@ Page {
                                 Layout.preferredHeight: 45
                                 text: "Center"
                                 icon: "◎"
+                                iconSize: 20
                                 buttonColor: "#2563eb"
                                 fontSize: 12
                                 enabled: isSerialConnected
@@ -307,6 +307,7 @@ Page {
                                 Layout.preferredHeight: 45
                                 text: "Perimeter"
                                 icon: "○"
+                                iconSize: 20
                                 buttonColor: "#2563eb"
                                 fontSize: 12
                                 enabled: isSerialConnected
@@ -575,6 +576,60 @@ Page {
 
                                 onToggled: {
                                     Components.ThemeManager.darkMode = checked
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // System Controls Section
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 100
+                    Layout.margins: 5
+                    radius: 8
+                    color: Components.ThemeManager.surfaceColor
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 15
+                        spacing: 10
+
+                        Label {
+                            text: "System Controls"
+                            font.pixelSize: 14
+                            font.bold: true
+                            color: Components.ThemeManager.textPrimary
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+
+                            ModernControlButton {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 45
+                                text: "Restart Backend"
+                                icon: "↻"
+                                iconSize: 20
+                                buttonColor: "#f59e0b"
+                                fontSize: 11
+
+                                onClicked: {
+                                    if (backend) backend.restartBackend()
+                                }
+                            }
+
+                            ModernControlButton {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 45
+                                text: "Shutdown Pi"
+                                icon: ""
+                                buttonColor: "#dc2626"
+                                fontSize: 11
+
+                                onClicked: {
+                                    if (backend) backend.shutdownPi()
                                 }
                             }
                         }

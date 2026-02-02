@@ -1,8 +1,11 @@
 # state.py
+import asyncio
 import threading
 import json
 import os
 import logging
+import uuid
+from typing import Optional, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -14,13 +17,22 @@ class AppState:
     def __init__(self):
         # Private variables for properties
         self._current_playing_file = None
+        self._current_coordinates = None  # Cache parsed coordinates for current file (avoids re-parsing large files)
+        self._current_preview = None  # Cache (file_name, base64_data) for current pattern preview
+        self._next_preview = None  # Cache (file_name, base64_data) for next pattern preview
         self._pause_requested = False
         self._speed = 100
         self._current_playlist = None
         self._current_playlist_name = None  # New variable for playlist name
         
+        # Execution control flags (with event support for async waiting)
+        self._stop_requested = False
+        self._skip_requested = False
+        self._stop_event: Optional[asyncio.Event] = None
+        self._skip_event: Optional[asyncio.Event] = None
+        self._event_loop: Optional[asyncio.AbstractEventLoop] = None
+
         # Regular state variables
-        self.stop_requested = False
         self.pause_condition = threading.Condition()
         self.execution_progress = None
         self.is_clearing = False
@@ -29,6 +41,7 @@ class AppState:
         self.current_playlist_index = 0
         self.playlist_mode = "loop"
         self.pause_time_remaining = 0
+        self.active_clear_pattern = None  # Runtime: clear pattern mode for current playlist (not persisted)
         
         # Machine position variables
         self.machine_x = 0.0
@@ -39,10 +52,20 @@ class AppState:
 
         # Homing mode: 0 = crash homing, 1 = sensor homing ($H)
         self.homing = 0
+        # Track if user has explicitly set homing preference (vs auto-detected)
+        # When False/None, homing mode can be auto-detected from firmware ($22 setting)
+        self.homing_user_override = False
 
         # Homing state tracking (for sensor mode)
         self.homed_x = False  # Set to True when [MSG:Homed:X] is received
         self.homed_y = False  # Set to True when [MSG:Homed:Y] is received
+
+        # Homing in progress flag - blocks other movement operations
+        self.is_homing = False
+
+        # Sensor homing failure flag - set when sensor homing fails
+        # This indicates to the UI that sensor homing failed and user action is needed
+        self.sensor_homing_failed = False
 
         # Angular homing compass reference point
         # This is the angular offset in degrees where the sensor is placed
@@ -54,6 +77,11 @@ class AppState:
         self.auto_home_enabled = False
         self.auto_home_after_patterns = 5  # Number of patterns after which to auto-home
         self.patterns_since_last_home = 0  # Counter for patterns played since last home
+
+        # Hard reset on theta reset (sends $Bye to FluidNC to reset machine position)
+        # When False (default), only normalizes theta to [0, 2π) without machine reset
+        # When True, also performs soft reset which clears all position counters
+        self.hard_reset_theta = False
 
         self.STATE_FILE = "state.json"
         self.mqtt_handler = None  # Will be set by the MQTT handler
@@ -67,9 +95,9 @@ class AppState:
         # DW LED settings
         self.dw_led_num_leds = 60  # Number of LEDs in strip
         self.dw_led_gpio_pin = 18  # GPIO pin (12, 13, 18, or 19)
-        self.dw_led_pixel_order = "GRB"  # Pixel color order for WS281x (GRB, RGB, BGR, etc.)
+        self.dw_led_pixel_order = "RGB"  # Pixel color order for WS281x (RGB for WS2815, GRB for WS2812)
         self.dw_led_brightness = 35  # Brightness 0-100
-        self.dw_led_speed = 128  # Effect speed 0-255
+        self.dw_led_speed = 50  # Effect speed 0-255
         self.dw_led_intensity = 128  # Effect intensity 0-255
 
         # Idle effect settings (all parameters)
@@ -82,7 +110,6 @@ class AppState:
         self.dw_led_idle_timeout_enabled = False  # Enable automatic LED turn off after idle period
         self.dw_led_idle_timeout_minutes = 30  # Idle timeout duration in minutes
         self.dw_led_last_activity_time = None  # Last activity timestamp (runtime only, not persisted)
-        self.skip_requested = False
         self.table_type = None
         self.table_type_override = None  # User override for table type detection
         self._playlist_mode = "loop"
@@ -95,6 +122,14 @@ class AppState:
         
         # Application name setting
         self.app_name = "Dune Weaver"  # Default app name
+
+        # Multi-table identity (for network discovery)
+        self.table_id = str(uuid.uuid4())  # UUID generated on first run, persistent across restarts
+        self.table_name = "Dune Weaver"  # User-customizable table name
+
+        # Known remote tables (for multi-table management)
+        # List of dicts: [{id, name, url, host?, port?, version?}, ...]
+        self.known_tables = []
 
         # Custom branding settings (filenames only, files stored in static/custom/)
         # Favicon is auto-generated from logo as logo-favicon.ico
@@ -115,6 +150,13 @@ class AppState:
         self.scheduled_pause_finish_pattern = False  # Finish current pattern before pausing
         self.scheduled_pause_timezone = None  # User-selected timezone (None = use system timezone)
 
+        # Server port setting (requires restart to take effect)
+        self.server_port = 8080  # Default server port
+
+        # Machine timezone setting (IANA timezone, e.g., "America/New_York", "UTC")
+        # Used for logging timestamps and scheduling features
+        self.timezone = "UTC"  # Default to UTC
+
         # MQTT settings (UI-configurable, overrides .env if set)
         self.mqtt_enabled = False  # Master enable/disable for MQTT
         self.mqtt_broker = ""  # MQTT broker IP/hostname
@@ -134,10 +176,16 @@ class AppState:
 
     @current_playing_file.setter
     def current_playing_file(self, value):
+        # Clear cached data when file changes or is unset
+        if value != self._current_playing_file or value is None:
+            self._current_coordinates = None
+            self._current_preview = None
+            self._next_preview = None
+
         self._current_playing_file = value
-        
+
         # force an empty string (and not None) if we need to unset
-        if value == None:
+        if value is None:
             value = ""
         if self.mqtt_handler:
             is_running = bool(value and not self._pause_requested)
@@ -173,7 +221,7 @@ class AppState:
         self._current_playlist = value
         
         # force an empty string (and not None) if we need to unset
-        if value == None:
+        if value is None:
             value = ""
             # Also clear the playlist name when playlist is cleared
             self._current_playlist_name = None
@@ -222,6 +270,168 @@ class AppState:
     def clear_pattern_speed(self, value):
         self._clear_pattern_speed = value
 
+    # --- Execution Control Properties (stop/skip with event support) ---
+
+    def _ensure_events(self):
+        """Lazily create asyncio.Event objects in the current event loop."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop - skip event creation (sync code path)
+            return
+
+        # Recreate events if the event loop changed
+        if self._event_loop != loop:
+            self._event_loop = loop
+            self._stop_event = asyncio.Event()
+            self._skip_event = asyncio.Event()
+            # Sync event state with current flags
+            if self._stop_requested:
+                self._stop_event.set()
+            if self._skip_requested:
+                self._skip_event.set()
+
+    @property
+    def stop_requested(self) -> bool:
+        return self._stop_requested
+
+    @stop_requested.setter
+    def stop_requested(self, value: bool):
+        self._stop_requested = value
+        self._ensure_events()
+        if self._stop_event and self._event_loop:
+            # asyncio.Event.set()/clear() are NOT thread-safe
+            # Use call_soon_threadsafe when called from non-async threads (e.g., motion thread)
+            try:
+                if asyncio.get_running_loop() == self._event_loop:
+                    # Same loop - safe to call directly
+                    if value:
+                        self._stop_event.set()
+                    else:
+                        self._stop_event.clear()
+                else:
+                    # Different loop - use thread-safe call
+                    if value:
+                        self._event_loop.call_soon_threadsafe(self._stop_event.set)
+                    else:
+                        self._event_loop.call_soon_threadsafe(self._stop_event.clear)
+            except RuntimeError:
+                # No running loop (sync context) - use thread-safe call
+                if self._event_loop.is_running():
+                    if value:
+                        self._event_loop.call_soon_threadsafe(self._stop_event.set)
+                    else:
+                        self._event_loop.call_soon_threadsafe(self._stop_event.clear)
+
+    @property
+    def skip_requested(self) -> bool:
+        return self._skip_requested
+
+    @skip_requested.setter
+    def skip_requested(self, value: bool):
+        self._skip_requested = value
+        self._ensure_events()
+        if self._skip_event and self._event_loop:
+            # asyncio.Event.set()/clear() are NOT thread-safe
+            # Use call_soon_threadsafe when called from non-async threads (e.g., motion thread)
+            try:
+                if asyncio.get_running_loop() == self._event_loop:
+                    # Same loop - safe to call directly
+                    if value:
+                        self._skip_event.set()
+                    else:
+                        self._skip_event.clear()
+                else:
+                    # Different loop - use thread-safe call
+                    if value:
+                        self._event_loop.call_soon_threadsafe(self._skip_event.set)
+                    else:
+                        self._event_loop.call_soon_threadsafe(self._skip_event.clear)
+            except RuntimeError:
+                # No running loop (sync context) - use thread-safe call
+                if self._event_loop.is_running():
+                    if value:
+                        self._event_loop.call_soon_threadsafe(self._skip_event.set)
+                    else:
+                        self._event_loop.call_soon_threadsafe(self._skip_event.clear)
+
+    def get_stop_event(self) -> Optional[asyncio.Event]:
+        """Get the stop event for async waiting. Returns None if no event loop."""
+        self._ensure_events()
+        return self._stop_event
+
+    def get_skip_event(self) -> Optional[asyncio.Event]:
+        """Get the skip event for async waiting. Returns None if no event loop."""
+        self._ensure_events()
+        return self._skip_event
+
+    async def wait_for_interrupt(
+        self,
+        timeout: float = 1.0,
+        check_stop: bool = True,
+        check_skip: bool = True,
+    ) -> Literal['timeout', 'stopped', 'skipped']:
+        """
+        Wait for a stop/skip interrupt or timeout.
+
+        This provides instant response to stop/skip requests by waiting on
+        asyncio.Event objects rather than polling flags.
+
+        Args:
+            timeout: Maximum time to wait in seconds
+            check_stop: Whether to check for stop requests
+            check_skip: Whether to check for skip requests
+
+        Returns:
+            'stopped' if stop was requested
+            'skipped' if skip was requested
+            'timeout' if timeout elapsed without interrupt
+        """
+        # Quick flag check first (handles edge cases and sync code)
+        if check_stop and self._stop_requested:
+            return 'stopped'
+        if check_skip and self._skip_requested:
+            return 'skipped'
+
+        self._ensure_events()
+
+        # Build list of event wait tasks
+        tasks = []
+        if check_stop and self._stop_event:
+            tasks.append(asyncio.create_task(self._stop_event.wait(), name='stop'))
+        if check_skip and self._skip_event:
+            tasks.append(asyncio.create_task(self._skip_event.wait(), name='skip'))
+
+        if not tasks:
+            # No events available, fall back to simple sleep
+            await asyncio.sleep(timeout)
+            return 'timeout'
+
+        # Add timeout task
+        timeout_task = asyncio.create_task(asyncio.sleep(timeout), name='timeout')
+        tasks.append(timeout_task)
+
+        pending = set()  # Initialize to empty set to avoid UnboundLocalError
+        try:
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            # Cancel all pending tasks
+            for task in pending:
+                task.cancel()
+            # Await cancelled tasks to suppress warnings
+            for task in pending:
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+        # Check which event fired (flags are authoritative)
+        if check_stop and self._stop_requested:
+            return 'stopped'
+        if check_skip and self._skip_requested:
+            return 'skipped'
+        return 'timeout'
+
     @property
     def shuffle(self):
         return self._shuffle
@@ -247,9 +457,11 @@ class AppState:
             "y_steps_per_mm": self.y_steps_per_mm,
             "gear_ratio": self.gear_ratio,
             "homing": self.homing,
+            "homing_user_override": self.homing_user_override,
             "angular_homing_offset_degrees": self.angular_homing_offset_degrees,
             "auto_home_enabled": self.auto_home_enabled,
             "auto_home_after_patterns": self.auto_home_after_patterns,
+            "hard_reset_theta": self.hard_reset_theta,
             "current_playlist": self._current_playlist,
             "current_playlist_name": self._current_playlist_name,
             "current_playlist_index": self.current_playlist_index,
@@ -275,6 +487,9 @@ class AppState:
             "dw_led_idle_timeout_enabled": self.dw_led_idle_timeout_enabled,
             "dw_led_idle_timeout_minutes": self.dw_led_idle_timeout_minutes,
             "app_name": self.app_name,
+            "table_id": self.table_id,
+            "table_name": self.table_name,
+            "known_tables": self.known_tables,
             "custom_logo": self.custom_logo,
             "auto_play_enabled": self.auto_play_enabled,
             "auto_play_playlist": self.auto_play_playlist,
@@ -287,6 +502,7 @@ class AppState:
             "scheduled_pause_control_wled": self.scheduled_pause_control_wled,
             "scheduled_pause_finish_pattern": self.scheduled_pause_finish_pattern,
             "scheduled_pause_timezone": self.scheduled_pause_timezone,
+            "timezone": self.timezone,
             "mqtt_enabled": self.mqtt_enabled,
             "mqtt_broker": self.mqtt_broker,
             "mqtt_port": self.mqtt_port,
@@ -315,9 +531,11 @@ class AppState:
         self.y_steps_per_mm = data.get("y_steps_per_mm", 0.0)
         self.gear_ratio = data.get('gear_ratio', 10)
         self.homing = data.get('homing', 0)
+        self.homing_user_override = data.get('homing_user_override', False)
         self.angular_homing_offset_degrees = data.get('angular_homing_offset_degrees', 0.0)
         self.auto_home_enabled = data.get('auto_home_enabled', False)
         self.auto_home_after_patterns = data.get('auto_home_after_patterns', 5)
+        self.hard_reset_theta = data.get('hard_reset_theta', False)
         self._current_playlist = data.get("current_playlist", None)
         self._current_playlist_name = data.get("current_playlist_name", None)
         self.current_playlist_index = data.get("current_playlist_index", None)
@@ -334,9 +552,9 @@ class AppState:
         self.led_provider = data.get('led_provider', "none")
         self.dw_led_num_leds = data.get('dw_led_num_leds', 60)
         self.dw_led_gpio_pin = data.get('dw_led_gpio_pin', 18)
-        self.dw_led_pixel_order = data.get('dw_led_pixel_order', "GRB")
+        self.dw_led_pixel_order = data.get('dw_led_pixel_order', "RGB")
         self.dw_led_brightness = data.get('dw_led_brightness', 35)
-        self.dw_led_speed = data.get('dw_led_speed', 128)
+        self.dw_led_speed = data.get('dw_led_speed', 50)
         self.dw_led_intensity = data.get('dw_led_intensity', 128)
 
         # Load effect settings (handle both old string format and new dict format)
@@ -361,6 +579,12 @@ class AppState:
         self.dw_led_idle_timeout_minutes = data.get('dw_led_idle_timeout_minutes', 30)
 
         self.app_name = data.get("app_name", "Dune Weaver")
+        # Load or generate table_id (UUID persisted once generated)
+        self.table_id = data.get("table_id", None)
+        if self.table_id is None:
+            self.table_id = str(uuid.uuid4())
+        self.table_name = data.get("table_name", "Dune Weaver")
+        self.known_tables = data.get("known_tables", [])
         self.custom_logo = data.get("custom_logo", None)
         self.auto_play_enabled = data.get("auto_play_enabled", False)
         self.auto_play_playlist = data.get("auto_play_playlist", None)
@@ -373,6 +597,7 @@ class AppState:
         self.scheduled_pause_control_wled = data.get("scheduled_pause_control_wled", False)
         self.scheduled_pause_finish_pattern = data.get("scheduled_pause_finish_pattern", False)
         self.scheduled_pause_timezone = data.get("scheduled_pause_timezone", None)
+        self.timezone = data.get("timezone", "UTC")
         self.mqtt_enabled = data.get("mqtt_enabled", False)
         self.mqtt_broker = data.get("mqtt_broker", "")
         self.mqtt_port = data.get("mqtt_port", 1883)

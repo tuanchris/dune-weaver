@@ -1,0 +1,6 @@
+# Ensure shell scripts always have LF line endings
+*.sh text eol=lf
+
+# Keep these as LF regardless of platform
+Dockerfile text eol=lf
+nginx.conf text eol=lf

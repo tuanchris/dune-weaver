@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dune Weaver - Redirecting</title>
+    <meta http-equiv="refresh" content="3;url=/">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #e4e4e7;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+            max-width: 500px;
+        }
+        .icon {
+            font-size: 4rem;
+            margin-bottom: 1.5rem;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        h1 {
+            font-size: 1.75rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #f4f4f5;
+        }
+        p {
+            font-size: 1rem;
+            color: #a1a1aa;
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+        .highlight {
+            color: #60a5fa;
+            font-weight: 500;
+        }
+        .countdown {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #60a5fa;
+            margin: 1rem 0;
+        }
+        a {
+            color: #60a5fa;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .note {
+            font-size: 0.875rem;
+            color: #71717a;
+            margin-top: 2rem;
+            padding-top: 1rem;
+            border-top: 1px solid #27272a;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">🏜️</div>
+        <h1>Dune Weaver Has a New Home!</h1>
+        <p>
+            The frontend has moved to <span class="highlight">port 80</span>.<br>
+            You're currently on port 8080 (API only).
+        </p>
+        <p>Redirecting in <span class="countdown" id="countdown">3</span> seconds...</p>
+        <p><a href="/" id="redirect-link">Click here</a> if not redirected automatically.</p>
+        <p class="note">
+            Tip: Access Dune Weaver directly at <strong>http://{{ host }}</strong> (no port needed)
+        </p>
+    </div>
+    <script>
+        // Countdown timer
+        let seconds = 3;
+        const countdownEl = document.getElementById('countdown');
+        const redirectLink = document.getElementById('redirect-link');
+
+        // Build redirect URL (same host, port 80)
+        const currentHost = window.location.hostname;
+        const newUrl = 'http://' + currentHost + '/';
+        redirectLink.href = newUrl;
+
+        const timer = setInterval(() => {
+            seconds--;
+            countdownEl.textContent = seconds;
+            if (seconds <= 0) {
+                clearInterval(timer);
+                window.location.href = newUrl;
+            }
+        }, 1000);
+    </script>
+</body>
+</html>

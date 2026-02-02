@@ -1,10 +1,10 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import JSONResponse, FileResponse, Response
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from typing import List, Optional, Tuple, Dict, Any, Union
-import atexit
+from typing import List, Optional
 import os
 import logging
 from datetime import datetime, time
@@ -32,7 +32,6 @@ import time
 import argparse
 import subprocess
 import platform
-from modules.core import process_pool as pool_module
 
 # Get log level from environment variable, default to INFO
 log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -47,7 +46,8 @@ logging.basicConfig(
 )
 
 # Initialize memory log handler for web UI log viewer
-init_memory_handler(max_entries=500)
+# Increased to 5000 entries to support lazy loading in the UI
+init_memory_handler(max_entries=5000)
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,12 @@ def _start_idle_led_timeout():
         state=state,
         check_idle_callback=_check_table_is_idle
     )
+
+
+def check_homing_in_progress():
+    """Check if homing is in progress and raise exception if so."""
+    if state.is_homing:
+        raise HTTPException(status_code=409, detail="Cannot perform this action while homing is in progress")
 
 
 def normalize_file_path(file_path: str) -> str:
@@ -95,22 +101,57 @@ async def lifespan(app: FastAPI):
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Initialize shared process pool for CPU-intensive tasks
-    pool_module.init_pool()
+    # Connect device in background so the web server starts immediately
+    async def connect_and_home():
+        """Connect to device and perform homing in background."""
+        try:
+            # Connect without homing first (fast)
+            await asyncio.to_thread(connection_manager.connect_device, False)
 
-    # Pin main process to CPUs 1-N to keep CPU 0 dedicated to motion/LED
-    from modules.core import scheduling
-    background_cpus = scheduling.get_background_cpus()
-    if background_cpus:
-        scheduling.pin_to_cpus(background_cpus)
-        logger.info(f"FastAPI main process pinned to CPUs {sorted(background_cpus)}")
-    else:
-        logger.info("Single-core system detected, skipping CPU pinning")
+            # If connected, perform homing in background
+            if state.conn and state.conn.is_connected():
+                logger.info("Device connected, starting homing in background...")
+                state.is_homing = True
+                try:
+                    success = await asyncio.to_thread(connection_manager.home)
+                    if not success:
+                        logger.warning("Background homing failed or was skipped")
+                        # If sensor homing failed, close connection and wait for user action
+                        if state.sensor_homing_failed:
+                            logger.error("Sensor homing failed - closing connection. User must check sensor or switch to crash homing.")
+                            if state.conn:
+                                await asyncio.to_thread(state.conn.close)
+                                state.conn = None
+                            return  # Don't proceed with auto-play
+                finally:
+                    state.is_homing = False
+                    logger.info("Background homing completed")
 
-    try:
-        connection_manager.connect_device()
-    except Exception as e:
-        logger.warning(f"Failed to auto-connect to serial port: {str(e)}")
+                # After homing, check for auto_play mode
+                if state.auto_play_enabled and state.auto_play_playlist:
+                    logger.info(f"Homing complete, checking auto_play playlist: {state.auto_play_playlist}")
+                    try:
+                        playlist_exists = playlist_manager.get_playlist(state.auto_play_playlist) is not None
+                        if not playlist_exists:
+                            logger.warning(f"Auto-play playlist '{state.auto_play_playlist}' not found. Clearing invalid reference.")
+                            state.auto_play_playlist = None
+                            state.save()
+                        elif state.conn and state.conn.is_connected():
+                            logger.info(f"Starting auto-play playlist: {state.auto_play_playlist}")
+                            asyncio.create_task(playlist_manager.run_playlist(
+                                state.auto_play_playlist,
+                                pause_time=state.auto_play_pause_time,
+                                clear_pattern=state.auto_play_clear_pattern,
+                                run_mode=state.auto_play_run_mode,
+                                shuffle=state.auto_play_shuffle
+                            ))
+                    except Exception as e:
+                        logger.error(f"Failed to auto-play playlist: {str(e)}")
+        except Exception as e:
+            logger.warning(f"Failed to auto-connect to serial port: {str(e)}")
+
+    # Start connection/homing in background - doesn't block server startup
+    asyncio.create_task(connect_and_home())
 
     # Initialize LED controller based on saved configuration
     try:
@@ -135,6 +176,16 @@ async def lifespan(app: FastAPI):
                 intensity=state.dw_led_intensity
             )
             logger.info(f"LED controller initialized: DW LEDs ({state.dw_led_num_leds} LEDs on GPIO{state.dw_led_gpio_pin}, pixel order: {state.dw_led_pixel_order})")
+
+            # Initialize hardware and start idle effect (matches behavior of /set_led_config)
+            status = state.led_controller.check_status()
+            if status.get("connected", False):
+                state.led_controller.effect_idle(state.dw_led_idle_effect)
+                _start_idle_led_timeout()
+                logger.info("DW LEDs hardware initialized and idle effect started")
+            else:
+                error_msg = status.get("error", "Unknown error")
+                logger.warning(f"DW LED hardware initialization failed: {error_msg}")
         else:
             state.led_controller = None
             logger.info("LED controller not configured")
@@ -146,25 +197,8 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Failed to initialize LED controller: {str(e)}")
         state.led_controller = None
 
-    # Check if auto_play mode is enabled and auto-play playlist (right after connection attempt)
-    if state.auto_play_enabled and state.auto_play_playlist:
-        logger.info(f"auto_play mode enabled, checking for connection before auto-playing playlist: {state.auto_play_playlist}")
-        try:
-            # Check if we have a valid connection before starting playlist
-            if state.conn and hasattr(state.conn, 'is_connected') and state.conn.is_connected():
-                logger.info(f"Connection available, starting auto-play playlist: {state.auto_play_playlist} with options: run_mode={state.auto_play_run_mode}, pause_time={state.auto_play_pause_time}, clear_pattern={state.auto_play_clear_pattern}, shuffle={state.auto_play_shuffle}")
-                asyncio.create_task(playlist_manager.run_playlist(
-                    state.auto_play_playlist,
-                    pause_time=state.auto_play_pause_time,
-                    clear_pattern=state.auto_play_clear_pattern,
-                    run_mode=state.auto_play_run_mode,
-                    shuffle=state.auto_play_shuffle
-                ))
-            else:
-                logger.warning("No hardware connection available, skipping auto_play mode auto-play")
-        except Exception as e:
-            logger.error(f"Failed to auto-play auto_play playlist: {str(e)}")
-        
+    # Note: auto_play is now handled in connect_and_home() after homing completes
+
     try:
         mqtt_handler = mqtt.init_mqtt()
     except Exception as e:
@@ -241,16 +275,33 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down Dune Weaver application...")
 
-    # Shutdown process pool
-    pool_module.shutdown_pool(wait=True)
-
 app = FastAPI(lifespan=lifespan)
+
+# Add CORS middleware to allow cross-origin requests from other Dune Weaver frontends
+# This enables multi-table control from a single frontend
+# Note: allow_credentials must be False when allow_origins=["*"] (browser security requirement)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for local network access
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Global semaphore to limit concurrent preview processing
 # Prevents resource exhaustion when loading many previews simultaneously
-preview_semaphore = asyncio.Semaphore(5)
+# Lazily initialized to avoid "attached to a different loop" errors
+_preview_semaphore: Optional[asyncio.Semaphore] = None
+
+def get_preview_semaphore() -> asyncio.Semaphore:
+    """Get or create the preview semaphore in the current event loop."""
+    global _preview_semaphore
+    if _preview_semaphore is None:
+        _preview_semaphore = asyncio.Semaphore(5)
+    return _preview_semaphore
 
 # Pydantic models for request/response validation
 class ConnectRequest(BaseModel):
@@ -363,6 +414,7 @@ class HomingSettingsUpdate(BaseModel):
     angular_offset_degrees: Optional[float] = None
     auto_home_enabled: Optional[bool] = None
     auto_home_after_patterns: Optional[int] = None
+    hard_reset_theta: Optional[bool] = None  # Enable hard reset ($Bye) when resetting theta
 
 class DwLedSettingsUpdate(BaseModel):
     num_leds: Optional[int] = None
@@ -394,6 +446,7 @@ class MqttSettingsUpdate(BaseModel):
 
 class MachineSettingsUpdate(BaseModel):
     table_type_override: Optional[str] = None  # Override detected table type, or empty string/"auto" to clear
+    timezone: Optional[str] = None  # IANA timezone (e.g., "America/New_York", "UTC")
 
 class SettingsUpdate(BaseModel):
     """Request model for PATCH /api/settings - all fields optional for partial updates"""
@@ -427,7 +480,10 @@ async def websocket_status_endpoint(websocket: WebSocket):
                 if "close message has been sent" in str(e):
                     break
                 raise
-            await asyncio.sleep(1)
+            # Use longer interval during pattern execution to reduce asyncio overhead
+            # This helps prevent timing-related serial corruption on Pi 3B+
+            interval = 2.0 if state.current_playing_file else 1.0
+            await asyncio.sleep(interval)
     except WebSocketDisconnect:
         pass
     finally:
@@ -524,26 +580,32 @@ async def websocket_logs_endpoint(websocket: WebSocket):
 
 # API endpoint to retrieve logs
 @app.get("/api/logs", tags=["logs"])
-async def get_logs(limit: int = 100, level: str = None):
+async def get_logs(limit: int = 100, level: str = None, offset: int = 0):
     """
-    Retrieve application logs from memory buffer.
+    Retrieve application logs from memory buffer with pagination.
 
     Args:
-        limit: Maximum number of log entries to return (default: 100, max: 500)
+        limit: Maximum number of log entries to return (default: 100)
         level: Filter by log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        offset: Number of entries to skip from newest (for lazy loading older logs)
 
     Returns:
         List of log entries with timestamp, level, logger, and message.
+        Also returns total count and whether there are more logs available.
     """
     handler = get_memory_handler()
     if not handler:
-        return {"logs": [], "error": "Log handler not initialized"}
+        return {"logs": [], "count": 0, "total": 0, "has_more": False, "error": "Log handler not initialized"}
 
-    # Clamp limit to reasonable range
-    limit = max(1, min(limit, 500))
+    # Clamp limit to reasonable range (no max limit for lazy loading)
+    limit = max(1, limit)
+    offset = max(0, offset)
 
-    logs = handler.get_logs(limit=limit, level=level)
-    return {"logs": logs, "count": len(logs)}
+    logs = handler.get_logs(limit=limit, level=level, offset=offset)
+    total = handler.get_total_count(level=level)
+    has_more = offset + len(logs) < total
+
+    return {"logs": logs, "count": len(logs), "total": total, "has_more": has_more}
 
 
 @app.delete("/api/logs", tags=["logs"])
@@ -555,14 +617,19 @@ async def clear_logs():
     return {"status": "ok", "message": "Logs cleared"}
 
 
-# FastAPI routes
+# FastAPI routes - Redirect old frontend routes to new React frontend on port 80
+def get_redirect_response(request: Request):
+    """Return redirect page pointing users to the new frontend."""
+    host = request.headers.get("host", "localhost").split(":")[0]  # Remove port if present
+    return templates.TemplateResponse("redirect.html", {"request": request, "host": host})
+
 @app.get("/")
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
+    return get_redirect_response(request)
 
 @app.get("/settings")
-async def settings(request: Request):
-    return templates.TemplateResponse("settings.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
+async def settings_page(request: Request):
+    return get_redirect_response(request)
 
 # ============================================================================
 # Unified Settings API
@@ -606,9 +673,11 @@ async def get_all_settings():
         },
         "homing": {
             "mode": state.homing,
+            "user_override": state.homing_user_override,  # True if user explicitly set, False if auto-detected
             "angular_offset_degrees": state.angular_homing_offset_degrees,
             "auto_home_enabled": state.auto_home_enabled,
-            "auto_home_after_patterns": state.auto_home_after_patterns
+            "auto_home_after_patterns": state.auto_home_after_patterns,
+            "hard_reset_theta": state.hard_reset_theta  # Enable hard reset when resetting theta
         },
         "led": {
             "provider": state.led_provider,
@@ -641,6 +710,10 @@ async def get_all_settings():
             "detected_table_type": state.table_type,
             "table_type_override": state.table_type_override,
             "effective_table_type": state.table_type_override or state.table_type,
+            "gear_ratio": state.gear_ratio,
+            "x_steps_per_mm": state.x_steps_per_mm,
+            "y_steps_per_mm": state.y_steps_per_mm,
+            "timezone": state.timezone,
             "available_table_types": [
                 {"value": "dune_weaver_mini", "label": "Dune Weaver Mini"},
                 {"value": "dune_weaver_mini_pro", "label": "Dune Weaver Mini Pro"},
@@ -652,6 +725,62 @@ async def get_all_settings():
         }
     }
 
+@app.get("/api/manifest.webmanifest", tags=["settings"])
+async def get_dynamic_manifest():
+    """
+    Get a dynamically generated web manifest.
+
+    Returns manifest with custom icons and app name if custom branding is configured,
+    otherwise returns defaults.
+    """
+    # Determine icon paths based on whether custom logo exists
+    if state.custom_logo:
+        icon_base = "/static/custom"
+    else:
+        icon_base = "/static"
+
+    # Use custom app name or default
+    app_name = state.app_name or "Dune Weaver"
+
+    return {
+        "name": app_name,
+        "short_name": app_name,
+        "description": "Control your kinetic sand table",
+        "icons": [
+            {
+                "src": f"{icon_base}/android-chrome-192x192.png",
+                "sizes": "192x192",
+                "type": "image/png",
+                "purpose": "any"
+            },
+            {
+                "src": f"{icon_base}/android-chrome-512x512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any"
+            },
+            {
+                "src": f"{icon_base}/android-chrome-192x192.png",
+                "sizes": "192x192",
+                "type": "image/png",
+                "purpose": "maskable"
+            },
+            {
+                "src": f"{icon_base}/android-chrome-512x512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "maskable"
+            }
+        ],
+        "start_url": "/",
+        "scope": "/",
+        "display": "standalone",
+        "orientation": "any",
+        "theme_color": "#0a0a0a",
+        "background_color": "#0a0a0a",
+        "categories": ["utilities", "entertainment"]
+    }
+
 @app.patch("/api/settings", tags=["settings"])
 async def update_settings(settings_update: SettingsUpdate):
     """
@@ -660,7 +789,7 @@ async def update_settings(settings_update: SettingsUpdate):
     Only include the categories and fields you want to update.
     All fields are optional - only provided values will be updated.
 
-    Example: {"app": {"name": "My Sand Table"}, "auto_play": {"enabled": true}}
+    Example: {"app": {"name": "Dune Weaver"}, "auto_play": {"enabled": true}}
     """
     updated_categories = []
     requires_restart = False
@@ -678,8 +807,8 @@ async def update_settings(settings_update: SettingsUpdate):
     # Connection settings
     if settings_update.connection:
         if settings_update.connection.preferred_port is not None:
-            port = settings_update.connection.preferred_port
-            state.preferred_port = None if port in ("", "none") else port
+            # Store exactly what frontend sends: "__auto__", "__none__", or specific port
+            state.preferred_port = settings_update.connection.preferred_port
         updated_categories.append("connection")
 
     # Pattern settings
@@ -735,12 +864,15 @@ async def update_settings(settings_update: SettingsUpdate):
         h = settings_update.homing
         if h.mode is not None:
             state.homing = h.mode
+            state.homing_user_override = True  # User explicitly set preference
         if h.angular_offset_degrees is not None:
             state.angular_homing_offset_degrees = h.angular_offset_degrees
         if h.auto_home_enabled is not None:
             state.auto_home_enabled = h.auto_home_enabled
         if h.auto_home_after_patterns is not None:
             state.auto_home_after_patterns = h.auto_home_after_patterns
+        if h.hard_reset_theta is not None:
+            state.hard_reset_theta = h.hard_reset_theta
         updated_categories.append("homing")
 
     # LED settings
@@ -806,6 +938,24 @@ async def update_settings(settings_update: SettingsUpdate):
         if m.table_type_override is not None:
             # Empty string or "auto" clears the override
             state.table_type_override = None if m.table_type_override in ("", "auto") else m.table_type_override
+        if m.timezone is not None:
+            # Validate timezone by trying to create a ZoneInfo object
+            try:
+                from zoneinfo import ZoneInfo
+            except ImportError:
+                from backports.zoneinfo import ZoneInfo
+            try:
+                ZoneInfo(m.timezone)  # Validate
+                state.timezone = m.timezone
+                # Also update scheduled_pause_timezone to keep in sync
+                state.scheduled_pause_timezone = m.timezone
+                # Clear cached timezone in pattern_manager so it picks up the new setting
+                from modules.core import pattern_manager
+                pattern_manager._cached_timezone = None
+                pattern_manager._cached_zoneinfo = None
+                logger.info(f"Timezone updated to: {m.timezone}")
+            except Exception as e:
+                logger.warning(f"Invalid timezone '{m.timezone}': {e}")
         updated_categories.append("machine")
 
     # Save state
@@ -823,6 +973,133 @@ async def update_settings(settings_update: SettingsUpdate):
         "requires_restart": requires_restart,
         "led_reinit_needed": led_reinit_needed
     }
+
+# ============================================================================
+# Multi-Table Identity Endpoints
+# ============================================================================
+
+class TableInfoUpdate(BaseModel):
+    name: Optional[str] = None
+
+class KnownTableAdd(BaseModel):
+    id: str
+    name: str
+    url: str
+    host: Optional[str] = None
+    port: Optional[int] = None
+    version: Optional[str] = None
+
+class KnownTableUpdate(BaseModel):
+    name: Optional[str] = None
+
+@app.get("/api/table-info", tags=["multi-table"])
+async def get_table_info():
+    """
+    Get table identity information for multi-table discovery.
+
+    Returns the table's unique ID, name, and version.
+    """
+    return {
+        "id": state.table_id,
+        "name": state.table_name,
+        "version": await version_manager.get_current_version()
+    }
+
+@app.patch("/api/table-info", tags=["multi-table"])
+async def update_table_info(update: TableInfoUpdate):
+    """
+    Update table identity information.
+
+    Currently only the table name can be updated.
+    The table ID is immutable after generation.
+    """
+    if update.name is not None:
+        state.table_name = update.name.strip() or "Dune Weaver"
+        state.save()
+        logger.info(f"Table name updated to: {state.table_name}")
+
+    return {
+        "success": True,
+        "id": state.table_id,
+        "name": state.table_name
+    }
+
+@app.get("/api/known-tables", tags=["multi-table"])
+async def get_known_tables():
+    """
+    Get list of known remote tables.
+
+    These are tables that have been manually added and are persisted
+    for multi-table management.
+    """
+    return {"tables": state.known_tables}
+
+@app.post("/api/known-tables", tags=["multi-table"])
+async def add_known_table(table: KnownTableAdd):
+    """
+    Add a known remote table.
+
+    This persists the table information so it's available across
+    browser sessions and devices.
+    """
+    # Check if table with same ID already exists
+    existing_ids = [t.get("id") for t in state.known_tables]
+    if table.id in existing_ids:
+        raise HTTPException(status_code=400, detail="Table with this ID already exists")
+
+    # Check if table with same URL already exists
+    existing_urls = [t.get("url") for t in state.known_tables]
+    if table.url in existing_urls:
+        raise HTTPException(status_code=400, detail="Table with this URL already exists")
+
+    new_table = {
+        "id": table.id,
+        "name": table.name,
+        "url": table.url,
+    }
+    if table.host:
+        new_table["host"] = table.host
+    if table.port:
+        new_table["port"] = table.port
+    if table.version:
+        new_table["version"] = table.version
+
+    state.known_tables.append(new_table)
+    state.save()
+    logger.info(f"Added known table: {table.name} ({table.url})")
+
+    return {"success": True, "table": new_table}
+
+@app.delete("/api/known-tables/{table_id}", tags=["multi-table"])
+async def remove_known_table(table_id: str):
+    """
+    Remove a known remote table by ID.
+    """
+    original_count = len(state.known_tables)
+    state.known_tables = [t for t in state.known_tables if t.get("id") != table_id]
+
+    if len(state.known_tables) == original_count:
+        raise HTTPException(status_code=404, detail="Table not found")
+
+    state.save()
+    logger.info(f"Removed known table: {table_id}")
+
+    return {"success": True}
+
+@app.patch("/api/known-tables/{table_id}", tags=["multi-table"])
+async def update_known_table(table_id: str, update: KnownTableUpdate):
+    """
+    Update a known remote table's name.
+    """
+    for table in state.known_tables:
+        if table.get("id") == table_id:
+            if update.name is not None:
+                table["name"] = update.name.strip()
+            state.save()
+            logger.info(f"Updated known table {table_id}: name={update.name}")
+            return {"success": True, "table": table}
+
+    raise HTTPException(status_code=404, detail="Table not found")
 
 # ============================================================================
 # Individual Settings Endpoints (Deprecated - use /api/settings instead)
@@ -959,6 +1236,7 @@ async def set_homing_config(request: HomingConfigRequest):
             raise HTTPException(status_code=400, detail="Homing mode must be 0 (crash) or 1 (sensor)")
 
         state.homing = request.homing_mode
+        state.homing_user_override = True  # User explicitly set preference
         state.angular_homing_offset_degrees = request.angular_homing_offset_degrees
 
         # Update auto-home settings if provided
@@ -991,15 +1269,19 @@ async def list_ports():
 async def connect(request: ConnectRequest):
     if not request.port:
         state.conn = connection_manager.WebSocketConnection('ws://fluidnc.local:81')
-        connection_manager.device_init()
+        if not connection_manager.device_init():
+            raise HTTPException(status_code=500, detail="Failed to initialize device - could not get machine parameters")
         logger.info('Successfully connected to websocket ws://fluidnc.local:81')
         return {"success": True}
 
     try:
         state.conn = connection_manager.SerialConnection(request.port)
-        connection_manager.device_init()
+        if not connection_manager.device_init():
+            raise HTTPException(status_code=500, detail="Failed to initialize device - could not get machine parameters")
         logger.info(f'Successfully connected to serial port {request.port}')
         return {"success": True}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f'Failed to connect to serial port {request.port}: {str(e)}')
         raise HTTPException(status_code=500, detail=str(e))
@@ -1027,6 +1309,170 @@ async def restart(request: ConnectRequest):
     except Exception as e:
         logger.error(f"Failed to restart serial on port {request.port}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+###############################################################################
+# Debug Serial Terminal - Independent raw serial communication
+###############################################################################
+
+# Store for debug serial connections (separate from main connection)
+_debug_serial_connections: dict = {}
+_debug_serial_lock: Optional[asyncio.Lock] = None
+
+def get_debug_serial_lock() -> asyncio.Lock:
+    """Get or create the debug serial lock in the current event loop."""
+    global _debug_serial_lock
+    if _debug_serial_lock is None:
+        _debug_serial_lock = asyncio.Lock()
+    return _debug_serial_lock
+
+class DebugSerialRequest(BaseModel):
+    port: str
+    baudrate: int = 115200
+    timeout: float = 2.0
+
+class DebugSerialCommand(BaseModel):
+    port: str
+    command: str
+    timeout: float = 2.0
+
+@app.post("/api/debug-serial/open", tags=["debug-serial"])
+async def debug_serial_open(request: DebugSerialRequest):
+    """Open a debug serial connection (independent of main connection)."""
+    import serial
+
+    async with get_debug_serial_lock():
+        # Close existing connection on this port if any
+        if request.port in _debug_serial_connections:
+            try:
+                _debug_serial_connections[request.port].close()
+            except:
+                pass
+            del _debug_serial_connections[request.port]
+
+        try:
+            ser = serial.Serial(
+                request.port,
+                baudrate=request.baudrate,
+                timeout=request.timeout
+            )
+            _debug_serial_connections[request.port] = ser
+            logger.info(f"Debug serial opened on {request.port}")
+            return {"success": True, "port": request.port, "baudrate": request.baudrate}
+        except Exception as e:
+            logger.error(f"Failed to open debug serial on {request.port}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/debug-serial/close", tags=["debug-serial"])
+async def debug_serial_close(request: ConnectRequest):
+    """Close a debug serial connection."""
+    async with get_debug_serial_lock():
+        if request.port not in _debug_serial_connections:
+            return {"success": True, "message": "Port not open"}
+
+        try:
+            _debug_serial_connections[request.port].close()
+            del _debug_serial_connections[request.port]
+            logger.info(f"Debug serial closed on {request.port}")
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Failed to close debug serial on {request.port}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/debug-serial/send", tags=["debug-serial"])
+async def debug_serial_send(request: DebugSerialCommand):
+    """Send a command and receive response on debug serial connection."""
+    import serial
+
+    async with get_debug_serial_lock():
+        if request.port not in _debug_serial_connections:
+            raise HTTPException(status_code=400, detail="Port not open. Open it first.")
+
+        ser = _debug_serial_connections[request.port]
+
+        try:
+            # Clear input buffer
+            ser.reset_input_buffer()
+
+            # Send command with newline
+            command = request.command.strip()
+            if not command.endswith('\n'):
+                command += '\n'
+
+            await asyncio.to_thread(ser.write, command.encode())
+            await asyncio.to_thread(ser.flush)
+
+            # Read response with timeout - use read() for more reliable data capture
+            responses = []
+            start_time = time.time()
+            buffer = ""
+
+            # Small delay to let response arrive
+            await asyncio.sleep(0.05)
+
+            while time.time() - start_time < request.timeout:
+                try:
+                    # Read all available bytes
+                    waiting = ser.in_waiting
+                    if waiting > 0:
+                        data = await asyncio.to_thread(ser.read, waiting)
+                        if data:
+                            buffer += data.decode('utf-8', errors='replace')
+
+                            # Process complete lines from buffer
+                            while '\n' in buffer:
+                                line, buffer = buffer.split('\n', 1)
+                                line = line.strip()
+                                if line:
+                                    responses.append(line)
+                                    # Check for ok/error to know command completed
+                                    if line.lower() in ['ok', 'error'] or line.lower().startswith('error:'):
+                                        # Give a tiny bit more time for any trailing data
+                                        await asyncio.sleep(0.02)
+                                        # Read any remaining data
+                                        if ser.in_waiting > 0:
+                                            extra = await asyncio.to_thread(ser.read, ser.in_waiting)
+                                            if extra:
+                                                for extra_line in extra.decode('utf-8', errors='replace').strip().split('\n'):
+                                                    if extra_line.strip():
+                                                        responses.append(extra_line.strip())
+                                        break
+                    else:
+                        # No data waiting, small delay
+                        await asyncio.sleep(0.02)
+                except Exception as read_error:
+                    logger.warning(f"Read error: {read_error}")
+                    break
+
+            # Add any remaining buffer content
+            if buffer.strip():
+                responses.append(buffer.strip())
+
+            return {
+                "success": True,
+                "command": request.command.strip(),
+                "responses": responses,
+                "raw": '\n'.join(responses)
+            }
+        except Exception as e:
+            logger.error(f"Debug serial send error: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/debug-serial/status", tags=["debug-serial"])
+async def debug_serial_status():
+    """Get status of all debug serial connections."""
+    async with get_debug_serial_lock():
+        status = {}
+        for port, ser in _debug_serial_connections.items():
+            try:
+                status[port] = {
+                    "open": ser.is_open,
+                    "baudrate": ser.baudrate
+                }
+            except:
+                status[port] = {"open": False}
+        return {"connections": status}
+
 
 @app.get("/list_theta_rho_files")
 async def list_theta_rho_files():
@@ -1228,26 +1674,39 @@ async def get_theta_rho_coordinates(request: GetCoordinatesRequest):
         # Normalize file path for cross-platform compatibility and remove prefixes
         file_name = normalize_file_path(request.file_name)
         file_path = os.path.join(THETA_RHO_DIR, file_name)
-        
+
+        # Check if we can use cached coordinates (already loaded for current playback)
+        # This avoids re-parsing large files (2MB+) which can cause issues on Pi Zero 2W
+        current_file = state.current_playing_file
+        if current_file and state._current_coordinates:
+            # Normalize current file path for comparison
+            current_normalized = normalize_file_path(current_file)
+            if current_normalized == file_name:
+                logger.debug(f"Using cached coordinates for {file_name}")
+                return {
+                    "success": True,
+                    "coordinates": state._current_coordinates,
+                    "total_points": len(state._current_coordinates)
+                }
+
         # Check file existence asynchronously
         exists = await asyncio.to_thread(os.path.exists, file_path)
         if not exists:
             raise HTTPException(status_code=404, detail=f"File {file_name} not found")
 
-        # Parse the theta-rho file in a separate process for CPU-intensive work
-        # This prevents blocking the motion control thread
-        loop = asyncio.get_running_loop()
-        coordinates = await loop.run_in_executor(pool_module.get_pool(), parse_theta_rho_file, file_path)
-        
+        # Parse the theta-rho file in a thread (not process) to avoid memory pressure
+        # on resource-constrained devices like Pi Zero 2W
+        coordinates = await asyncio.to_thread(parse_theta_rho_file, file_path)
+
         if not coordinates:
             raise HTTPException(status_code=400, detail="No valid coordinates found in file")
-        
+
         return {
             "success": True,
             "coordinates": coordinates,
             "total_points": len(coordinates)
         }
-        
+
     except Exception as e:
         logger.error(f"Error getting coordinates for {request.file_name}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1275,8 +1734,10 @@ async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTa
         if not (state.conn.is_connected() if state.conn else False):
             logger.warning("Attempted to run a pattern without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
-        
-        if pattern_manager.pattern_lock.locked():
+
+        check_homing_in_progress()
+
+        if pattern_manager.get_pattern_lock().locked():
             logger.info("Another pattern is running, stopping it first...")
             await pattern_manager.stop_actions()
             
@@ -1307,8 +1768,97 @@ async def stop_execution():
     if not (state.conn.is_connected() if state.conn else False):
         logger.warning("Attempted to stop without a connection")
         raise HTTPException(status_code=400, detail="Connection not established")
-    await pattern_manager.stop_actions()
+    success = await pattern_manager.stop_actions()
+    if not success:
+        raise HTTPException(status_code=500, detail="Stop timed out - use force_stop")
     return {"success": True}
+
+@app.post("/force_stop")
+async def force_stop():
+    """Force stop all pattern execution and clear all state. Use when normal stop doesn't work."""
+    logger.info("Force stop requested - clearing all pattern state")
+
+    # Set stop flag first
+    state.stop_requested = True
+    state.pause_requested = False
+
+    # Clear all pattern-related state
+    state.current_playing_file = None
+    state.execution_progress = None
+    state.is_running = False
+    state.is_clearing = False
+    state.is_homing = False
+    state.current_playlist = None
+    state.current_playlist_index = None
+    state.playlist_mode = None
+    state.pause_time_remaining = 0
+
+    # Wake up any waiting tasks
+    try:
+        pattern_manager.get_pause_event().set()
+    except:
+        pass
+
+    # Stop motion controller and clear its queue
+    if pattern_manager.motion_controller.running:
+        pattern_manager.motion_controller.command_queue.put(
+            pattern_manager.MotionCommand('stop')
+        )
+
+    # Force release pattern lock by recreating it
+    pattern_manager.pattern_lock = None  # Will be recreated on next use
+
+    logger.info("Force stop completed - all pattern state cleared")
+    return {"success": True, "message": "Force stop completed"}
+
+@app.post("/soft_reset")
+async def soft_reset():
+    """Send $Bye soft reset to FluidNC controller. Resets position counters to 0."""
+    if not (state.conn and state.conn.is_connected()):
+        logger.warning("Attempted to soft reset without a connection")
+        raise HTTPException(status_code=400, detail="Connection not established")
+
+    try:
+        # Stop any running patterns first
+        await pattern_manager.stop_actions()
+
+        # Use the shared soft reset function
+        await connection_manager.perform_soft_reset()
+
+        return {"success": True, "message": "Soft reset sent. Position reset to 0."}
+    except Exception as e:
+        logger.error(f"Error sending soft reset: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/controller_restart")
+async def controller_restart():
+    """Send $System/Control=RESTART to restart the FluidNC controller."""
+    if not (state.conn and state.conn.is_connected()):
+        logger.warning("Attempted to restart controller without a connection")
+        raise HTTPException(status_code=400, detail="Connection not established")
+
+    try:
+        # Stop any running patterns first
+        await pattern_manager.stop_actions()
+
+        # Send the FluidNC restart command
+        from modules.connection.connection_manager import SerialConnection
+        restart_cmd = "$System/Control=RESTART\n"
+        if isinstance(state.conn, SerialConnection) and state.conn.ser:
+            state.conn.ser.write(restart_cmd.encode())
+            state.conn.ser.flush()
+            logger.info(f"Controller restart command sent via serial to {state.port}")
+        else:
+            state.conn.send(restart_cmd)
+            logger.info("Controller restart command sent via connection abstraction")
+
+        # Mark as needing homing since position is now unknown
+        state.is_homed = False
+
+        return {"success": True, "message": "Controller restart command sent. Homing required."}
+    except Exception as e:
+        logger.error(f"Error sending controller restart: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/send_home")
 async def send_home():
@@ -1316,18 +1866,101 @@ async def send_home():
         if not (state.conn.is_connected() if state.conn else False):
             logger.warning("Attempted to move to home without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
-        
-        # Run homing with 15 second timeout
-        success = await asyncio.to_thread(connection_manager.home)
-        if not success:
-            logger.error("Homing failed or timed out")
-            raise HTTPException(status_code=500, detail="Homing failed or timed out after 15 seconds")
-        
-        return {"success": True}
+
+        if state.is_homing:
+            raise HTTPException(status_code=409, detail="Homing already in progress")
+
+        # Set homing flag to block other movement operations
+        state.is_homing = True
+        logger.info("Homing started - blocking other movement operations")
+
+        try:
+            # Run homing with 15 second timeout
+            success = await asyncio.to_thread(connection_manager.home)
+            if not success:
+                logger.error("Homing failed or timed out")
+                raise HTTPException(status_code=500, detail="Homing failed or timed out after 15 seconds")
+
+            return {"success": True}
+        finally:
+            # Always clear homing flag when done (success or failure)
+            state.is_homing = False
+            logger.info("Homing completed - movement operations unblocked")
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to send home command: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class SensorHomingRecoveryRequest(BaseModel):
+    switch_to_crash_homing: bool = False
+
+@app.post("/recover_sensor_homing")
+async def recover_sensor_homing(request: SensorHomingRecoveryRequest):
+    """
+    Recover from sensor homing failure.
+
+    If switch_to_crash_homing is True, changes homing mode to crash homing (mode 0)
+    and saves the setting. Then attempts to reconnect and home the device.
+
+    If switch_to_crash_homing is False, just clears the failure flag and retries
+    with sensor homing.
+    """
+    try:
+        # Clear the sensor homing failure flag first
+        state.sensor_homing_failed = False
+
+        if request.switch_to_crash_homing:
+            # Switch to crash homing mode
+            logger.info("Switching to crash homing mode per user request")
+            state.homing = 0
+            state.homing_user_override = True
+            state.save()
+
+        # If already connected, just perform homing
+        if state.conn and state.conn.is_connected():
+            logger.info("Device already connected, performing homing...")
+            state.is_homing = True
+            try:
+                success = await asyncio.to_thread(connection_manager.home)
+                if not success:
+                    # Check if sensor homing failed again
+                    if state.sensor_homing_failed:
+                        return {
+                            "success": False,
+                            "sensor_homing_failed": True,
+                            "message": "Sensor homing failed again. Please check sensor position or switch to crash homing."
+                        }
+                    return {"success": False, "message": "Homing failed"}
+                return {"success": True, "message": "Homing completed successfully"}
+            finally:
+                state.is_homing = False
+        else:
+            # Need to reconnect
+            logger.info("Reconnecting device and performing homing...")
+            state.is_homing = True
+            try:
+                # connect_device includes homing
+                await asyncio.to_thread(connection_manager.connect_device, True)
+
+                # Check if sensor homing failed during connection
+                if state.sensor_homing_failed:
+                    return {
+                        "success": False,
+                        "sensor_homing_failed": True,
+                        "message": "Sensor homing failed. Please check sensor position or switch to crash homing."
+                    }
+
+                if state.conn and state.conn.is_connected():
+                    return {"success": True, "message": "Connected and homed successfully"}
+                else:
+                    return {"success": False, "message": "Failed to establish connection"}
+            finally:
+                state.is_homing = False
+
+    except Exception as e:
+        logger.error(f"Error during sensor homing recovery: {e}")
+        state.is_homing = False
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/run_theta_rho_file/{file_name}")
@@ -1335,10 +1968,12 @@ async def run_specific_theta_rho_file(file_name: str):
     file_path = os.path.join(pattern_manager.THETA_RHO_DIR, file_name)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
-        
+
     if not (state.conn.is_connected() if state.conn else False):
         logger.warning("Attempted to run a pattern without a connection")
         raise HTTPException(status_code=400, detail="Connection not established")
+
+    check_homing_in_progress()
 
     pattern_manager.run_theta_rho_file(file_path)
     return {"success": True}
@@ -1387,10 +2022,23 @@ async def move_to_center():
             logger.warning("Attempted to move to center without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
 
+        check_homing_in_progress()
+
+        # Clear stop_requested to ensure manual move works after pattern stop
+        state.stop_requested = False
+
         logger.info("Moving device to center position")
         await pattern_manager.reset_theta()
         await pattern_manager.move_polar(0, 0)
+
+        # Wait for machine to reach idle before returning
+        idle = await connection_manager.check_idle_async(timeout=60)
+        if not idle:
+            logger.warning("Machine did not reach idle after move to center")
+
         return {"success": True}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to move to center: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1401,9 +2049,24 @@ async def move_to_perimeter():
         if not (state.conn.is_connected() if state.conn else False):
             logger.warning("Attempted to move to perimeter without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
+
+        check_homing_in_progress()
+
+        # Clear stop_requested to ensure manual move works after pattern stop
+        state.stop_requested = False
+
+        logger.info("Moving device to perimeter position")
         await pattern_manager.reset_theta()
         await pattern_manager.move_polar(0, 1)
+
+        # Wait for machine to reach idle before returning
+        idle = await connection_manager.check_idle_async(timeout=60)
+        if not idle:
+            logger.warning("Machine did not reach idle after move to perimeter")
+
         return {"success": True}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to move to perimeter: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1471,6 +2134,63 @@ async def preview_thr(request: DeleteFileRequest):
         logger.error(f"Failed to generate or serve preview for {request.file_name}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to serve preview image: {str(e)}")
 
+@app.get("/api/pattern_history/{pattern_name:path}")
+async def get_pattern_history(pattern_name: str):
+    """Get the most recent execution history for a pattern.
+
+    Returns the last completed execution time and speed for the given pattern.
+    """
+    from modules.core.pattern_manager import get_pattern_execution_history
+
+    # Get just the filename if a full path was provided
+    filename = os.path.basename(pattern_name)
+    if not filename.endswith('.thr'):
+        filename = f"{filename}.thr"
+
+    history = get_pattern_execution_history(filename)
+    if history:
+        return history
+    return {"actual_time_seconds": None, "actual_time_formatted": None, "speed": None, "timestamp": None}
+
+@app.get("/api/pattern_history_all")
+async def get_all_pattern_history():
+    """Get execution history for all patterns in a single request.
+
+    Returns a dict mapping pattern names to their most recent execution history.
+    """
+    from modules.core.pattern_manager import EXECUTION_LOG_FILE
+    import json
+
+    if not os.path.exists(EXECUTION_LOG_FILE):
+        return {}
+
+    try:
+        history_map = {}
+        with open(EXECUTION_LOG_FILE, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    # Only consider fully completed patterns
+                    if entry.get('completed', False):
+                        pattern_name = entry.get('pattern_name')
+                        if pattern_name:
+                            # Keep the most recent match (last one in file wins)
+                            history_map[pattern_name] = {
+                                "actual_time_seconds": entry.get('actual_time_seconds'),
+                                "actual_time_formatted": entry.get('actual_time_formatted'),
+                                "speed": entry.get('speed'),
+                                "timestamp": entry.get('timestamp')
+                            }
+                except json.JSONDecodeError:
+                    continue
+        return history_map
+    except Exception as e:
+        logger.error(f"Failed to read execution time log: {e}")
+        return {}
+
 @app.get("/preview/{encoded_filename}")
 async def serve_preview(encoded_filename: str):
     """Serve a preview image for a pattern file."""
@@ -1515,9 +2235,20 @@ async def send_coordinate(request: CoordinateRequest):
         logger.warning("Attempted to send coordinate without a connection")
         raise HTTPException(status_code=400, detail="Connection not established")
 
+    check_homing_in_progress()
+
+    # Clear stop_requested to ensure manual move works after pattern stop
+    state.stop_requested = False
+
     try:
         logger.debug(f"Sending coordinate: theta={request.theta}, rho={request.rho}")
         await pattern_manager.move_polar(request.theta, request.rho)
+
+        # Wait for machine to reach idle before returning
+        idle = await connection_manager.check_idle_async(timeout=60)
+        if not idle:
+            logger.warning("Machine did not reach idle after send_coordinate")
+
         return {"success": True}
     except Exception as e:
         logger.error(f"Failed to send coordinate: {str(e)}")
@@ -1592,7 +2323,10 @@ async def get_playlist(name: str):
 
     playlist = playlist_manager.get_playlist(name)
     if not playlist:
-        raise HTTPException(status_code=404, detail=f"Playlist '{name}' not found")
+        # Auto-create empty playlist if not found
+        logger.info(f"Playlist '{name}' not found, creating empty playlist")
+        playlist_manager.create_playlist(name, [])
+        playlist = {"name": name, "files": []}
 
     return playlist
 
@@ -1660,7 +2394,9 @@ async def run_playlist_endpoint(request: PlaylistRequest):
         if not (state.conn.is_connected() if state.conn else False):
             logger.warning("Attempted to run a playlist without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
-        
+
+        check_homing_in_progress()
+
         if not os.path.exists(playlist_manager.PLAYLISTS_FILE):
             raise HTTPException(status_code=404, detail=f"Playlist '{request.playlist_name}' not found")
 
@@ -1686,13 +2422,15 @@ async def set_speed(request: SpeedRequest):
         if not (state.conn.is_connected() if state.conn else False):
             logger.warning("Attempted to change speed without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
-        
+
         if request.speed <= 0:
             logger.warning(f"Invalid speed value received: {request.speed}")
             raise HTTPException(status_code=400, detail="Invalid speed value")
-        
+
         state.speed = request.speed
         return {"success": True, "speed": request.speed}
+    except HTTPException:
+        raise  # Re-raise HTTPException as-is
     except Exception as e:
         logger.error(f"Failed to set speed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1760,8 +2498,8 @@ async def set_led_config(request: LEDConfigRequest):
         old_gpio_pin = state.dw_led_gpio_pin
         old_pixel_order = state.dw_led_pixel_order
         hardware_changed = (
-            old_gpio_pin != (request.gpio_pin or 12) or
-            old_pixel_order != (request.pixel_order or "GRB")
+            old_gpio_pin != (request.gpio_pin or 18) or
+            old_pixel_order != (request.pixel_order or "RGB")
         )
 
         # Stop existing DW LED controller if hardware settings changed
@@ -1774,10 +2512,13 @@ async def set_led_config(request: LEDConfigRequest):
                     logger.info("LED controller stopped successfully")
                 except Exception as e:
                     logger.error(f"Error stopping LED controller: {e}")
+            # Clear the reference and give hardware time to release
+            state.led_controller = None
+            await asyncio.sleep(0.5)
 
         state.dw_led_num_leds = request.num_leds or 60
-        state.dw_led_gpio_pin = request.gpio_pin or 12
-        state.dw_led_pixel_order = request.pixel_order or "GRB"
+        state.dw_led_gpio_pin = request.gpio_pin or 18
+        state.dw_led_pixel_order = request.pixel_order or "RGB"
         state.dw_led_brightness = request.brightness or 35
         state.wled_ip = None
 
@@ -1872,7 +2613,101 @@ async def skip_pattern():
     if not state.current_playlist:
         raise HTTPException(status_code=400, detail="No playlist is currently running")
     state.skip_requested = True
+
+    # If the playlist task isn't running (e.g., cancelled by TestClient),
+    # proactively advance state. Otherwise, let the running task handle it
+    # to avoid race conditions with the task's index management.
+    from modules.core import playlist_manager
+    task = playlist_manager._current_playlist_task
+    task_not_running = task is None or task.done()
+
+    if task_not_running and state.current_playlist_index is not None:
+        next_index = state.current_playlist_index + 1
+        if next_index < len(state.current_playlist):
+            state.current_playlist_index = next_index
+            state.current_playing_file = state.current_playlist[next_index]
+
     return {"success": True}
+
+@app.post("/reorder_playlist")
+async def reorder_playlist(request: dict):
+    """Reorder a pattern in the current playlist queue.
+
+    Since the playlist now contains only main patterns (clear patterns are executed
+    dynamically at runtime), this simply moves the pattern from one position to another.
+    """
+    if not state.current_playlist:
+        raise HTTPException(status_code=400, detail="No playlist is currently running")
+
+    from_index = request.get("from_index")
+    to_index = request.get("to_index")
+
+    if from_index is None or to_index is None:
+        raise HTTPException(status_code=400, detail="from_index and to_index are required")
+
+    playlist = list(state.current_playlist)  # Make a copy to work with
+    current_index = state.current_playlist_index
+
+    # Validate indices
+    if from_index < 0 or from_index >= len(playlist):
+        raise HTTPException(status_code=400, detail="from_index out of range")
+    if to_index < 0 or to_index >= len(playlist):
+        raise HTTPException(status_code=400, detail="to_index out of range")
+
+    # Can't move patterns that have already played (before current_index)
+    # But CAN move the current pattern or swap with it (allows live reordering)
+    if from_index < current_index:
+        raise HTTPException(status_code=400, detail="Cannot move completed pattern")
+    if to_index < current_index:
+        raise HTTPException(status_code=400, detail="Cannot move to completed position")
+
+    # Perform the reorder
+    item = playlist.pop(from_index)
+    # Adjust to_index if moving forward (since we removed an item before it)
+    adjusted_to_index = to_index if to_index < from_index else to_index - 1
+    playlist.insert(adjusted_to_index, item)
+
+    # Update state (this triggers the property setter)
+    state.current_playlist = playlist
+
+    return {"success": True}
+
+@app.post("/add_to_queue")
+async def add_to_queue(request: dict):
+    """Add a pattern to the current playlist queue.
+
+    Args:
+        pattern: The pattern file path to add (e.g., 'circle.thr' or 'subdirectory/pattern.thr')
+        position: 'next' to play after current pattern, 'end' to add to end of queue
+    """
+    if not state.current_playlist:
+        raise HTTPException(status_code=400, detail="No playlist is currently running")
+
+    pattern = request.get("pattern")
+    position = request.get("position", "end")  # 'next' or 'end'
+
+    if not pattern:
+        raise HTTPException(status_code=400, detail="pattern is required")
+
+    # Verify the pattern file exists
+    pattern_path = os.path.join(pattern_manager.THETA_RHO_DIR, pattern)
+    if not os.path.exists(pattern_path):
+        raise HTTPException(status_code=404, detail="Pattern file not found")
+
+    playlist = list(state.current_playlist)
+    current_index = state.current_playlist_index
+
+    if position == "next":
+        # Insert right after the current pattern
+        insert_index = current_index + 1
+    else:
+        # Add to end
+        insert_index = len(playlist)
+
+    playlist.insert(insert_index, pattern)
+    state.current_playlist = playlist
+
+    return {"success": True, "position": insert_index}
 
 @app.get("/api/custom_clear_patterns", deprecated=True, tags=["settings-deprecated"])
 async def get_custom_clear_patterns():
@@ -1978,28 +2813,82 @@ async def set_app_name(request: dict):
 
 CUSTOM_BRANDING_DIR = os.path.join("static", "custom")
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
-MAX_LOGO_SIZE = 5 * 1024 * 1024  # 5MB
+MAX_LOGO_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_LOGO_DIMENSION = 512  # Max width/height for optimized logo
 
-def generate_favicon_from_logo(logo_path: str, favicon_path: str) -> bool:
-    """Generate a circular-cropped favicon from the uploaded logo using PIL.
 
-    Creates a multi-size ICO file (16x16, 32x32, 48x48) with circular crop.
+def optimize_logo_image(content: bytes, original_ext: str) -> tuple[bytes, str]:
+    """Optimize logo image by resizing and converting to WebP.
+
+    Args:
+        content: Original image bytes
+        original_ext: Original file extension (e.g., '.png', '.jpg')
+
+    Returns:
+        Tuple of (optimized_bytes, new_extension)
+
+    For SVG files, returns the original content unchanged.
+    For raster images, resizes to MAX_LOGO_DIMENSION and converts to WebP.
+    """
+    # SVG files are already lightweight vectors - keep as-is
+    if original_ext.lower() == ".svg":
+        return content, original_ext
+
+    try:
+        from PIL import Image
+        import io
+
+        with Image.open(io.BytesIO(content)) as img:
+            # Convert to RGBA for transparency support
+            if img.mode in ('P', 'LA') or (img.mode == 'RGBA' and 'transparency' in img.info):
+                img = img.convert('RGBA')
+            elif img.mode != 'RGBA':
+                img = img.convert('RGB')
+
+            # Resize if larger than max dimension (maintain aspect ratio)
+            width, height = img.size
+            if width > MAX_LOGO_DIMENSION or height > MAX_LOGO_DIMENSION:
+                ratio = min(MAX_LOGO_DIMENSION / width, MAX_LOGO_DIMENSION / height)
+                new_size = (int(width * ratio), int(height * ratio))
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
+                logger.info(f"Logo resized from {width}x{height} to {new_size[0]}x{new_size[1]}")
+
+            # Save as WebP with good quality/size balance
+            output = io.BytesIO()
+            img.save(output, format='WEBP', quality=85, method=6)
+            optimized_bytes = output.getvalue()
+
+            original_size = len(content)
+            new_size = len(optimized_bytes)
+            reduction = ((original_size - new_size) / original_size) * 100
+            logger.info(f"Logo optimized: {original_size:,} bytes -> {new_size:,} bytes ({reduction:.1f}% reduction)")
+
+            return optimized_bytes, ".webp"
+
+    except Exception as e:
+        logger.warning(f"Logo optimization failed, using original: {str(e)}")
+        return content, original_ext
+
+def generate_favicon_from_logo(logo_path: str, output_dir: str) -> bool:
+    """Generate circular favicons with transparent background from the uploaded logo.
+
+    Creates:
+    - favicon.ico (multi-size: 256, 128, 64, 48, 32, 16)
+    - favicon-16x16.png, favicon-32x32.png, favicon-96x96.png, favicon-128x128.png
+
     Returns True on success, False on failure.
     """
     try:
         from PIL import Image, ImageDraw
 
-        def create_circular_image(img, size):
-            """Create a circular-cropped image at the specified size."""
-            # Resize to target size
+        def create_circular_transparent(img, size):
+            """Create circular image with transparent background."""
             resized = img.resize((size, size), Image.Resampling.LANCZOS)
 
-            # Create circular mask
             mask = Image.new('L', (size, size), 0)
             draw = ImageDraw.Draw(mask)
             draw.ellipse((0, 0, size - 1, size - 1), fill=255)
 
-            # Apply circular mask - create transparent background
             output = Image.new('RGBA', (size, size), (0, 0, 0, 0))
             output.paste(resized, (0, 0), mask)
             return output
@@ -2016,16 +2905,25 @@ def generate_favicon_from_logo(logo_path: str, favicon_path: str) -> bool:
             top = (height - min_dim) // 2
             img = img.crop((left, top, left + min_dim, top + min_dim))
 
-            # Create circular images at each favicon size
-            sizes = [48, 32, 16]
-            circular_images = [create_circular_image(img, size) for size in sizes]
+            # Generate circular favicon PNGs with transparent background
+            png_sizes = {
+                "favicon-16x16.png": 16,
+                "favicon-32x32.png": 32,
+                "favicon-96x96.png": 96,
+                "favicon-128x128.png": 128,
+            }
+            for filename, size in png_sizes.items():
+                icon = create_circular_transparent(img, size)
+                icon.save(os.path.join(output_dir, filename), format='PNG')
 
-            # Save as ICO - first image is the main one, rest are appended
-            circular_images[0].save(
-                favicon_path,
+            # Generate high-resolution favicon.ico
+            ico_sizes = [256, 128, 64, 48, 32, 16]
+            ico_images = [create_circular_transparent(img, s) for s in ico_sizes]
+            ico_images[0].save(
+                os.path.join(output_dir, "favicon.ico"),
                 format='ICO',
-                append_images=circular_images[1:],
-                sizes=[(s, s) for s in sizes]
+                append_images=ico_images[1:],
+                sizes=[(s, s) for s in ico_sizes]
             )
 
         return True
@@ -2033,15 +2931,70 @@ def generate_favicon_from_logo(logo_path: str, favicon_path: str) -> bool:
         logger.error(f"Failed to generate favicon: {str(e)}")
         return False
 
+def generate_pwa_icons_from_logo(logo_path: str, output_dir: str) -> bool:
+    """Generate square PWA app icons from the uploaded logo.
+
+    Creates square icons (no circular crop) - OS will apply its own mask.
+    Composites onto a solid background to avoid transparency issues
+    (iOS fills transparent areas with white on home screen icons).
+
+    Generates:
+    - apple-touch-icon.png (180x180)
+    - android-chrome-192x192.png (192x192)
+    - android-chrome-512x512.png (512x512)
+
+    Returns True on success, False on failure.
+    """
+    try:
+        from PIL import Image
+
+        with Image.open(logo_path) as img:
+            # Convert to RGBA if needed
+            if img.mode != 'RGBA':
+                img = img.convert('RGBA')
+
+            # Crop to square (center crop)
+            width, height = img.size
+            min_dim = min(width, height)
+            left = (width - min_dim) // 2
+            top = (height - min_dim) // 2
+            img = img.crop((left, top, left + min_dim, top + min_dim))
+
+            # Generate square icons at each required size
+            icon_sizes = {
+                "apple-touch-icon.png": 180,
+                "android-chrome-192x192.png": 192,
+                "android-chrome-512x512.png": 512,
+            }
+
+            for filename, size in icon_sizes.items():
+                resized = img.resize((size, size), Image.Resampling.LANCZOS)
+                # Composite onto solid background to eliminate transparency
+                # (iOS shows white behind transparent areas on home screen)
+                background = Image.new('RGB', (size, size), (10, 10, 10))  # #0a0a0a theme color
+                background.paste(resized, (0, 0), resized)  # Use resized as its own alpha mask
+                icon_path = os.path.join(output_dir, filename)
+                background.save(icon_path, format='PNG')
+                logger.info(f"Generated PWA icon: {filename}")
+
+        return True
+    except Exception as e:
+        logger.error(f"Failed to generate PWA icons: {str(e)}")
+        return False
+
 @app.post("/api/upload-logo", tags=["settings"])
 async def upload_logo(file: UploadFile = File(...)):
     """Upload a custom logo image.
 
     Supported formats: PNG, JPG, JPEG, GIF, WebP, SVG
-    Maximum size: 5MB
+    Maximum upload size: 10MB
 
-    The uploaded file will be stored and used as the application logo.
-    A favicon will be automatically generated from the logo.
+    Images are automatically optimized:
+    - Resized to max 512x512 pixels
+    - Converted to WebP format for smaller file size
+    - SVG files are kept as-is (already lightweight)
+
+    A favicon and PWA icons will be automatically generated from the logo.
     """
     try:
         # Validate file extension
@@ -2073,31 +3026,36 @@ async def upload_logo(file: UploadFile = File(...)):
             if os.path.exists(old_favicon_path):
                 os.remove(old_favicon_path)
 
+        # Optimize the image (resize + convert to WebP for smaller file size)
+        optimized_content, optimized_ext = optimize_logo_image(content, file_ext)
+
         # Generate a unique filename to prevent caching issues
         import uuid
-        filename = f"logo-{uuid.uuid4().hex[:8]}{file_ext}"
+        filename = f"logo-{uuid.uuid4().hex[:8]}{optimized_ext}"
         file_path = os.path.join(CUSTOM_BRANDING_DIR, filename)
 
-        # Save the logo file
+        # Save the optimized logo file
         with open(file_path, "wb") as f:
-            f.write(content)
+            f.write(optimized_content)
 
-        # Generate favicon from logo (for non-SVG files)
+        # Generate favicon and PWA icons from logo (for non-SVG files)
         favicon_generated = False
-        if file_ext != ".svg":
-            favicon_path = os.path.join(CUSTOM_BRANDING_DIR, "favicon.ico")
-            favicon_generated = generate_favicon_from_logo(file_path, favicon_path)
+        pwa_icons_generated = False
+        if optimized_ext != ".svg":
+            favicon_generated = generate_favicon_from_logo(file_path, CUSTOM_BRANDING_DIR)
+            pwa_icons_generated = generate_pwa_icons_from_logo(file_path, CUSTOM_BRANDING_DIR)
 
         # Update state
         state.custom_logo = filename
         state.save()
 
-        logger.info(f"Custom logo uploaded: {filename}, favicon generated: {favicon_generated}")
+        logger.info(f"Custom logo uploaded: {filename}, favicon generated: {favicon_generated}, PWA icons generated: {pwa_icons_generated}")
         return {
             "success": True,
             "filename": filename,
             "url": f"/static/custom/{filename}",
-            "favicon_generated": favicon_generated
+            "favicon_generated": favicon_generated,
+            "pwa_icons_generated": pwa_icons_generated
         }
 
     except HTTPException:
@@ -2108,7 +3066,7 @@ async def upload_logo(file: UploadFile = File(...)):
 
 @app.delete("/api/custom-logo", tags=["settings"])
 async def delete_custom_logo():
-    """Remove custom logo and favicon, reverting to defaults."""
+    """Remove custom logo, favicon, and PWA icons, reverting to defaults."""
     try:
         if state.custom_logo:
             # Remove logo
@@ -2116,14 +3074,33 @@ async def delete_custom_logo():
             if os.path.exists(logo_path):
                 os.remove(logo_path)
 
-            # Remove generated favicon
-            favicon_path = os.path.join(CUSTOM_BRANDING_DIR, "favicon.ico")
-            if os.path.exists(favicon_path):
-                os.remove(favicon_path)
+            # Remove generated favicons
+            favicon_files = [
+                "favicon.ico",
+                "favicon-16x16.png",
+                "favicon-32x32.png",
+                "favicon-96x96.png",
+                "favicon-128x128.png",
+            ]
+            for favicon_name in favicon_files:
+                favicon_path = os.path.join(CUSTOM_BRANDING_DIR, favicon_name)
+                if os.path.exists(favicon_path):
+                    os.remove(favicon_path)
+
+            # Remove generated PWA icons
+            pwa_icons = [
+                "apple-touch-icon.png",
+                "android-chrome-192x192.png",
+                "android-chrome-512x512.png",
+            ]
+            for icon_name in pwa_icons:
+                icon_path = os.path.join(CUSTOM_BRANDING_DIR, icon_name)
+                if os.path.exists(icon_path):
+                    os.remove(icon_path)
 
             state.custom_logo = None
             state.save()
-            logger.info("Custom logo and favicon removed")
+            logger.info("Custom logo, favicon, and PWA icons removed")
         return {"success": True}
     except Exception as e:
         logger.error(f"Error removing logo: {str(e)}")
@@ -2300,8 +3277,17 @@ async def preview_thr_batch(request: dict):
 
     async def process_single_file(file_name):
         """Process a single file and return its preview data."""
+        # Check in-memory cache first (for current and next playing patterns)
+        normalized_for_cache = normalize_file_path(file_name)
+        if state._current_preview and state._current_preview[0] == normalized_for_cache:
+            logger.debug(f"Using cached preview for current: {file_name}")
+            return file_name, state._current_preview[1]
+        if state._next_preview and state._next_preview[0] == normalized_for_cache:
+            logger.debug(f"Using cached preview for next: {file_name}")
+            return file_name, state._next_preview[1]
+
         # Acquire semaphore to limit concurrent processing
-        async with preview_semaphore:
+        async with get_preview_semaphore():
             t1 = time.time()
             try:
                 # Normalize file path for cross-platform compatibility
@@ -2332,9 +3318,8 @@ async def preview_thr_batch(request: dict):
                     last_coord_obj = metadata.get('last_coordinate')
                 else:
                     logger.debug(f"Metadata cache miss for {file_name}, parsing file")
-                    # Use process pool for CPU-intensive parsing
-                    loop = asyncio.get_running_loop()
-                    coordinates = await loop.run_in_executor(pool_module.get_pool(), parse_theta_rho_file, pattern_file_path)
+                    # Use thread pool to avoid memory pressure on resource-constrained devices
+                    coordinates = await asyncio.to_thread(parse_theta_rho_file, pattern_file_path)
                     first_coord = coordinates[0] if coordinates else None
                     last_coord = coordinates[-1] if coordinates else None
                     first_coord_obj = {"x": first_coord[0], "y": first_coord[1]} if first_coord else None
@@ -2348,6 +3333,24 @@ async def preview_thr_batch(request: dict):
                     "first_coordinate": first_coord_obj,
                     "last_coordinate": last_coord_obj
                 }
+
+                # Cache preview for current/next pattern to speed up subsequent requests
+                current_file = state.current_playing_file
+                if current_file:
+                    current_normalized = normalize_file_path(current_file)
+                    if normalized_file_name == current_normalized:
+                        state._current_preview = (normalized_file_name, result)
+                        logger.debug(f"Cached preview for current: {file_name}")
+                    elif state.current_playlist:
+                        # Check if this is the next pattern in playlist
+                        playlist = state.current_playlist
+                        idx = state.current_playlist_index
+                        if idx is not None and idx + 1 < len(playlist):
+                            next_file = normalize_file_path(playlist[idx + 1])
+                            if normalized_file_name == next_file:
+                                state._next_preview = (normalized_file_name, result)
+                                logger.debug(f"Cached preview for next: {file_name}")
+
                 logger.debug(f"Processed {file_name} in {time.time() - t1:.2f}s")
                 return file_name, result
             except Exception as e:
@@ -2361,21 +3364,20 @@ async def preview_thr_batch(request: dict):
     # Convert results to dictionary
     results = dict(file_results)
 
-    logger.info(f"Total batch processing time: {time.time() - start:.2f}s for {len(file_names)} files")
+    logger.debug(f"Total batch processing time: {time.time() - start:.2f}s for {len(file_names)} files")
     return JSONResponse(content=results, headers=headers)
 
 @app.get("/playlists")
-async def playlists(request: Request):
-    logger.debug("Rendering playlists page")
-    return templates.TemplateResponse("playlists.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
+async def playlists_page(request: Request):
+    return get_redirect_response(request)
 
 @app.get("/image2sand")
-async def image2sand(request: Request):
-    return templates.TemplateResponse("image2sand.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
+async def image2sand_page(request: Request):
+    return get_redirect_response(request)
 
 @app.get("/led")
 async def led_control_page(request: Request):
-    return templates.TemplateResponse("led.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
+    return get_redirect_response(request)
 
 # DW LED control endpoints
 @app.get("/api/dw_leds/status")
@@ -2734,8 +3736,8 @@ async def dw_leds_get_idle_timeout():
     }
 
 @app.get("/table_control")
-async def table_control(request: Request):
-    return templates.TemplateResponse("table_control.html", {"request": request, "app_name": state.app_name, "custom_logo": state.custom_logo})
+async def table_control_page(request: Request):
+    return get_redirect_response(request)
 
 @app.get("/cache-progress")
 async def get_cache_progress_endpoint():
@@ -2761,9 +3763,6 @@ def signal_handler(signum, frame):
         # Turn off all LEDs on shutdown
         if state.led_controller:
             state.led_controller.set_power(0)
-
-        # Shutdown process pool to prevent semaphore leaks
-        pool_module.shutdown_pool(wait=False, cancel_futures=True)
 
         # Stop pattern manager motion controller
         pattern_manager.motion_controller.stop()
@@ -2806,26 +3805,26 @@ async def get_version_info(force_refresh: bool = False):
 
 @app.post("/api/update")
 async def trigger_update():
-    """Trigger software update (placeholder for future implementation)"""
+    """Trigger software update by pulling latest Docker images and recreating containers."""
     try:
-        # For now, just return the GitHub release URL
-        version_info = await version_manager.get_version_info()
-        if version_info.get("latest_release"):
+        logger.info("Update triggered via API")
+        success, error_message, error_log = update_manager.update_software()
+
+        if success:
             return JSONResponse(content={
-                "success": False,
-                "message": "Automatic updates not implemented yet",
-                "manual_update_url": version_info["latest_release"].get("html_url"),
-                "instructions": "Please visit the GitHub release page to download and install the update manually"
+                "success": True,
+                "message": "Update started. Containers are being recreated with the latest images. The page will reload shortly."
             })
         else:
             return JSONResponse(content={
                 "success": False,
-                "message": "No updates available"
+                "message": error_message or "Update failed",
+                "errors": error_log
             })
     except Exception as e:
         logger.error(f"Error triggering update: {e}")
         return JSONResponse(
-            content={"success": False, "message": "Failed to check for updates"},
+            content={"success": False, "message": f"Failed to trigger update: {str(e)}"},
             status_code=500
         )
 
@@ -2871,7 +3870,7 @@ async def restart_system():
             try:
                 # Use docker restart directly with container name
                 # This is simpler and doesn't require the compose file path
-                subprocess.run(["docker", "restart", "dune-weaver"], check=True)
+                subprocess.run(["docker", "restart", "dune-weaver-backend"], check=True)
                 logger.info("Docker restart command executed successfully")
             except FileNotFoundError:
                 logger.error("docker command not found")

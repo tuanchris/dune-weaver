@@ -42,7 +42,7 @@ QtObject {
 
     // Placeholder colors
     property color placeholderBackground: darkMode ? "#2d2d2d" : "#f0f0f0"
-    property color placeholderText: darkMode ? "#606060" : "#cccccc"
+    property color placeholderText: darkMode ? "#9a9a9a" : "#999999"
 
     // Preview background - lighter in dark mode for better pattern visibility
     property color previewBackground: darkMode ? "#707070" : "#f8f9fa"
@@ -67,7 +67,6 @@ QtObject {
     onDarkModeChanged: {
         // Save preference
         settings.darkMode = darkMode
-        console.log("🎨 Dark mode:", darkMode ? "enabled" : "disabled")
     }
 
     // Helper function to get contrast color

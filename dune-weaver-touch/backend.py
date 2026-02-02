@@ -5,11 +5,20 @@ from PySide6.QtNetwork import QAbstractSocket
 import aiohttp
 import asyncio
 import json
+import logging
 import subprocess
 import threading
 import time
 from pathlib import Path
 import os
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%H:%M:%S'
+)
+logger = logging.getLogger("DuneWeaver")
 
 QML_IMPORT_NAME = "DuneWeaver"
 QML_IMPORT_MAJOR_VERSION = 1
@@ -31,10 +40,11 @@ class Backend(QObject):
         "Never": 0  # 0 means never timeout
     }
     
-    # Predefined speed options 
+    # Predefined speed options
     SPEED_OPTIONS = {
         "50": 50,
         "100": 100,
+        "150": 150,
         "200": 200,
         "300": 300,
         "500": 500
@@ -72,6 +82,14 @@ class Backend(QObject):
     screenTimeoutChanged = Signal(int)  # New signal for timeout changes
     pauseBetweenPatternsChanged = Signal(int)  # New signal for pause changes
     pausedChanged = Signal(bool)  # Signal when pause state changes
+    playlistSettingsChanged = Signal()  # Signal when any playlist setting changes
+    patternsRefreshCompleted = Signal(bool, str)  # (success, message) for pattern refresh
+
+    # Playlist management signals
+    playlistCreated = Signal(bool, str)      # (success, message)
+    playlistDeleted = Signal(bool, str)      # (success, message)
+    patternAddedToPlaylist = Signal(bool, str)  # (success, message)
+    playlistModified = Signal(bool, str)     # (success, message)
 
     # Backend connection status signals
     backendConnectionChanged = Signal(bool)  # True = backend reachable, False = unreachable
@@ -98,7 +116,12 @@ class Backend(QObject):
         self._current_port = ""
         self._current_speed = 130
         self._auto_play_on_boot = False
-        self._pause_between_patterns = 0  # Default: no pause (0 seconds)
+        self._pause_between_patterns = 10800  # Default: 3 hours (10800 seconds)
+
+        # Playlist settings (persisted locally)
+        self._playlist_shuffle = True  # Default: shuffle on
+        self._playlist_run_mode = "loop"  # Default: loop mode
+        self._playlist_clear_pattern = "adaptive"  # Default: adaptive
         
         # Backend connection status
         self._backend_connected = False
@@ -133,16 +156,14 @@ class Backend(QObject):
         self._screen_on = True
         self._screen_timeout = self.DEFAULT_SCREEN_TIMEOUT  # Will be loaded from settings
         self._last_activity = time.time()
-        self._touch_monitor_thread = None
         self._screen_transition_lock = threading.Lock()  # Prevent rapid state changes
         self._last_screen_change = 0  # Track last state change time
-        self._use_touch_script = False  # Disable external touch-monitor script (too sensitive)
         self._screen_timer = QTimer()
         self._screen_timer.timeout.connect(self._check_screen_timeout)
         self._screen_timer.start(1000)  # Check every second
         # Load local settings first
         self._load_local_settings()
-        print(f"🖥️ Screen management initialized: timeout={self._screen_timeout}s, timer started")
+        logger.debug(f"Screen management initialized: timeout={self._screen_timeout}s, timer started")
         
         # HTTP session - initialize lazily
         self.session = None
@@ -230,7 +251,7 @@ class Backend(QObject):
     # WebSocket handlers
     @Slot()
     def _on_ws_connected(self):
-        print("✅ WebSocket connected successfully")
+        logger.info("WebSocket connected successfully")
         self._is_connected = True
         self._backend_connected = True
         self._reconnect_attempts = 0  # Reset reconnection counter
@@ -246,7 +267,7 @@ class Backend(QObject):
     
     @Slot()
     def _on_ws_disconnected(self):
-        print("❌ WebSocket disconnected")
+        logger.error("WebSocket disconnected")
         self._is_connected = False
         self._backend_connected = False
         self._reconnect_status = "Backend connection lost..."
@@ -258,7 +279,7 @@ class Backend(QObject):
     
     @Slot()
     def _on_ws_error(self, error):
-        print(f"❌ WebSocket error: {error}")
+        logger.error(f"WebSocket error: {error}")
         self._is_connected = False
         self._backend_connected = False
         self._reconnect_status = f"Backend error: {error}"
@@ -272,7 +293,7 @@ class Backend(QObject):
         """Schedule a reconnection attempt with fixed 1-second delay."""
         # Always retry - no maximum attempts for touch interface
         status_msg = f"Reconnecting in 1s... (attempt {self._reconnect_attempts + 1})"
-        print(f"🔄 {status_msg}")
+        logger.debug(f"{status_msg}")
         self._reconnect_status = status_msg
         self.reconnectStatusChanged.emit(status_msg)
         self._reconnect_timer.start(self._reconnect_delay)  # Always 1 second
@@ -281,12 +302,12 @@ class Backend(QObject):
     def _attempt_ws_reconnect(self):
         """Attempt to reconnect WebSocket."""
         if self.ws.state() == QAbstractSocket.SocketState.ConnectedState:
-            print("✅ WebSocket already connected")
+            logger.info("WebSocket already connected")
             return
             
         self._reconnect_attempts += 1
         status_msg = f"Connecting to backend... (attempt {self._reconnect_attempts})"
-        print(f"🔄 {status_msg}")
+        logger.debug(f"{status_msg}")
         self._reconnect_status = status_msg
         self.reconnectStatusChanged.emit(status_msg)
         
@@ -301,7 +322,7 @@ class Backend(QObject):
     @Slot()
     def retryConnection(self):
         """Manually retry connection (reset attempts and try again)."""
-        print("🔄 Manual connection retry requested")
+        logger.debug("Manual connection retry requested")
         self._reconnect_attempts = 0
         self._reconnect_timer.stop()  # Stop any scheduled reconnect
         self._attempt_ws_reconnect()
@@ -316,10 +337,10 @@ class Backend(QObject):
 
                 # Detect pattern change and emit executionStarted signal
                 if new_file and new_file != self._current_file:
-                    print(f"🎯 Pattern changed from '{self._current_file}' to '{new_file}'")
+                    logger.info(f"Pattern changed from '{self._current_file}' to '{new_file}'")
                     # Find preview for the new pattern
                     preview_path = self._find_pattern_preview(new_file)
-                    print(f"🖼️ Preview path for new pattern: {preview_path}")
+                    logger.debug(f"Preview path for new pattern: {preview_path}")
                     # Emit signal so UI can update
                     self.executionStarted.emit(new_file, preview_path)
 
@@ -329,14 +350,14 @@ class Backend(QObject):
                 # Handle pause state from WebSocket
                 new_paused = status.get("is_paused", False)
                 if new_paused != self._is_paused:
-                    print(f"⏸️ Pause state changed: {self._is_paused} -> {new_paused}")
+                    logger.info(f"Pause state changed: {self._is_paused} -> {new_paused}")
                     self._is_paused = new_paused
                     self.pausedChanged.emit(new_paused)
 
                 # Handle serial connection status from WebSocket
                 ws_connection_status = status.get("connection_status", False)
                 if ws_connection_status != self._serial_connected:
-                    print(f"🔌 WebSocket serial connection status changed: {ws_connection_status}")
+                    logger.info(f"WebSocket serial connection status changed: {ws_connection_status}")
                     self._serial_connected = ws_connection_status
                     self.serialConnectionChanged.emit(ws_connection_status)
 
@@ -351,7 +372,7 @@ class Backend(QObject):
                 # Handle speed updates from WebSocket
                 ws_speed = status.get("speed", None)
                 if ws_speed and ws_speed != self._current_speed:
-                    print(f"⚡ WebSocket speed changed: {ws_speed}")
+                    logger.debug(f"WebSocket speed changed: {ws_speed}")
                     self._current_speed = ws_speed
                     self.speedChanged.emit(ws_speed)
 
@@ -376,53 +397,53 @@ class Backend(QObject):
                     if current_port:
                         self._current_port = current_port
                         self.currentPortChanged.emit(current_port)
-                        print(f"🔌 Updated current port from WebSocket trigger: {current_port}")
+                        logger.info(f"Updated current port from WebSocket trigger: {current_port}")
         except Exception as e:
-            print(f"💥 Exception getting current port: {e}")
+            logger.error(f"Exception getting current port: {e}")
     
     # API Methods
     @Slot(str, str)
     def executePattern(self, fileName, preExecution="adaptive"):
-        print(f"🎯 ExecutePattern called: fileName='{fileName}', preExecution='{preExecution}'")
+        logger.info(f"ExecutePattern called: fileName='{fileName}', preExecution='{preExecution}'")
         asyncio.create_task(self._execute_pattern(fileName, preExecution))
     
     async def _execute_pattern(self, fileName, preExecution):
         if not self.session:
-            print("❌ Backend session not ready")
+            logger.error("Backend session not ready")
             self.errorOccurred.emit("Backend not ready, please try again")
             return
         
         try:
             request_data = {"file_name": fileName, "pre_execution": preExecution}
-            print(f"🔄 Making HTTP POST to: {self.base_url}/run_theta_rho")
-            print(f"📝 Request payload: {request_data}")
+            logger.debug(f"Making HTTP POST to: {self.base_url}/run_theta_rho")
+            logger.debug(f"Request payload: {request_data}")
             
             async with self.session.post(
                 f"{self.base_url}/run_theta_rho",
                 json=request_data
             ) as resp:
-                print(f"📡 Response status: {resp.status}")
-                print(f"📋 Response headers: {dict(resp.headers)}")
+                logger.debug(f"Response status: {resp.status}")
+                logger.debug(f"Response headers: {dict(resp.headers)}")
                 
                 response_text = await resp.text()
-                print(f"📄 Response body: {response_text}")
+                logger.debug(f"Response body: {response_text}")
                 
                 if resp.status == 200:
-                    print("✅ Pattern execution request successful")
+                    logger.info("Pattern execution request successful")
                     # Find preview image for the pattern
                     preview_path = self._find_pattern_preview(fileName)
-                    print(f"🖼️ Pattern preview path: {preview_path}")
-                    print(f"📡 About to emit executionStarted signal with: fileName='{fileName}', preview='{preview_path}'")
+                    logger.debug(f"Pattern preview path: {preview_path}")
+                    logger.debug(f"About to emit executionStarted signal with: fileName='{fileName}', preview='{preview_path}'")
                     try:
                         self.executionStarted.emit(fileName, preview_path)
-                        print("✅ ExecutionStarted signal emitted successfully")
+                        logger.info("ExecutionStarted signal emitted successfully")
                     except Exception as e:
-                        print(f"❌ Error emitting executionStarted signal: {e}")
+                        logger.error(f"Error emitting executionStarted signal: {e}")
                 else:
-                    print(f"❌ Pattern execution failed with status {resp.status}")
+                    logger.error(f"Pattern execution failed with status {resp.status}")
                     self.errorOccurred.emit(f"Failed to execute: {resp.status} - {response_text}")
         except Exception as e:
-            print(f"💥 Exception in _execute_pattern: {e}")
+            logger.error(f"Exception in _execute_pattern: {e}")
             self.errorOccurred.emit(str(e))
     
     def _find_pattern_preview(self, fileName):
@@ -430,7 +451,7 @@ class Backend(QObject):
         try:
             # Extract just the filename from the path (remove any directory prefixes)
             clean_filename = fileName.split('/')[-1]  # Get last part of path
-            print(f"🔍 Original fileName: {fileName}, clean filename: {clean_filename}")
+            logger.debug(f"Original fileName: {fileName}, clean filename: {clean_filename}")
 
             # Check multiple possible locations for patterns directory
             # Use relative paths that work across different environments
@@ -443,7 +464,7 @@ class Backend(QObject):
             for patterns_dir in possible_dirs:
                 cache_dir = patterns_dir / "cached_images"
                 if cache_dir.exists():
-                    print(f"🔍 Searching for preview in cache directory: {cache_dir}")
+                    logger.debug(f"Searching for preview in cache directory: {cache_dir}")
 
                     # Extensions to try - PNG first for better kiosk compatibility
                     extensions = [".png", ".webp", ".jpg", ".jpeg"]
@@ -457,11 +478,11 @@ class Backend(QObject):
                         for ext in extensions:
                             preview_file = cache_dir / (filename + ext)
                             if preview_file.exists():
-                                print(f"✅ Found preview (direct): {preview_file}")
+                                logger.info(f"Found preview (direct): {preview_file}")
                                 return str(preview_file.absolute())
 
                     # If not found directly, search recursively through subdirectories
-                    print(f"🔍 Searching recursively in {cache_dir}...")
+                    logger.debug(f"Searching recursively in {cache_dir}...")
                     for filename in filenames_to_try:
                         for ext in extensions:
                             target_name = filename + ext
@@ -470,13 +491,13 @@ class Backend(QObject):
                             if matches:
                                 # Return the first match found
                                 preview_file = matches[0]
-                                print(f"✅ Found preview (recursive): {preview_file}")
+                                logger.info(f"Found preview (recursive): {preview_file}")
                                 return str(preview_file.absolute())
 
-            print("❌ No preview image found")
+            logger.error("No preview image found")
             return ""
         except Exception as e:
-            print(f"💥 Exception finding preview: {e}")
+            logger.error(f"Exception finding preview: {e}")
             return ""
     
     @Slot()
@@ -489,49 +510,50 @@ class Backend(QObject):
             return
         
         try:
-            print("🛑 Calling stop_execution endpoint...")
-            # Add timeout to prevent hanging
-            timeout = aiohttp.ClientTimeout(total=10)  # 10 second timeout
+            logger.info("Calling stop_execution endpoint...")
+            # Backend stop_actions() waits up to 10s for pattern lock + 30s for idle check
+            # Use 45s timeout to accommodate worst-case scenario
+            timeout = aiohttp.ClientTimeout(total=45)
             async with self.session.post(f"{self.base_url}/stop_execution", timeout=timeout) as resp:
-                print(f"🛑 Stop execution response status: {resp.status}")
+                logger.info(f"Stop execution response status: {resp.status}")
                 if resp.status == 200:
                     response_data = await resp.json()
-                    print(f"🛑 Stop execution response: {response_data}")
+                    logger.info(f"Stop execution response: {response_data}")
                     self.executionStopped.emit()
                 else:
-                    print(f"❌ Stop execution failed with status: {resp.status}")
+                    logger.error(f"Stop execution failed with status: {resp.status}")
                     response_text = await resp.text()
                     self.errorOccurred.emit(f"Stop failed: {resp.status} - {response_text}")
         except asyncio.TimeoutError:
-            print("⏰ Stop execution request timed out")
+            logger.warning("Stop execution request timed out")
             self.errorOccurred.emit("Stop execution request timed out")
         except Exception as e:
-            print(f"💥 Exception in _stop_execution: {e}")
+            logger.error(f"Exception in _stop_execution: {e}")
             self.errorOccurred.emit(str(e))
     
     @Slot()
     def pauseExecution(self):
-        print("⏸️ Pausing execution...")
+        logger.info("Pausing execution...")
         asyncio.create_task(self._api_call("/pause_execution"))
     
     @Slot()
     def resumeExecution(self):
-        print("▶️ Resuming execution...")
+        logger.info("Resuming execution...")
         asyncio.create_task(self._api_call("/resume_execution"))
     
     @Slot()
     def skipPattern(self):
-        print("⏭️ Skipping pattern...")
+        logger.info("Skipping pattern...")
         asyncio.create_task(self._api_call("/skip_pattern"))
     
     @Slot(str, float, str, str, bool)
     def executePlaylist(self, playlistName, pauseTime=0.0, clearPattern="adaptive", runMode="single", shuffle=False):
-        print(f"🎵 ExecutePlaylist called: playlist='{playlistName}', pauseTime={pauseTime}, clearPattern='{clearPattern}', runMode='{runMode}', shuffle={shuffle}")
+        logger.info(f"ExecutePlaylist called: playlist='{playlistName}', pauseTime={pauseTime}, clearPattern='{clearPattern}', runMode='{runMode}', shuffle={shuffle}")
         asyncio.create_task(self._execute_playlist(playlistName, pauseTime, clearPattern, runMode, shuffle))
     
     async def _execute_playlist(self, playlistName, pauseTime, clearPattern, runMode, shuffle):
         if not self.session:
-            print("❌ Backend session not ready")
+            logger.error("Backend session not ready")
             self.errorOccurred.emit("Backend not ready, please try again")
             return
         
@@ -543,27 +565,27 @@ class Backend(QObject):
                 "run_mode": runMode,
                 "shuffle": shuffle
             }
-            print(f"🔄 Making HTTP POST to: {self.base_url}/run_playlist")
-            print(f"📝 Request payload: {request_data}")
+            logger.debug(f"Making HTTP POST to: {self.base_url}/run_playlist")
+            logger.debug(f"Request payload: {request_data}")
             
             async with self.session.post(
                 f"{self.base_url}/run_playlist",
                 json=request_data
             ) as resp:
-                print(f"📡 Response status: {resp.status}")
+                logger.debug(f"Response status: {resp.status}")
                 
                 response_text = await resp.text()
-                print(f"📄 Response body: {response_text}")
+                logger.debug(f"Response body: {response_text}")
                 
                 if resp.status == 200:
-                    print(f"✅ Playlist execution request successful: {playlistName}")
+                    logger.info(f"Playlist execution request successful: {playlistName}")
                     # The playlist will start executing patterns automatically
                     # Status updates will come through WebSocket
                 else:
-                    print(f"❌ Playlist execution failed with status {resp.status}")
+                    logger.error(f"Playlist execution failed with status {resp.status}")
                     self.errorOccurred.emit(f"Failed to execute playlist: {resp.status} - {response_text}")
         except Exception as e:
-            print(f"💥 Exception in _execute_playlist: {e}")
+            logger.error(f"Exception in _execute_playlist: {e}")
             self.errorOccurred.emit(str(e))
     
     async def _api_call(self, endpoint):
@@ -572,29 +594,29 @@ class Backend(QObject):
             return
         
         try:
-            print(f"📡 Calling API endpoint: {endpoint}")
+            logger.debug(f"Calling API endpoint: {endpoint}")
             # Add timeout to prevent hanging
             timeout = aiohttp.ClientTimeout(total=10)  # 10 second timeout
             async with self.session.post(f"{self.base_url}{endpoint}", timeout=timeout) as resp:
-                print(f"📡 API response status for {endpoint}: {resp.status}")
+                logger.debug(f"API response status for {endpoint}: {resp.status}")
                 if resp.status == 200:
                     response_data = await resp.json()
-                    print(f"📡 API response for {endpoint}: {response_data}")
+                    logger.debug(f"API response for {endpoint}: {response_data}")
                 else:
-                    print(f"❌ API call {endpoint} failed with status: {resp.status}")
+                    logger.error(f"API call {endpoint} failed with status: {resp.status}")
                     response_text = await resp.text()
                     self.errorOccurred.emit(f"API call failed: {endpoint} - {resp.status} - {response_text}")
         except asyncio.TimeoutError:
-            print(f"⏰ API call {endpoint} timed out")
+            logger.warning(f"API call {endpoint} timed out")
             self.errorOccurred.emit(f"API call {endpoint} timed out")
         except Exception as e:
-            print(f"💥 Exception in API call {endpoint}: {e}")
+            logger.error(f"Exception in API call {endpoint}: {e}")
             self.errorOccurred.emit(str(e))
     
     # Serial Port Management
     @Slot()
     def refreshSerialPorts(self):
-        print("🔌 Refreshing serial ports...")
+        logger.info("Refreshing serial ports...")
         asyncio.create_task(self._refresh_serial_ports())
     
     async def _refresh_serial_ports(self):
@@ -608,17 +630,17 @@ class Backend(QObject):
                     # The endpoint returns a list directly, not a dictionary
                     ports = await resp.json()
                     self._serial_ports = ports if isinstance(ports, list) else []
-                    print(f"📡 Found serial ports: {self._serial_ports}")
+                    logger.debug(f"Found serial ports: {self._serial_ports}")
                     self.serialPortsUpdated.emit(self._serial_ports)
                 else:
-                    print(f"❌ Failed to get serial ports: {resp.status}")
+                    logger.error(f"Failed to get serial ports: {resp.status}")
         except Exception as e:
-            print(f"💥 Exception refreshing serial ports: {e}")
+            logger.error(f"Exception refreshing serial ports: {e}")
             self.errorOccurred.emit(str(e))
     
     @Slot(str)
     def connectSerial(self, port):
-        print(f"🔗 Connecting to serial port: {port}")
+        logger.info(f"Connecting to serial port: {port}")
         asyncio.create_task(self._connect_serial(port))
     
     async def _connect_serial(self, port):
@@ -629,22 +651,22 @@ class Backend(QObject):
         try:
             async with self.session.post(f"{self.base_url}/connect", json={"port": port}) as resp:
                 if resp.status == 200:
-                    print(f"✅ Connected to {port}")
+                    logger.info(f"Connected to {port}")
                     self._serial_connected = True
                     self._current_port = port
                     self.serialConnectionChanged.emit(True)
                     self.currentPortChanged.emit(port)
                 else:
                     response_text = await resp.text()
-                    print(f"❌ Failed to connect to {port}: {resp.status} - {response_text}")
+                    logger.error(f"Failed to connect to {port}: {resp.status} - {response_text}")
                     self.errorOccurred.emit(f"Failed to connect: {response_text}")
         except Exception as e:
-            print(f"💥 Exception connecting to serial: {e}")
+            logger.error(f"Exception connecting to serial: {e}")
             self.errorOccurred.emit(str(e))
     
     @Slot()
     def disconnectSerial(self):
-        print("🔌 Disconnecting serial...")
+        logger.info("Disconnecting serial...")
         asyncio.create_task(self._disconnect_serial())
     
     async def _disconnect_serial(self):
@@ -655,22 +677,22 @@ class Backend(QObject):
         try:
             async with self.session.post(f"{self.base_url}/disconnect") as resp:
                 if resp.status == 200:
-                    print("✅ Disconnected from serial")
+                    logger.info("Disconnected from serial")
                     self._serial_connected = False
                     self._current_port = ""
                     self.serialConnectionChanged.emit(False)
                     self.currentPortChanged.emit("")
                 else:
                     response_text = await resp.text()
-                    print(f"❌ Failed to disconnect: {resp.status} - {response_text}")
+                    logger.error(f"Failed to disconnect: {resp.status} - {response_text}")
         except Exception as e:
-            print(f"💥 Exception disconnecting serial: {e}")
+            logger.error(f"Exception disconnecting serial: {e}")
             self.errorOccurred.emit(str(e))
     
     # Hardware Movement Controls
     @Slot()
     def sendHome(self):
-        print("🏠 Sending home command...")
+        logger.debug("Sending home command...")
         asyncio.create_task(self._send_home())
 
     async def _send_home(self):
@@ -680,34 +702,34 @@ class Backend(QObject):
             return
 
         try:
-            print("🏠 Calling /send_home (no timeout - homing can take up to 90s)...")
+            logger.debug("Calling /send_home (no timeout - homing can take up to 90s)...")
             async with self.session.post(f"{self.base_url}/send_home") as resp:
-                print(f"🏠 Home command response status: {resp.status}")
+                logger.debug(f"Home command response status: {resp.status}")
                 if resp.status == 200:
                     response_data = await resp.json()
-                    print(f"✅ Home command successful: {response_data}")
+                    logger.info(f"Home command successful: {response_data}")
                 else:
-                    print(f"❌ Home command failed with status: {resp.status}")
+                    logger.error(f"Home command failed with status: {resp.status}")
                     response_text = await resp.text()
                     self.errorOccurred.emit(f"Home failed: {resp.status} - {response_text}")
         except Exception as e:
-            print(f"💥 Exception in home command: {e}")
+            logger.error(f"Exception in home command: {e}")
             self.errorOccurred.emit(str(e))
     
     @Slot()
     def moveToCenter(self):
-        print("🎯 Moving to center...")
+        logger.info("Moving to center...")
         asyncio.create_task(self._api_call("/move_to_center"))
     
     @Slot()
     def moveToPerimeter(self):
-        print("⭕ Moving to perimeter...")
+        logger.info("Moving to perimeter...")
         asyncio.create_task(self._api_call("/move_to_perimeter"))
     
     # Speed Control
     @Slot(int)
     def setSpeed(self, speed):
-        print(f"⚡ Setting speed to: {speed}")
+        logger.debug(f"Setting speed to: {speed}")
         asyncio.create_task(self._set_speed(speed))
     
     async def _set_speed(self, speed):
@@ -718,20 +740,20 @@ class Backend(QObject):
         try:
             async with self.session.post(f"{self.base_url}/set_speed", json={"speed": speed}) as resp:
                 if resp.status == 200:
-                    print(f"✅ Speed set to {speed}")
+                    logger.info(f"Speed set to {speed}")
                     self._current_speed = speed
                     self.speedChanged.emit(speed)
                 else:
                     response_text = await resp.text()
-                    print(f"❌ Failed to set speed: {resp.status} - {response_text}")
+                    logger.error(f"Failed to set speed: {resp.status} - {response_text}")
         except Exception as e:
-            print(f"💥 Exception setting speed: {e}")
+            logger.error(f"Exception setting speed: {e}")
             self.errorOccurred.emit(str(e))
     
     # Auto Play on Boot Setting
     @Slot(bool)
     def setAutoPlayOnBoot(self, enabled):
-        print(f"🚀 Setting auto play on boot: {enabled}")
+        logger.info(f"Setting auto play on boot: {enabled}")
         asyncio.create_task(self._set_auto_play_on_boot(enabled))
     
     async def _set_auto_play_on_boot(self, enabled):
@@ -743,13 +765,13 @@ class Backend(QObject):
             # Use the kiosk mode API endpoint for auto-play on boot
             async with self.session.post(f"{self.base_url}/api/kiosk-mode", json={"enabled": enabled}) as resp:
                 if resp.status == 200:
-                    print(f"✅ Auto play on boot set to {enabled}")
+                    logger.info(f"Auto play on boot set to {enabled}")
                     self._auto_play_on_boot = enabled
                 else:
                     response_text = await resp.text()
-                    print(f"❌ Failed to set auto play: {resp.status} - {response_text}")
+                    logger.error(f"Failed to set auto play: {resp.status} - {response_text}")
         except Exception as e:
-            print(f"💥 Exception setting auto play: {e}")
+            logger.error(f"Exception setting auto play: {e}")
             self.errorOccurred.emit(str(e))
     
     # Note: Screen timeout is now managed locally in touch_settings.json
@@ -762,44 +784,55 @@ class Backend(QObject):
             if os.path.exists(self.SETTINGS_FILE):
                 with open(self.SETTINGS_FILE, 'r') as f:
                     settings = json.load(f)
-                    
+
                 screen_timeout = settings.get('screen_timeout', self.DEFAULT_SCREEN_TIMEOUT)
                 if isinstance(screen_timeout, (int, float)) and screen_timeout >= 0:
                     self._screen_timeout = int(screen_timeout)
                     if screen_timeout == 0:
-                        print(f"🖥️ Loaded screen timeout from local settings: Never (0s)")
+                        logger.debug("Loaded screen timeout from local settings: Never (0s)")
                     else:
-                        print(f"🖥️ Loaded screen timeout from local settings: {self._screen_timeout}s")
+                        logger.debug(f"Loaded screen timeout from local settings: {self._screen_timeout}s")
                 else:
-                    print(f"⚠️ Invalid screen timeout in settings, using default: {self.DEFAULT_SCREEN_TIMEOUT}s")
+                    logger.warning(f"Invalid screen timeout in settings, using default: {self.DEFAULT_SCREEN_TIMEOUT}s")
+
+                # Load playlist settings
+                self._pause_between_patterns = settings.get('pause_between_patterns', 10800)  # Default 3h
+                self._playlist_shuffle = settings.get('playlist_shuffle', True)
+                self._playlist_run_mode = settings.get('playlist_run_mode', "loop")
+                self._playlist_clear_pattern = settings.get('playlist_clear_pattern', "adaptive")
+                logger.info(f"Loaded playlist settings: pause={self._pause_between_patterns}s, shuffle={self._playlist_shuffle}, mode={self._playlist_run_mode}, clear={self._playlist_clear_pattern}")
             else:
-                print(f"📄 No local settings file found, creating with defaults")
+                logger.debug("No local settings file found, creating with defaults")
                 self._save_local_settings()
         except Exception as e:
-            print(f"❌ Error loading local settings: {e}, using defaults")
+            logger.error(f"Error loading local settings: {e}, using defaults")
             self._screen_timeout = self.DEFAULT_SCREEN_TIMEOUT
-    
+
     def _save_local_settings(self):
         """Save settings to local JSON file"""
         try:
             settings = {
                 'screen_timeout': self._screen_timeout,
-                'version': '1.0'
+                'pause_between_patterns': self._pause_between_patterns,
+                'playlist_shuffle': self._playlist_shuffle,
+                'playlist_run_mode': self._playlist_run_mode,
+                'playlist_clear_pattern': self._playlist_clear_pattern,
+                'version': '1.1'
             }
             with open(self.SETTINGS_FILE, 'w') as f:
                 json.dump(settings, f, indent=2)
-            print(f"💾 Saved local settings: screen_timeout={self._screen_timeout}s")
+            logger.debug(f"Saved local settings: screen_timeout={self._screen_timeout}s, playlist settings saved")
         except Exception as e:
-            print(f"❌ Error saving local settings: {e}")
+            logger.error(f"Error saving local settings: {e}")
 
     @Slot()
     def loadControlSettings(self):
-        print("📋 Loading control settings...")
+        logger.debug("Loading control settings...")
         asyncio.create_task(self._load_settings())
     
     async def _load_settings(self):
         if not self.session:
-            print("⚠️ Session not ready for loading settings")
+            logger.warning("Session not ready for loading settings")
             return
         
         try:
@@ -809,7 +842,7 @@ class Backend(QObject):
                 if resp.status == 200:
                     data = await resp.json()
                     self._auto_play_on_boot = data.get("enabled", False)
-                    print(f"🚀 Loaded auto play setting: {self._auto_play_on_boot}")
+                    logger.info(f"Loaded auto play setting: {self._auto_play_on_boot}")
                 # Note: Screen timeout is managed locally, not from server
             
             # Serial status will be handled by WebSocket updates automatically
@@ -819,7 +852,7 @@ class Backend(QObject):
                     data = await resp.json()
                     initial_connected = data.get("connected", False)
                     current_port = data.get("port", "")
-                    print(f"🔌 Initial serial status: connected={initial_connected}, port={current_port}")
+                    logger.info(f"Initial serial status: connected={initial_connected}, port={current_port}")
                     
                     # Only update if WebSocket hasn't already set this
                     if initial_connected and current_port and not self._current_port:
@@ -831,18 +864,18 @@ class Backend(QObject):
                         self._serial_connected = initial_connected
                         self.serialConnectionChanged.emit(initial_connected)
             
-            print("✅ Settings loaded - WebSocket will handle real-time updates")
+            logger.info("Settings loaded - WebSocket will handle real-time updates")
             self.settingsLoaded.emit()
             
         except aiohttp.ClientConnectorError as e:
-            print(f"⚠️ Cannot connect to backend at {self.base_url}: {e}")
+            logger.warning(f"Cannot connect to backend at {self.base_url}: {e}")
             # Don't emit error - this is expected when backend is down
             # WebSocket will handle reconnection
         except asyncio.TimeoutError:
-            print(f"⏰ Timeout loading settings from {self.base_url}")
+            logger.warning(f"Timeout loading settings from {self.base_url}")
             # Don't emit error - expected when backend is slow/down
         except Exception as e:
-            print(f"💥 Unexpected error loading settings: {e}")
+            logger.error(f"Unexpected error loading settings: {e}")
             # Only emit error for unexpected issues
             if "ssl" not in str(e).lower():
                 self.errorOccurred.emit(str(e))
@@ -861,7 +894,7 @@ class Backend(QObject):
         if self._screen_timeout != timeout:
             old_timeout = self._screen_timeout
             self._screen_timeout = timeout
-            print(f"🖥️ Screen timeout changed from {old_timeout}s to {timeout}s")
+            logger.debug(f"Screen timeout changed from {old_timeout}s to {timeout}s")
             
             # Save to local settings
             self._save_local_settings()
@@ -902,7 +935,7 @@ class Backend(QObject):
             if self._screen_timeout != timeout_value:
                 old_timeout = self._screen_timeout
                 self._screen_timeout = timeout_value
-                print(f"🖥️ Screen timeout changed from {old_timeout}s to {timeout_value}s ({option})")
+                logger.debug(f"Screen timeout changed from {old_timeout}s to {timeout_value}s ({option})")
                 
                 # Save to local settings
                 self._save_local_settings()
@@ -910,7 +943,7 @@ class Backend(QObject):
                 # Emit change signal for QML
                 self.screenTimeoutChanged.emit(timeout_value)
         else:
-            print(f"⚠️ Unknown timeout option: {option}")
+            logger.warning(f"Unknown timeout option: {option}")
     
     @Slot(result='QStringList')
     def getSpeedOptions(self):
@@ -936,7 +969,7 @@ class Backend(QObject):
             if self._current_speed != speed_value:
                 old_speed = self._current_speed
                 self._current_speed = speed_value
-                print(f"⚡ Speed changed from {old_speed} to {speed_value} ({option})")
+                logger.debug(f"Speed changed from {old_speed} to {speed_value} ({option})")
                 
                 # Send to main application
                 asyncio.create_task(self._set_speed_async(speed_value))
@@ -944,7 +977,7 @@ class Backend(QObject):
                 # Emit change signal for QML
                 self.speedChanged.emit(speed_value)
         else:
-            print(f"⚠️ Unknown speed option: {option}")
+            logger.warning(f"Unknown speed option: {option}")
     
     async def _set_speed_async(self, speed):
         """Send speed to main application asynchronously"""
@@ -953,11 +986,11 @@ class Backend(QObject):
         try:
             async with self.session.post(f"{self.base_url}/set_speed", json={"speed": speed}) as resp:
                 if resp.status == 200:
-                    print(f"✅ Speed set successfully: {speed}")
+                    logger.info(f"Speed set successfully: {speed}")
                 else:
-                    print(f"❌ Failed to set speed: {resp.status}")
+                    logger.error(f"Failed to set speed: {resp.status}")
         except Exception as e:
-            print(f"💥 Exception setting speed: {e}")
+            logger.error(f"Exception setting speed: {e}")
     
     # Pause Between Patterns Methods
     @Slot(result='QStringList')
@@ -992,18 +1025,65 @@ class Backend(QObject):
             if self._pause_between_patterns != pause_value:
                 old_pause = self._pause_between_patterns
                 self._pause_between_patterns = pause_value
-                print(f"⏸️ Pause between patterns changed from {old_pause}s to {pause_value}s ({option})")
-                
+                logger.info(f"Pause between patterns changed from {old_pause}s to {pause_value}s ({option})")
+
+                # Save to local settings
+                self._save_local_settings()
+
                 # Emit change signal for QML
                 self.pauseBetweenPatternsChanged.emit(pause_value)
         else:
-            print(f"⚠️ Unknown pause option: {option}")
-    
+            logger.warning(f"Unknown pause option: {option}")
+
     # Property for pause between patterns
     @Property(int, notify=pauseBetweenPatternsChanged)
     def pauseBetweenPatterns(self):
         """Get current pause between patterns in seconds"""
         return self._pause_between_patterns
+
+    # Playlist Settings Properties and Slots
+    @Property(bool, notify=playlistSettingsChanged)
+    def playlistShuffle(self):
+        """Get playlist shuffle setting"""
+        return self._playlist_shuffle
+
+    @Slot(bool)
+    def setPlaylistShuffle(self, enabled):
+        """Set playlist shuffle setting"""
+        if self._playlist_shuffle != enabled:
+            self._playlist_shuffle = enabled
+            logger.info(f"Playlist shuffle changed to: {enabled}")
+            self._save_local_settings()
+            self.playlistSettingsChanged.emit()
+
+    @Property(str, notify=playlistSettingsChanged)
+    def playlistRunMode(self):
+        """Get playlist run mode (single/loop)"""
+        return self._playlist_run_mode
+
+    @Slot(str)
+    def setPlaylistRunMode(self, mode):
+        """Set playlist run mode"""
+        if mode in ["single", "loop"] and self._playlist_run_mode != mode:
+            self._playlist_run_mode = mode
+            logger.info(f"Playlist run mode changed to: {mode}")
+            self._save_local_settings()
+            self.playlistSettingsChanged.emit()
+
+    @Property(str, notify=playlistSettingsChanged)
+    def playlistClearPattern(self):
+        """Get playlist clear pattern setting"""
+        return self._playlist_clear_pattern
+
+    @Slot(str)
+    def setPlaylistClearPattern(self, pattern):
+        """Set playlist clear pattern"""
+        valid_patterns = ["adaptive", "clear_center", "clear_perimeter", "none"]
+        if pattern in valid_patterns and self._playlist_clear_pattern != pattern:
+            self._playlist_clear_pattern = pattern
+            logger.info(f"Playlist clear pattern changed to: {pattern}")
+            self._save_local_settings()
+            self.playlistSettingsChanged.emit()
     
     # Screen Control Methods
     @Slot()
@@ -1015,10 +1095,8 @@ class Backend(QObject):
     
     @Slot()
     def turnScreenOff(self):
-        """Turn the screen off"""
+        """Turn the screen off (QML MouseArea handles wake-on-touch)"""
         self._turn_screen_off()
-        # Start touch monitoring after manual screen off
-        QTimer.singleShot(1000, self._start_touch_monitoring)  # 1 second delay
     
     @Slot()
     def resetActivityTimer(self):
@@ -1033,11 +1111,11 @@ class Backend(QObject):
             # Debounce: Don't turn on if we just changed state
             time_since_change = time.time() - self._last_screen_change
             if time_since_change < 2.0:  # 2 second debounce
-                print(f"🖥️ Screen state change blocked (debounce: {time_since_change:.1f}s < 2s)")
+                logger.debug(f"Screen state change blocked (debounce: {time_since_change:.1f}s < 2s)")
                 return
             
             if self._screen_on:
-                print("🖥️ Screen already ON, skipping")
+                logger.debug("Screen already ON, skipping")
                 return
             
             try:
@@ -1047,9 +1125,9 @@ class Backend(QObject):
                     result = subprocess.run(['sudo', '/usr/local/bin/screen-on'], 
                                           capture_output=True, text=True, timeout=5)
                     if result.returncode == 0:
-                        print("🖥️ Screen turned ON (screen-on script)")
+                        logger.debug("Screen turned ON (screen-on script)")
                     else:
-                        print(f"⚠️ screen-on script failed: {result.stderr}")
+                        logger.warning(f"screen-on script failed: {result.stderr}")
                 else:
                     # Fallback: Manual control matching the script
                     # Unblank framebuffer and restore backlight
@@ -1059,71 +1137,71 @@ class Backend(QObject):
                                               shell=True, capture_output=True, text=True, timeout=2)
                         if result.returncode == 0 and result.stdout.strip():
                             max_brightness = int(result.stdout.strip())
-                    except:
+                    except Exception:
                         pass
                     
                     subprocess.run(['sudo', 'sh', '-c', 
                                   f'echo 0 > /sys/class/graphics/fb0/blank && echo {max_brightness} > /sys/class/backlight/*/brightness'], 
                                  check=False, timeout=5)
-                    print(f"🖥️ Screen turned ON (manual, brightness: {max_brightness})")
+                    logger.debug(f"Screen turned ON (manual, brightness: {max_brightness})")
                 
                 self._screen_on = True
                 self._last_screen_change = time.time()
                 self.screenStateChanged.emit(True)
-            
+
             except Exception as e:
-                print(f"❌ Failed to turn screen on: {e}")
+                logger.error(f"Failed to turn screen on: {e}")
     
     def _turn_screen_off(self):
         """Internal method to turn screen off"""
-        print("🖥️ _turn_screen_off() called")
+        logger.debug("_turn_screen_off() called")
         with self._screen_transition_lock:
             # Debounce: Don't turn off if we just changed state
             time_since_change = time.time() - self._last_screen_change
             if time_since_change < 2.0:  # 2 second debounce
-                print(f"🖥️ Screen state change blocked (debounce: {time_since_change:.1f}s < 2s)")
+                logger.debug(f"Screen state change blocked (debounce: {time_since_change:.1f}s < 2s)")
                 return
             
             if not self._screen_on:
-                print("🖥️ Screen already OFF, skipping")
+                logger.debug("Screen already OFF, skipping")
                 return
         
         try:
             # Use the working screen-off script if available
             screen_off_script = Path('/usr/local/bin/screen-off')
-            print(f"🖥️ Checking for screen-off script at: {screen_off_script}")
-            print(f"🖥️ Script exists: {screen_off_script.exists()}")
+            logger.debug(f"Checking for screen-off script at: {screen_off_script}")
+            logger.debug(f"Script exists: {screen_off_script.exists()}")
             
             if screen_off_script.exists():
-                print("🖥️ Executing screen-off script...")
+                logger.debug("Executing screen-off script...")
                 result = subprocess.run(['sudo', '/usr/local/bin/screen-off'], 
                                       capture_output=True, text=True, timeout=10)
-                print(f"🖥️ Script return code: {result.returncode}")
+                logger.debug(f"Script return code: {result.returncode}")
                 if result.stdout:
-                    print(f"🖥️ Script stdout: {result.stdout}")
+                    logger.debug(f"Script stdout: {result.stdout}")
                 if result.stderr:
-                    print(f"🖥️ Script stderr: {result.stderr}")
+                    logger.debug(f"Script stderr: {result.stderr}")
                     
                 if result.returncode == 0:
-                    print("✅ Screen turned OFF (screen-off script)")
+                    logger.info("Screen turned OFF (screen-off script)")
                 else:
-                    print(f"⚠️ screen-off script failed: return code {result.returncode}")
+                    logger.warning(f"screen-off script failed: return code {result.returncode}")
             else:
-                print("🖥️ Using manual screen control...")
+                logger.debug("Using manual screen control...")
                 # Fallback: Manual control matching the script
                 # Blank framebuffer and turn off backlight
                 subprocess.run(['sudo', 'sh', '-c', 
                               'echo 0 > /sys/class/backlight/*/brightness && echo 1 > /sys/class/graphics/fb0/blank'], 
                              check=False, timeout=5)
-                print("🖥️ Screen turned OFF (manual)")
+                logger.debug("Screen turned OFF (manual)")
             
             self._screen_on = False
             self._last_screen_change = time.time()
             self.screenStateChanged.emit(False)
-            print("🖥️ Screen state set to OFF, signal emitted")
+            logger.debug("Screen state set to OFF, signal emitted")
             
         except Exception as e:
-            print(f"❌ Failed to turn screen off: {e}")
+            logger.error(f"Failed to turn screen off: {e}")
             import traceback
             traceback.print_exc()
     
@@ -1133,170 +1211,24 @@ class Backend(QObject):
         self._last_activity = time.time()
         time_since_last = self._last_activity - old_time
         if time_since_last > 1:  # Only log if it's been more than 1 second
-            print(f"🖥️ Activity detected - timer reset (was idle for {time_since_last:.1f}s)")
+            logger.debug(f"Activity detected - timer reset (was idle for {time_since_last:.1f}s)")
     
     def _check_screen_timeout(self):
-        """Check if screen should be turned off due to inactivity"""
+        """Check if screen should be turned off due to inactivity.
+
+        Wake-on-touch is handled by QML's global MouseArea which calls
+        resetActivityTimer() on any touch event, even when screen is off.
+        """
         if self._screen_on and self._screen_timeout > 0:  # Only check if timeout is enabled
             idle_time = time.time() - self._last_activity
             # Log every 10 seconds when getting close to timeout
             if idle_time > self._screen_timeout - 10 and idle_time % 10 < 1:
-                print(f"🖥️ Screen idle for {idle_time:.0f}s (timeout at {self._screen_timeout}s)")
-            
-            if idle_time > self._screen_timeout:
-                print(f"🖥️ Screen timeout reached! Idle for {idle_time:.0f}s (timeout: {self._screen_timeout}s)")
-                self._turn_screen_off()
-                # Add delay before starting touch monitoring to avoid catching residual events
-                QTimer.singleShot(1000, self._start_touch_monitoring)  # 1 second delay
-        # If timeout is 0 (Never), screen stays on indefinitely
-    
-    def _start_touch_monitoring(self):
-        """Start monitoring touch input for wake-up"""
-        if self._touch_monitor_thread is None or not self._touch_monitor_thread.is_alive():
-            self._touch_monitor_thread = threading.Thread(target=self._monitor_touch_input, daemon=True)
-            self._touch_monitor_thread.start()
-    
-    def _monitor_touch_input(self):
-        """Monitor touch input to wake up the screen"""
-        print("👆 Starting touch monitoring for wake-up")
-        # Add delay to let any residual touch events clear
-        time.sleep(2)
-        
-        # Flush touch device to clear any buffered events
-        try:
-            # Find and flush touch device
-            for i in range(5):
-                device = f'/dev/input/event{i}'
-                if Path(device).exists():
-                    try:
-                        # Read and discard any pending events
-                        with open(device, 'rb') as f:
-                            import fcntl
-                            import os
-                            fcntl.fcntl(f.fileno(), fcntl.F_SETFL, os.O_NONBLOCK)
-                            while True:
-                                try:
-                                    f.read(24)  # Standard input_event size
-                                except:
-                                    break
-                        print(f"👆 Flushed touch device: {device}")
-                        break
-                    except:
-                        continue
-        except Exception as e:
-            print(f"👆 Could not flush touch device: {e}")
-        
-        print("👆 Touch monitoring active")
-        try:
-            # Use external touch monitor script if available - but only if not too sensitive
-            touch_monitor_script = Path('/usr/local/bin/touch-monitor')
-            use_script = touch_monitor_script.exists() and hasattr(self, '_use_touch_script') and self._use_touch_script
-            
-            if use_script:
-                print("👆 Using touch-monitor script")
-                # Add extra delay for script-based monitoring since it's more sensitive
-                time.sleep(3)
-                print("👆 Starting touch-monitor script after flush delay")
-                process = subprocess.Popen(['sudo', '/usr/local/bin/touch-monitor'], 
-                                         stdout=subprocess.PIPE, 
-                                         stderr=subprocess.PIPE)
-                
-                # Wait for script to detect touch and wake screen
-                while not self._screen_on:
-                    if process.poll() is not None:  # Script exited (touch detected)
-                        print("👆 Touch detected by monitor script")
-                        self._turn_screen_on()
-                        self._reset_activity_timer()
-                        break
-                    time.sleep(0.1)
-                
-                if process.poll() is None:
-                    process.terminate()
-            else:
-                # Fallback: Direct monitoring
-                # Find touch input device
-                touch_device = None
-                for i in range(5):  # Check event0 through event4
-                    device = f'/dev/input/event{i}'
-                    if Path(device).exists():
-                        # Check if it's a touch device
-                        try:
-                            info = subprocess.run(['udevadm', 'info', '--query=all', f'--name={device}'], 
-                                                capture_output=True, text=True, timeout=2)
-                            if 'touch' in info.stdout.lower() or 'ft5406' in info.stdout.lower():
-                                touch_device = device
-                                break
-                        except:
-                            pass
-                
-                if not touch_device:
-                    touch_device = '/dev/input/event0'  # Default fallback
-                
-                print(f"👆 Monitoring touch device: {touch_device}")
-                
-                # Try evtest first (more responsive to single taps)
-                evtest_available = subprocess.run(['which', 'evtest'], 
-                                                 capture_output=True).returncode == 0
-                
-                if evtest_available:
-                    # Use evtest which is more sensitive to single touches
-                    print("👆 Using evtest for touch detection")
-                    process = subprocess.Popen(['sudo', 'evtest', touch_device], 
-                                             stdout=subprocess.PIPE, 
-                                             stderr=subprocess.DEVNULL,
-                                             text=True)
-                    
-                    # Wait for any event line
-                    while not self._screen_on:
-                        try:
-                            line = process.stdout.readline()
-                            if line and 'Event:' in line:
-                                print("👆 Touch detected via evtest - waking screen")
-                                process.terminate()
-                                self._turn_screen_on()
-                                self._reset_activity_timer()
-                                break
-                        except:
-                            pass
-                        
-                        if process.poll() is not None:
-                            break
-                        time.sleep(0.01)  # Small sleep to prevent CPU spinning
-                else:
-                    # Fallback: Use cat with single byte read (more responsive)
-                    print("👆 Using cat for touch detection")
-                    process = subprocess.Popen(['sudo', 'cat', touch_device], 
-                                             stdout=subprocess.PIPE, 
-                                             stderr=subprocess.DEVNULL)
-                    
-                    # Wait for any data (even 1 byte indicates touch)
-                    while not self._screen_on:
-                        try:
-                            # Non-blocking check for data
-                            import select
-                            ready, _, _ = select.select([process.stdout], [], [], 0.1)
-                            if ready:
-                                data = process.stdout.read(1)  # Read just 1 byte
-                                if data:
-                                    print("👆 Touch detected - waking screen")
-                                    process.terminate()
-                                    self._turn_screen_on()
-                                    self._reset_activity_timer()
-                                    break
-                        except:
-                            pass
-                        
-                        # Check if screen was turned on by other means
-                        if self._screen_on:
-                            process.terminate()
-                            break
-                        
-                        time.sleep(0.1)
-                
-        except Exception as e:
-            print(f"❌ Error monitoring touch input: {e}")
+                logger.debug(f"Screen idle for {idle_time:.0f}s (timeout at {self._screen_timeout}s)")
 
-        print("👆 Touch monitoring stopped")
+            if idle_time > self._screen_timeout:
+                logger.debug(f"Screen timeout reached! Idle for {idle_time:.0f}s (timeout: {self._screen_timeout}s)")
+                self._turn_screen_off()
+        # If timeout is 0 (Never), screen stays on indefinitely
 
     # ==================== LED Control Methods ====================
 
@@ -1340,12 +1272,12 @@ class Backend(QObject):
     @Slot()
     def loadLedConfig(self):
         """Load LED configuration from the server"""
-        print("💡 Loading LED configuration...")
+        logger.debug("Loading LED configuration...")
         asyncio.create_task(self._load_led_config())
 
     async def _load_led_config(self):
         if not self.session:
-            print("⚠️ Session not ready for LED config")
+            logger.warning("Session not ready for LED config")
             return
 
         try:
@@ -1354,7 +1286,7 @@ class Backend(QObject):
                 if resp.status == 200:
                     data = await resp.json()
                     self._led_provider = data.get("provider", "none")
-                    print(f"💡 LED provider: {self._led_provider}")
+                    logger.debug(f"LED provider: {self._led_provider}")
 
                     if self._led_provider == "dw_leds":
                         # Load DW LEDs status
@@ -1364,9 +1296,9 @@ class Backend(QObject):
 
                     self.ledStatusChanged.emit()
                 else:
-                    print(f"❌ Failed to get LED config: {resp.status}")
+                    logger.error(f"Failed to get LED config: {resp.status}")
         except Exception as e:
-            print(f"💥 Exception loading LED config: {e}")
+            logger.error(f"Exception loading LED config: {e}")
 
     async def _load_led_status(self):
         """Load current LED status"""
@@ -1383,10 +1315,10 @@ class Backend(QObject):
                     self._led_brightness = data.get("brightness", 100)
                     self._led_current_effect = data.get("current_effect", 0)
                     self._led_current_palette = data.get("current_palette", 0)
-                    print(f"💡 LED status: connected={self._led_connected}, power={self._led_power_on}, brightness={self._led_brightness}")
+                    logger.debug(f"LED status: connected={self._led_connected}, power={self._led_power_on}, brightness={self._led_brightness}")
                     self.ledStatusChanged.emit()
         except Exception as e:
-            print(f"💥 Exception loading LED status: {e}")
+            logger.error(f"Exception loading LED status: {e}")
 
     async def _load_led_effects(self):
         """Load available LED effects"""
@@ -1402,10 +1334,10 @@ class Backend(QObject):
                     raw_effects = data.get("effects", [])
                     # Convert to list of dicts for easier use in QML
                     self._led_effects = [{"id": e[0], "name": e[1]} for e in raw_effects if len(e) >= 2]
-                    print(f"💡 Loaded {len(self._led_effects)} LED effects")
+                    logger.debug(f"Loaded {len(self._led_effects)} LED effects")
                     self.ledEffectsLoaded.emit(self._led_effects)
         except Exception as e:
-            print(f"💥 Exception loading LED effects: {e}")
+            logger.error(f"Exception loading LED effects: {e}")
 
     async def _load_led_palettes(self):
         """Load available LED palettes"""
@@ -1421,21 +1353,21 @@ class Backend(QObject):
                     raw_palettes = data.get("palettes", [])
                     # Convert to list of dicts for easier use in QML
                     self._led_palettes = [{"id": p[0], "name": p[1]} for p in raw_palettes if len(p) >= 2]
-                    print(f"💡 Loaded {len(self._led_palettes)} LED palettes")
+                    logger.debug(f"Loaded {len(self._led_palettes)} LED palettes")
                     self.ledPalettesLoaded.emit(self._led_palettes)
         except Exception as e:
-            print(f"💥 Exception loading LED palettes: {e}")
+            logger.error(f"Exception loading LED palettes: {e}")
 
     @Slot()
     def refreshLedStatus(self):
         """Refresh LED status from server"""
-        print("💡 Refreshing LED status...")
+        logger.debug("Refreshing LED status...")
         asyncio.create_task(self._load_led_status())
 
     @Slot()
     def toggleLedPower(self):
         """Toggle LED power on/off"""
-        print("💡 Toggling LED power...")
+        logger.debug("Toggling LED power...")
         asyncio.create_task(self._toggle_led_power())
 
     async def _toggle_led_power(self):
@@ -1452,18 +1384,18 @@ class Backend(QObject):
                     data = await resp.json()
                     self._led_power_on = data.get("power_on", False)
                     self._led_connected = data.get("connected", False)
-                    print(f"💡 LED power toggled: {self._led_power_on}")
+                    logger.debug(f"LED power toggled: {self._led_power_on}")
                     self.ledStatusChanged.emit()
                 else:
                     self.errorOccurred.emit(f"Failed to toggle LED power: {resp.status}")
         except Exception as e:
-            print(f"💥 Exception toggling LED power: {e}")
+            logger.error(f"Exception toggling LED power: {e}")
             self.errorOccurred.emit(str(e))
 
     @Slot(bool)
     def setLedPower(self, on):
         """Set LED power state (True=on, False=off)"""
-        print(f"💡 Setting LED power: {on}")
+        logger.debug(f"Setting LED power: {on}")
         asyncio.create_task(self._set_led_power(on))
 
     async def _set_led_power(self, on):
@@ -1480,18 +1412,18 @@ class Backend(QObject):
                     data = await resp.json()
                     self._led_power_on = data.get("power_on", False)
                     self._led_connected = data.get("connected", False)
-                    print(f"💡 LED power set: {self._led_power_on}")
+                    logger.debug(f"LED power set: {self._led_power_on}")
                     self.ledStatusChanged.emit()
                 else:
                     self.errorOccurred.emit(f"Failed to set LED power: {resp.status}")
         except Exception as e:
-            print(f"💥 Exception setting LED power: {e}")
+            logger.error(f"Exception setting LED power: {e}")
             self.errorOccurred.emit(str(e))
 
     @Slot(int)
     def setLedBrightness(self, value):
         """Set LED brightness (0-100)"""
-        print(f"💡 Setting LED brightness: {value}")
+        logger.debug(f"Setting LED brightness: {value}")
         asyncio.create_task(self._set_led_brightness(value))
 
     async def _set_led_brightness(self, value):
@@ -1506,18 +1438,18 @@ class Backend(QObject):
             ) as resp:
                 if resp.status == 200:
                     self._led_brightness = value
-                    print(f"💡 LED brightness set: {value}")
+                    logger.debug(f"LED brightness set: {value}")
                     self.ledStatusChanged.emit()
                 else:
                     self.errorOccurred.emit(f"Failed to set brightness: {resp.status}")
         except Exception as e:
-            print(f"💥 Exception setting LED brightness: {e}")
+            logger.error(f"Exception setting LED brightness: {e}")
             self.errorOccurred.emit(str(e))
 
     @Slot(int, int, int)
     def setLedColor(self, r, g, b):
         """Set LED color using RGB values"""
-        print(f"💡 Setting LED color: RGB({r}, {g}, {b})")
+        logger.debug(f"Setting LED color: RGB({r}, {g}, {b})")
         asyncio.create_task(self._set_led_color(r, g, b))
 
     async def _set_led_color(self, r, g, b):
@@ -1532,12 +1464,12 @@ class Backend(QObject):
             ) as resp:
                 if resp.status == 200:
                     self._led_color = f"#{r:02x}{g:02x}{b:02x}"
-                    print(f"💡 LED color set: {self._led_color}")
+                    logger.debug(f"LED color set: {self._led_color}")
                     self.ledStatusChanged.emit()
                 else:
                     self.errorOccurred.emit(f"Failed to set color: {resp.status}")
         except Exception as e:
-            print(f"💥 Exception setting LED color: {e}")
+            logger.error(f"Exception setting LED color: {e}")
             self.errorOccurred.emit(str(e))
 
     @Slot(str)
@@ -1551,12 +1483,12 @@ class Backend(QObject):
             b = int(hexColor[4:6], 16)
             self.setLedColor(r, g, b)
         else:
-            print(f"⚠️ Invalid hex color: {hexColor}")
+            logger.warning(f"Invalid hex color: {hexColor}")
 
     @Slot(int)
     def setLedEffect(self, effectId):
         """Set LED effect by ID"""
-        print(f"💡 Setting LED effect: {effectId}")
+        logger.debug(f"Setting LED effect: {effectId}")
         asyncio.create_task(self._set_led_effect(effectId))
 
     async def _set_led_effect(self, effectId):
@@ -1571,18 +1503,18 @@ class Backend(QObject):
             ) as resp:
                 if resp.status == 200:
                     self._led_current_effect = effectId
-                    print(f"💡 LED effect set: {effectId}")
+                    logger.debug(f"LED effect set: {effectId}")
                     self.ledStatusChanged.emit()
                 else:
                     self.errorOccurred.emit(f"Failed to set effect: {resp.status}")
         except Exception as e:
-            print(f"💥 Exception setting LED effect: {e}")
+            logger.error(f"Exception setting LED effect: {e}")
             self.errorOccurred.emit(str(e))
 
     @Slot(int)
     def setLedPalette(self, paletteId):
         """Set LED palette by ID"""
-        print(f"💡 Setting LED palette: {paletteId}")
+        logger.debug(f"Setting LED palette: {paletteId}")
         asyncio.create_task(self._set_led_palette(paletteId))
 
     async def _set_led_palette(self, paletteId):
@@ -1597,10 +1529,210 @@ class Backend(QObject):
             ) as resp:
                 if resp.status == 200:
                     self._led_current_palette = paletteId
-                    print(f"💡 LED palette set: {paletteId}")
+                    logger.debug(f"LED palette set: {paletteId}")
                     self.ledStatusChanged.emit()
                 else:
                     self.errorOccurred.emit(f"Failed to set palette: {resp.status}")
         except Exception as e:
-            print(f"💥 Exception setting LED palette: {e}")
+            logger.error(f"Exception setting LED palette: {e}")
             self.errorOccurred.emit(str(e))
+
+    # ==================== Pattern Refresh Methods ====================
+
+    @Slot()
+    def refreshPatterns(self):
+        """Refresh pattern cache - converts new WebPs to PNG and rescans patterns"""
+        logger.debug("Refreshing patterns...")
+        asyncio.create_task(self._refresh_patterns())
+
+    async def _refresh_patterns(self):
+        """Async implementation of pattern refresh"""
+        try:
+            from png_cache_manager import PngCacheManager
+            cache_manager = PngCacheManager()
+            success = await cache_manager.ensure_png_cache_available()
+
+            message = "Patterns refreshed" if success else "Refreshed with warnings"
+            logger.info(f"Pattern refresh completed: {message}")
+            self.patternsRefreshCompleted.emit(True, message)
+        except Exception as e:
+            logger.error(f"Pattern refresh failed: {e}")
+            self.patternsRefreshCompleted.emit(False, str(e))
+
+    # ==================== System Control Methods ====================
+
+    @Slot()
+    def restartBackend(self):
+        """Restart the dune-weaver backend via API"""
+        logger.debug("Requesting backend restart via API...")
+        asyncio.create_task(self._restart_backend())
+
+    async def _restart_backend(self):
+        """Async implementation of backend restart"""
+        if not self.session:
+            self.errorOccurred.emit("Backend not ready")
+            return
+
+        try:
+            async with self.session.post(f"{self.base_url}/api/system/restart") as resp:
+                if resp.status == 200:
+                    logger.info("Backend restart initiated via API")
+                else:
+                    response_text = await resp.text()
+                    logger.error(f"Failed to restart backend: {resp.status} - {response_text}")
+                    self.errorOccurred.emit(f"Failed to restart: {response_text}")
+        except Exception as e:
+            logger.error(f"Exception restarting backend: {e}")
+            self.errorOccurred.emit(str(e))
+
+    @Slot()
+    def shutdownPi(self):
+        """Shutdown the Raspberry Pi via API"""
+        logger.info("Requesting Pi shutdown via API...")
+        asyncio.create_task(self._shutdown_pi())
+
+    async def _shutdown_pi(self):
+        """Async implementation of Pi shutdown"""
+        if not self.session:
+            self.errorOccurred.emit("Backend not ready")
+            return
+
+        try:
+            async with self.session.post(f"{self.base_url}/api/system/shutdown") as resp:
+                if resp.status == 200:
+                    logger.info("Shutdown initiated via API")
+                else:
+                    response_text = await resp.text()
+                    logger.error(f"Failed to shutdown: {resp.status} - {response_text}")
+                    self.errorOccurred.emit(f"Failed to shutdown: {response_text}")
+        except Exception as e:
+            logger.error(f"Exception during shutdown: {e}")
+            self.errorOccurred.emit(str(e))
+
+    # ==================== Playlist Management Methods ====================
+
+    @Slot(str)
+    def createPlaylist(self, playlistName):
+        """Create a new empty playlist"""
+        logger.debug(f"Creating playlist: {playlistName}")
+        asyncio.create_task(self._create_playlist(playlistName))
+
+    async def _create_playlist(self, playlistName):
+        """Async implementation of playlist creation"""
+        if not self.session:
+            self.playlistCreated.emit(False, "Backend not ready")
+            return
+
+        try:
+            async with self.session.post(
+                f"{self.base_url}/create_playlist",
+                json={"playlist_name": playlistName, "files": []}
+            ) as resp:
+                if resp.status == 200:
+                    logger.info(f"Playlist created: {playlistName}")
+                    self.playlistCreated.emit(True, f"Created: {playlistName}")
+                else:
+                    response_text = await resp.text()
+                    logger.error(f"Failed to create playlist: {resp.status} - {response_text}")
+                    self.playlistCreated.emit(False, f"Failed: {response_text}")
+        except Exception as e:
+            logger.error(f"Exception creating playlist: {e}")
+            self.playlistCreated.emit(False, str(e))
+
+    @Slot(str)
+    def deletePlaylist(self, playlistName):
+        """Delete a playlist"""
+        logger.info(f"Deleting playlist: {playlistName}")
+        asyncio.create_task(self._delete_playlist(playlistName))
+
+    async def _delete_playlist(self, playlistName):
+        """Async implementation of playlist deletion"""
+        if not self.session:
+            self.playlistDeleted.emit(False, "Backend not ready")
+            return
+
+        try:
+            async with self.session.request(
+                "DELETE",
+                f"{self.base_url}/delete_playlist",
+                json={"playlist_name": playlistName}
+            ) as resp:
+                if resp.status == 200:
+                    logger.info(f"Playlist deleted: {playlistName}")
+                    self.playlistDeleted.emit(True, f"Deleted: {playlistName}")
+                else:
+                    response_text = await resp.text()
+                    logger.error(f"Failed to delete playlist: {resp.status} - {response_text}")
+                    self.playlistDeleted.emit(False, f"Failed: {response_text}")
+        except Exception as e:
+            logger.error(f"Exception deleting playlist: {e}")
+            self.playlistDeleted.emit(False, str(e))
+
+    @Slot(str, str)
+    def addPatternToPlaylist(self, playlistName, patternPath):
+        """Add a pattern to an existing playlist"""
+        logger.info(f"Adding pattern to playlist: {patternPath} -> {playlistName}")
+        asyncio.create_task(self._add_pattern_to_playlist(playlistName, patternPath))
+
+    async def _add_pattern_to_playlist(self, playlistName, patternPath):
+        """Async implementation of adding pattern to playlist"""
+        if not self.session:
+            self.patternAddedToPlaylist.emit(False, "Backend not ready")
+            return
+
+        try:
+            async with self.session.post(
+                f"{self.base_url}/add_to_playlist",
+                json={"playlist_name": playlistName, "pattern": patternPath}
+            ) as resp:
+                if resp.status == 200:
+                    logger.info(f"Pattern added to {playlistName}")
+                    self.patternAddedToPlaylist.emit(True, f"Added to {playlistName}")
+                else:
+                    response_text = await resp.text()
+                    logger.error(f"Failed to add pattern: {resp.status} - {response_text}")
+                    self.patternAddedToPlaylist.emit(False, f"Failed: {response_text}")
+        except Exception as e:
+            logger.error(f"Exception adding pattern: {e}")
+            self.patternAddedToPlaylist.emit(False, str(e))
+
+    @Slot(str, list)
+    def updatePlaylistPatterns(self, playlistName, patterns):
+        """Update a playlist with a new list of patterns (used for removing patterns)"""
+        logger.debug(f"Updating playlist patterns: {playlistName} -> {len(patterns)} patterns")
+        asyncio.create_task(self._update_playlist_patterns(playlistName, patterns))
+
+    async def _update_playlist_patterns(self, playlistName, patterns):
+        """Async implementation of playlist pattern update"""
+        if not self.session:
+            self.playlistModified.emit(False, "Backend not ready")
+            return
+
+        try:
+            async with self.session.post(
+                f"{self.base_url}/modify_playlist",
+                json={"playlist_name": playlistName, "files": patterns}
+            ) as resp:
+                if resp.status == 200:
+                    logger.info(f"Playlist updated: {playlistName}")
+                    self.playlistModified.emit(True, f"Updated: {playlistName}")
+                else:
+                    response_text = await resp.text()
+                    logger.error(f"Failed to update playlist: {resp.status} - {response_text}")
+                    self.playlistModified.emit(False, f"Failed: {response_text}")
+        except Exception as e:
+            logger.error(f"Exception updating playlist: {e}")
+            self.playlistModified.emit(False, str(e))
+
+    @Slot(result=list)
+    def getPlaylistNames(self):
+        """Get list of all playlist names (synchronous, reads from local file)"""
+        try:
+            playlists_file = Path("../playlists.json")
+            if playlists_file.exists():
+                with open(playlists_file, 'r') as f:
+                    data = json.load(f)
+                    return sorted(list(data.keys()))
+        except Exception as e:
+            logger.error(f"Error reading playlists: {e}")
+        return []

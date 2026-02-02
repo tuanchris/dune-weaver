@@ -4,8 +4,17 @@ __pycache__/
 *.pyo
 .env
 .idea
-*.json
+# Ignore state and data JSON files, but not package.json
+state.json
+playlists.json
+metadata_cache.json
+tsconfig.json
 *.jsonl
+!package.json
+!package-lock.json
+
+# Touch app config files
+dune-weaver-touch/*.json
 .venv/
 patterns/cached_svg/
 patterns/cached_images/custom_*
@@ -13,6 +22,7 @@ patterns/cached_images/custom_*
 .DS_Store
 # Node.js and build files
 node_modules/
+.vite/
 *.log
 *.png
 # Custom branding assets (user uploads)
@@ -20,3 +30,9 @@ static/custom/*
 !static/custom/.gitkeep
 .claude/
 static/dist/
+.planning/
+.coverage
+# Frontend test artifacts
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/

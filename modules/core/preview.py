@@ -1,29 +1,15 @@
-"""Preview module for generating image previews of patterns.
-
-Uses ProcessPoolExecutor to run CPU-intensive preview generation in separate
-processes, completely eliminating Python GIL contention with the motion control thread.
-"""
+"""Preview module for generating image previews of patterns."""
 import os
 import math
 import asyncio
 import logging
 from io import BytesIO
-from modules.core import process_pool as pool_module
 
 logger = logging.getLogger(__name__)
 
 
-def _generate_preview_in_process(pattern_file, format='WEBP'):
-    """Generate preview for a pattern file, optimized for 300x300 view.
-    
-    Runs in a separate process with its own GIL, avoiding contention
-    with the motion control thread.
-    
-    All imports are done inside the function to ensure they happen
-    in the worker process, not the main process.
-    
-    Note: Worker CPU affinity/priority is configured once at pool init via initializer.
-    """
+def _generate_preview(pattern_file, format='WEBP'):
+    """Generate preview for a pattern file, optimized for 300x300 view."""
     # Import dependencies in the worker process
     from PIL import Image, ImageDraw
     from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR
@@ -92,22 +78,9 @@ def _generate_preview_in_process(pattern_file, format='WEBP'):
 
 
 async def generate_preview_image(pattern_file, format='WEBP'):
-    """Generate a preview for a pattern file.
-    
-    Runs in a separate process via ProcessPoolExecutor to completely
-    eliminate GIL contention with the motion control thread.
-    """
-    loop = asyncio.get_running_loop()
-    pool = pool_module.get_pool()
-    
+    """Generate a preview for a pattern file."""
     try:
-        # Run preview generation in a separate process (separate GIL)
-        result = await loop.run_in_executor(
-            pool,
-            _generate_preview_in_process,
-            pattern_file,
-            format
-        )
+        result = await asyncio.to_thread(_generate_preview, pattern_file, format)
         return result
     except Exception as e:
         logger.error(f"Error generating preview for {pattern_file}: {e}")

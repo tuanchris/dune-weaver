@@ -1,4 +1,4 @@
-from PySide6.QtCore import QAbstractListModel, Qt, Slot, Signal
+from PySide6.QtCore import QAbstractListModel, Qt, Slot
 from PySide6.QtQml import QmlElement
 from pathlib import Path
 import json
@@ -67,7 +67,7 @@ class PlaylistModel(QAbstractListModel):
     
     @Slot(str, result=list)
     def getPatternsForPlaylist(self, playlistName):
-        """Get the list of patterns for a given playlist"""
+        """Get the list of patterns for a given playlist (cleaned for display)"""
         if hasattr(self, '_playlist_data') and playlistName in self._playlist_data:
             patterns = self._playlist_data[playlistName]
             if isinstance(patterns, list):
@@ -82,4 +82,20 @@ class PlaylistModel(QAbstractListModel):
                         clean_name = clean_name[:-4]
                     cleaned_patterns.append(clean_name)
                 return cleaned_patterns
+        return []
+
+    @Slot(str, result=list)
+    def getRawPatternsForPlaylist(self, playlistName):
+        """Get the raw list of patterns for a playlist (with full paths, for API calls)"""
+        if hasattr(self, '_playlist_data') and playlistName in self._playlist_data:
+            patterns = self._playlist_data[playlistName]
+            if isinstance(patterns, list):
+                return patterns
+        return []
+
+    @Slot(result=list)
+    def getAllPlaylistNames(self):
+        """Get a list of all playlist names"""
+        if hasattr(self, '_playlist_data'):
+            return sorted(list(self._playlist_data.keys()))
         return []

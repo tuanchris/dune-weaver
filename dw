@@ -128,13 +128,20 @@ cmd_update() {
     echo -e "${BLUE}Updating Dune Weaver...${NC}"
     cd "$INSTALL_DIR"
 
-    echo "Pulling latest code..."
-    git pull
+    # Check if we should skip the pull phase (called after re-exec)
+    if [[ "$1" != "--continue" ]]; then
+        echo "Pulling latest code..."
+        git pull
 
-    # Update dw CLI
-    echo "Updating dw command..."
-    sudo cp "$INSTALL_DIR/dw" /usr/local/bin/dw
-    sudo chmod +x /usr/local/bin/dw
+        # Update dw CLI
+        echo "Updating dw command..."
+        sudo cp "$INSTALL_DIR/dw" /usr/local/bin/dw
+        sudo chmod +x /usr/local/bin/dw
+
+        # Re-exec with the new script to ensure new code runs
+        echo "Restarting with updated CLI..."
+        exec /usr/local/bin/dw update --continue
+    fi
 
     if is_docker_mode; then
         echo "Stopping current container..."
@@ -164,7 +171,16 @@ cmd_update() {
         echo ""
         echo -e "${BLUE}Updating touch app...${NC}"
         cd "$touch_dir"
-        git pull
+
+        # Update Python dependencies (code already pulled with main repo)
+        if [[ -f "requirements.txt" ]] && [[ -d ".venv" ]]; then
+            echo "Updating touch app dependencies..."
+            source .venv/bin/activate
+            pip install -q -r requirements.txt
+            deactivate
+        fi
+
+        # Restart to apply changes
         sudo systemctl restart dune-weaver-touch
         echo -e "${GREEN}Touch app updated!${NC}"
     fi
@@ -318,7 +334,7 @@ case "${1:-help}" in
         cmd_restart
         ;;
     update)
-        cmd_update
+        cmd_update "$2"
         ;;
     logs)
         cmd_logs "$2"

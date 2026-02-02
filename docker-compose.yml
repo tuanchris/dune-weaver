@@ -1,7 +1,9 @@
 services:
-  dune-weaver:
-    build: . # Uncomment this if you need to build
-    image: ghcr.io/tuanchris/dune-weaver:main # Use latest production image
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: ghcr.io/tuanchris/dune-weaver-frontend:main
     restart: always
     cap_add:
       - SYS_NICE  # Enable real-time thread priority for smooth UART communication
@@ -9,23 +11,38 @@ services:
     #   - "8080:8080" # Map port 8080 of the container to 8080 of the host (access via http://localhost:8080)
     network_mode: "host" # Use host network for device access
     volumes:
-      - .:/app  # Mount entire app for development
-      # Mount Docker socket to allow container to restart itself
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+    container_name: dune-weaver-frontend
+
+  backend:
+    build: .
+    image: ghcr.io/tuanchris/dune-weaver:main
+    restart: always
+    # Pin motion-critical backend to cores 0-2 (Raspberry Pi 4/5 has cores 0-3)
+    # This prevents CPU contention from touch app blocking I/O calls
+    cpuset: "0,1,2"
+    ports:
+      - "8080:8080"
+    # Environment variables for testing (uncomment to enable):
+    # environment:
+    #   FORCE_UPDATE_AVAILABLE: "1"        # Always show update available
+    #   FAKE_LATEST_VERSION: "99.0.0"      # Fake a newer version
+    volumes:
+      # Mount entire app directory for persistence
+      - .:/app
+      # Mount Docker socket for container self-restart/update
       - /var/run/docker.sock:/var/run/docker.sock
-      # Mount timezone file from host for Still Sands scheduling
+      # Mount timezone file from host for scheduling features
       - /etc/timezone:/etc/host-timezone:ro
-      # Mount systemd to allow host shutdown
+      # Mount systemd for host shutdown capability
       - /run/systemd/system:/run/systemd/system:ro
       - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket:ro
       - /sys/fs/cgroup:/sys/fs/cgroup:ro
       # Mount GPIO for DW LEDs and Desert Compass (reed switch)
       - /sys:/sys
-    devices:
-      - "/dev/ttyACM0:/dev/ttyACM0"  # Serial device for stepper motors
-      - "/dev/ttyUSB0:/dev/ttyUSB0"  # Alternative serial device
-      - "/dev/ttyAMA0:/dev/ttyAMA0"  # Alternative serial device
-      - "/dev/gpiomem:/dev/gpiomem"  # GPIO memory access for DW LEDs
-      - "/dev/mem:/dev/mem"          # Direct memory access for PWM
-      - "/dev/pio0:/dev/pio0"        # PIO device for Pi 5 NeoPixel support
-    privileged: true  # Required for GPIO/PWM access
-    container_name: dune-weaver
+      # Mount /dev for serial port access (devices may not exist at start time)
+      - /dev:/dev
+    privileged: true
+    container_name: dune-weaver-backend

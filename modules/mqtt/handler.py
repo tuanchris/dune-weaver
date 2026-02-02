@@ -3,11 +3,10 @@ import os
 import threading
 import time
 import json
-from typing import Dict, Callable, List, Optional, Any
+from typing import Dict, Callable
 import paho.mqtt.client as mqtt
 import logging
 import asyncio
-from functools import partial
 
 from .base import BaseMQTTHandler
 from modules.core.state import state
@@ -122,7 +121,7 @@ class MQTTHandler(BaseMQTTHandler):
 
         # Stop Button
         stop_config = {
-            "name": f"Stop pattern execution",
+            "name": "Stop pattern execution",
             "unique_id": f"{self.device_id}_stop",
             "command_topic": f"{self.device_id}/command/stop",
             "device": base_device,
@@ -133,7 +132,7 @@ class MQTTHandler(BaseMQTTHandler):
 
         # Pause Button
         pause_config = {
-            "name": f"Pause pattern execution",
+            "name": "Pause pattern execution",
             "unique_id": f"{self.device_id}_pause",
             "command_topic": f"{self.device_id}/command/pause",
             "state_topic": f"{self.device_id}/command/pause/state",
@@ -151,7 +150,7 @@ class MQTTHandler(BaseMQTTHandler):
 
         # Play Button
         play_config = {
-            "name": f"Resume pattern execution",
+            "name": "Resume pattern execution",
             "unique_id": f"{self.device_id}_play",
             "command_topic": f"{self.device_id}/command/play",
             "state_topic": f"{self.device_id}/command/play/state",

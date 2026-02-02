@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Control your kinetic sand table" />
+
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Dune Weaver" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- Favicons - will be updated dynamically if custom logo exists -->
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico" id="favicon-ico" />
+    <link rel="icon" type="image/png" sizes="128x128" href="/static/favicon-128x128.png" id="favicon-128" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/static/favicon-96x96.png" id="favicon-96" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png" id="favicon-32" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png" id="favicon-16" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png" id="apple-touch-icon" />
+    <link rel="manifest" href="/api/manifest.webmanifest" id="manifest" />
+
+    <title>Dune Weaver</title>
+
+    <!-- Check for custom favicon -->
+    <script>
+      // Get base URL for active table (supports multi-table connections)
+      (function() {
+        var baseUrl = '';
+        try {
+          var stored = localStorage.getItem('duneweaver_tables');
+          var activeId = localStorage.getItem('duneweaver_active_table');
+          if (stored && activeId) {
+            var data = JSON.parse(stored);
+            var active = (data.tables || []).find(function(t) { return t.id === activeId; });
+            if (active && !active.isCurrent && active.url && active.url !== window.location.origin) {
+              baseUrl = active.url.replace(/\/$/, '');
+            }
+          }
+        } catch (e) {}
+
+        fetch(baseUrl + '/api/settings')
+          .then(function(r) { return r.json(); })
+          .then(function(settings) {
+            if (settings.app && settings.app.custom_logo) {
+              // Use generated icons with proper padding (not the raw uploaded logo)
+              document.getElementById('favicon-ico').href = baseUrl + '/static/custom/favicon.ico';
+              document.getElementById('apple-touch-icon').href = baseUrl + '/static/custom/apple-touch-icon.png';
+            }
+            if (settings.app && settings.app.name) {
+              document.title = settings.app.name;
+              // Also update PWA title
+              var appTitleMeta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+              if (appTitleMeta) appTitleMeta.content = settings.app.name;
+            }
+          })
+          .catch(function() {});
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

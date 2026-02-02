@@ -17,12 +17,13 @@ Page {
     property string selectedPlaylist: ""
     property var selectedPlaylistData: null
     property var currentPlaylistPatterns: []
+    property var currentPlaylistRawPatterns: []  // Raw patterns with full paths for API calls
     
-    // Playlist execution settings
-    property real pauseTime: backend ? backend.pauseBetweenPatterns : 0
-    property string clearPattern: "adaptive"
-    property string runMode: "single"
-    property bool shuffle: false
+    // Playlist execution settings (loaded from backend/persisted settings)
+    property real pauseTime: backend ? backend.pauseBetweenPatterns : 10800
+    property string clearPattern: backend ? backend.playlistClearPattern : "adaptive"
+    property string runMode: backend ? backend.playlistRunMode : "loop"
+    property bool shuffle: backend ? backend.playlistShuffle : true
     
     PlaylistModel {
         id: playlistModel
@@ -32,16 +33,24 @@ Page {
     onSelectedPlaylistChanged: {
         if (selectedPlaylist) {
             currentPlaylistPatterns = playlistModel.getPatternsForPlaylist(selectedPlaylist)
-            console.log("Loaded patterns for", selectedPlaylist + ":", currentPlaylistPatterns)
+            currentPlaylistRawPatterns = playlistModel.getRawPatternsForPlaylist(selectedPlaylist)
         } else {
             currentPlaylistPatterns = []
+            currentPlaylistRawPatterns = []
+        }
+    }
+
+    // Function to remove a pattern from the current playlist
+    function removePatternAtIndex(index) {
+        if (index >= 0 && index < currentPlaylistRawPatterns.length && backend) {
+            var updatedPatterns = currentPlaylistRawPatterns.slice()  // Create a copy
+            updatedPatterns.splice(index, 1)  // Remove the pattern at index
+            backend.updatePlaylistPatterns(selectedPlaylist, updatedPatterns)
         }
     }
     
     // Debug playlist loading
     Component.onCompleted: {
-        console.log("ModernPlaylistPage completed, playlist count:", playlistModel.rowCount())
-        console.log("showingPlaylistDetail:", showingPlaylistDetail)
     }
     
     // Function to navigate to playlist detail
@@ -110,9 +119,24 @@ Page {
                         font.pixelSize: 12
                         color: Components.ThemeManager.textTertiary
                     }
-                    
-                    Item { 
-                        Layout.fillWidth: true 
+
+                    Item {
+                        Layout.fillWidth: true
+                    }
+
+                    // Create new playlist button
+                    Text {
+                        text: "+"
+                        font.pixelSize: 32
+                        font.bold: true
+                        color: createPlaylistMouseArea.pressed ? "#1e40af" : "#2563eb"
+
+                        MouseArea {
+                            id: createPlaylistMouseArea
+                            anchors.fill: parent
+                            anchors.margins: -8  // Increase touch area
+                            onClicked: createPlaylistDialog.open()
+                        }
                     }
                 }
             }
@@ -306,6 +330,20 @@ Page {
                         font.pixelSize: 12
                         color: Components.ThemeManager.textTertiary
                     }
+
+                    // Delete playlist button
+                    Text {
+                        text: "✕"
+                        font.pixelSize: 20
+                        color: deletePlaylistMouseArea.pressed ? "#991b1b" : "#dc2626"
+
+                        MouseArea {
+                            id: deletePlaylistMouseArea
+                            anchors.fill: parent
+                            anchors.margins: -8
+                            onClicked: deletePlaylistDialog.open()
+                        }
+                    }
                 }
             }
             
@@ -328,14 +366,43 @@ Page {
                             anchors.fill: parent
                             anchors.margins: 15
                             spacing: 10
-                            
-                            Label {
-                                text: "Patterns"
-                                font.pixelSize: 14
-                                font.bold: true
-                                color: Components.ThemeManager.textPrimary
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+
+                                Label {
+                                    text: "Patterns"
+                                    font.pixelSize: 14
+                                    font.bold: true
+                                    color: Components.ThemeManager.textPrimary
+                                    Layout.fillWidth: true
+                                }
+
+                                // Add pattern button
+                                Text {
+                                    text: "+"
+                                    font.pixelSize: 24
+                                    font.bold: true
+                                    color: addPatternMouseArea.pressed ? "#1e40af" : "#2563eb"
+
+                                    MouseArea {
+                                        id: addPatternMouseArea
+                                        anchors.fill: parent
+                                        anchors.margins: -8
+                                        onClicked: {
+                                            // Navigate to full-page pattern selector
+                                            stackView.push("PatternSelectorPage.qml", {
+                                                backend: backend,
+                                                stackView: stackView,
+                                                playlistName: selectedPlaylist,
+                                                existingPatterns: currentPlaylistRawPatterns
+                                            })
+                                        }
+                                    }
+                                }
                             }
-                            
+
                             ScrollView {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
@@ -349,22 +416,25 @@ Page {
                                     
                                     delegate: Rectangle {
                                         width: patternListView.width
-                                        height: 35
+                                        height: 40
                                         color: index % 2 === 0 ? Components.ThemeManager.cardColor : Components.ThemeManager.surfaceColor
                                         radius: 6
                                         border.color: Components.ThemeManager.borderColor
                                         border.width: 1
-                                        
+
                                         RowLayout {
                                             anchors.fill: parent
-                                            anchors.margins: 10
-                                            spacing: 8
-                                            
+                                            anchors.leftMargin: 10
+                                            anchors.rightMargin: 5
+                                            anchors.topMargin: 4
+                                            anchors.bottomMargin: 4
+                                            spacing: 6
+
                                             Label {
                                                 text: (index + 1) + "."
                                                 font.pixelSize: 11
                                                 color: Components.ThemeManager.textSecondary
-                                                Layout.preferredWidth: 25
+                                                Layout.preferredWidth: 22
                                             }
 
                                             Label {
@@ -373,6 +443,23 @@ Page {
                                                 color: Components.ThemeManager.textPrimary
                                                 Layout.fillWidth: true
                                                 elide: Text.ElideRight
+                                            }
+
+                                            // Remove pattern button - aligned right
+                                            Text {
+                                                text: "✕"
+                                                font.pixelSize: 16
+                                                color: removePatternArea.pressed ? "#ef4444" : Components.ThemeManager.textTertiary
+                                                Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+
+                                                MouseArea {
+                                                    id: removePatternArea
+                                                    anchors.fill: parent
+                                                    anchors.margins: -8  // Increase touch area
+                                                    onClicked: {
+                                                        removePatternAtIndex(index)
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -458,21 +545,11 @@ Page {
                                         anchors.fill: parent
                                         onClicked: {
                                             if (backend) {
-                                                console.log("Playing playlist:", selectedPlaylist, "with settings:", {
-                                                    pauseTime: pauseTime,
-                                                    clearPattern: clearPattern,
-                                                    runMode: runMode,
-                                                    shuffle: shuffle
-                                                })
                                                 backend.executePlaylist(selectedPlaylist, pauseTime, clearPattern, runMode, shuffle)
-                                                
+
                                                 // Navigate to execution page
-                                                console.log("🎵 Navigating to execution page after playlist start")
                                                 if (mainWindow) {
-                                                    console.log("🎵 Setting shouldNavigateToExecution = true")
                                                     mainWindow.shouldNavigateToExecution = true
-                                                } else {
-                                                    console.log("🎵 ERROR: mainWindow is null, cannot navigate")
                                                 }
                                             }
                                         }
@@ -497,8 +574,9 @@ Page {
                                         id: shuffleMouseArea
                                         anchors.fill: parent
                                         onClicked: {
-                                            shuffle = !shuffle
-                                            console.log("Shuffle toggled:", shuffle)
+                                            // Don't assign directly to shuffle - that breaks the binding
+                                            // Just update backend and let the binding propagate the change
+                                            if (backend) backend.setPlaylistShuffle(!backend.playlistShuffle)
                                         }
                                     }
                                 }
@@ -558,10 +636,10 @@ Page {
                                                 id: singleModeRadio
                                                 text: "Single"
                                                 font.pixelSize: 11
-                                                checked: true  // Default
+                                                checked: runMode === "single"
                                                 onClicked: {
                                                     runMode = "single"
-                                                    console.log("Run mode set to:", runMode)
+                                                    if (backend) backend.setPlaylistRunMode("single")
                                                 }
 
                                                 contentItem: Text {
@@ -577,10 +655,10 @@ Page {
                                                 id: loopModeRadio
                                                 text: "Loop"
                                                 font.pixelSize: 11
-                                                checked: false
+                                                checked: runMode === "loop"
                                                 onClicked: {
                                                     runMode = "loop"
-                                                    console.log("Run mode set to:", runMode)
+                                                    if (backend) backend.setPlaylistRunMode("loop")
                                                 }
 
                                                 contentItem: Text {
@@ -1003,10 +1081,10 @@ Page {
                                                 id: adaptiveRadio
                                                 text: "Adaptive"
                                                 font.pixelSize: 11
-                                                checked: true  // Default
+                                                checked: clearPattern === "adaptive"
                                                 onClicked: {
                                                     clearPattern = "adaptive"
-                                                    console.log("Clear pattern set to:", clearPattern)
+                                                    if (backend) backend.setPlaylistClearPattern("adaptive")
                                                 }
 
                                                 contentItem: Text {
@@ -1022,10 +1100,10 @@ Page {
                                                 id: clearCenterRadio
                                                 text: "Clear Center"
                                                 font.pixelSize: 11
-                                                checked: false
+                                                checked: clearPattern === "clear_center"
                                                 onClicked: {
                                                     clearPattern = "clear_center"
-                                                    console.log("Clear pattern set to:", clearPattern)
+                                                    if (backend) backend.setPlaylistClearPattern("clear_center")
                                                 }
 
                                                 contentItem: Text {
@@ -1041,10 +1119,10 @@ Page {
                                                 id: clearEdgeRadio
                                                 text: "Clear Edge"
                                                 font.pixelSize: 11
-                                                checked: false
+                                                checked: clearPattern === "clear_perimeter"
                                                 onClicked: {
                                                     clearPattern = "clear_perimeter"
-                                                    console.log("Clear pattern set to:", clearPattern)
+                                                    if (backend) backend.setPlaylistClearPattern("clear_perimeter")
                                                 }
 
                                                 contentItem: Text {
@@ -1060,10 +1138,10 @@ Page {
                                                 id: noneRadio
                                                 text: "None"
                                                 font.pixelSize: 11
-                                                checked: false
+                                                checked: clearPattern === "none"
                                                 onClicked: {
                                                     clearPattern = "none"
-                                                    console.log("Clear pattern set to:", clearPattern)
+                                                    if (backend) backend.setPlaylistClearPattern("none")
                                                 }
 
                                                 contentItem: Text {
@@ -1082,6 +1160,265 @@ Page {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    // ==================== Dialogs ====================
+
+    // Create Playlist Dialog
+    Popup {
+        id: createPlaylistDialog
+        modal: true
+        x: (parent.width - width) / 2
+        y: (parent.height - height) / 2
+        width: 320
+        height: 200
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        background: Rectangle {
+            color: Components.ThemeManager.surfaceColor
+            radius: 16
+            border.color: Components.ThemeManager.borderColor
+            border.width: 1
+        }
+
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 20
+            spacing: 15
+
+            Label {
+                text: "Create New Playlist"
+                font.pixelSize: 18
+                font.bold: true
+                color: Components.ThemeManager.textPrimary
+                Layout.alignment: Qt.AlignHCenter
+            }
+
+            TextField {
+                id: newPlaylistNameField
+                Layout.fillWidth: true
+                Layout.preferredHeight: 45
+                placeholderText: "Enter playlist name..."
+                placeholderTextColor: Components.ThemeManager.textTertiary
+                font.pixelSize: 14
+                color: Components.ThemeManager.textPrimary
+
+                background: Rectangle {
+                    color: Components.ThemeManager.backgroundColor
+                    radius: 8
+                    border.color: newPlaylistNameField.activeFocus ? "#2563eb" : Components.ThemeManager.borderColor
+                    border.width: 1
+                }
+
+                onAccepted: {
+                    if (text.trim().length > 0 && backend) {
+                        backend.createPlaylist(text.trim())
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                // Cancel button
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 45
+                    radius: 8
+                    color: cancelCreateArea.pressed ? Components.ThemeManager.buttonBackgroundHover : Components.ThemeManager.cardColor
+                    border.color: Components.ThemeManager.borderColor
+                    border.width: 1
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Cancel"
+                        color: Components.ThemeManager.textPrimary
+                        font.pixelSize: 14
+                    }
+
+                    MouseArea {
+                        id: cancelCreateArea
+                        anchors.fill: parent
+                        onClicked: {
+                            newPlaylistNameField.text = ""
+                            createPlaylistDialog.close()
+                        }
+                    }
+                }
+
+                // Create button
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 45
+                    radius: 8
+                    color: createArea.pressed ? "#1e40af" : "#2563eb"
+                    opacity: newPlaylistNameField.text.trim().length > 0 ? 1.0 : 0.5
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Create"
+                        color: "white"
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+
+                    MouseArea {
+                        id: createArea
+                        anchors.fill: parent
+                        enabled: newPlaylistNameField.text.trim().length > 0
+                        onClicked: {
+                            if (backend) {
+                                backend.createPlaylist(newPlaylistNameField.text.trim())
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        onOpened: {
+            newPlaylistNameField.text = ""
+            newPlaylistNameField.forceActiveFocus()
+        }
+    }
+
+    // Delete Playlist Confirmation Dialog
+    Popup {
+        id: deletePlaylistDialog
+        modal: true
+        x: (parent.width - width) / 2
+        y: (parent.height - height) / 2
+        width: 320
+        height: 180
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        background: Rectangle {
+            color: Components.ThemeManager.surfaceColor
+            radius: 16
+            border.color: Components.ThemeManager.borderColor
+            border.width: 1
+        }
+
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 20
+            spacing: 15
+
+            Label {
+                text: "Delete Playlist?"
+                font.pixelSize: 18
+                font.bold: true
+                color: Components.ThemeManager.textPrimary
+                Layout.alignment: Qt.AlignHCenter
+            }
+
+            Label {
+                text: "Are you sure you want to delete\n\"" + selectedPlaylist + "\"?"
+                font.pixelSize: 14
+                color: Components.ThemeManager.textSecondary
+                horizontalAlignment: Text.AlignHCenter
+                Layout.alignment: Qt.AlignHCenter
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                // Cancel button
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 45
+                    radius: 8
+                    color: cancelDeleteArea.pressed ? Components.ThemeManager.buttonBackgroundHover : Components.ThemeManager.cardColor
+                    border.color: Components.ThemeManager.borderColor
+                    border.width: 1
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Cancel"
+                        color: Components.ThemeManager.textPrimary
+                        font.pixelSize: 14
+                    }
+
+                    MouseArea {
+                        id: cancelDeleteArea
+                        anchors.fill: parent
+                        onClicked: deletePlaylistDialog.close()
+                    }
+                }
+
+                // Delete button
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 45
+                    radius: 8
+                    color: confirmDeleteArea.pressed ? "#991b1b" : "#dc2626"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Delete"
+                        color: "white"
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+
+                    MouseArea {
+                        id: confirmDeleteArea
+                        anchors.fill: parent
+                        onClicked: {
+                            if (backend && selectedPlaylist) {
+                                backend.deletePlaylist(selectedPlaylist)
+                            }
+                            deletePlaylistDialog.close()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ==================== Backend Signal Handlers ====================
+
+    Connections {
+        target: backend
+
+        function onPlaylistCreated(success, message) {
+            if (success) {
+                playlistModel.refresh()
+            }
+            newPlaylistNameField.text = ""
+            createPlaylistDialog.close()
+        }
+
+        function onPlaylistDeleted(success, message) {
+            if (success) {
+                playlistModel.refresh()
+                showPlaylistList()  // Navigate back to list
+            }
+        }
+
+        function onPatternAddedToPlaylist(success, message) {
+            if (success) {
+                playlistModel.refresh()
+                // Refresh current playlist patterns if we're viewing one
+                if (selectedPlaylist) {
+                    currentPlaylistPatterns = playlistModel.getPatternsForPlaylist(selectedPlaylist)
+                    currentPlaylistRawPatterns = playlistModel.getRawPatternsForPlaylist(selectedPlaylist)
+                }
+            }
+        }
+
+        function onPlaylistModified(success, message) {
+            if (success) {
+                playlistModel.refresh()
+                // Refresh current playlist patterns
+                if (selectedPlaylist) {
+                    currentPlaylistPatterns = playlistModel.getPatternsForPlaylist(selectedPlaylist)
+                    currentPlaylistRawPatterns = playlistModel.getRawPatternsForPlaylist(selectedPlaylist)
                 }
             }
         }

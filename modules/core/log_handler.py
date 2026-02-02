@@ -75,13 +75,14 @@ class MemoryLogHandler(logging.Handler):
             "module": record.module,
         }
 
-    def get_logs(self, limit: int = None, level: str = None) -> List[Dict[str, Any]]:
+    def get_logs(self, limit: int = None, level: str = None, offset: int = 0) -> List[Dict[str, Any]]:
         """
-        Retrieve stored log entries.
+        Retrieve stored log entries with pagination support.
 
         Args:
             limit: Maximum number of entries to return (newest first).
             level: Filter by log level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+            offset: Number of entries to skip from the newest (for pagination).
 
         Returns:
             List of log entries as dictionaries.
@@ -94,12 +95,34 @@ class MemoryLogHandler(logging.Handler):
             level_upper = level.upper()
             logs = [log for log in logs if log["level"] == level_upper]
 
-        # Return newest first, with optional limit
+        # Return newest first
         logs.reverse()
+
+        # Apply offset for pagination
+        if offset > 0:
+            logs = logs[offset:]
+
+        # Apply limit
         if limit:
             logs = logs[:limit]
 
         return logs
+
+    def get_total_count(self, level: str = None) -> int:
+        """
+        Get total count of log entries (optionally filtered by level).
+
+        Args:
+            level: Filter by log level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+
+        Returns:
+            Total count of matching log entries.
+        """
+        with self._lock:
+            if not level:
+                return len(self._buffer)
+            level_upper = level.upper()
+            return sum(1 for log in self._buffer if log["level"] == level_upper)
 
     def clear(self) -> None:
         """Clear all stored log entries."""

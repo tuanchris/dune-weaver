@@ -139,11 +139,6 @@ class DWLEDController:
 
     def _effect_loop(self):
         """Background thread that runs the current effect"""
-        # Elevate priority and pin to CPU 0 for consistent timing
-        # LED uses lower priority (40) than motion (60) since CNC is more critical
-        from modules.core import scheduling
-        scheduling.setup_realtime_thread(priority=40)
-        
         while not self._stop_thread.is_set():
             try:
                 with self._lock:
@@ -548,13 +543,12 @@ def effect_loading(controller: DWLEDController) -> bool:
 
 
 def effect_idle(controller: DWLEDController, effect_settings: Optional[dict] = None) -> bool:
-    """Show idle effect with full settings"""
+    """Show idle effect with full settings. If no effect configured, plays Rainbow with current parameters."""
     try:
-        if effect_settings and isinstance(effect_settings, dict):
-            # New format: full settings dict
-            controller.set_power(1)
+        controller.set_power(1)
 
-            # Set effect
+        if effect_settings and isinstance(effect_settings, dict):
+            # Configured idle effect: apply full settings
             effect_id = effect_settings.get("effect_id", 0)
             palette_id = effect_settings.get("palette_id", 0)
             speed = effect_settings.get("speed", 128)
@@ -586,10 +580,15 @@ def effect_idle(controller: DWLEDController, effect_settings: Optional[dict] = N
                     color2=(r2, g2, b2),
                     color3=(r3, g3, b3)
                 )
+        else:
+            # Default: Rainbow effect with speed 60 for smoother animation
+            controller.set_effect(8, speed=60, intensity=controller._intensity)
+            controller.set_colors(
+                color1=controller._color1,
+                color2=controller._color2,
+                color3=controller._color3
+            )
 
-            return True
-
-        # Default: do nothing (keep current LED state)
         return True
     except Exception as e:
         logger.error(f"Error setting idle effect: {e}")

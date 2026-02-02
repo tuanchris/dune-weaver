@@ -1,4 +1,5 @@
-FROM --platform=$TARGETPLATFORM python:3.11-slim-bookworm
+# Backend-only Dockerfile
+FROM python:3.11-slim-bookworm
 
 # Faster, repeatable builds
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -30,7 +31,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get purge -y gcc g++ make scons \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy backend code
 COPY . .
 
+# Expose backend API port
 EXPOSE 8080
+
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]

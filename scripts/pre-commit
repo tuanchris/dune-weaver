@@ -1,0 +1,44 @@
+#!/bin/sh
+# Pre-commit hook: runs Ruff on staged Python files and frontend tests on staged TS/TSX files
+#
+# Install: cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+
+# --- Ruff lint on staged Python files ---
+STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM -- '*.py')
+
+if [ -n "$STAGED_PY" ]; then
+    printf "${YELLOW}Running Ruff on staged Python files...${NC}\n"
+    if command -v ruff >/dev/null 2>&1; then
+        if ! echo "$STAGED_PY" | xargs ruff check; then
+            printf "${RED}Ruff found issues. Fix them or run 'ruff check --fix' then re-stage.${NC}\n"
+            exit 1
+        fi
+        printf "${GREEN}Ruff passed.${NC}\n"
+    else
+        printf "${YELLOW}Ruff not installed, skipping Python lint. Install with: pip install ruff${NC}\n"
+    fi
+fi
+
+# --- Frontend tests on staged TS/TSX files ---
+STAGED_FE=$(git diff --cached --name-only --diff-filter=ACM -- 'frontend/src/**/*.ts' 'frontend/src/**/*.tsx')
+
+if [ -n "$STAGED_FE" ]; then
+    printf "${YELLOW}Running frontend tests...${NC}\n"
+    if [ -d "frontend/node_modules" ]; then
+        if ! (cd frontend && npx vitest run --reporter=dot 2>&1); then
+            printf "${RED}Frontend tests failed. Fix them before committing.${NC}\n"
+            exit 1
+        fi
+        printf "${GREEN}Frontend tests passed.${NC}\n"
+    else
+        printf "${YELLOW}frontend/node_modules not found, skipping tests. Run: cd frontend && npm install${NC}\n"
+    fi
+fi

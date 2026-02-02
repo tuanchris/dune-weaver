@@ -1,0 +1,252 @@
+@import "tailwindcss";
+
+/* Import fonts */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap');
+
+/* Material Icons */
+@import url('https://fonts.googleapis.com/icon?family=Material+Icons|Material+Icons+Outlined');
+
+/* Theme configuration using CSS variables */
+@theme {
+  --color-border: hsl(214.3 31.8% 91.4%);
+  --color-input: hsl(214.3 31.8% 91.4%);
+  --color-ring: hsl(207 90% 50%);
+  --color-background: hsl(220 14% 98%);
+  --color-foreground: hsl(222.2 84% 4.9%);
+
+  --color-primary: hsl(207 90% 50%);
+  --color-primary-foreground: hsl(210 40% 98%);
+
+  --color-secondary: hsl(210 40% 96.1%);
+  --color-secondary-foreground: hsl(222.2 47.4% 11.2%);
+
+  --color-muted: hsl(220 14% 92%);
+  --color-muted-foreground: hsl(215.4 16.3% 46.9%);
+
+  --color-accent: hsl(210 40% 96.1%);
+  --color-accent-foreground: hsl(222.2 47.4% 11.2%);
+
+  --color-destructive: hsl(0 84.2% 60.2%);
+  --color-destructive-foreground: hsl(210 40% 98%);
+
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(222.2 84% 4.9%);
+
+  --color-popover: hsl(0 0% 100%);
+  --color-popover-foreground: hsl(222.2 84% 4.9%);
+
+  --radius: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  --font-family-sans: 'Plus Jakarta Sans', 'Noto Sans', sans-serif;
+}
+
+/* Dark mode */
+.dark {
+  color-scheme: dark;
+  --color-border: hsl(0 0% 32%);
+  --color-input: hsl(0 0% 32%);
+  --color-ring: hsl(207 90% 50%);
+  --color-background: hsl(0 0% 10%);
+  --color-foreground: hsl(210 40% 98%);
+
+  --color-primary: hsl(207 90% 50%);
+  --color-primary-foreground: hsl(210 40% 98%);
+
+  --color-secondary: hsl(0 0% 25%);
+  --color-secondary-foreground: hsl(210 40% 98%);
+
+  --color-muted: hsl(0 0% 25%);
+  --color-muted-foreground: hsl(215 20.2% 65.1%);
+
+  --color-accent: hsl(0 0% 25%);
+  --color-accent-foreground: hsl(210 40% 98%);
+
+  --color-destructive: hsl(0 62.8% 50.6%);
+  --color-destructive-foreground: hsl(210 40% 98%);
+
+  --color-card: hsl(0 0% 18%);
+  --color-card-foreground: hsl(210 40% 98%);
+
+  --color-input-background: hsl(0 0% 28%);
+
+  --color-popover: hsl(0 0% 15%);
+  --color-popover-foreground: hsl(210 40% 98%);
+}
+
+/* Base styles */
+* {
+  border-color: var(--color-border);
+}
+
+/* Form label spacing - adds margin below labels for better readability */
+label {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+/* Form input background - lighter than card for visibility */
+.dark input:not([type="checkbox"]):not([type="radio"]),
+.dark select,
+.dark textarea,
+.dark [role="combobox"] {
+  background-color: var(--color-input-background);
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-family-sans);
+  margin: 0;
+  min-height: 100dvh; /* Use dynamic viewport height for mobile */
+}
+
+/* Push Sonner toasts below the Dynamic Island / notch in PWA mode */
+[data-sonner-toaster][data-y-position="top"] {
+  top: env(safe-area-inset-top, 0px) !important;
+}
+
+/* Safe area utilities for iOS notch/Dynamic Island/home indicator */
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.mt-safe {
+  margin-top: env(safe-area-inset-top, 0px);
+}
+
+.mb-safe {
+  margin-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Material Icons */
+.material-icons,
+.material-icons-outlined {
+  font-family: 'Material Icons';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
+
+.material-icons-outlined {
+  font-family: 'Material Icons Outlined';
+}
+
+/* Invert pattern previews in dark mode */
+.dark .pattern-preview {
+  filter: invert(1);
+}
+
+/* Marquee animation for scrolling text */
+@keyframes marquee {
+  0%, 10% {
+    transform: translateX(calc(-100% + 100cqw));
+  }
+  45%, 55% {
+    transform: translateX(0);
+  }
+  90%, 100% {
+    transform: translateX(calc(-100% + 100cqw));
+  }
+}
+
+.marquee-container {
+  container-type: inline-size;
+  overflow: hidden;
+}
+
+.animate-marquee {
+  display: inline-block;
+}
+
+/* Marquee animation only on mobile */
+@media (max-width: 767px) {
+  .animate-marquee {
+    animation: marquee 8s ease-in-out infinite;
+    animation-play-state: running;
+  }
+
+  .animate-marquee:hover {
+    animation-play-state: paused;
+  }
+}
+
+/* Now Playing Bar heights - responsive for mobile vs desktop */
+[data-now-playing-bar="collapsed"] {
+  height: 232px;
+}
+
+[data-now-playing-bar="expanded"] {
+  height: 50vh;
+}
+
+@media (max-width: 767px) {
+  [data-now-playing-bar="collapsed"] {
+    height: 288px;
+  }
+
+  [data-now-playing-bar="expanded"] {
+    height: calc(100vh - 64px - 64px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Smooth fade in for lazy-loaded content */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+/* Subtle pulse for connection status */
+@keyframes subtle-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.animate-subtle-pulse {
+  animation: subtle-pulse 2s ease-in-out infinite;
+}
+
+/* Slide in from right for panels */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.3s ease-out forwards;
+}
