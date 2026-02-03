@@ -1378,28 +1378,18 @@ def perform_soft_reset_sync(max_retries: int = 5):
             logger.info(f"Reset attempt {attempt + 1}/{max_retries} (timeout: {timeout:.1f}s)")
 
             # Clear any pending data first
-            if isinstance(state.conn, SerialConnection) and state.conn.ser:
-                state.conn.ser.reset_input_buffer()
+            if isinstance(state.conn, SerialConnection):
+                state.conn.reset_input_buffer()
 
             # Send appropriate reset command based on firmware
             if firmware_type == 'fluidnc':
                 # FluidNC uses $Bye for soft reset
-                if isinstance(state.conn, SerialConnection) and state.conn.ser:
-                    state.conn.ser.write(b'$Bye\n')
-                    state.conn.ser.flush()
-                    logger.info(f"$Bye sent directly via serial to {state.port}")
-                else:
-                    state.conn.send('$Bye\n')
-                    logger.info("$Bye sent via connection abstraction")
+                state.conn.send('$Bye\n')
+                logger.info(f"$Bye sent to {state.port}")
             else:
                 # GRBL uses Ctrl+X (0x18) for soft reset
-                if isinstance(state.conn, SerialConnection) and state.conn.ser:
-                    state.conn.ser.write(b'\x18')
-                    state.conn.ser.flush()
-                    logger.info(f"Ctrl+X (0x18) sent directly via serial to {state.port}")
-                else:
-                    state.conn.send('\x18')
-                    logger.info("Ctrl+X (0x18) sent via connection abstraction")
+                state.conn.send('\x18')
+                logger.info(f"Ctrl+X (0x18) sent to {state.port}")
 
             # Wait for controller to fully restart
             # FluidNC sequence: [MSG:INFO: Restarting] -> ... -> "Grbl 3.9 [FluidNC...]"

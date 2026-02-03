@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import os
 import logging
-from datetime import datetime, time
+from datetime import datetime
 from modules.connection import connection_manager
 from modules.core import pattern_manager
 from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR
@@ -16,22 +16,17 @@ from modules.update import update_manager
 from modules.core.state import state
 from modules import mqtt
 import signal
-import sys
 import asyncio
 from contextlib import asynccontextmanager
-from modules.led.led_controller import LEDController, effect_idle
 from modules.led.led_interface import LEDInterface
 from modules.led.idle_timeout_manager import idle_timeout_manager
-import math
-from modules.core.cache_manager import generate_all_image_previews, get_cache_path, generate_image_preview, get_pattern_metadata
+from modules.core.cache_manager import get_cache_path, generate_image_preview, get_pattern_metadata
 from modules.core.version_manager import version_manager
 from modules.core.log_handler import init_memory_handler, get_memory_handler
 import json
 import base64
 import time
-import argparse
 import subprocess
-import platform
 
 # Get log level from environment variable, default to INFO
 log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -200,7 +195,7 @@ async def lifespan(app: FastAPI):
     # Note: auto_play is now handled in connect_and_home() after homing completes
 
     try:
-        mqtt_handler = mqtt.init_mqtt()
+        mqtt.init_mqtt()
     except Exception as e:
         logger.warning(f"Failed to initialize MQTT: {str(e)}")
     
@@ -1155,8 +1150,8 @@ async def set_scheduled_pause(request: ScheduledPauseRequest):
         for i, slot in enumerate(request.time_slots):
             # Validate time format (HH:MM)
             try:
-                start_time = datetime.strptime(slot.start_time, "%H:%M").time()
-                end_time = datetime.strptime(slot.end_time, "%H:%M").time()
+                datetime.strptime(slot.start_time, "%H:%M")
+                datetime.strptime(slot.end_time, "%H:%M")
             except ValueError:
                 raise HTTPException(
                     status_code=400,
@@ -1346,7 +1341,7 @@ async def debug_serial_open(request: DebugSerialRequest):
         if request.port in _debug_serial_connections:
             try:
                 _debug_serial_connections[request.port].close()
-            except:
+            except Exception:
                 pass
             del _debug_serial_connections[request.port]
 
@@ -1382,7 +1377,6 @@ async def debug_serial_close(request: ConnectRequest):
 @app.post("/api/debug-serial/send", tags=["debug-serial"])
 async def debug_serial_send(request: DebugSerialCommand):
     """Send a command and receive response on debug serial connection."""
-    import serial
 
     async with get_debug_serial_lock():
         if request.port not in _debug_serial_connections:
@@ -1469,7 +1463,7 @@ async def debug_serial_status():
                     "open": ser.is_open,
                     "baudrate": ser.baudrate
                 }
-            except:
+            except Exception:
                 status[port] = {"open": False}
         return {"connections": status}
 
@@ -1796,7 +1790,7 @@ async def force_stop():
     # Wake up any waiting tasks
     try:
         pattern_manager.get_pause_event().set()
-    except:
+    except Exception:
         pass
 
     # Stop motion controller and clear its queue
@@ -1842,15 +1836,9 @@ async def controller_restart():
         await pattern_manager.stop_actions()
 
         # Send the FluidNC restart command
-        from modules.connection.connection_manager import SerialConnection
         restart_cmd = "$System/Control=RESTART\n"
-        if isinstance(state.conn, SerialConnection) and state.conn.ser:
-            state.conn.ser.write(restart_cmd.encode())
-            state.conn.ser.flush()
-            logger.info(f"Controller restart command sent via serial to {state.port}")
-        else:
-            state.conn.send(restart_cmd)
-            logger.info("Controller restart command sent via connection abstraction")
+        state.conn.send(restart_cmd)
+        logger.info(f"Controller restart command sent to {state.port}")
 
         # Mark as needing homing since position is now unknown
         state.is_homed = False
@@ -2159,7 +2147,6 @@ async def get_all_pattern_history():
     Returns a dict mapping pattern names to their most recent execution history.
     """
     from modules.core.pattern_manager import EXECUTION_LOG_FILE
-    import json
 
     if not os.path.exists(EXECUTION_LOG_FILE):
         return {}
@@ -3409,7 +3396,7 @@ async def dw_leds_power(request: dict):
         # This prevents idle timeout from immediately turning them back off
         if state_value in [1, 2] and state.dw_led_idle_timeout_enabled:  # Power on or toggle
             state.dw_led_last_activity_time = time.time()
-            logger.debug(f"LED activity time reset due to manual power on")
+            logger.debug("LED activity time reset due to manual power on")
 
         return result
     except Exception as e:
