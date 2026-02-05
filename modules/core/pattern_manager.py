@@ -359,8 +359,10 @@ async def start_idle_led_timeout(check_still_sands: bool = True):
         await state.led_controller.set_power_async(0)
         return
 
-    # Normal flow: show idle effect (only if one is configured)
-    if not state.dw_led_idle_effect:
+    # Normal flow: show idle effect
+    # For WLED: always trigger (uses hardcoded preset 1)
+    # For DW_LED: only trigger if effect is configured
+    if state.led_provider != "wled" and not state.dw_led_idle_effect:
         logger.debug("No idle effect configured, leaving LEDs unchanged")
         return
     await state.led_controller.effect_idle_async(state.dw_led_idle_effect)
@@ -1225,7 +1227,9 @@ async def _execute_pattern_internal(file_path):
     total_pause_time = 0  # Track total time spent paused (manual + scheduled)
     completed_weight = 0.0  # Track rho-weighted progress
     smoothed_rate = None  # For exponential smoothing of time-per-unit-weight rate
-    if state.led_controller and state.dw_led_playing_effect:
+    # For WLED: always trigger (uses hardcoded preset 2)
+    # For DW_LED: only trigger if effect is configured
+    if state.led_controller and (state.led_provider == "wled" or state.dw_led_playing_effect):
         logger.info(f"Setting LED to playing effect: {state.dw_led_playing_effect}")
         await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
         # Cancel idle timeout when playing starts
@@ -1337,9 +1341,11 @@ async def _execute_pattern_internal(file_path):
                 logger.info("Execution resumed...")
                 if state.led_controller:
                     # Turn LED controller back on if it was turned off for scheduled pause
-                    # Only power on if a playing effect is configured, otherwise leave LEDs off
+                    # For WLED: always trigger (uses hardcoded preset 2)
+                    # For DW_LED: only trigger if effect is configured
+                    should_trigger_led = state.led_provider == "wled" or state.dw_led_playing_effect
                     if wled_was_off_for_scheduled:
-                        if state.dw_led_playing_effect:
+                        if should_trigger_led:
                             logger.info("Turning LED lights back on as Still Sands period ended")
                             await state.led_controller.set_power_async(1)
                             # CRITICAL: Give LED controller time to fully power on before sending more commands
@@ -1347,7 +1353,7 @@ async def _execute_pattern_internal(file_path):
                             await asyncio.sleep(0.5)
                         else:
                             logger.info("No playing effect configured, keeping LEDs off after Still Sands")
-                    if state.dw_led_playing_effect:
+                    if should_trigger_led:
                         await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
                     # Cancel idle timeout when resuming from pause
                     idle_timeout_manager.cancel_timeout()
@@ -1591,21 +1597,28 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                     if result == 'completed':
                         logger.info("Still Sands period ended. Resuming playlist...")
                         if state.led_controller:
-                            # Only power on if a playing effect is configured, otherwise leave LEDs off
+                            # For WLED: always trigger (uses hardcoded preset 2)
+                            # For DW_LED: only trigger if effect is configured
+                            should_trigger_led = state.led_provider == "wled" or state.dw_led_playing_effect
                             if wled_was_off_for_scheduled:
-                                if state.dw_led_playing_effect:
+                                if should_trigger_led:
                                     logger.info("Turning LED lights back on as Still Sands period ended")
                                     await state.led_controller.set_power_async(1)
                                     await asyncio.sleep(0.5)
                                 else:
                                     logger.info("No playing effect configured, keeping LEDs off after Still Sands")
-                            if state.dw_led_playing_effect:
+                            if should_trigger_led:
                                 await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
                             idle_timeout_manager.cancel_timeout()
 
                 # Handle pause between patterns
                 if state.current_playlist and idx < len(state.current_playlist) - 1 and not state.stop_requested and pause_time > 0 and not state.skip_requested:
                     logger.info(f"Pausing for {pause_time} seconds")
+                    # Clear current_playing_file to report "idle" state to MQTT/HA during pause
+                    # This will be set again when the next pattern starts
+                    state.current_playing_file = None
+                    # Trigger idle LED state during pause between patterns
+                    await start_idle_led_timeout(check_still_sands=False)
                     state.original_pause_time = pause_time
                     pause_start = time.time()
                     while time.time() - pause_start < pause_time:
@@ -1641,6 +1654,11 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
             if run_mode == "indefinite":
                 logger.info("Playlist completed. Restarting as per 'indefinite' run mode")
                 if pause_time > 0:
+                    # Clear current_playing_file to report "idle" state to MQTT/HA during pause
+                    state.current_playing_file = None
+                    # Trigger idle LED state during pause between playlist cycles
+                    await start_idle_led_timeout(check_still_sands=False)
+                    state.original_pause_time = pause_time
                     pause_start = time.time()
                     while time.time() - pause_start < pause_time:
                         state.pause_time_remaining = pause_start + pause_time - time.time()
