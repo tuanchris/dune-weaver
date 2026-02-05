@@ -9,7 +9,6 @@ Tests the following endpoints:
 """
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
-import os
 
 
 class TestListThetaRhoFiles:
@@ -246,22 +245,58 @@ class TestPauseResumeExecution:
     @pytest.mark.asyncio
     async def test_pause_execution(self, async_client):
         """Test pause_execution endpoint."""
-        with patch("main.pattern_manager.pause_execution", return_value=True):
-            response = await async_client.post("/pause_execution")
+        # Mock check_table_is_idle to return False (something is playing)
+        with patch("main.pattern_manager.check_table_is_idle", return_value=False):
+            with patch("main.pattern_manager.pause_execution", return_value=True):
+                response = await async_client.post("/pause_execution")
 
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
 
     @pytest.mark.asyncio
+    async def test_pause_execution_when_idle(self, async_client):
+        """Test pause_execution returns 400 when nothing is playing."""
+        # Mock check_table_is_idle to return True (table is idle)
+        with patch("main.pattern_manager.check_table_is_idle", return_value=True):
+            response = await async_client.post("/pause_execution")
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "nothing is currently playing" in data["detail"].lower()
+
+    @pytest.mark.asyncio
     async def test_resume_execution(self, async_client):
         """Test resume_execution endpoint."""
-        with patch("main.pattern_manager.resume_execution", return_value=True):
-            response = await async_client.post("/resume_execution")
+        # Mock state.pause_requested to True (execution is paused)
+        from main import state
+        original_value = state.pause_requested
+        try:
+            state.pause_requested = True
+            with patch("main.pattern_manager.resume_execution", return_value=True):
+                response = await async_client.post("/resume_execution")
+        finally:
+            state.pause_requested = original_value
 
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_resume_execution_when_not_paused(self, async_client):
+        """Test resume_execution returns 400 when not paused."""
+        # Mock state.pause_requested to False (not paused)
+        from main import state
+        original_value = state.pause_requested
+        try:
+            state.pause_requested = False
+            response = await async_client.post("/resume_execution")
+        finally:
+            state.pause_requested = original_value
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "not paused" in data["detail"].lower()
 
 
 class TestDeleteThetaRhoFile:

@@ -1734,7 +1734,14 @@ async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTa
         if pattern_manager.get_pattern_lock().locked():
             logger.info("Another pattern is running, stopping it first...")
             await pattern_manager.stop_actions()
-            
+
+        # Clear any stale playlist state before starting a new single pattern.
+        # This prevents a bug where loading state.json after server restart could
+        # cause the old playlist to be used instead of the newly selected pattern.
+        state.current_playlist = None
+        state.current_playlist_index = None
+        state.playlist_mode = None
+
         files_to_run = [file_path]
         logger.info(f'Running theta-rho file: {request.file_name} with pre_execution={request.pre_execution}')
         
@@ -2287,12 +2294,20 @@ async def set_preferred_port(request: Request):
 
 @app.post("/pause_execution")
 async def pause_execution():
+    # Check if table is actually idle before trying to pause
+    if await pattern_manager.check_table_is_idle():
+        raise HTTPException(status_code=400, detail="Nothing is currently playing")
+
     if pattern_manager.pause_execution():
         return {"success": True, "message": "Execution paused"}
     raise HTTPException(status_code=500, detail="Failed to pause execution")
 
 @app.post("/resume_execution")
 async def resume_execution():
+    # Check if execution is actually paused before trying to resume
+    if not state.pause_requested:
+        raise HTTPException(status_code=400, detail="Execution is not paused")
+
     if pattern_manager.resume_execution():
         return {"success": True, "message": "Execution resumed"}
     raise HTTPException(status_code=500, detail="Failed to resume execution")

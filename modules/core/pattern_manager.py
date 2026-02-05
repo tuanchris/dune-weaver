@@ -1713,6 +1713,9 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
             state.playlist_mode = None
             state.pause_time_remaining = 0
 
+            # Persist cleared state so server restart won't load stale playlist
+            state.save()
+
             await start_idle_led_timeout()
 
             logger.info("All requested patterns completed (or stopped) and state cleared")

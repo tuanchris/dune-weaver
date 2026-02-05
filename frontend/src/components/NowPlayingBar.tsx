@@ -698,8 +698,23 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
       const endpoint = status?.is_paused ? '/resume_execution' : '/pause_execution'
       await apiClient.post(endpoint)
       toast.success(status?.is_paused ? 'Resumed' : 'Paused')
-    } catch {
-      toast.error('Failed to toggle pause')
+    } catch (error) {
+      // Extract error detail from backend response (format: "HTTP 400: {"detail":"message"}")
+      let errorMessage = 'Failed to toggle pause'
+      if (error instanceof Error) {
+        try {
+          const jsonMatch = error.message.match(/\{.*\}/)
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0])
+            if (parsed.detail) {
+              errorMessage = parsed.detail
+            }
+          }
+        } catch {
+          // Keep default message if parsing fails
+        }
+      }
+      toast.error(errorMessage)
     }
   }
 
