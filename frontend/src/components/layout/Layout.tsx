@@ -307,7 +307,8 @@ export function Layout() {
             const currentFile = data.data.current_file || null
             setCurrentPlayingFile(currentFile)
 
-            const isPlaying = Boolean(currentFile) || Boolean(data.data.is_running) || Boolean(data.data.is_paused)
+            // Include pause_time_remaining to keep bar visible during countdown between patterns
+            const isPlaying = Boolean(currentFile) || Boolean(data.data.is_running) || Boolean(data.data.is_paused) || (data.data.pause_time_remaining ?? 0) > 0
             // Skip auto-open on first message (page refresh) - only react to state changes
             if (wasPlayingRef.current !== null) {
               if (isPlaying && !wasPlayingRef.current) {
