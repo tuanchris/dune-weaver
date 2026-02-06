@@ -144,11 +144,11 @@ cmd_update() {
     fi
 
     if is_docker_mode; then
-        echo "Stopping current container..."
-        sudo docker compose down
-
         echo "Pulling latest Docker image..."
         sudo docker compose pull
+
+        echo "Stopping current container..."
+        sudo docker compose down
 
         echo "Starting with new version..."
         sudo docker compose up -d --remove-orphans
