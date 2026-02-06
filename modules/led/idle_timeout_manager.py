@@ -42,9 +42,27 @@ class IdleTimeoutManager:
         logger.info(f"Starting idle LED timeout: {timeout_minutes} minutes")
 
         # Create background task to handle timeout
-        self._timeout_task = asyncio.create_task(
-            self._timeout_handler(timeout_minutes, state, check_idle_callback)
-        )
+        # Handle being called from a thread without an event loop (e.g., via asyncio.to_thread)
+        try:
+            loop = asyncio.get_running_loop()
+            self._timeout_task = loop.create_task(
+                self._timeout_handler(timeout_minutes, state, check_idle_callback)
+            )
+        except RuntimeError:
+            # No running event loop in this thread - try to get the main loop
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Schedule on the running loop from another thread
+                    asyncio.run_coroutine_threadsafe(
+                        self._timeout_handler(timeout_minutes, state, check_idle_callback),
+                        loop
+                    )
+                    logger.debug("Scheduled idle timeout on main event loop from thread")
+                else:
+                    logger.warning("Event loop exists but not running, cannot start idle timeout")
+            except Exception as e:
+                logger.warning(f"Could not start idle timeout: {e}")
 
     async def _timeout_handler(self, timeout_minutes: float, state, check_idle_callback):
         """
