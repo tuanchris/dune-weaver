@@ -293,7 +293,8 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
   }, [])
 
   // Auto-collapse when nothing is playing (with delay to avoid race condition)
-  const isPlaying = status?.is_running || status?.is_paused
+  // Include pause_time_remaining to keep UI active during countdown between patterns
+  const isPlaying = status?.is_running || status?.is_paused || (status?.pause_time_remaining ?? 0) > 0
   const collapseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     // Clear any pending collapse
