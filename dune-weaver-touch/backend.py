@@ -719,12 +719,42 @@ class Backend(QObject):
     @Slot()
     def moveToCenter(self):
         logger.info("Moving to center...")
-        asyncio.create_task(self._api_call("/move_to_center"))
-    
+        asyncio.create_task(self._move_to("/move_to_center"))
+
     @Slot()
     def moveToPerimeter(self):
         logger.info("Moving to perimeter...")
-        asyncio.create_task(self._api_call("/move_to_perimeter"))
+        asyncio.create_task(self._move_to("/move_to_perimeter"))
+
+    async def _move_to(self, endpoint):
+        """Move to center/perimeter with extended timeout.
+
+        Backend calls reset_theta() (up to 30s idle check if hard_reset_theta
+        enabled) then move_polar() + check_idle_async(timeout=60). Use 95s
+        timeout to accommodate the worst-case scenario.
+        """
+        if not self.session:
+            self.errorOccurred.emit("Backend not ready")
+            return
+
+        try:
+            logger.debug(f"Calling {endpoint} (95s timeout for idle checks)...")
+            timeout = aiohttp.ClientTimeout(total=95)
+            async with self.session.post(f"{self.base_url}{endpoint}", timeout=timeout) as resp:
+                logger.debug(f"Move response status for {endpoint}: {resp.status}")
+                if resp.status == 200:
+                    response_data = await resp.json()
+                    logger.info(f"Move command {endpoint} successful: {response_data}")
+                else:
+                    logger.error(f"Move command {endpoint} failed with status: {resp.status}")
+                    response_text = await resp.text()
+                    self.errorOccurred.emit(f"Move failed: {endpoint} - {resp.status} - {response_text}")
+        except asyncio.TimeoutError:
+            logger.warning(f"Move command {endpoint} timed out after 95s")
+            self.errorOccurred.emit(f"Move command {endpoint} timed out")
+        except Exception as e:
+            logger.error(f"Exception in move command {endpoint}: {e}")
+            self.errorOccurred.emit(str(e))
     
     # Speed Control
     @Slot(int)
