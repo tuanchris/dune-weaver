@@ -10,6 +10,8 @@ import { TableSelector } from '@/components/TableSelector'
 import { useTable } from '@/contexts/TableContext'
 import { apiClient } from '@/lib/apiClient'
 import ShinyText from '@/components/ShinyText'
+import { useStatusStore } from '@/stores/useStatusStore'
+import { useCacheProgressStore } from '@/stores/useCacheProgressStore'
 
 const navItems = [
   { path: '/', label: 'Browse', icon: 'grid_view', title: 'Browse Patterns' },
@@ -54,20 +56,25 @@ export function Layout() {
   const tableName = activeTableData?.name || activeTable?.name
   const displayName = hasMultipleTables && tableName ? tableName : appName
 
-  // Connection status
-  const [isConnected, setIsConnected] = useState(false)
-  const [isBackendConnected, setIsBackendConnected] = useState(false)
-  const [isHoming, setIsHoming] = useState(false)
+  // Connection & status from shared store
+  const isBackendConnected = useStatusStore((s) => s.isBackendConnected)
+  const connectionAttempts = useStatusStore((s) => s.connectionAttempts)
+  const isConnected = useStatusStore((s) => s.status?.connection_status ?? false)
+  const isHoming = useStatusStore((s) => s.status?.is_homing ?? false)
+  const sensorHomingFailed = useStatusStore((s) => s.status?.sensor_homing_failed ?? false)
+  const statusCurrentFile = useStatusStore((s) => s.status?.current_file ?? null)
+  const statusIsRunning = useStatusStore((s) => s.status?.is_running ?? false)
+  const statusIsPaused = useStatusStore((s) => s.status?.is_paused ?? false)
+  const statusPauseTimeRemaining = useStatusStore((s) => s.status?.pause_time_remaining ?? 0)
+
+  // Homing overlay state (local UI state)
   const [homingDismissed, setHomingDismissed] = useState(false)
   const [homingJustCompleted, setHomingJustCompleted] = useState(false)
   const [homingCountdown, setHomingCountdown] = useState(0)
   const [keepHomingLogsOpen, setKeepHomingLogsOpen] = useState(false)
   const wasHomingRef = useRef(false)
-  const [connectionAttempts, setConnectionAttempts] = useState(0)
-  const wsRef = useRef<WebSocket | null>(null)
 
-  // Sensor homing failure state
-  const [sensorHomingFailed, setSensorHomingFailed] = useState(false)
+  // Sensor homing recovery (local UI state)
   const [isRecoveringHoming, setIsRecoveringHoming] = useState(false)
 
   // Update availability
@@ -186,11 +193,28 @@ export function Layout() {
     }
   }, [])
 
+  // Homing transition detection — watches store values
+  useEffect(() => {
+    const newIsHoming = isHoming
+    // Detect transition from not homing to homing — reset dismissal
+    if (!wasHomingRef.current && newIsHoming) {
+      setHomingDismissed(false)
+    }
+    // Detect transition from homing to not homing
+    if (wasHomingRef.current && !newIsHoming) {
+      if (!sensorHomingFailed) {
+        setHomingJustCompleted(true)
+        setHomingCountdown(5)
+        setHomingDismissed(false)
+      }
+    }
+    wasHomingRef.current = newIsHoming
+  }, [isHoming, sensorHomingFailed])
+
   // Now Playing bar state
   const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(false)
   const [openNowPlayingExpanded, setOpenNowPlayingExpanded] = useState(false)
-  const [currentPlayingFile, setCurrentPlayingFile] = useState<string | null>(null) // Track current file for header button
-  const wasPlayingRef = useRef<boolean | null>(null) // Track previous playing state (null = first message)
+  const currentPlayingFile = statusCurrentFile
 
   // Draggable Now Playing button state
   type SnapPosition = 'left' | 'center' | 'right'
@@ -210,7 +234,20 @@ export function Layout() {
   // Derive isCurrentlyPlaying from currentPlayingFile
   const isCurrentlyPlaying = Boolean(currentPlayingFile)
 
-  // Listen for playback-started event (dispatched when user starts a pattern)
+  // Auto-close NowPlayingBar when playback stops (watches store values)
+  const wasNpPlayingRef = useRef<boolean | null>(null)
+  const npIsPlaying = Boolean(currentPlayingFile) || statusIsRunning || statusIsPaused || statusPauseTimeRemaining > 0
+  useEffect(() => {
+    // Skip first render
+    if (wasNpPlayingRef.current !== null) {
+      if (!npIsPlaying && wasNpPlayingRef.current) {
+        setIsNowPlayingOpen(false)
+      }
+    }
+    wasNpPlayingRef.current = npIsPlaying
+  }, [npIsPlaying])
+
+  // Listen for playback-started event (dispatched by the status store on transitions)
   useEffect(() => {
     const handlePlaybackStarted = () => {
       setIsNowPlayingOpen(true)
@@ -230,158 +267,6 @@ export function Layout() {
   const logsWsRef = useRef<WebSocket | null>(null)
   const logsContainerRef = useRef<HTMLDivElement>(null)
   const logsLoadedCountRef = useRef(0) // Track how many logs we've loaded (for offset)
-
-  // Check device connection status via WebSocket
-  // This effect runs once on mount and manages its own reconnection logic
-  useEffect(() => {
-    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
-    let isMounted = true
-
-    const connectWebSocket = () => {
-      if (!isMounted) return
-
-      // Only close existing connection if it's open (not still connecting)
-      // This prevents "WebSocket closed before connection established" errors
-      if (wsRef.current) {
-        if (wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.close()
-          wsRef.current = null
-        } else if (wsRef.current.readyState === WebSocket.CONNECTING) {
-          // Already connecting, don't interrupt
-          return
-        }
-      }
-
-      const ws = new WebSocket(apiClient.getWebSocketUrl('/ws/status'))
-      // Assign to ref IMMEDIATELY so concurrent calls see it's connecting
-      wsRef.current = ws
-
-      ws.onopen = () => {
-        if (!isMounted) {
-          // Component unmounted while connecting - close the WebSocket now
-          ws.close()
-          return
-        }
-        setIsBackendConnected(true)
-        setConnectionAttempts(0)
-        // Dispatch event so pages can refetch data
-        window.dispatchEvent(new CustomEvent('backend-connected'))
-      }
-
-      ws.onmessage = (event) => {
-        if (!isMounted) return
-        try {
-          const data = JSON.parse(event.data)
-          // Handle status updates
-          if (data.type === 'status_update' && data.data) {
-            // Update device connection status from the status message
-            if (data.data.connection_status !== undefined) {
-              setIsConnected(data.data.connection_status)
-            }
-            // Update homing status and detect completion
-            if (data.data.is_homing !== undefined) {
-              const newIsHoming = data.data.is_homing
-              // Detect transition from not homing to homing - reset dismissal
-              if (!wasHomingRef.current && newIsHoming) {
-                setHomingDismissed(false)
-              }
-              // Detect transition from homing to not homing
-              if (wasHomingRef.current && !newIsHoming) {
-                // Homing just completed - show completion state with countdown
-                // But not if sensor homing failed (that shows a different dialog)
-                if (!data.data.sensor_homing_failed) {
-                  setHomingJustCompleted(true)
-                  setHomingCountdown(5)
-                  setHomingDismissed(false)
-                }
-              }
-              wasHomingRef.current = newIsHoming
-              setIsHoming(newIsHoming)
-            }
-            // Update sensor homing failure status
-            if (data.data.sensor_homing_failed !== undefined) {
-              setSensorHomingFailed(data.data.sensor_homing_failed)
-            }
-            // Auto-open/close Now Playing bar based on playback state
-            // Track current file - this is the most reliable indicator of playback
-            const currentFile = data.data.current_file || null
-            setCurrentPlayingFile(currentFile)
-
-            // Include pause_time_remaining to keep bar visible during countdown between patterns
-            const isPlaying = Boolean(currentFile) || Boolean(data.data.is_running) || Boolean(data.data.is_paused) || (data.data.pause_time_remaining ?? 0) > 0
-            // Skip auto-open on first message (page refresh) - only react to state changes
-            if (wasPlayingRef.current !== null) {
-              if (isPlaying && !wasPlayingRef.current) {
-                // Playback just started - open the Now Playing bar in expanded mode
-                setIsNowPlayingOpen(true)
-                setOpenNowPlayingExpanded(true)
-                // Close the logs drawer if open
-                setIsLogsOpen(false)
-                // Reset the expanded flag after a short delay
-                setTimeout(() => setOpenNowPlayingExpanded(false), 500)
-                // Dispatch event so pages can close their sidebars/panels
-                window.dispatchEvent(new CustomEvent('playback-started'))
-              } else if (!isPlaying && wasPlayingRef.current) {
-                // Playback just stopped - close the Now Playing bar
-                setIsNowPlayingOpen(false)
-              }
-            }
-            wasPlayingRef.current = isPlaying
-          }
-        } catch {
-          // Ignore parse errors
-        }
-      }
-
-      ws.onclose = () => {
-        if (!isMounted) return
-        wsRef.current = null
-        setIsBackendConnected(false)
-        setConnectionAttempts((prev) => prev + 1)
-        // Reconnect after 3 seconds (don't change device status on WS disconnect)
-        reconnectTimeout = setTimeout(connectWebSocket, 3000)
-      }
-
-      ws.onerror = () => {
-        if (!isMounted) return
-        setIsBackendConnected(false)
-      }
-    }
-
-    // Reset playing state on mount
-    wasPlayingRef.current = null
-
-    // Connect on mount
-    connectWebSocket()
-
-    // Subscribe to base URL changes (when user switches tables)
-    // This triggers reconnection to the new backend
-    const unsubscribe = apiClient.onBaseUrlChange(() => {
-      if (isMounted) {
-        wasPlayingRef.current = null // Reset playing state for new table
-        setCurrentPlayingFile(null) // Reset playback state for new table
-        setIsConnected(false) // Reset connection status until new table reports
-        setIsBackendConnected(false) // Show connecting state
-        setSensorHomingFailed(false) // Reset sensor homing failure state for new table
-        connectWebSocket()
-      }
-    })
-
-    return () => {
-      isMounted = false
-      unsubscribe()
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout)
-      }
-      if (wsRef.current) {
-        // Only close if already OPEN - CONNECTING WebSockets will close in onopen
-        if (wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.close()
-        }
-        wsRef.current = null
-      }
-    }
-  }, []) // Empty deps - runs once on mount, reconnects via apiClient listener
 
   // Connect to logs WebSocket when drawer opens
   useEffect(() => {
@@ -690,7 +575,7 @@ export function Layout() {
 
       if (response.success) {
         toast.success(response.message || 'Homing completed successfully')
-        setSensorHomingFailed(false)
+        // sensorHomingFailed will auto-clear via next status WebSocket update
       } else if (response.sensor_homing_failed) {
         // Sensor homing failed again
         toast.error(response.message || 'Sensor homing failed again')
@@ -728,16 +613,16 @@ export function Layout() {
   const [connectionLogs, setConnectionLogs] = useState<Array<{ timestamp: string; level: string; message: string }>>([])
   const blockingLogsRef = useRef<HTMLDivElement>(null)
 
-  // Cache progress state
-  const [cacheProgress, setCacheProgress] = useState<{
-    is_running: boolean
-    stage: string
-    processed_files: number
-    total_files: number
-    current_file: string
-    error?: string
-  } | null>(null)
-  const cacheWsRef = useRef<WebSocket | null>(null)
+  // Cache progress from shared store
+  const cacheProgress = useCacheProgressStore((s) => s.cacheProgress)
+
+  // Connect/disconnect cache progress WebSocket based on backend connectivity
+  useEffect(() => {
+    if (isBackendConnected) {
+      useCacheProgressStore.getState().connect()
+    }
+    return () => useCacheProgressStore.getState().disconnect()
+  }, [isBackendConnected])
 
   // Cache All Previews prompt state
   const [showCacheAllPrompt, setShowCacheAllPrompt] = useState(false)
@@ -881,99 +766,23 @@ export function Layout() {
     }
   }, [isBackendConnected, isHoming, homingJustCompleted])
 
-  // Cache progress WebSocket connection - always connected to monitor cache generation
+  // Cache completion detection — show cache-all prompt when generation finishes
+  const prevCacheProgressRef = useRef(cacheProgress)
   useEffect(() => {
-    if (!isBackendConnected) return
+    const prev = prevCacheProgressRef.current
+    prevCacheProgressRef.current = cacheProgress
 
-    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
-    let shouldConnect = true
-
-    const connectCacheWebSocket = () => {
-      if (!shouldConnect) return
-      // Don't interrupt an existing connection that's still connecting
-      if (cacheWsRef.current) {
-        if (cacheWsRef.current.readyState === WebSocket.CONNECTING) {
-          return // Already connecting, wait for it
-        }
-        if (cacheWsRef.current.readyState === WebSocket.OPEN) {
-          return // Already connected
-        }
-        // CLOSING or CLOSED state - clear the ref
-        cacheWsRef.current = null
-      }
-
-      const ws = new WebSocket(apiClient.getWebSocketUrl('/ws/cache-progress'))
-      // Assign to ref IMMEDIATELY so concurrent calls see it's connecting
-      cacheWsRef.current = ws
-
-      ws.onopen = () => {
-        if (!shouldConnect) {
-          // Effect cleanup ran while connecting - close now
-          ws.close()
-        }
-      }
-
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data)
-          if (message.type === 'cache_progress') {
-            const data = message.data
-            if (data.is_running) {
-              // Cache generation is running - show splash screen
-              setCacheProgress(data)
-            } else if (data.stage === 'complete') {
-              // Cache generation just completed
-              if (cacheProgress?.is_running) {
-                // Was running before, now complete - show cache all prompt
-                const promptShown = localStorage.getItem('cacheAllPromptShown')
-                if (!promptShown) {
-                  setTimeout(() => {
-                    setCacheAllProgress(null) // Reset to clean state
-                    setShowCacheAllPrompt(true)
-                  }, 500)
-                }
-              }
-              setCacheProgress(null)
-            } else {
-              // Not running and not complete (idle state)
-              setCacheProgress(null)
-            }
-          }
-        } catch {
-          // Ignore parse errors
-        }
-      }
-
-      ws.onclose = () => {
-        if (!shouldConnect) return
-        cacheWsRef.current = null
-        // Reconnect after 3 seconds
-        if (shouldConnect && isBackendConnected) {
-          reconnectTimeout = setTimeout(connectCacheWebSocket, 3000)
-        }
-      }
-
-      ws.onerror = () => {
-        // Will trigger onclose
+    // Detect transition: was running → now complete
+    if (prev?.is_running && cacheProgress?.stage === 'complete') {
+      const promptShown = localStorage.getItem('cacheAllPromptShown')
+      if (!promptShown) {
+        setTimeout(() => {
+          setCacheAllProgress(null)
+          setShowCacheAllPrompt(true)
+        }, 500)
       }
     }
-
-    connectCacheWebSocket()
-
-    return () => {
-      shouldConnect = false
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout)
-      }
-      if (cacheWsRef.current) {
-        // Only close if already OPEN - CONNECTING WebSockets will close in onopen
-        if (cacheWsRef.current.readyState === WebSocket.OPEN) {
-          cacheWsRef.current.close()
-        }
-        cacheWsRef.current = null
-      }
-    }
-  }, [isBackendConnected]) // Only reconnect based on backend connection, not cache state
+  }, [cacheProgress])
 
   // Calculate cache progress percentage
   const cachePercentage = cacheProgress?.total_files

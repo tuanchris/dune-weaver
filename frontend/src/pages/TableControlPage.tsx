@@ -35,13 +35,24 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { apiClient } from '@/lib/apiClient'
+import { useStatusStore } from '@/stores/useStatusStore'
 
 export function TableControlPage() {
   const [speedInput, setSpeedInput] = useState('')
   const [currentSpeed, setCurrentSpeed] = useState<number | null>(null)
   const [currentTheta, setCurrentTheta] = useState(0)
   const [isLoading, setIsLoading] = useState<string | null>(null)
-  const [isPatternRunning, setIsPatternRunning] = useState(false)
+
+  // Subscribe to shared status WebSocket via store
+  const speed = useStatusStore((s) => s.status?.speed ?? null)
+  const isPatternRunning = useStatusStore((s) =>
+    (s.status?.is_running || s.status?.is_paused) ?? false
+  )
+
+  // Sync speed from store into local state (for the badge display)
+  useEffect(() => {
+    if (speed !== null) setCurrentSpeed(speed)
+  }, [speed])
 
   // Serial terminal state
   const [serialPorts, setSerialPorts] = useState<string[]>([])
@@ -52,71 +63,6 @@ export function TableControlPage() {
   const [serialLoading, setSerialLoading] = useState(false)
   const serialOutputRef = useRef<HTMLDivElement>(null)
   const serialInputRef = useRef<HTMLInputElement>(null)
-
-  // Connect to status WebSocket to get current speed and playback status
-  useEffect(() => {
-    let ws: WebSocket | null = null
-    let shouldReconnect = true
-
-    const connect = () => {
-      if (!shouldReconnect) return
-
-      // Don't interrupt an existing connection that's still connecting
-      if (ws) {
-        if (ws.readyState === WebSocket.CONNECTING) {
-          return // Already connecting, wait for it
-        }
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.close()
-        }
-        ws = null
-      }
-
-      ws = new WebSocket(apiClient.getWebSocketUrl('/ws/status'))
-
-      ws.onopen = () => {
-        if (!shouldReconnect) {
-          // Component unmounted while connecting - close the WebSocket now
-          ws?.close()
-        }
-      }
-
-      ws.onmessage = (event) => {
-        if (!shouldReconnect) return
-        try {
-          const message = JSON.parse(event.data)
-          if (message.type === 'status_update' && message.data) {
-            if (message.data.speed !== null && message.data.speed !== undefined) {
-              setCurrentSpeed(message.data.speed)
-            }
-            // Track if a pattern is running or paused
-            setIsPatternRunning(message.data.is_running || message.data.is_paused)
-          }
-        } catch (error) {
-          console.error('Failed to parse status:', error)
-        }
-      }
-    }
-
-    connect()
-
-    // Reconnect when table changes
-    const unsubscribe = apiClient.onBaseUrlChange(() => {
-      connect()
-    })
-
-    return () => {
-      shouldReconnect = false
-      unsubscribe()
-      if (ws) {
-        // Only close if already OPEN - CONNECTING WebSockets will close in onopen
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.close()
-        }
-        ws = null
-      }
-    }
-  }, [])
 
   const handleAction = async (
     action: string,

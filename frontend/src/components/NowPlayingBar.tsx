@@ -11,6 +11,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { apiClient } from '@/lib/apiClient'
+import { useStatusStore } from '@/stores/useStatusStore'
+import type { StatusData } from '@/stores/useStatusStore'
 import {
   DndContext,
   closestCenter,
@@ -29,40 +31,6 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 
 type Coordinate = [number, number]
-
-interface PlaybackStatus {
-  current_file: string | null
-  is_paused: boolean
-  manual_pause: boolean
-  scheduled_pause: boolean
-  is_running: boolean
-  progress: {
-    current: number
-    total: number
-    remaining_time: number | null
-    elapsed_time: number
-    percentage: number
-    last_completed_time?: {
-      actual_time_seconds: number
-      actual_time_formatted: string
-      timestamp: string
-    }
-  } | null
-  playlist: {
-    current_index: number
-    total_files: number
-    mode: string
-    next_file: string | null
-    files: string[]
-    name: string | null
-  } | null
-  speed: number
-  pause_time_remaining: number
-  original_pause_time: number | null
-  connection_status: boolean
-  current_theta: number
-  current_rho: number
-}
 
 function formatTime(seconds: number): string {
   if (!seconds || seconds < 0) return '--:--'
@@ -212,9 +180,8 @@ interface NowPlayingBarProps {
 }
 
 export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVisible, openExpanded = false, onClose }: NowPlayingBarProps) {
-  const [status, setStatus] = useState<PlaybackStatus | null>(null)
+  const status: StatusData | null = useStatusStore((s) => s.status)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const wsRef = useRef<WebSocket | null>(null)
 
   // Expanded state for slide-up view
   const [isExpanded, setIsExpanded] = useState(false)
@@ -329,83 +296,6 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
   const lastProgressRef = useRef<number>(0)
   const lastProgressTimeRef = useRef<number>(0)
   const smoothProgressRef = useRef<number>(0)
-
-  // Connect to status WebSocket (reconnects when table changes)
-  useEffect(() => {
-    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
-    let shouldReconnect = true
-
-    const connectWebSocket = () => {
-      if (!shouldReconnect) return
-
-      // Don't interrupt an existing connection that's still connecting
-      if (wsRef.current) {
-        if (wsRef.current.readyState === WebSocket.CONNECTING) {
-          return // Already connecting, wait for it
-        }
-        if (wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.close()
-        }
-        wsRef.current = null
-      }
-
-      const wsUrl = apiClient.getWebSocketUrl('/ws/status')
-      const ws = new WebSocket(wsUrl)
-      // Assign to ref IMMEDIATELY so concurrent calls see it's connecting
-      wsRef.current = ws
-
-      ws.onopen = () => {
-        if (!shouldReconnect) {
-          // Component unmounted while connecting - close the WebSocket now
-          ws.close()
-        }
-      }
-
-      ws.onmessage = (event) => {
-        if (!shouldReconnect) return
-        try {
-          const message = JSON.parse(event.data)
-          if (message.type === 'status_update' && message.data) {
-            setStatus(message.data)
-          }
-        } catch {
-          // Ignore parse errors
-        }
-      }
-
-      ws.onclose = () => {
-        if (!shouldReconnect) return
-        reconnectTimeout = setTimeout(connectWebSocket, 3000)
-      }
-    }
-
-    connectWebSocket()
-
-    // Reconnect when base URL changes (table switch)
-    const unsubscribe = apiClient.onBaseUrlChange(() => {
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout)
-        reconnectTimeout = null
-      }
-      // connectWebSocket handles closing existing connection safely
-      connectWebSocket()
-    })
-
-    return () => {
-      shouldReconnect = false
-      unsubscribe()
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout)
-      }
-      if (wsRef.current) {
-        // Only close if already OPEN - CONNECTING WebSockets will close in onopen
-        if (wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.close()
-        }
-        wsRef.current = null
-      }
-    }
-  }, [])
 
   // Fetch preview images for current and next patterns
   const [nextPreviewUrl, setNextPreviewUrl] = useState<string | null>(null)
