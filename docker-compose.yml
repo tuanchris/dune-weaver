@@ -3,7 +3,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    image: ghcr.io/tuanchris/dune-weaver-frontend:main
+    image: ghcr.io/tuanchris/dune-weaver-frontend:${IMAGE_TAG:-main}
     restart: always
     ports:
       - "${FRONTEND_PORT:-80}:80"
@@ -15,7 +15,7 @@ services:
 
   backend:
     build: .
-    image: ghcr.io/tuanchris/dune-weaver:main
+    image: ghcr.io/tuanchris/dune-weaver:${IMAGE_TAG:-main}
     restart: always
     # Pin motion-critical backend to cores 0-2 (Raspberry Pi 4/5 has cores 0-3)
     # This prevents CPU contention from touch app blocking I/O calls
