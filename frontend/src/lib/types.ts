@@ -20,7 +20,7 @@ export interface Playlist {
   files: string[]
 }
 
-export type SortOption = 'name' | 'date' | 'size' | 'favorites'
+export type SortOption = 'name' | 'date' | 'size' | 'favorites' | 'plays' | 'last_played'
 export type PreExecution = 'none' | 'adaptive' | 'clear_from_in' | 'clear_from_out' | 'clear_sideway'
 export type RunMode = 'single' | 'indefinite'
 

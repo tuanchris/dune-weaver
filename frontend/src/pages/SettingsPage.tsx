@@ -170,6 +170,12 @@ export function SettingsPage() {
   // Pattern search state for clearing patterns
   const [patternFiles, setPatternFiles] = useState<string[]>([])
 
+  // Security state
+  const [securityMode, setSecurityMode] = useState<'off' | 'lockdown' | 'play_only'>('off')
+  const [securityPassword, setSecurityPassword] = useState('')
+  const [securityPasswordConfirm, setSecurityPasswordConfirm] = useState('')
+  const [hasExistingPassword, setHasExistingPassword] = useState(false)
+
   // Version state
   const [versionInfo, setVersionInfo] = useState<{
     current: string
@@ -221,6 +227,7 @@ export function SettingsPage() {
       case 'machine':
       case 'homing':
       case 'clearing':
+      case 'security':
         // These all share settings data
         if (!loadedSections.has('_settings')) {
           setLoadedSections((prev) => new Set(prev).add('_settings'))
@@ -382,6 +389,11 @@ export function SettingsPage() {
           timezone: data.scheduled_pause.timezone || '',
           time_slots: data.scheduled_pause.time_slots || [],
         })
+      }
+      // Set security settings
+      if (data.security) {
+        setSecurityMode(data.security.mode || 'off')
+        setHasExistingPassword(data.security.has_password || false)
       }
       // Set MQTT config from the same response
       if (data.mqtt) {
@@ -2169,6 +2181,156 @@ export function SettingsPage() {
                 <span className="material-icons-outlined">save</span>
               )}
               Save Still Sands Settings
+            </Button>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Security */}
+        <AccordionItem value="security" id="section-security" className="border rounded-lg px-4 overflow-visible bg-card">
+          <AccordionTrigger className="hover:no-underline">
+            <div className="flex items-center gap-3">
+              <span className="material-icons-outlined text-muted-foreground">
+                lock
+              </span>
+              <div className="text-left">
+                <div className="font-semibold">Security</div>
+                <div className="text-sm text-muted-foreground font-normal">
+                  App lock and access control
+                </div>
+              </div>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="pt-4 pb-6 space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Restrict access to the app to prevent unauthorized changes. Useful for shared spaces or when the table is accessible to children.
+            </p>
+
+            {/* Security Mode */}
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">Security Mode</Label>
+              <RadioGroup
+                value={securityMode}
+                onValueChange={(value) => {
+                  const newMode = value as 'off' | 'lockdown' | 'play_only'
+                  if (newMode === 'off' && securityMode !== 'off') {
+                    if (!confirm('Turn off security? This will remove the password and unlock the app.')) return
+                  }
+                  setSecurityMode(newMode)
+                  // Clear password fields when switching modes
+                  setSecurityPassword('')
+                  setSecurityPasswordConfirm('')
+                }}
+                className="space-y-2"
+              >
+                <div className="flex items-start gap-3 p-3 rounded-lg border">
+                  <RadioGroupItem value="off" id="security-off" className="mt-0.5" />
+                  <div>
+                    <Label htmlFor="security-off" className="font-medium cursor-pointer">Off</Label>
+                    <p className="text-sm text-muted-foreground">No restrictions. Anyone can use the app.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 p-3 rounded-lg border">
+                  <RadioGroupItem value="play_only" id="security-play-only" className="mt-0.5" />
+                  <div>
+                    <Label htmlFor="security-play-only" className="font-medium cursor-pointer">Play Only</Label>
+                    <p className="text-sm text-muted-foreground">Anyone can browse and play patterns. Settings require a password.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 p-3 rounded-lg border">
+                  <RadioGroupItem value="lockdown" id="security-lockdown" className="mt-0.5" />
+                  <div>
+                    <Label htmlFor="security-lockdown" className="font-medium cursor-pointer">Full Lockdown</Label>
+                    <p className="text-sm text-muted-foreground">Password required to access the entire app.</p>
+                  </div>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {/* Password fields (shown when mode != off) */}
+            {securityMode !== 'off' && (
+              <div className="space-y-3 pt-2">
+                <Separator />
+                {hasExistingPassword && (
+                  <p className="text-sm text-muted-foreground">
+                    A password is currently set. Enter a new password below to change it, or leave blank to keep the existing one.
+                  </p>
+                )}
+                <div className="space-y-2">
+                  <Label htmlFor="security-password">
+                    {hasExistingPassword ? 'New Password' : 'Password'}
+                  </Label>
+                  <Input
+                    id="security-password"
+                    type="password"
+                    placeholder={hasExistingPassword ? 'Leave blank to keep current' : 'Enter password'}
+                    value={securityPassword}
+                    onChange={(e) => setSecurityPassword(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="security-password-confirm">Confirm Password</Label>
+                  <Input
+                    id="security-password-confirm"
+                    type="password"
+                    placeholder="Confirm password"
+                    value={securityPasswordConfirm}
+                    onChange={(e) => setSecurityPasswordConfirm(e.target.value)}
+                  />
+                </div>
+                {securityPassword && securityPasswordConfirm && securityPassword !== securityPasswordConfirm && (
+                  <p className="text-sm text-destructive">Passwords do not match</p>
+                )}
+              </div>
+            )}
+
+            {/* Save button */}
+            <Button
+              onClick={async () => {
+                // Validate
+                if (securityMode !== 'off') {
+                  if (securityPassword && securityPassword !== securityPasswordConfirm) {
+                    toast.error('Passwords do not match')
+                    return
+                  }
+                  if (!hasExistingPassword && !securityPassword) {
+                    toast.error('Please set a password')
+                    return
+                  }
+                }
+
+                setIsLoading('security')
+                try {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const payload: any = { security: { mode: securityMode } }
+                  if (securityPassword) {
+                    payload.security.password = securityPassword
+                  }
+                  await apiClient.patch('/api/settings', payload)
+                  toast.success('Security settings saved')
+                  setSecurityPassword('')
+                  setSecurityPasswordConfirm('')
+                  setHasExistingPassword(securityMode !== 'off')
+                  // Notify Layout to refetch security state
+                  window.dispatchEvent(new CustomEvent('security-updated'))
+                } catch {
+                  toast.error('Failed to save security settings')
+                } finally {
+                  setIsLoading(null)
+                }
+              }}
+              disabled={
+                isLoading === 'security' ||
+                (securityMode !== 'off' && securityPassword !== '' && securityPassword !== securityPasswordConfirm) ||
+                (securityMode !== 'off' && !hasExistingPassword && !securityPassword)
+              }
+              className="w-full gap-2"
+            >
+              {isLoading === 'security' ? (
+                <span className="material-icons-outlined animate-spin">sync</span>
+              ) : (
+                <span className="material-icons-outlined">save</span>
+              )}
+              Save Security Settings
             </Button>
           </AccordionContent>
         </AccordionItem>

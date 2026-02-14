@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback, createContext, useContext } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   initPreviewCacheDB,
@@ -46,7 +47,7 @@ interface PreviewData {
 // Coordinates come as [theta, rho] tuples from the backend
 type Coordinate = [number, number]
 
-type SortOption = 'name' | 'date' | 'size' | 'favorites'
+type SortOption = 'name' | 'date' | 'size' | 'favorites' | 'plays' | 'last_played'
 type PreExecution = 'none' | 'adaptive' | 'clear_from_in' | 'clear_from_out' | 'clear_sideway'
 
 const preExecutionOptions: { value: PreExecution; label: string }[] = [
@@ -66,6 +67,8 @@ interface PreviewContextType {
 const PreviewContext = createContext<PreviewContextType | null>(null)
 
 export function BrowsePage() {
+  const { isPlayOnlyActive } = useOutletContext<{ isPlayOnlyActive?: boolean }>() || {}
+
   // Data state
   const [patterns, setPatterns] = useState<PatternMetadata[]>([])
   const [previews, setPreviews] = useState<Record<string, PreviewData>>({})
@@ -104,6 +107,8 @@ export function BrowsePage() {
   const [allPatternHistories, setAllPatternHistories] = useState<Record<string, {
     actual_time_formatted: string | null
     timestamp: string | null
+    play_count: number
+    last_played: string | null
   }>>({})
 
   // Canvas and animation refs
@@ -242,7 +247,7 @@ export function BrowsePage() {
       // Fetch patterns and history in parallel
       const [data, historyData] = await Promise.all([
         apiClient.get<PatternMetadata[]>('/list_theta_rho_files_with_metadata'),
-        apiClient.get<Record<string, { actual_time_formatted: string | null; timestamp: string | null }>>('/api/pattern_history_all')
+        apiClient.get<Record<string, { actual_time_formatted: string | null; timestamp: string | null; play_count: number; last_played: string | null }>>('/api/pattern_history_all')
       ])
       setPatterns(data)
       setAllPatternHistories(historyData)
@@ -401,6 +406,28 @@ export function BrowsePage() {
           }
           break
         }
+        case 'plays': {
+          const aKey = a.path.split('/').pop() || ''
+          const bKey = b.path.split('/').pop() || ''
+          const aPlays = allPatternHistories[aKey]?.play_count ?? 0
+          const bPlays = allPatternHistories[bKey]?.play_count ?? 0
+          comparison = aPlays - bPlays
+          if (comparison === 0) {
+            comparison = a.name.localeCompare(b.name)
+          }
+          break
+        }
+        case 'last_played': {
+          const aKey = a.path.split('/').pop() || ''
+          const bKey = b.path.split('/').pop() || ''
+          const aTime = allPatternHistories[aKey]?.last_played || ''
+          const bTime = allPatternHistories[bKey]?.last_played || ''
+          comparison = aTime.localeCompare(bTime)
+          if (comparison === 0) {
+            comparison = a.name.localeCompare(b.name)
+          }
+          break
+        }
         default:
           return 0
       }
@@ -408,7 +435,7 @@ export function BrowsePage() {
     })
 
     return result
-  }, [patterns, selectedCategory, searchQuery, sortBy, sortAsc, favorites])
+  }, [patterns, selectedCategory, searchQuery, sortBy, sortAsc, favorites, allPatternHistories])
 
   // Batched preview loading - collects requests and fetches in batches
   const requestPreview = useCallback((path: string) => {
@@ -803,33 +830,46 @@ export function BrowsePage() {
     setCacheProgress(0)
   }
 
-  // Handle pattern file upload
+  // Handle pattern file upload (supports multiple files)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = e.target.files
+    if (!files || files.length === 0) return
 
-    // Validate file extension
-    if (!file.name.endsWith('.thr')) {
-      toast.error('Please select a .thr file')
+    // Validate all files have .thr extension
+    const invalidFiles = Array.from(files).filter(f => !f.name.endsWith('.thr'))
+    if (invalidFiles.length > 0) {
+      toast.error(`Invalid file${invalidFiles.length > 1 ? 's' : ''}: ${invalidFiles.map(f => f.name).join(', ')}. Only .thr files are accepted.`)
       return
     }
 
     setIsUploading(true)
-    try {
-      await apiClient.uploadFile('/upload_theta_rho', file)
-      toast.success(`Pattern "${file.name}" uploaded successfully`)
+    let successCount = 0
+    let failCount = 0
 
-      // Refresh patterns list using the same function as initial load
-      await fetchPatterns()
-    } catch (error) {
-      console.error('Upload error:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to upload pattern')
-    } finally {
-      setIsUploading(false)
-      // Reset file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
+    for (const file of Array.from(files)) {
+      try {
+        await apiClient.uploadFile('/upload_theta_rho', file)
+        successCount++
+      } catch (error) {
+        console.error(`Upload error for ${file.name}:`, error)
+        failCount++
+        toast.error(`Failed to upload "${file.name}"`)
       }
+    }
+
+    if (successCount > 0) {
+      toast.success(
+        successCount === 1
+          ? `Pattern "${files[0].name}" uploaded successfully`
+          : `${successCount} pattern${successCount > 1 ? 's' : ''} uploaded successfully`
+      )
+      await fetchPatterns()
+    }
+
+    setIsUploading(false)
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
     }
   }
 
@@ -846,13 +886,16 @@ export function BrowsePage() {
   return (
     <div className="flex flex-col w-full max-w-5xl mx-auto gap-3 sm:gap-6 py-3 sm:py-6 px-0 sm:px-4">
       {/* Hidden file input for pattern upload */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".thr"
-        onChange={handleFileUpload}
-        className="hidden"
-      />
+      {!isPlayOnlyActive && (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".thr"
+          multiple
+          onChange={handleFileUpload}
+          className="hidden"
+        />
+      )}
 
       {/* Page Header */}
       <div className="flex items-start justify-between gap-4 pl-1">
@@ -862,19 +905,21 @@ export function BrowsePage() {
             {patterns.length} patterns available
           </p>
         </div>
-        <Button
-          variant="ghost"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isUploading}
-          className="gap-2 shrink-0 h-9 w-9 sm:h-11 sm:w-auto rounded-full px-0 sm:px-4 justify-center bg-card border border-border shadow-sm hover:bg-accent"
-        >
-          {isUploading ? (
-            <span className="material-icons-outlined animate-spin text-lg">sync</span>
-          ) : (
-            <span className="material-icons-outlined text-lg">add</span>
-          )}
-          <span className="hidden sm:inline">Add Pattern</span>
-        </Button>
+        {!isPlayOnlyActive && (
+          <Button
+            variant="ghost"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+            className="gap-2 shrink-0 h-9 w-9 sm:h-11 sm:w-auto rounded-full px-0 sm:px-4 justify-center bg-card border border-border shadow-sm hover:bg-accent"
+          >
+            {isUploading ? (
+              <span className="material-icons-outlined animate-spin text-lg">sync</span>
+            ) : (
+              <span className="material-icons-outlined text-lg">add</span>
+            )}
+            <span className="hidden sm:inline">Add Pattern</span>
+          </Button>
+        )}
       </div>
 
       {/* Filter Bar */}
@@ -922,7 +967,12 @@ export function BrowsePage() {
           </Select>
 
           {/* Sort - Icon on mobile, text on desktop */}
-          <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+          <Select value={sortBy} onValueChange={(v) => {
+            const option = v as SortOption
+            setSortBy(option)
+            // Most Played and Last Played should default to descending (highest first)
+            setSortAsc(option !== 'plays' && option !== 'last_played')
+          }}>
             <SelectTrigger className="h-9 w-9 sm:h-11 sm:w-auto rounded-full bg-card border-border shadow-sm text-xs sm:text-sm shrink-0 [&>svg]:hidden sm:[&>svg]:block px-0 sm:px-3 justify-center sm:justify-between [&>span:last-of-type]:hidden sm:[&>span:last-of-type]:inline gap-2">
               <span className="material-icons-outlined text-lg shrink-0 sm:hidden">sort</span>
               <SelectValue placeholder="Sort" />
@@ -932,6 +982,8 @@ export function BrowsePage() {
               <SelectItem value="name">Name</SelectItem>
               <SelectItem value="date">Modified</SelectItem>
               <SelectItem value="size">Size</SelectItem>
+              <SelectItem value="plays">Most Played</SelectItem>
+              <SelectItem value="last_played">Last Played</SelectItem>
             </SelectContent>
           </Select>
 
@@ -1016,6 +1068,7 @@ export function BrowsePage() {
                 isSelected={selectedPattern?.path === pattern.path}
                 isFavorite={favorites.has(pattern.path)}
                 playTime={allPatternHistories[pattern.path.split('/').pop() || '']?.actual_time_formatted || null}
+                playCount={allPatternHistories[pattern.path.split('/').pop() || '']?.play_count ?? 0}
                 onToggleFavorite={toggleFavorite}
                 onClick={() => handlePatternClick(pattern)}
               />
@@ -1109,23 +1162,33 @@ export function BrowsePage() {
                 </div>
               </div>
 
-              {/* Last Played Info */}
-              {patternHistory?.actual_time_formatted && (
-                <div className="mb-4 flex justify-between text-sm">
-                  <div className="flex items-center gap-2">
-                    <span className="material-icons-outlined text-muted-foreground text-base">schedule</span>
-                    <span className="text-muted-foreground">Last run:</span>
-                    <span className="font-semibold">{patternHistory.actual_time_formatted}</span>
-                  </div>
-                  {patternHistory.speed !== null && (
-                    <div className="flex items-center gap-2">
-                      <span className="material-icons-outlined text-muted-foreground text-base">speed</span>
-                      <span className="text-muted-foreground">Speed:</span>
-                      <span className="font-semibold">{patternHistory.speed}</span>
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* Play History Info */}
+              {(() => {
+                const historyKey = selectedPattern.path.split('/').pop() || ''
+                const playCount = allPatternHistories[historyKey]?.play_count ?? 0
+                return (
+                  <>
+                    {(patternHistory?.actual_time_formatted || playCount > 0) && (
+                      <div className="mb-4 flex justify-between text-sm">
+                        {patternHistory?.actual_time_formatted && (
+                          <div className="flex items-center gap-2">
+                            <span className="material-icons-outlined text-muted-foreground text-base">schedule</span>
+                            <span className="text-muted-foreground">Last run:</span>
+                            <span className="font-semibold">{patternHistory.actual_time_formatted}</span>
+                          </div>
+                        )}
+                        {playCount > 0 && (
+                          <div className="flex items-center gap-2">
+                            <span className="material-icons-outlined text-muted-foreground text-base">play_circle</span>
+                            <span className="text-muted-foreground">Plays:</span>
+                            <span className="font-semibold">{playCount}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
 
               {/* Pre-Execution Options */}
               <div className="mb-6">
@@ -1328,11 +1391,12 @@ interface PatternCardProps {
   isSelected: boolean
   isFavorite: boolean
   playTime: string | null
+  playCount: number
   onToggleFavorite: (path: string, e: React.MouseEvent) => void
   onClick: () => void
 }
 
-function PatternCard({ pattern, isSelected, isFavorite, playTime, onToggleFavorite, onClick }: PatternCardProps) {
+function PatternCard({ pattern, isSelected, isFavorite, playTime, playCount, onToggleFavorite, onClick }: PatternCardProps) {
   const [imageLoaded, setImageLoaded] = useState(false)
   const [imageError, setImageError] = useState(false)
   const cardRef = useRef<HTMLButtonElement>(null)
@@ -1399,46 +1463,42 @@ function PatternCard({ pattern, isSelected, isFavorite, playTime, onToggleFavori
             </div>
           )}
         </div>
-
-        {/* Play time badge */}
-        {playTime && (
-          <div className="absolute -top-1 -right-1 bg-card/90 backdrop-blur-sm text-[10px] font-medium px-1.5 py-0.5 rounded-full border border-border shadow-sm">
-            {(() => {
-              // Parse time and convert to minutes only
-              // Try MM:SS or HH:MM:SS format first (e.g., "15:48" or "1:15:48")
-              const colonMatch = playTime.match(/^(?:(\d+):)?(\d+):(\d+)$/)
-              if (colonMatch) {
-                const hours = colonMatch[1] ? parseInt(colonMatch[1]) : 0
-                const minutes = parseInt(colonMatch[2])
-                const seconds = parseInt(colonMatch[3])
-                const totalMins = hours * 60 + minutes + (seconds >= 30 ? 1 : 0)
-                return totalMins > 0 ? `${totalMins}m` : '<1m'
-              }
-
-              // Try text-based formats
-              const match = playTime.match(/(\d+)h\s*(\d+)m|(\d+)\s*min|(\d+)m\s*(\d+)s|(\d+)\s*sec/)
-              if (match) {
-                if (match[1] && match[2]) {
-                  // "Xh Ym" format
-                  return `${parseInt(match[1]) * 60 + parseInt(match[2])}m`
-                } else if (match[3]) {
-                  // "X min" format
-                  return `${match[3]}m`
-                } else if (match[4] && match[5]) {
-                  // "Xm Ys" format - round to minutes
-                  const mins = parseInt(match[4])
-                  return mins > 0 ? `${mins}m` : '<1m'
-                } else if (match[6]) {
-                  // seconds only
-                  return '<1m'
-                }
-              }
-              // Fallback: show original
-              return playTime
-            })()}
-          </div>
-        )}
       </div>
+
+      {/* Stats row */}
+      {(playCount > 0 || playTime) && (
+        <div className="flex items-center w-full px-0.5 -mb-1 justify-between">
+          {playCount > 0 && (
+            <span className="flex items-center gap-0.5 text-xs text-muted-foreground" title={`Played ${playCount} time${playCount !== 1 ? 's' : ''}`}>
+              <span className="material-icons-outlined" style={{ fontSize: '13px' }}>play_circle</span>
+              {playCount}x
+            </span>
+          )}
+          {playTime && (
+            <span className="flex items-center gap-0.5 text-xs text-muted-foreground ml-auto" title={`Last run: ${playTime}`}>
+              <span className="material-icons-outlined" style={{ fontSize: '13px' }}>schedule</span>
+              {(() => {
+                const colonMatch = playTime.match(/^(?:(\d+):)?(\d+):(\d+)$/)
+                if (colonMatch) {
+                  const hours = colonMatch[1] ? parseInt(colonMatch[1]) : 0
+                  const minutes = parseInt(colonMatch[2])
+                  const seconds = parseInt(colonMatch[3])
+                  const totalMins = hours * 60 + minutes + (seconds >= 30 ? 1 : 0)
+                  return totalMins > 0 ? `${totalMins}m` : '<1m'
+                }
+                const match = playTime.match(/(\d+)h\s*(\d+)m|(\d+)\s*min|(\d+)m\s*(\d+)s|(\d+)\s*sec/)
+                if (match) {
+                  if (match[1] && match[2]) return `${parseInt(match[1]) * 60 + parseInt(match[2])}m`
+                  else if (match[3]) return `${match[3]}m`
+                  else if (match[4] && match[5]) { const mins = parseInt(match[4]); return mins > 0 ? `${mins}m` : '<1m' }
+                  else if (match[6]) return '<1m'
+                }
+                return playTime
+              })()}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Name and favorite row */}
       <div className="flex items-center justify-between w-full gap-1 px-0.5">
