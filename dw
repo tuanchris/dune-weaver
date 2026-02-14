@@ -13,6 +13,7 @@
 #   logs        View live logs (Ctrl+C to exit)
 #   status      Show container status
 #   shell       Open a shell in the container
+#   checkout    Switch to a branch and pull its Docker images
 #   touch       Manage touch screen app
 #   help        Show this help message
 #
@@ -308,6 +309,63 @@ cmd_touch() {
     esac
 }
 
+cmd_checkout() {
+    check_installed
+    local branch="$1"
+
+    if [[ -z "$branch" ]]; then
+        echo -e "${RED}Usage: dw checkout <branch>${NC}"
+        echo ""
+        echo "Examples:"
+        echo "  dw checkout main"
+        echo "  dw checkout feature/security-settings-split"
+        echo ""
+        echo "Current branch: $(git -C "$INSTALL_DIR" rev-parse --abbrev-ref HEAD)"
+        exit 1
+    fi
+
+    cd "$INSTALL_DIR"
+
+    # Repo may be cloned with --single-branch; fetch the target branch explicitly
+    echo -e "${BLUE}Fetching branch ${branch}...${NC}"
+    if ! git fetch origin "$branch" 2>/dev/null; then
+        echo -e "${RED}Branch '${branch}' not found on remote${NC}"
+        exit 1
+    fi
+
+    # Checkout: create local tracking branch if it doesn't exist
+    if git show-ref --verify --quiet "refs/heads/$branch"; then
+        git checkout "$branch"
+        git pull
+    else
+        git checkout -b "$branch" "origin/$branch"
+    fi
+
+    echo -e "Switched to branch: ${GREEN}${branch}${NC}"
+
+    # Pull and restart Docker images for the new branch
+    if is_docker_mode; then
+        set_image_tag
+        echo -e "Image tag: ${BLUE}${IMAGE_TAG}${NC}"
+
+        echo "Pulling Docker images..."
+        sudo -E docker compose pull
+
+        echo "Restarting with new images..."
+        sudo docker compose down
+        sudo -E docker compose up -d --remove-orphans
+
+        echo "Cleaning up old images..."
+        sudo docker image prune -f
+    fi
+
+    # Update dw CLI from the new branch
+    sudo cp "$INSTALL_DIR/dw" /usr/local/bin/dw
+    sudo chmod +x /usr/local/bin/dw
+
+    echo -e "${GREEN}Checkout complete!${NC}"
+}
+
 cmd_help() {
     echo -e "${GREEN}Dune Weaver CLI${NC}"
     echo ""
@@ -319,6 +377,7 @@ cmd_help() {
     echo "  stop        Stop Dune Weaver"
     echo "  restart     Restart Dune Weaver"
     echo "  update      Pull latest changes and restart"
+    echo "  checkout    Switch to a branch and pull its Docker images"
     echo "  logs [N]    View logs (N=number of lines, or follow if omitted)"
     echo "  status      Show container status"
     echo "  shell       Open a shell in the container"
@@ -347,6 +406,9 @@ case "${1:-help}" in
         ;;
     update)
         cmd_update "$2"
+        ;;
+    checkout)
+        cmd_checkout "$2"
         ;;
     logs)
         cmd_logs "$2"
