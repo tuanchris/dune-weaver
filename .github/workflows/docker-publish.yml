@@ -32,6 +32,7 @@ env:
 
 jobs:
   build-backend:
+    if: github.event_name != 'pull_request' || github.actor == 'tuanchris'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -70,6 +71,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=backend
 
   build-frontend:
+    if: github.event_name != 'pull_request' || github.actor == 'tuanchris'
     runs-on: ubuntu-latest
     permissions:
       contents: read
