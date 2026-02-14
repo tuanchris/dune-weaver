@@ -10,6 +10,15 @@ on:
       - 'requirements.txt'
       - 'VERSION'
       - '**.py'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'Dockerfile'
+      - 'frontend/Dockerfile'
+      - 'frontend/**'
+      - 'requirements.txt'
+      - 'VERSION'
+      - '**.py'
   # Allow manual trigger on any branch
   workflow_dispatch:
     inputs:
@@ -53,7 +62,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
@@ -92,7 +101,7 @@ jobs:
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
