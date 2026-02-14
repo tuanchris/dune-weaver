@@ -46,6 +46,13 @@ is_docker_mode() {
     [[ -f "$INSTALL_DIR/docker-compose.yml" ]] && command -v docker &> /dev/null
 }
 
+# Set IMAGE_TAG from current git branch (e.g. feature/foo -> feature-foo)
+set_image_tag() {
+    local branch
+    branch=$(git -C "$INSTALL_DIR" rev-parse --abbrev-ref HEAD)
+    export IMAGE_TAG="${branch//\//-}"
+}
+
 INSTALL_DIR=$(find_install_dir)
 
 # Check if installed
@@ -87,7 +94,8 @@ cmd_start() {
     cd "$INSTALL_DIR"
 
     if is_docker_mode; then
-        sudo docker compose up -d
+        set_image_tag
+        sudo -E docker compose up -d
     else
         sudo systemctl start dune-weaver
     fi
@@ -115,7 +123,8 @@ cmd_restart() {
     cd "$INSTALL_DIR"
 
     if is_docker_mode; then
-        sudo docker compose restart
+        set_image_tag
+        sudo -E docker compose restart
     else
         sudo systemctl restart dune-weaver
     fi
@@ -144,14 +153,17 @@ cmd_update() {
     fi
 
     if is_docker_mode; then
+        set_image_tag
+        echo -e "Image tag: ${BLUE}${IMAGE_TAG}${NC}"
+
         echo "Pulling latest Docker image..."
-        sudo docker compose pull
+        sudo -E docker compose pull
 
         echo "Stopping current container..."
         sudo docker compose down
 
         echo "Starting with new version..."
-        sudo docker compose up -d --remove-orphans
+        sudo -E docker compose up -d --remove-orphans
 
         echo "Cleaning up unused Docker resources..."
         sudo docker image prune -f
