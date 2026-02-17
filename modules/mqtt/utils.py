@@ -20,12 +20,16 @@ def create_mqtt_callbacks() -> Dict[str, Callable]:
     def set_speed(speed):
         state.speed = speed
 
+    def skip_pattern():
+        state.skip_requested = True
+
     return {
         'run_pattern': run_theta_rho_file,  # async function
         'run_playlist': run_playlist,  # async function
         'stop': stop_actions,  # sync function
         'pause': pause_execution,  # sync function
         'resume': resume_execution,  # sync function
+        'skip': skip_pattern,  # sync function
         'home': home,
         'set_speed': set_speed
     }
