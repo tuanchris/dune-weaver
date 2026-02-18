@@ -899,23 +899,30 @@ def get_machine_steps(timeout=10):
         x_steps_per_mm, y_steps_per_mm = _get_steps_grbl()
     
     # Process results and determine table type
+    # Uses tolerance-based matching (±5) to handle firmware float variations
+    # (e.g., 287 vs 287.0) and checks both axes for reliable identification
+    def _steps_match(actual, expected, tolerance=5):
+        return abs(actual - expected) <= tolerance
+
     settings_complete = (x_steps_per_mm is not None and y_steps_per_mm is not None)
     if settings_complete:
-        if y_steps_per_mm == 180 and x_steps_per_mm == 256:
+        if _steps_match(y_steps_per_mm, 180) and _steps_match(x_steps_per_mm, 256):
             state.table_type = 'dune_weaver_mini'
-        elif y_steps_per_mm == 210 and x_steps_per_mm == 256:
+        elif _steps_match(y_steps_per_mm, 210) and _steps_match(x_steps_per_mm, 256):
             state.table_type = 'dune_weaver_mini_pro_byj'
-        elif (y_steps_per_mm == 270 or y_steps_per_mm == 250) and x_steps_per_mm == 200:
-            state.table_type = 'dune_weaver_gold'
-        elif y_steps_per_mm == 287:
-            state.table_type = 'dune_weaver'
-        elif y_steps_per_mm == 164:
+        elif _steps_match(y_steps_per_mm, 164) and _steps_match(x_steps_per_mm, 200):
             state.table_type = 'dune_weaver_mini_pro'
-        elif y_steps_per_mm >= 320:
+        elif (_steps_match(y_steps_per_mm, 270) or _steps_match(y_steps_per_mm, 250)) and _steps_match(x_steps_per_mm, 200):
+            state.table_type = 'dune_weaver_gold'
+        elif _steps_match(y_steps_per_mm, 620) and _steps_match(x_steps_per_mm, 320):
+            state.table_type = 'dune_weaver_pro_pulley'
+        elif _steps_match(y_steps_per_mm, 533) and _steps_match(x_steps_per_mm, 320):
             state.table_type = 'dune_weaver_pro'
+        elif _steps_match(y_steps_per_mm, 287) and _steps_match(x_steps_per_mm, 320):
+            state.table_type = 'dune_weaver'
         else:
             state.table_type = None
-            logger.warning(f"Unknown table type with Y steps/mm: {y_steps_per_mm}")
+            logger.warning(f"Unknown table type with X steps/mm: {x_steps_per_mm}, Y steps/mm: {y_steps_per_mm}")
 
         # Use override if set, otherwise use detected table type
         effective_table_type = state.table_type_override or state.table_type
