@@ -86,7 +86,7 @@ print_success() {
 install_essentials() {
     print_step "Installing essential packages..."
     sudo apt update
-    sudo apt install -y git vim
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" git vim
     print_success "Essential packages installed"
 }
 
@@ -166,7 +166,7 @@ apply_wifi_fix() {
 update_system() {
     print_step "Updating system packages..."
     sudo apt update
-    sudo apt full-upgrade -y
+    sudo DEBIAN_FRONTEND=noninteractive apt full-upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
     print_success "System updated"
 }
 
