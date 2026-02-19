@@ -120,6 +120,59 @@ Page {
                 anchors.margins: 5
                 spacing: 2
 
+                // Screen Brightness Section (always visible, controls Pi LCD backlight)
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 60
+                    Layout.margins: 5
+                    radius: 8
+                    color: Components.ThemeManager.surfaceColor
+                    visible: backend && backend.lcdMaxBrightness > 0
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 15
+                        anchors.rightMargin: 15
+                        anchors.topMargin: 10
+                        anchors.bottomMargin: 10
+                        spacing: 10
+
+                        Label {
+                            text: "\u2600"
+                            font.pixelSize: 20
+                            color: Components.ThemeManager.textSecondary
+                        }
+
+                        Slider {
+                            id: lcdBrightnessSlider
+                            Layout.fillWidth: true
+                            from: 0
+                            to: backend ? backend.lcdMaxBrightness : 255
+                            stepSize: 1
+                            value: backend ? backend.lcdBrightness : 255
+
+                            onMoved: {
+                                if (backend) {
+                                    backend.setLcdBrightness(Math.round(value))
+                                }
+                            }
+                        }
+
+                        Label {
+                            text: {
+                                var max = backend ? backend.lcdMaxBrightness : 255
+                                if (max <= 0) return "0%"
+                                return Math.round(lcdBrightnessSlider.value / max * 100) + "%"
+                            }
+                            font.pixelSize: 12
+                            font.bold: true
+                            color: Components.ThemeManager.textPrimary
+                            Layout.preferredWidth: 35
+                            horizontalAlignment: Text.AlignRight
+                        }
+                    }
+                }
+
                 // Provider Info & Power/Brightness Section
                 Rectangle {
                     Layout.fillWidth: true

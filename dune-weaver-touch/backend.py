@@ -99,6 +99,9 @@ class Backend(QObject):
     ledStatusChanged = Signal()
     ledEffectsLoaded = Signal(list)  # List of available effects
     ledPalettesLoaded = Signal(list)  # List of available palettes
+
+    # LCD brightness signals
+    lcdBrightnessChanged = Signal()
     
     def __init__(self):
         super().__init__()
@@ -126,6 +129,11 @@ class Backend(QObject):
         # Backend connection status
         self._backend_connected = False
         self._reconnect_status = "Connecting to backend..."
+
+        # LCD brightness state
+        self._lcd_brightness = 255
+        self._lcd_brightness_path = ""  # Empty = auto-detect
+        self._lcd_max_brightness = 0    # 0 = read from sysfs
 
         # LED control state
         self._led_provider = "none"  # "none", "wled", or "dw_leds"
@@ -164,6 +172,9 @@ class Backend(QObject):
         # Load local settings first
         self._load_local_settings()
         logger.debug(f"Screen management initialized: timeout={self._screen_timeout}s, timer started")
+
+        # Detect and initialize LCD backlight
+        self._detect_backlight()
         
         # HTTP session - initialize lazily
         self.session = None
@@ -825,6 +836,12 @@ class Backend(QObject):
                 else:
                     logger.warning(f"Invalid screen timeout in settings, using default: {self.DEFAULT_SCREEN_TIMEOUT}s")
 
+                # Load LCD brightness settings
+                self._lcd_brightness = settings.get('lcd_brightness', 255)
+                self._lcd_brightness_path = settings.get('lcd_brightness_path', "")
+                self._lcd_max_brightness = settings.get('lcd_max_brightness', 0)
+                logger.debug(f"Loaded LCD settings: brightness={self._lcd_brightness}, path='{self._lcd_brightness_path}', max={self._lcd_max_brightness}")
+
                 # Load playlist settings
                 self._pause_between_patterns = settings.get('pause_between_patterns', 10800)  # Default 3h
                 self._playlist_shuffle = settings.get('playlist_shuffle', True)
@@ -843,11 +860,14 @@ class Backend(QObject):
         try:
             settings = {
                 'screen_timeout': self._screen_timeout,
+                'lcd_brightness': self._lcd_brightness,
+                'lcd_brightness_path': self._lcd_brightness_path,
+                'lcd_max_brightness': self._lcd_max_brightness,
                 'pause_between_patterns': self._pause_between_patterns,
                 'playlist_shuffle': self._playlist_shuffle,
                 'playlist_run_mode': self._playlist_run_mode,
                 'playlist_clear_pattern': self._playlist_clear_pattern,
-                'version': '1.1'
+                'version': '1.2'
             }
             with open(self.SETTINGS_FILE, 'w') as f:
                 json.dump(settings, f, indent=2)
@@ -1149,31 +1169,36 @@ class Backend(QObject):
                 return
             
             try:
+                # Determine the brightness to restore (saved value, not max)
+                restore_brightness = self._lcd_brightness if self._lcd_brightness > 0 else self._lcd_max_brightness or 255
+
                 # Use the working screen-on script if available
                 screen_on_script = Path('/usr/local/bin/screen-on')
                 if screen_on_script.exists():
-                    result = subprocess.run(['sudo', '/usr/local/bin/screen-on'], 
+                    result = subprocess.run(['sudo', '/usr/local/bin/screen-on'],
                                           capture_output=True, text=True, timeout=5)
                     if result.returncode == 0:
                         logger.debug("Screen turned ON (screen-on script)")
                     else:
                         logger.warning(f"screen-on script failed: {result.stderr}")
+                    # Restore saved brightness (script sets max, we want saved level)
+                    if self._lcd_brightness_path and restore_brightness < (self._lcd_max_brightness or 255):
+                        subprocess.run(
+                            ['sudo', 'sh', '-c', f'echo {restore_brightness} > {self._lcd_brightness_path}'],
+                            check=False, timeout=5
+                        )
+                        logger.debug(f"Restored saved brightness: {restore_brightness}")
                 else:
-                    # Fallback: Manual control matching the script
-                    # Unblank framebuffer and restore backlight
-                    max_brightness = 255
-                    try:
-                        result = subprocess.run(['cat', '/sys/class/backlight/*/max_brightness'], 
-                                              shell=True, capture_output=True, text=True, timeout=2)
-                        if result.returncode == 0 and result.stdout.strip():
-                            max_brightness = int(result.stdout.strip())
-                    except Exception:
-                        pass
-                    
-                    subprocess.run(['sudo', 'sh', '-c', 
-                                  f'echo 0 > /sys/class/graphics/fb0/blank && echo {max_brightness} > /sys/class/backlight/*/brightness'], 
-                                 check=False, timeout=5)
-                    logger.debug(f"Screen turned ON (manual, brightness: {max_brightness})")
+                    # Fallback: Manual control — unblank framebuffer and restore backlight
+                    if self._lcd_brightness_path:
+                        subprocess.run(['sudo', 'sh', '-c',
+                                      f'echo 0 > /sys/class/graphics/fb0/blank && echo {restore_brightness} > {self._lcd_brightness_path}'],
+                                     check=False, timeout=5)
+                    else:
+                        subprocess.run(['sudo', 'sh', '-c',
+                                      f'echo 0 > /sys/class/graphics/fb0/blank && echo {restore_brightness} > /sys/class/backlight/*/brightness'],
+                                     check=False, timeout=5)
+                    logger.debug(f"Screen turned ON (manual, brightness: {restore_brightness})")
                 
                 self._screen_on = True
                 self._last_screen_change = time.time()
@@ -1298,6 +1323,90 @@ class Backend(QObject):
     @Property(str, notify=ledStatusChanged)
     def ledColor(self):
         return self._led_color
+
+    # ==================== LCD Brightness Methods ====================
+
+    def _detect_backlight(self):
+        """Auto-detect the sysfs backlight path and max brightness on startup."""
+        # Auto-detect path if not configured
+        if not self._lcd_brightness_path:
+            try:
+                result = subprocess.run(
+                    ['ls', '/sys/class/backlight'],
+                    capture_output=True, text=True, timeout=2
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    device = result.stdout.strip().split('\n')[0]
+                    self._lcd_brightness_path = f"/sys/class/backlight/{device}/brightness"
+                    logger.info(f"Auto-detected backlight path: {self._lcd_brightness_path}")
+                else:
+                    logger.warning("No backlight device found in /sys/class/backlight/")
+                    return
+            except Exception as e:
+                logger.warning(f"Failed to detect backlight path: {e}")
+                return
+
+        # Derive the directory from the brightness path
+        backlight_dir = str(Path(self._lcd_brightness_path).parent)
+
+        # Read max_brightness if not configured (0 = auto-detect)
+        if self._lcd_max_brightness == 0:
+            try:
+                max_path = f"{backlight_dir}/max_brightness"
+                result = subprocess.run(
+                    ['cat', max_path],
+                    capture_output=True, text=True, timeout=2
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    self._lcd_max_brightness = int(result.stdout.strip())
+                    logger.info(f"Auto-detected max brightness: {self._lcd_max_brightness}")
+                else:
+                    self._lcd_max_brightness = 255  # Sensible fallback
+                    logger.warning(f"Could not read max_brightness, defaulting to 255")
+            except Exception as e:
+                self._lcd_max_brightness = 255
+                logger.warning(f"Failed to read max_brightness: {e}, defaulting to 255")
+
+        # Read current brightness from sysfs
+        try:
+            result = subprocess.run(
+                ['cat', self._lcd_brightness_path],
+                capture_output=True, text=True, timeout=2
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                current = int(result.stdout.strip())
+                self._lcd_brightness = current
+                logger.info(f"Current LCD brightness: {current}/{self._lcd_max_brightness}")
+        except Exception as e:
+            logger.warning(f"Failed to read current brightness: {e}")
+
+    @Property(int, notify=lcdBrightnessChanged)
+    def lcdBrightness(self):
+        return self._lcd_brightness
+
+    @Property(int, notify=lcdBrightnessChanged)
+    def lcdMaxBrightness(self):
+        return self._lcd_max_brightness
+
+    @Slot(int)
+    def setLcdBrightness(self, value):
+        """Set LCD screen brightness by writing to sysfs backlight."""
+        value = max(0, min(value, self._lcd_max_brightness))
+        if not self._lcd_brightness_path:
+            logger.warning("No backlight path configured, cannot set brightness")
+            return
+
+        try:
+            subprocess.run(
+                ['sudo', 'sh', '-c', f'echo {value} > {self._lcd_brightness_path}'],
+                check=False, timeout=5
+            )
+            self._lcd_brightness = value
+            logger.debug(f"LCD brightness set to {value}/{self._lcd_max_brightness}")
+            self._save_local_settings()
+            self.lcdBrightnessChanged.emit()
+        except Exception as e:
+            logger.error(f"Failed to set LCD brightness: {e}")
 
     @Slot()
     def loadLedConfig(self):
