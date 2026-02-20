@@ -166,6 +166,23 @@ class MQTTHandler(BaseMQTTHandler):
         }
         self._publish_discovery("button", "play", play_config)
 
+        # Skip Button
+        skip_config = {
+            "name": "Skip to next pattern",
+            "unique_id": f"{self.device_id}_skip",
+            "command_topic": f"{self.device_id}/command/skip",
+            "device": base_device,
+            "icon": "mdi:skip-next",
+            "entity_category": "config",
+            "enabled_by_default": True,
+            "availability": {
+                "topic": f"{self.device_id}/command/skip/available",
+                "payload_available": "true",
+                "payload_not_available": "false"
+            }
+        }
+        self._publish_discovery("button", "skip", skip_config)
+
         # Speed Control
         speed_config = {
             "name": f"{self.device_name} Speed",
@@ -407,8 +424,12 @@ class MQTTHandler(BaseMQTTHandler):
         self.client.publish(f"{self.device_id}/command/pause/available", 
                           "true" if running_state == "running" else "false", 
                           retain=True)
-        self.client.publish(f"{self.device_id}/command/play/available", 
-                          "true" if running_state == "paused" else "false", 
+        self.client.publish(f"{self.device_id}/command/play/available",
+                          "true" if running_state == "paused" else "false",
+                          retain=True)
+        # Skip is available when running and a playlist is active
+        self.client.publish(f"{self.device_id}/command/skip/available",
+                          "true" if running_state in ("running", "paused") and bool(self.state.current_playlist) else "false",
                           retain=True)
                           
     def _publish_pattern_state(self, current_file=None):
@@ -562,6 +583,7 @@ class MQTTHandler(BaseMQTTHandler):
                 (f"{self.device_id}/command/stop", 0),
                 (f"{self.device_id}/command/pause", 0),
                 (f"{self.device_id}/command/play", 0),
+                (f"{self.device_id}/command/skip", 0),
                 (f"{self.device_id}/playlist/mode/set", 0),
                 (f"{self.device_id}/playlist/pause_time/set", 0),
                 (f"{self.device_id}/playlist/clear_pattern/set", 0),
@@ -656,6 +678,14 @@ class MQTTHandler(BaseMQTTHandler):
                 if bool(self.state.current_playing_file) and self.state.pause_requested:
                     # Check if callback is async or sync
                     callback = self.callback_registry['resume']
+                    if asyncio.iscoroutinefunction(callback):
+                        asyncio.run_coroutine_threadsafe(callback(), self.main_loop)
+                    else:
+                        callback()
+            elif msg.topic == f"{self.device_id}/command/skip":
+                # Handle skip command - only if a playlist is running
+                if self.state.current_playlist:
+                    callback = self.callback_registry['skip']
                     if asyncio.iscoroutinefunction(callback):
                         asyncio.run_coroutine_threadsafe(callback(), self.main_loop)
                     else:

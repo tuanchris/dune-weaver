@@ -6,6 +6,7 @@ __pycache__/
 .idea
 # Ignore state and data JSON files, but not package.json
 state.json
+settings.json
 playlists.json
 metadata_cache.json
 tsconfig.json

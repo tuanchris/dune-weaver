@@ -5,6 +5,7 @@ import json
 import os
 import logging
 import uuid
+import base64
 from typing import Optional, Literal
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,7 @@ class AppState:
         self.hard_reset_theta = False
 
         self.STATE_FILE = "state.json"
+        self.SETTINGS_FILE = "settings.json"
         self.mqtt_handler = None  # Will be set by the MQTT handler
         self.conn = None
         self.port = None
@@ -167,6 +169,10 @@ class AppState:
         self.mqtt_discovery_prefix = "homeassistant"  # Home Assistant discovery prefix
         self.mqtt_device_id = "dune_weaver"  # Device ID for Home Assistant
         self.mqtt_device_name = "Dune Weaver"  # Device display name
+
+        # Security settings
+        self.security_mode = "off"  # "off", "lockdown", "play_only"
+        self.security_password_hash = ""  # SHA-256 hex digest
 
         self.load()
 
@@ -440,21 +446,36 @@ class AppState:
     def shuffle(self, value):
         self._shuffle = value
 
-    def to_dict(self):
-        """Return a dictionary representation of the state."""
+    def to_state_dict(self):
+        """Return a dictionary of runtime/machine state (transient data)."""
         return {
             "stop_requested": self.stop_requested,
             "pause_requested": self._pause_requested,
             "current_playing_file": self._current_playing_file,
+            "current_playlist": self._current_playlist,
+            "current_playlist_name": self._current_playlist_name,
+            "current_playlist_index": self.current_playlist_index,
             "execution_progress": self.execution_progress,
             "is_clearing": self.is_clearing,
             "current_theta": self.current_theta,
             "current_rho": self.current_rho,
-            "speed": self._speed,
             "machine_x": self.machine_x,
             "machine_y": self.machine_y,
             "x_steps_per_mm": self.x_steps_per_mm,
             "y_steps_per_mm": self.y_steps_per_mm,
+            "port": self.port,
+            "patterns_since_last_home": self.patterns_since_last_home,
+        }
+
+    def to_settings_dict(self):
+        """Return a dictionary of user-configured settings (persisted intentionally)."""
+        # Base64-encode MQTT password for storage
+        mqtt_password_encoded = ""
+        if self.mqtt_password:
+            mqtt_password_encoded = base64.b64encode(self.mqtt_password.encode('utf-8')).decode('ascii')
+
+        return {
+            "speed": self._speed,
             "gear_ratio": self.gear_ratio,
             "homing": self.homing,
             "homing_user_override": self.homing_user_override,
@@ -462,9 +483,6 @@ class AppState:
             "auto_home_enabled": self.auto_home_enabled,
             "auto_home_after_patterns": self.auto_home_after_patterns,
             "hard_reset_theta": self.hard_reset_theta,
-            "current_playlist": self._current_playlist,
-            "current_playlist_name": self._current_playlist_name,
-            "current_playlist_index": self.current_playlist_index,
             "playlist_mode": self._playlist_mode,
             "pause_time": self._pause_time,
             "clear_pattern": self._clear_pattern,
@@ -472,7 +490,6 @@ class AppState:
             "shuffle": self._shuffle,
             "custom_clear_from_in": self.custom_clear_from_in,
             "custom_clear_from_out": self.custom_clear_from_out,
-            "port": self.port,
             "preferred_port": self.preferred_port,
             "wled_ip": self.wled_ip,
             "led_provider": self.led_provider,
@@ -502,33 +519,66 @@ class AppState:
             "scheduled_pause_control_wled": self.scheduled_pause_control_wled,
             "scheduled_pause_finish_pattern": self.scheduled_pause_finish_pattern,
             "scheduled_pause_timezone": self.scheduled_pause_timezone,
+            "server_port": self.server_port,
             "timezone": self.timezone,
             "mqtt_enabled": self.mqtt_enabled,
             "mqtt_broker": self.mqtt_broker,
             "mqtt_port": self.mqtt_port,
             "mqtt_username": self.mqtt_username,
-            "mqtt_password": self.mqtt_password,
+            "mqtt_password": mqtt_password_encoded,
             "mqtt_client_id": self.mqtt_client_id,
             "mqtt_discovery_prefix": self.mqtt_discovery_prefix,
             "mqtt_device_id": self.mqtt_device_id,
             "mqtt_device_name": self.mqtt_device_name,
             "table_type_override": self.table_type_override,
+            "security_mode": self.security_mode,
+            "security_password_hash": self.security_password_hash,
         }
 
-    def from_dict(self, data):
-        """Update state from a dictionary."""
+    def to_dict(self):
+        """Return a combined dictionary (for backward compatibility)."""
+        combined = self.to_state_dict()
+        combined.update(self.to_settings_dict())
+        return combined
+
+    def from_state_dict(self, data):
+        """Update runtime state from a dictionary."""
         self.stop_requested = data.get("stop_requested", False)
         self._pause_requested = data.get("pause_requested", False)
         self._current_playing_file = data.get("current_playing_file", None)
+        self._current_playlist = data.get("current_playlist", None)
+        self._current_playlist_name = data.get("current_playlist_name", None)
+        self.current_playlist_index = data.get("current_playlist_index", None)
         self.execution_progress = data.get("execution_progress")
         self.is_clearing = data.get("is_clearing", False)
         self.current_theta = data.get("current_theta", 0)
         self.current_rho = data.get("current_rho", 0)
-        self._speed = data.get("speed", 150)
         self.machine_x = data.get("machine_x", 0.0)
         self.machine_y = data.get("machine_y", 0.0)
         self.x_steps_per_mm = data.get("x_steps_per_mm", 0.0)
         self.y_steps_per_mm = data.get("y_steps_per_mm", 0.0)
+        self.port = data.get("port", None)
+        self.patterns_since_last_home = data.get("patterns_since_last_home", 0)
+
+    @staticmethod
+    def _decode_mqtt_password(stored_value):
+        """Decode MQTT password from storage. Handles both base64-encoded and plain text (migration)."""
+        if not stored_value:
+            return ""
+        # Try base64 decode — valid base64 will decode cleanly
+        try:
+            decoded = base64.b64decode(stored_value, validate=True).decode('utf-8')
+            # Extra check: if the decoded string is printable, it was likely base64
+            if decoded.isprintable():
+                return decoded
+        except Exception:
+            pass
+        # Not valid base64 — treat as plain text (old format, will be re-encoded on next save)
+        return stored_value
+
+    def from_settings_dict(self, data):
+        """Update user settings from a dictionary."""
+        self._speed = data.get("speed", 150)
         self.gear_ratio = data.get('gear_ratio', 10)
         self.homing = data.get('homing', 0)
         self.homing_user_override = data.get('homing_user_override', False)
@@ -536,9 +586,6 @@ class AppState:
         self.auto_home_enabled = data.get('auto_home_enabled', False)
         self.auto_home_after_patterns = data.get('auto_home_after_patterns', 5)
         self.hard_reset_theta = data.get('hard_reset_theta', False)
-        self._current_playlist = data.get("current_playlist", None)
-        self._current_playlist_name = data.get("current_playlist_name", None)
-        self.current_playlist_index = data.get("current_playlist_index", None)
         self._playlist_mode = data.get("playlist_mode", "loop")
         self._pause_time = data.get("pause_time", 0)
         self._clear_pattern = data.get("clear_pattern", "none")
@@ -546,7 +593,6 @@ class AppState:
         self._shuffle = data.get("shuffle", False)
         self.custom_clear_from_in = data.get("custom_clear_from_in", None)
         self.custom_clear_from_out = data.get("custom_clear_from_out", None)
-        self.port = data.get("port", None)
         self.preferred_port = data.get("preferred_port", None)
         self.wled_ip = data.get('wled_ip', None)
         self.led_provider = data.get('led_provider', "none")
@@ -560,26 +606,20 @@ class AppState:
         # Load effect settings (handle both old string format and new dict format)
         idle_effect_data = data.get('dw_led_idle_effect', None)
         if isinstance(idle_effect_data, str):
-            # Old format: just effect name
             self.dw_led_idle_effect = None if idle_effect_data == "off" else {"effect_id": 0}
         else:
-            # New format: full dict or None
             self.dw_led_idle_effect = idle_effect_data
 
         playing_effect_data = data.get('dw_led_playing_effect', None)
         if isinstance(playing_effect_data, str):
-            # Old format: just effect name
             self.dw_led_playing_effect = None if playing_effect_data == "off" else {"effect_id": 0}
         else:
-            # New format: full dict or None
             self.dw_led_playing_effect = playing_effect_data
 
-        # Load idle timeout settings
         self.dw_led_idle_timeout_enabled = data.get('dw_led_idle_timeout_enabled', False)
         self.dw_led_idle_timeout_minutes = data.get('dw_led_idle_timeout_minutes', 30)
 
         self.app_name = data.get("app_name", "Dune Weaver")
-        # Load or generate table_id (UUID persisted once generated)
         self.table_id = data.get("table_id", None)
         if self.table_id is None:
             self.table_id = str(uuid.uuid4())
@@ -597,25 +637,38 @@ class AppState:
         self.scheduled_pause_control_wled = data.get("scheduled_pause_control_wled", False)
         self.scheduled_pause_finish_pattern = data.get("scheduled_pause_finish_pattern", False)
         self.scheduled_pause_timezone = data.get("scheduled_pause_timezone", None)
+        self.server_port = data.get("server_port", 8080)
         self.timezone = data.get("timezone", "UTC")
         self.mqtt_enabled = data.get("mqtt_enabled", False)
         self.mqtt_broker = data.get("mqtt_broker", "")
         self.mqtt_port = data.get("mqtt_port", 1883)
         self.mqtt_username = data.get("mqtt_username", "")
-        self.mqtt_password = data.get("mqtt_password", "")
+        self.mqtt_password = self._decode_mqtt_password(data.get("mqtt_password", ""))
         self.mqtt_client_id = data.get("mqtt_client_id", "dune_weaver")
         self.mqtt_discovery_prefix = data.get("mqtt_discovery_prefix", "homeassistant")
         self.mqtt_device_id = data.get("mqtt_device_id", "dune_weaver")
         self.mqtt_device_name = data.get("mqtt_device_name", "Dune Weaver")
         self.table_type_override = data.get("table_type_override", None)
+        self.security_mode = data.get("security_mode", "off")
+        self.security_password_hash = data.get("security_password_hash", "")
+
+    def from_dict(self, data):
+        """Update state from a combined dictionary (backward compatibility / migration)."""
+        self.from_state_dict(data)
+        self.from_settings_dict(data)
 
     def save(self):
-        """Save the current state to a JSON file."""
+        """Save current state and settings to their respective JSON files."""
         try:
             with open(self.STATE_FILE, "w") as f:
-                json.dump(self.to_dict(), f)
+                json.dump(self.to_state_dict(), f)
         except Exception as e:
             print(f"Error saving state to {self.STATE_FILE}: {e}")
+        try:
+            with open(self.SETTINGS_FILE, "w") as f:
+                json.dump(self.to_settings_dict(), f)
+        except Exception as e:
+            print(f"Error saving settings to {self.SETTINGS_FILE}: {e}")
 
     def save_debounced(self, delay: float = 2.0):
         """
@@ -644,17 +697,47 @@ class AppState:
         logger.debug("Debounced state save completed")
 
     def load(self):
-        """Load state from a JSON file. If the file doesn't exist, create it with default values."""
-        if not os.path.exists(self.STATE_FILE):
-            # File doesn't exist: create one with the current (default) state.
+        """Load state and settings from their JSON files, with migration from old single-file format."""
+        settings_exists = os.path.exists(self.SETTINGS_FILE)
+        state_exists = os.path.exists(self.STATE_FILE)
+
+        if not settings_exists and not state_exists:
+            # Fresh install: create both files with defaults
             self.save()
             return
-        try:
-            with open(self.STATE_FILE, "r") as f:
-                data = json.load(f)
-            self.from_dict(data)
-        except Exception as e:
-            print(f"Error loading state from {self.STATE_FILE}: {e}")
+
+        if not settings_exists and state_exists:
+            # Migration: old single-file format — read settings fields from state.json
+            try:
+                with open(self.STATE_FILE, "r") as f:
+                    old_data = json.load(f)
+                # Load everything from the combined old format
+                self.from_dict(old_data)
+                # Save to split into both files
+                self.save()
+                logger.info("Migrated settings from state.json to settings.json")
+                return
+            except Exception as e:
+                print(f"Error migrating state from {self.STATE_FILE}: {e}")
+                self.save()
+                return
+
+        # Normal load: read both files
+        if state_exists:
+            try:
+                with open(self.STATE_FILE, "r") as f:
+                    state_data = json.load(f)
+                self.from_state_dict(state_data)
+            except Exception as e:
+                print(f"Error loading state from {self.STATE_FILE}: {e}")
+
+        if settings_exists:
+            try:
+                with open(self.SETTINGS_FILE, "r") as f:
+                    settings_data = json.load(f)
+                self.from_settings_dict(settings_data)
+            except Exception as e:
+                print(f"Error loading settings from {self.SETTINGS_FILE}: {e}")
 
     def update_steps_per_mm(self, x_steps, y_steps):
         """Update and save steps per mm values."""

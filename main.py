@@ -25,6 +25,7 @@ from modules.core.version_manager import version_manager
 from modules.core.log_handler import init_memory_handler, get_memory_handler
 import json
 import base64
+import hashlib
 import time
 import subprocess
 
@@ -443,6 +444,13 @@ class MachineSettingsUpdate(BaseModel):
     table_type_override: Optional[str] = None  # Override detected table type, or empty string/"auto" to clear
     timezone: Optional[str] = None  # IANA timezone (e.g., "America/New_York", "UTC")
 
+class SecuritySettingsUpdate(BaseModel):
+    mode: Optional[str] = None  # "off", "lockdown", "play_only"
+    password: Optional[str] = None  # Write-only, stored as SHA-256 hash
+
+class SecurityVerifyRequest(BaseModel):
+    password: str
+
 class SettingsUpdate(BaseModel):
     """Request model for PATCH /api/settings - all fields optional for partial updates"""
     app: Optional[AppSettingsUpdate] = None
@@ -454,6 +462,7 @@ class SettingsUpdate(BaseModel):
     led: Optional[LedSettingsUpdate] = None
     mqtt: Optional[MqttSettingsUpdate] = None
     machine: Optional[MachineSettingsUpdate] = None
+    security: Optional[SecuritySettingsUpdate] = None
 
 # Store active WebSocket connections
 active_status_connections = set()
@@ -717,6 +726,10 @@ async def get_all_settings():
                 {"value": "dune_weaver", "label": "Dune Weaver"},
                 {"value": "dune_weaver_pro", "label": "Dune Weaver Pro"}
             ]
+        },
+        "security": {
+            "mode": state.security_mode,
+            "has_password": bool(state.security_password_hash)
         }
     }
 
@@ -953,6 +966,20 @@ async def update_settings(settings_update: SettingsUpdate):
                 logger.warning(f"Invalid timezone '{m.timezone}': {e}")
         updated_categories.append("machine")
 
+    # Security settings
+    if settings_update.security:
+        sec = settings_update.security
+        if sec.mode is not None:
+            if sec.mode not in ("off", "lockdown", "play_only"):
+                raise HTTPException(status_code=400, detail="Invalid security mode. Must be 'off', 'lockdown', or 'play_only'.")
+            state.security_mode = sec.mode
+            # When turning off, clear the password hash
+            if sec.mode == "off":
+                state.security_password_hash = ""
+        if sec.password is not None and sec.password != "":
+            state.security_password_hash = hashlib.sha256(sec.password.encode('utf-8')).hexdigest()
+        updated_categories.append("security")
+
     # Save state
     state.save()
 
@@ -968,6 +995,14 @@ async def update_settings(settings_update: SettingsUpdate):
         "requires_restart": requires_restart,
         "led_reinit_needed": led_reinit_needed
     }
+
+@app.post("/api/security/verify", tags=["settings"])
+async def verify_security_password(request: SecurityVerifyRequest):
+    """Verify a security password against the stored hash."""
+    if not state.security_password_hash:
+        return {"valid": False}
+    input_hash = hashlib.sha256(request.password.encode('utf-8')).hexdigest()
+    return {"valid": input_hash == state.security_password_hash}
 
 # ============================================================================
 # Multi-Table Identity Endpoints
@@ -2160,6 +2195,7 @@ async def get_all_pattern_history():
 
     try:
         history_map = {}
+        play_counts = {}
         with open(EXECUTION_LOG_FILE, 'r') as f:
             for line in f:
                 line = line.strip()
@@ -2171,12 +2207,15 @@ async def get_all_pattern_history():
                     if entry.get('completed', False):
                         pattern_name = entry.get('pattern_name')
                         if pattern_name:
+                            play_counts[pattern_name] = play_counts.get(pattern_name, 0) + 1
                             # Keep the most recent match (last one in file wins)
                             history_map[pattern_name] = {
                                 "actual_time_seconds": entry.get('actual_time_seconds'),
                                 "actual_time_formatted": entry.get('actual_time_formatted'),
                                 "speed": entry.get('speed'),
-                                "timestamp": entry.get('timestamp')
+                                "timestamp": entry.get('timestamp'),
+                                "play_count": play_counts[pattern_name],
+                                "last_played": entry.get('timestamp')
                             }
                 except json.JSONDecodeError:
                     continue

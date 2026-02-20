@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Trash2 } from 'lucide-react'
 import { apiClient } from '@/lib/apiClient'
@@ -31,6 +32,8 @@ import {
 } from '@/components/ui/dialog'
 
 export function PlaylistsPage() {
+  const { isPlayOnlyActive } = useOutletContext<{ isPlayOnlyActive?: boolean }>() || {}
+
   // Playlists state
   const [playlists, setPlaylists] = useState<string[]>([])
   const [selectedPlaylist, setSelectedPlaylist] = useState<string | null>(() => {
@@ -41,6 +44,10 @@ export function PlaylistsPage() {
 
   // All patterns for the picker modal
   const [allPatterns, setAllPatterns] = useState<PatternMetadata[]>([])
+  const [allPatternHistories, setAllPatternHistories] = useState<Record<string, {
+    play_count: number
+    last_played: string | null
+  }>>({})
   const [previews, setPreviews] = useState<Record<string, PreviewData>>({})
 
   // Pattern picker modal state
@@ -233,8 +240,12 @@ export function PlaylistsPage() {
 
   const fetchAllPatterns = async () => {
     try {
-      const data = await apiClient.get<PatternMetadata[]>('/list_theta_rho_files_with_metadata')
+      const [data, historyData] = await Promise.all([
+        apiClient.get<PatternMetadata[]>('/list_theta_rho_files_with_metadata'),
+        apiClient.get<Record<string, { play_count: number; last_played: string | null }>>('/api/pattern_history_all')
+      ])
       setAllPatterns(data)
+      setAllPatternHistories(historyData)
     } catch (error) {
       console.error('Error fetching patterns:', error)
     }
@@ -500,12 +511,34 @@ export function PlaylistsPage() {
           }
           break
         }
+        case 'plays': {
+          const aKey = a.path.split('/').pop() || ''
+          const bKey = b.path.split('/').pop() || ''
+          const aPlays = allPatternHistories[aKey]?.play_count ?? 0
+          const bPlays = allPatternHistories[bKey]?.play_count ?? 0
+          cmp = aPlays - bPlays
+          if (cmp === 0) {
+            cmp = a.name.localeCompare(b.name)
+          }
+          break
+        }
+        case 'last_played': {
+          const aKey = a.path.split('/').pop() || ''
+          const bKey = b.path.split('/').pop() || ''
+          const aTime = allPatternHistories[aKey]?.last_played || ''
+          const bTime = allPatternHistories[bKey]?.last_played || ''
+          cmp = aTime.localeCompare(bTime)
+          if (cmp === 0) {
+            cmp = a.name.localeCompare(b.name)
+          }
+          break
+        }
       }
       return sortAsc ? cmp : -cmp
     })
 
     return filtered
-  }, [allPatterns, searchQuery, selectedCategory, sortBy, sortAsc, favorites])
+  }, [allPatterns, searchQuery, selectedCategory, sortBy, sortAsc, favorites, allPatternHistories])
 
   // Get pattern name from path
   const getPatternName = (path: string) => {
@@ -542,17 +575,19 @@ export function PlaylistsPage() {
               <h2 className="text-lg font-semibold">My Playlists</h2>
               <p className="text-sm text-muted-foreground">{playlists.length} playlist{playlists.length !== 1 ? 's' : ''}</p>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => {
-                setNewPlaylistName('')
-                setIsCreateModalOpen(true)
-              }}
-            >
-              <span className="material-icons-outlined text-xl">add</span>
-            </Button>
+            {!isPlayOnlyActive && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  setNewPlaylistName('')
+                  setIsCreateModalOpen(true)
+                }}
+              >
+                <span className="material-icons-outlined text-xl">add</span>
+              </Button>
+            )}
           </div>
 
           <nav className="flex-1 overflow-y-auto p-2 space-y-1 min-h-0">
@@ -580,32 +615,34 @@ export function PlaylistsPage() {
                   <span className="material-icons-outlined text-lg">playlist_play</span>
                   <span className="truncate text-sm font-medium">{name}</span>
                 </div>
-                <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="h-7 w-7"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setPlaylistToRename(name)
-                      setNewPlaylistName(name)
-                      setIsRenameModalOpen(true)
-                    }}
-                  >
-                    <span className="material-icons-outlined text-base">edit</span>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/20"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDeletePlaylist(name)
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
+                {!isPlayOnlyActive && (
+                  <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="h-7 w-7"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setPlaylistToRename(name)
+                        setNewPlaylistName(name)
+                        setIsRenameModalOpen(true)
+                      }}
+                    >
+                      <span className="material-icons-outlined text-base">edit</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/20"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDeletePlaylist(name)
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
               </div>
             ))
           )}
@@ -643,15 +680,17 @@ export function PlaylistsPage() {
                 )}
               </div>
             </div>
-            <Button
-              onClick={openPatternPicker}
-              disabled={!selectedPlaylist}
-              size="sm"
-              className="gap-2"
-            >
-              <span className="material-icons-outlined text-base">add</span>
-              <span className="hidden sm:inline">Add Patterns</span>
-            </Button>
+            {!isPlayOnlyActive && (
+              <Button
+                onClick={openPatternPicker}
+                disabled={!selectedPlaylist}
+                size="sm"
+                className="gap-2"
+              >
+                <span className="material-icons-outlined text-base">add</span>
+                <span className="hidden sm:inline">Add Patterns</span>
+              </Button>
+            )}
           </header>
 
           {/* Patterns List */}
@@ -675,10 +714,12 @@ export function PlaylistsPage() {
                   <p className="font-medium">Empty playlist</p>
                   <p className="text-sm">Add patterns to get started</p>
                 </div>
-                <Button variant="secondary" className="mt-2 gap-2" onClick={openPatternPicker}>
-                  <span className="material-icons-outlined text-base">add</span>
-                  Add Patterns
-                </Button>
+                {!isPlayOnlyActive && (
+                  <Button variant="secondary" className="mt-2 gap-2" onClick={openPatternPicker}>
+                    <span className="material-icons-outlined text-base">add</span>
+                    Add Patterns
+                  </Button>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4">
@@ -696,13 +737,15 @@ export function PlaylistsPage() {
                           alt={getPatternName(path)}
                         />
                       </div>
-                      <button
-                        className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 w-5 h-5 rounded-full bg-destructive hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow-sm z-10"
-                        onClick={() => handleRemovePattern(path)}
-                        title="Remove from playlist"
-                      >
-                        <span className="material-icons" style={{ fontSize: '12px' }}>close</span>
-                      </button>
+                      {!isPlayOnlyActive && (
+                        <button
+                          className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 w-5 h-5 rounded-full bg-destructive hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow-sm z-10"
+                          onClick={() => handleRemovePattern(path)}
+                          title="Remove from playlist"
+                        >
+                          <span className="material-icons" style={{ fontSize: '12px' }}>close</span>
+                        </button>
+                      )}
                     </div>
                     <p className="text-[10px] sm:text-xs truncate font-medium w-full text-center">{getPatternName(path)}</p>
                   </div>
@@ -955,6 +998,8 @@ export function PlaylistsPage() {
                   <SelectItem value="name">Name</SelectItem>
                   <SelectItem value="date">Modified</SelectItem>
                   <SelectItem value="size">Size</SelectItem>
+                  <SelectItem value="plays">Most Played</SelectItem>
+                  <SelectItem value="last_played">Last Played</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -972,6 +1017,33 @@ export function PlaylistsPage() {
               </Button>
 
               <div className="flex-1" />
+
+              {/* Select All / Deselect All toggle */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 rounded-full bg-card shadow-sm text-sm gap-1.5"
+                onClick={() => {
+                  const allFilteredPaths = filteredPatterns.map(p => p.path)
+                  const allSelected = allFilteredPaths.every(p => selectedPatternPaths.has(p))
+                  setSelectedPatternPaths(prev => {
+                    const next = new Set(prev)
+                    if (allSelected) {
+                      allFilteredPaths.forEach(p => next.delete(p))
+                    } else {
+                      allFilteredPaths.forEach(p => next.add(p))
+                    }
+                    return next
+                  })
+                }}
+              >
+                <span className="material-icons-outlined text-base">
+                  {filteredPatterns.length > 0 && filteredPatterns.every(p => selectedPatternPaths.has(p.path)) ? 'deselect' : 'select_all'}
+                </span>
+                <span className="hidden sm:inline">
+                  {filteredPatterns.length > 0 && filteredPatterns.every(p => selectedPatternPaths.has(p.path)) ? 'Deselect All' : 'Select All'}
+                </span>
+              </Button>
 
               {/* Selection count - compact on mobile */}
               <div className="flex items-center gap-1 sm:gap-2 text-sm bg-card rounded-full px-2 sm:px-3 py-2 shadow-sm border">
