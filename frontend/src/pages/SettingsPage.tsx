@@ -44,6 +44,7 @@ interface Settings {
   // Homing settings
   homing_mode?: number
   angular_offset?: number
+  home_on_connect?: boolean
   auto_home_enabled?: boolean
   auto_home_after_patterns?: number
   hard_reset_theta?: boolean
@@ -356,6 +357,7 @@ export function SettingsPage() {
         // Homing settings
         homing_mode: data.homing?.mode,
         angular_offset: data.homing?.angular_offset_degrees,
+        home_on_connect: data.homing?.home_on_connect,
         auto_home_enabled: data.homing?.auto_home_enabled,
         auto_home_after_patterns: data.homing?.auto_home_after_patterns,
         hard_reset_theta: data.homing?.hard_reset_theta,
@@ -658,6 +660,7 @@ export function SettingsPage() {
         homing: {
           mode: settings.homing_mode,
           angular_offset_degrees: settings.angular_offset,
+          home_on_connect: settings.home_on_connect,
           auto_home_enabled: settings.auto_home_enabled,
           auto_home_after_patterns: settings.auto_home_after_patterns,
           hard_reset_theta: settings.hard_reset_theta,
@@ -1058,6 +1061,27 @@ export function SettingsPage() {
                 </p>
               </div>
             )}
+
+            {/* Home on Connect */}
+            <div className="p-4 rounded-lg border space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium flex items-center gap-2">
+                    <span className="material-icons-outlined text-base">power</span>
+                    Home on Connect
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Automatically home when connecting on startup. Disable to connect without homing and home manually later.
+                  </p>
+                </div>
+                <Switch
+                  checked={settings.home_on_connect !== false}
+                  onCheckedChange={(checked) =>
+                    setSettings({ ...settings, home_on_connect: checked })
+                  }
+                />
+              </div>
+            </div>
 
             {/* Auto-Home During Playlists */}
             <div className="p-4 rounded-lg border space-y-3">

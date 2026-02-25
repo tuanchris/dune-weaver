@@ -1177,12 +1177,26 @@ async def _execute_pattern_internal(file_path):
     coordinates = await asyncio.to_thread(parse_theta_rho_file, file_path)
     total_coordinates = len(coordinates)
 
-    # Cache coordinates in state for frontend preview (avoids re-parsing large files)
-    state._current_coordinates = coordinates
-
     if total_coordinates < 2:
         logger.warning("Not enough coordinates for interpolation")
         return False
+
+    # Normalize theta values to avoid unnecessary revolutions at pattern start.
+    # Many community patterns have theta starting at high values (e.g., 498 rad ≈ 79 revolutions).
+    # Some patterns also start with two "0 0" origin points before jumping to a large theta.
+    # Detect this preamble and use the third coordinate as the reference instead.
+    ref_theta = coordinates[0][0]
+    if (len(coordinates) >= 3
+            and abs(coordinates[0][0]) < 1e-9 and abs(coordinates[0][1]) < 1e-9
+            and abs(coordinates[1][0]) < 1e-9 and abs(coordinates[1][1]) < 1e-9):
+        ref_theta = coordinates[2][0]
+    theta_offset = ref_theta - (ref_theta % (2 * pi))
+    if abs(theta_offset) > 1e-9:
+        coordinates = [(theta - theta_offset, rho) for theta, rho in coordinates]
+        logger.info(f"Normalized pattern theta by {theta_offset:.2f} rad ({theta_offset / (2 * pi):.1f} revolutions)")
+
+    # Cache coordinates in state for frontend preview (avoids re-parsing large files)
+    state._current_coordinates = coordinates
 
     # Pre-calculate rho-based weights for more accurate time estimation
     # Moves near center (low rho) are slower than perimeter moves due to

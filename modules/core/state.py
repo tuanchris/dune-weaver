@@ -73,6 +73,10 @@ class AppState:
         # After homing, theta will be set to this value
         self.angular_homing_offset_degrees = 0.0
 
+        # Home on connect: whether to automatically home when connecting on startup
+        # When False, auto-connect still works but homing must be triggered manually
+        self.home_on_connect = True
+
         # Auto-homing settings for playlists
         # When enabled, performs homing after X patterns during playlist execution
         self.auto_home_enabled = False
@@ -480,6 +484,7 @@ class AppState:
             "homing": self.homing,
             "homing_user_override": self.homing_user_override,
             "angular_homing_offset_degrees": self.angular_homing_offset_degrees,
+            "home_on_connect": self.home_on_connect,
             "auto_home_enabled": self.auto_home_enabled,
             "auto_home_after_patterns": self.auto_home_after_patterns,
             "hard_reset_theta": self.hard_reset_theta,
@@ -583,6 +588,7 @@ class AppState:
         self.homing = data.get('homing', 0)
         self.homing_user_override = data.get('homing_user_override', False)
         self.angular_homing_offset_degrees = data.get('angular_homing_offset_degrees', 0.0)
+        self.home_on_connect = data.get('home_on_connect', True)
         self.auto_home_enabled = data.get('auto_home_enabled', False)
         self.auto_home_after_patterns = data.get('auto_home_after_patterns', 5)
         self.hard_reset_theta = data.get('hard_reset_theta', False)

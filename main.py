@@ -104,26 +104,29 @@ async def lifespan(app: FastAPI):
             # Connect without homing first (fast)
             await asyncio.to_thread(connection_manager.connect_device, False)
 
-            # If connected, perform homing in background
+            # If connected, perform homing in background (unless disabled)
             if state.conn and state.conn.is_connected():
-                logger.info("Device connected, starting homing in background...")
-                state.is_homing = True
-                try:
-                    success = await asyncio.to_thread(connection_manager.home)
-                    if not success:
-                        logger.warning("Background homing failed or was skipped")
-                        # If sensor homing failed, close connection and wait for user action
-                        if state.sensor_homing_failed:
-                            logger.error("Sensor homing failed - closing connection. User must check sensor or switch to crash homing.")
-                            if state.conn:
-                                await asyncio.to_thread(state.conn.close)
-                                state.conn = None
-                            return  # Don't proceed with auto-play
-                finally:
-                    state.is_homing = False
-                    logger.info("Background homing completed")
+                if not state.home_on_connect:
+                    logger.info("Device connected. Home-on-connect is disabled — skipping automatic homing.")
+                else:
+                    logger.info("Device connected, starting homing in background...")
+                    state.is_homing = True
+                    try:
+                        success = await asyncio.to_thread(connection_manager.home)
+                        if not success:
+                            logger.warning("Background homing failed or was skipped")
+                            # If sensor homing failed, close connection and wait for user action
+                            if state.sensor_homing_failed:
+                                logger.error("Sensor homing failed - closing connection. User must check sensor or switch to crash homing.")
+                                if state.conn:
+                                    await asyncio.to_thread(state.conn.close)
+                                    state.conn = None
+                                return  # Don't proceed with auto-play
+                    finally:
+                        state.is_homing = False
+                        logger.info("Background homing completed")
 
-                # After homing, check for auto_play mode
+                # After homing (or skip), check for auto_play mode
                 if state.auto_play_enabled and state.auto_play_playlist:
                     logger.info(f"Homing complete, checking auto_play playlist: {state.auto_play_playlist}")
                     try:
@@ -408,6 +411,7 @@ class ScheduledPauseSettingsUpdate(BaseModel):
 class HomingSettingsUpdate(BaseModel):
     mode: Optional[int] = None
     angular_offset_degrees: Optional[float] = None
+    home_on_connect: Optional[bool] = None  # Auto-home after connecting on startup
     auto_home_enabled: Optional[bool] = None
     auto_home_after_patterns: Optional[int] = None
     hard_reset_theta: Optional[bool] = None  # Enable hard reset ($Bye) when resetting theta
@@ -679,6 +683,7 @@ async def get_all_settings():
             "mode": state.homing,
             "user_override": state.homing_user_override,  # True if user explicitly set, False if auto-detected
             "angular_offset_degrees": state.angular_homing_offset_degrees,
+            "home_on_connect": state.home_on_connect,
             "auto_home_enabled": state.auto_home_enabled,
             "auto_home_after_patterns": state.auto_home_after_patterns,
             "hard_reset_theta": state.hard_reset_theta  # Enable hard reset when resetting theta
@@ -875,6 +880,8 @@ async def update_settings(settings_update: SettingsUpdate):
             state.homing_user_override = True  # User explicitly set preference
         if h.angular_offset_degrees is not None:
             state.angular_homing_offset_degrees = h.angular_offset_degrees
+        if h.home_on_connect is not None:
+            state.home_on_connect = h.home_on_connect
         if h.auto_home_enabled is not None:
             state.auto_home_enabled = h.auto_home_enabled
         if h.auto_home_after_patterns is not None:
