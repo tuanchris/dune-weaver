@@ -1570,6 +1570,13 @@ export function Layout() {
                     <span className="material-icons-outlined text-xl">article</span>
                     View Logs
                   </button>
+                  <button
+                    onClick={() => navigate('/wifi-setup')}
+                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
+                  >
+                    <span className="material-icons-outlined text-xl">wifi</span>
+                    WiFi Setup
+                  </button>
                   <Separator className="my-1" />
                   <button
                     onClick={handleRestart}
@@ -1647,6 +1654,16 @@ export function Layout() {
                   >
                     <span className="material-icons-outlined text-xl">article</span>
                     View Logs
+                  </button>
+                  <button
+                    onClick={() => {
+                      navigate('/wifi-setup')
+                      setIsMobileMenuOpen(false)
+                    }}
+                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
+                  >
+                    <span className="material-icons-outlined text-xl">wifi</span>
+                    WiFi Setup
                   </button>
                   <Separator className="my-1" />
                   <button
