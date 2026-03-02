@@ -28,7 +28,10 @@ def run_host_command(*args: str, timeout: int = 30) -> subprocess.CompletedProce
     In venv: executes directly.
     """
     if is_docker():
-        cmd = ["nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--"] + list(args)
+        # Use env to set PATH because nsenter into PID 1 has a minimal PATH
+        # that may not include /usr/bin where nmcli lives
+        cmd = ["nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--",
+               "env", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"] + list(args)
     else:
         cmd = list(args)
 
