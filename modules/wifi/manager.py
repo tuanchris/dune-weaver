@@ -250,8 +250,11 @@ async def connect_to_network(ssid: str, password: str) -> dict:
     'key-mgmt: property is missing' for WPA networks.
     """
     try:
-        # Delete any stale connection profile for this SSID
-        run_nmcli_check("con", "delete", ssid, timeout=10)
+        # Delete any stale connection profile for this SSID (ignore if not found)
+        subprocess.run(
+            ["nmcli", "con", "delete", ssid],
+            capture_output=True, text=True, timeout=10,
+        )
 
         # Create connection profile with explicit security settings
         if password:

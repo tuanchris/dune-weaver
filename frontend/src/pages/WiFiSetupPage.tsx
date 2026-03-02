@@ -125,9 +125,6 @@ export function WiFiSetupPage() {
   const isHotspotMode = status?.mode === 'hotspot'
 
   const selectedNetworkData = networks.find(n => n.ssid === selectedNetwork)
-  const needsPassword = selectedNetworkData &&
-    selectedNetworkData.security !== 'Open' &&
-    !selectedNetworkData.saved
 
   if (isRebooting) {
     return (
@@ -247,91 +244,96 @@ export function WiFiSetupPage() {
               No networks found. Try scanning again.
             </p>
           )}
-          {networks.map((network) => (
-            <button
-              key={network.ssid}
-              onClick={() => {
-                setSelectedNetwork(network.ssid === selectedNetwork ? null : network.ssid)
-                setPassword('')
-                setShowPassword(false)
-              }}
-              className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors
-                ${selectedNetwork === network.ssid
-                  ? 'bg-primary/10 ring-1 ring-primary'
-                  : 'hover:bg-muted/50'
-                }
-                ${network.active ? 'bg-green-50 dark:bg-green-950/20' : ''}`}
-            >
-              <SignalIcon signal={network.signal} />
-              <div className="flex-1 min-w-0">
-                <p className="font-medium truncate">{network.ssid}</p>
-                <p className="text-xs text-muted-foreground">
-                  {network.security}
-                  {network.saved && ' · Saved'}
-                  {network.active && ' · Connected'}
-                </p>
-              </div>
-              <span className="text-xs text-muted-foreground">{network.signal}%</span>
-              {network.security !== 'Open' && (
-                <span className="material-icons text-sm text-muted-foreground">lock</span>
-              )}
-            </button>
-          ))}
+          {networks.map((network) => {
+            const isSelected = selectedNetwork === network.ssid
+            const showForm = isSelected && selectedNetworkData
+            const showPasswordField = showForm &&
+              selectedNetworkData.security !== 'Open' &&
+              !selectedNetworkData.saved
 
-          {/* Connection Form */}
-          {selectedNetwork && (
-            <div className="mt-4 pt-4 border-t space-y-4">
-              <div className="flex items-center gap-2">
-                <span className="material-icons text-primary">wifi</span>
-                <span className="font-medium">{selectedNetwork}</span>
-              </div>
-
-              {needsPassword && (
-                <div className="space-y-2">
-                  <Label htmlFor="wifi-password">Password</Label>
-                  <div className="relative">
-                    <Input
-                      id="wifi-password"
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter WiFi password"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && password) handleConnect()
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    >
-                      <span className="material-icons text-sm">
-                        {showPassword ? 'visibility_off' : 'visibility'}
-                      </span>
-                    </button>
+            return (
+              <div key={network.ssid}>
+                <button
+                  onClick={() => {
+                    setSelectedNetwork(isSelected ? null : network.ssid)
+                    setPassword('')
+                    setShowPassword(false)
+                  }}
+                  className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors
+                    ${isSelected
+                      ? 'bg-primary/10 ring-1 ring-primary'
+                      : 'hover:bg-muted/50'
+                    }
+                    ${network.active ? 'bg-green-50 dark:bg-green-950/20' : ''}`}
+                >
+                  <SignalIcon signal={network.signal} />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{network.ssid}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {network.security}
+                      {network.saved && ' · Saved'}
+                      {network.active && ' · Connected'}
+                    </p>
                   </div>
-                </div>
-              )}
+                  <span className="text-xs text-muted-foreground">{network.signal}%</span>
+                  {network.security !== 'Open' && (
+                    <span className="material-icons text-sm text-muted-foreground">lock</span>
+                  )}
+                </button>
 
-              <Button
-                className="w-full"
-                onClick={handleConnect}
-                disabled={isConnecting || (needsPassword && !password)}
-              >
-                {isConnecting ? (
-                  <>
-                    <span className="material-icons text-sm animate-spin mr-2">refresh</span>
-                    Connecting...
-                  </>
-                ) : (
-                  <>
-                    <span className="material-icons text-sm mr-2">wifi</span>
-                    Connect{isHotspotMode ? ' & Reboot' : ''}
-                  </>
+                {/* Inline connection form — appears directly below selected network */}
+                {showForm && (
+                  <div className="mx-3 mb-2 mt-1 p-3 rounded-lg bg-muted/50 space-y-3">
+                    {showPasswordField && (
+                      <div className="space-y-2">
+                        <Label htmlFor="wifi-password">Password</Label>
+                        <div className="relative">
+                          <Input
+                            id="wifi-password"
+                            type={showPassword ? 'text' : 'password'}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="Enter WiFi password"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && password) handleConnect()
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          >
+                            <span className="material-icons text-sm">
+                              {showPassword ? 'visibility_off' : 'visibility'}
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <Button
+                      className="w-full"
+                      onClick={handleConnect}
+                      disabled={isConnecting || (showPasswordField && !password)}
+                    >
+                      {isConnecting ? (
+                        <>
+                          <span className="material-icons text-sm animate-spin mr-2">refresh</span>
+                          Connecting...
+                        </>
+                      ) : (
+                        <>
+                          <span className="material-icons text-sm mr-2">wifi</span>
+                          Connect{isHotspotMode ? ' & Reboot' : ''}
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 )}
-              </Button>
-            </div>
-          )}
+              </div>
+            )
+          })}
         </CardContent>
       </Card>
 
