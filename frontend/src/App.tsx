@@ -5,6 +5,7 @@ import { PlaylistsPage } from '@/pages/PlaylistsPage'
 import { TableControlPage } from '@/pages/TableControlPage'
 import { LEDPage } from '@/pages/LEDPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { WiFiSetupPage } from '@/pages/WiFiSetupPage'
 import { Toaster } from '@/components/ui/sonner'
 import { TableProvider } from '@/contexts/TableContext'
 
@@ -18,6 +19,7 @@ function App() {
           <Route path="table-control" element={<TableControlPage />} />
           <Route path="led" element={<LEDPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="wifi-setup" element={<WiFiSetupPage />} />
         </Route>
       </Routes>
       <Toaster position="top-center" richColors closeButton />

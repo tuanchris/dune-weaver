@@ -15,6 +15,7 @@
 #   shell       Open a shell in the container
 #   checkout    Switch to a branch and pull its Docker images
 #   touch       Manage touch screen app
+#   wifi        Manage WiFi and hotspot
 #   help        Show this help message
 #
 
@@ -369,6 +370,90 @@ cmd_checkout() {
     echo -e "${GREEN}Checkout complete!${NC}"
 }
 
+# WiFi / Hotspot commands
+cmd_wifi() {
+    local subcmd="${1:-help}"
+
+    case "$subcmd" in
+        status)
+            check_installed
+            echo -e "${BLUE}WiFi Status${NC}"
+            echo ""
+
+            # Show current mode
+            local mode="unknown"
+            if [[ -f /tmp/dw-wifi-mode ]]; then
+                mode=$(cat /tmp/dw-wifi-mode)
+            fi
+            echo -e "Mode: ${GREEN}${mode}${NC}"
+
+            # Show connected network
+            local ssid
+            ssid=$(nmcli -t -f GENERAL.CONNECTION dev show wlan0 2>/dev/null | head -1 | cut -d: -f2)
+            if [[ -n "$ssid" && "$ssid" != "--" ]]; then
+                echo -e "Network: ${GREEN}${ssid}${NC}"
+            fi
+
+            # Show IP
+            local ip
+            ip=$(nmcli -t -f IP4.ADDRESS dev show wlan0 2>/dev/null | head -1 | cut -d: -f2 | cut -d/ -f1)
+            if [[ -n "$ip" ]]; then
+                echo -e "IP: ${GREEN}${ip}${NC}"
+            fi
+            ;;
+        scan)
+            echo -e "${BLUE}Scanning for WiFi networks...${NC}"
+            nmcli dev wifi rescan 2>/dev/null || true
+            sleep 2
+            nmcli dev wifi list
+            ;;
+        connect)
+            echo -e "${BLUE}Available WiFi networks:${NC}"
+            nmcli dev wifi rescan 2>/dev/null || true
+            sleep 2
+            nmcli dev wifi list
+            echo ""
+            read -p "Enter SSID to connect to: " ssid
+            if [[ -z "$ssid" ]]; then
+                echo -e "${RED}No SSID provided${NC}"
+                exit 1
+            fi
+            read -sp "Enter password (leave empty for open networks): " password
+            echo ""
+            if [[ -n "$password" ]]; then
+                sudo nmcli dev wifi connect "$ssid" password "$password" ifname wlan0
+            else
+                sudo nmcli dev wifi connect "$ssid" ifname wlan0
+            fi
+            ;;
+        hotspot)
+            echo -e "${BLUE}Switching to hotspot mode...${NC}"
+            sudo nmcli dev disconnect wlan0 2>/dev/null || true
+            sudo nmcli con up DuneWeaver-Hotspot 2>/dev/null
+            echo "hotspot" | sudo tee /tmp/dw-wifi-mode > /dev/null
+            echo -e "${GREEN}Hotspot active!${NC} Connect to the 'Dune Weaver' WiFi network."
+            ;;
+        setup)
+            check_installed
+            cd "$INSTALL_DIR"
+            sudo bash wifi/setup-wifi.sh
+            ;;
+        help|*)
+            echo -e "${GREEN}WiFi Commands${NC}"
+            echo ""
+            echo "Usage: dw wifi <command>"
+            echo ""
+            echo "Commands:"
+            echo "  status      Show current WiFi mode and connection"
+            echo "  scan        Scan for available networks"
+            echo "  connect     Interactive: scan + select + connect"
+            echo "  hotspot     Force hotspot mode"
+            echo "  setup       Run initial autohotspot setup"
+            echo "  help        Show this help message"
+            ;;
+    esac
+}
+
 cmd_help() {
     echo -e "${GREEN}Dune Weaver CLI${NC}"
     echo ""
@@ -385,6 +470,7 @@ cmd_help() {
     echo "  status      Show container status"
     echo "  shell       Open a shell in the container"
     echo "  touch       Manage touch screen app (run 'dw touch help')"
+    echo "  wifi        Manage WiFi and hotspot (run 'dw wifi help')"
     echo "  help        Show this help message"
     echo ""
     if [[ -n "$INSTALL_DIR" ]]; then
@@ -425,6 +511,10 @@ case "${1:-help}" in
     touch)
         shift
         cmd_touch "$@"
+        ;;
+    wifi)
+        shift
+        cmd_wifi "$@"
         ;;
     help|--help|-h)
         cmd_help

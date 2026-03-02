@@ -13,6 +13,7 @@
 # Options:
 #   --no-docker     Use Python venv instead of Docker
 #   --no-wifi-fix   Skip WiFi stability fix
+#   --no-hotspot    Skip autohotspot setup
 #   --help          Show help
 #
 
@@ -28,6 +29,7 @@ NC='\033[0m' # No Color
 # Default options
 USE_DOCKER=true
 FIX_WIFI=true  # Applied by default for stability
+SETUP_HOTSPOT=true  # Autohotspot for first-time WiFi setup
 INSTALL_DIR="$HOME/dune-weaver"
 REPO_URL="https://github.com/tuanchris/dune-weaver"
 
@@ -42,6 +44,10 @@ while [[ $# -gt 0 ]]; do
             FIX_WIFI=false
             shift
             ;;
+        --no-hotspot)
+            SETUP_HOTSPOT=false
+            shift
+            ;;
         --help|-h)
             echo "Dune Weaver Raspberry Pi Setup Script"
             echo ""
@@ -54,6 +60,7 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --no-docker     Use Python venv instead of Docker"
             echo "  --no-wifi-fix   Skip WiFi stability fix (applied by default)"
+            echo "  --no-hotspot    Skip autohotspot setup"
             echo "  --help, -h      Show this help message"
             exit 0
             ;;
@@ -292,6 +299,19 @@ EOF
     print_success "Python deployment complete!"
 }
 
+# Setup autohotspot
+setup_autohotspot() {
+    print_step "Setting up autohotspot..."
+
+    if [[ ! -f "$INSTALL_DIR/wifi/setup-wifi.sh" ]]; then
+        print_warning "wifi/setup-wifi.sh not found, skipping autohotspot setup"
+        return
+    fi
+
+    bash "$INSTALL_DIR/wifi/setup-wifi.sh"
+    print_success "Autohotspot setup complete"
+}
+
 # Get IP address
 get_ip_address() {
     # Try multiple methods to get IP
@@ -326,8 +346,16 @@ print_final_instructions() {
     echo "  dw update      Pull latest and restart"
     echo "  dw stop        Stop Dune Weaver"
     echo "  dw status      Show status"
+    echo "  dw wifi help   WiFi and hotspot management"
     echo "  dw help        Show all commands"
     echo ""
+
+    if [[ "$SETUP_HOTSPOT" == "true" ]]; then
+        echo -e "${BLUE}Autohotspot:${NC} If no known WiFi is found on boot,"
+        echo "a 'Dune Weaver' hotspot will be created automatically."
+        echo "Connect to it and open the app to configure WiFi."
+        echo ""
+    fi
 
     if [[ "$DOCKER_GROUP_ADDED" == "true" ]]; then
         print_warning "Please log out and back in for docker group changes to take effect"
@@ -373,6 +401,10 @@ main() {
 
     if [[ "$FIX_WIFI" == "true" ]]; then
         apply_wifi_fix
+    fi
+
+    if [[ "$SETUP_HOTSPOT" == "true" ]]; then
+        setup_autohotspot
     fi
 
     if [[ "$USE_DOCKER" == "true" ]]; then

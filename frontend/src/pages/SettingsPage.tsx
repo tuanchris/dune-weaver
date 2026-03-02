@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { apiClient } from '@/lib/apiClient'
 import { useOnBackendConnected } from '@/hooks/useBackendConnection'
@@ -100,6 +100,7 @@ interface MqttConfig {
 
 export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const sectionParam = searchParams.get('section')
 
   // Connection state
@@ -2355,6 +2356,36 @@ export function SettingsPage() {
                 <span className="material-icons-outlined">save</span>
               )}
               Save Security Settings
+            </Button>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* WiFi */}
+        <AccordionItem value="wifi" id="section-wifi" className="border rounded-lg px-4 overflow-visible bg-card">
+          <AccordionTrigger className="hover:no-underline">
+            <div className="flex items-center gap-3">
+              <span className="material-icons-outlined text-muted-foreground">
+                wifi
+              </span>
+              <div className="text-left">
+                <div className="font-semibold">WiFi</div>
+                <div className="text-sm text-muted-foreground font-normal">
+                  Network connection settings
+                </div>
+              </div>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="pt-4 pb-6 space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Manage WiFi connections, scan for networks, and configure hotspot mode.
+            </p>
+            <Button
+              variant="outline"
+              className="w-full gap-2"
+              onClick={() => navigate('/wifi-setup')}
+            >
+              <span className="material-icons-outlined">settings</span>
+              Open WiFi Setup
             </Button>
           </AccordionContent>
         </AccordionItem>

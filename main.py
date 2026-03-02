@@ -23,6 +23,7 @@ from modules.led.idle_timeout_manager import idle_timeout_manager
 from modules.core.cache_manager import get_cache_path, generate_image_preview, get_pattern_metadata
 from modules.core.version_manager import version_manager
 from modules.core.log_handler import init_memory_handler, get_memory_handler
+from modules.wifi.router import router as wifi_router
 import json
 import base64
 import hashlib
@@ -289,6 +290,9 @@ app.add_middleware(
 
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Include WiFi management router
+app.include_router(wifi_router)
 
 # Global semaphore to limit concurrent preview processing
 # Prevents resource exhaustion when loading many previews simultaneously
