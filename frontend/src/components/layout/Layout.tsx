@@ -62,6 +62,8 @@ export function Layout() {
   const hasMultipleTables = tables.length > 1
 
   const [isDark, setIsDark] = useState(() => {
+    // Force light mode in captive portal to match the webview chrome
+    if (isCaptivePortal) return false
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('theme')
       if (saved) return saved === 'dark'

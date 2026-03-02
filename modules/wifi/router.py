@@ -84,14 +84,15 @@ CAPTIVE_PORTAL_HTML = """<!DOCTYPE html>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
                display: flex; justify-content: center; align-items: center;
-               min-height: 100vh; background: #0a0a0a; color: #fafafa; padding: 1rem; }
-        .card { background: #1a1a1a; border-radius: 12px; padding: 2rem;
-                max-width: 400px; width: 100%; text-align: center; }
-        h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
-        p { color: #888; margin-bottom: 1.5rem; font-size: 0.9rem; }
-        a { display: inline-block; background: #3b82f6; color: white; padding: 0.75rem 2rem;
+               min-height: 100vh; background: #f8fafc; color: #0f172a; padding: 1rem; }
+        .card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;
+                padding: 2rem; max-width: 400px; width: 100%; text-align: center;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        h1 { font-size: 1.5rem; margin-bottom: 0.5rem; font-weight: 600; }
+        p { color: #64748b; margin-bottom: 1.5rem; font-size: 0.9rem; }
+        a { display: inline-block; background: #2563eb; color: white; padding: 0.75rem 2rem;
             border-radius: 8px; text-decoration: none; font-weight: 500; }
-        a:hover { background: #2563eb; }
+        a:hover { background: #1d4ed8; }
     </style>
 </head>
 <body>
