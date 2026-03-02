@@ -8,6 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 interface WiFiNetwork {
   ssid: string
@@ -30,7 +37,6 @@ interface SavedConnection {
 }
 
 function SignalIcon({ signal }: { signal: number }) {
-  // Map signal percentage to a descriptive icon
   const bars = signal >= 75 ? 'signal_wifi_4_bar' :
                signal >= 50 ? 'network_wifi_3_bar' :
                signal >= 25 ? 'network_wifi_2_bar' :
@@ -43,7 +49,7 @@ export function WiFiSetupPage() {
   const [status, setStatus] = useState<WiFiStatus | null>(null)
   const [networks, setNetworks] = useState<WiFiNetwork[]>([])
   const [savedConnections, setSavedConnections] = useState<SavedConnection[]>([])
-  const [selectedNetwork, setSelectedNetwork] = useState<string | null>(null)
+  const [selectedNetwork, setSelectedNetwork] = useState<WiFiNetwork | null>(null)
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
@@ -86,16 +92,17 @@ export function WiFiSetupPage() {
     fetchSaved()
   }, [fetchStatus, scanNetworks, fetchSaved])
 
+  const needsPassword = selectedNetwork &&
+    selectedNetwork.security !== 'Open' &&
+    !selectedNetwork.saved
+
   const handleConnect = async () => {
     if (!selectedNetwork) return
-
-    const network = networks.find(n => n.ssid === selectedNetwork)
-    const needsPassword = network && network.security !== 'Open' && !network.saved
 
     setIsConnecting(true)
     try {
       const result = await apiClient.post<{ success: boolean; message: string }>('/api/wifi/connect', {
-        ssid: selectedNetwork,
+        ssid: selectedNetwork.ssid,
         password: needsPassword ? password : '',
       })
 
@@ -122,9 +129,21 @@ export function WiFiSetupPage() {
     }
   }
 
-  const isHotspotMode = status?.mode === 'hotspot'
+  const openConnectDialog = (network: WiFiNetwork) => {
+    setSelectedNetwork(network)
+    setPassword('')
+    setShowPassword(false)
+  }
 
-  const selectedNetworkData = networks.find(n => n.ssid === selectedNetwork)
+  const closeDialog = () => {
+    if (!isConnecting) {
+      setSelectedNetwork(null)
+      setPassword('')
+      setShowPassword(false)
+    }
+  }
+
+  const isHotspotMode = status?.mode === 'hotspot'
 
   if (isRebooting) {
     return (
@@ -135,7 +154,7 @@ export function WiFiSetupPage() {
               <span className="material-icons text-5xl text-blue-500 animate-spin">refresh</span>
               <h2 className="text-xl font-semibold">Rebooting...</h2>
               <p className="text-muted-foreground">
-                The system is rebooting to connect to <strong>{selectedNetwork}</strong>.
+                The system is rebooting to connect to <strong>{selectedNetwork?.ssid}</strong>.
               </p>
               <p className="text-sm text-muted-foreground">
                 Once connected, access Dune Weaver on your home network at:
@@ -244,96 +263,28 @@ export function WiFiSetupPage() {
               No networks found. Try scanning again.
             </p>
           )}
-          {networks.map((network) => {
-            const isSelected = selectedNetwork === network.ssid
-            const showForm = isSelected && selectedNetworkData
-            const showPasswordField = showForm &&
-              selectedNetworkData.security !== 'Open' &&
-              !selectedNetworkData.saved
-
-            return (
-              <div key={network.ssid}>
-                <button
-                  onClick={() => {
-                    setSelectedNetwork(isSelected ? null : network.ssid)
-                    setPassword('')
-                    setShowPassword(false)
-                  }}
-                  className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors
-                    ${isSelected
-                      ? 'bg-primary/10 ring-1 ring-primary'
-                      : 'hover:bg-muted/50'
-                    }
-                    ${network.active ? 'bg-green-50 dark:bg-green-950/20' : ''}`}
-                >
-                  <SignalIcon signal={network.signal} />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{network.ssid}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {network.security}
-                      {network.saved && ' · Saved'}
-                      {network.active && ' · Connected'}
-                    </p>
-                  </div>
-                  <span className="text-xs text-muted-foreground">{network.signal}%</span>
-                  {network.security !== 'Open' && (
-                    <span className="material-icons text-sm text-muted-foreground">lock</span>
-                  )}
-                </button>
-
-                {/* Inline connection form — appears directly below selected network */}
-                {showForm && (
-                  <div className="mx-3 mb-2 mt-1 p-3 rounded-lg bg-muted/50 space-y-3">
-                    {showPasswordField && (
-                      <div className="space-y-2">
-                        <Label htmlFor="wifi-password">Password</Label>
-                        <div className="relative">
-                          <Input
-                            id="wifi-password"
-                            type={showPassword ? 'text' : 'password'}
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="Enter WiFi password"
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && password) handleConnect()
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                          >
-                            <span className="material-icons text-sm">
-                              {showPassword ? 'visibility_off' : 'visibility'}
-                            </span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    <Button
-                      className="w-full"
-                      onClick={handleConnect}
-                      disabled={isConnecting || (showPasswordField && !password)}
-                    >
-                      {isConnecting ? (
-                        <>
-                          <span className="material-icons text-sm animate-spin mr-2">refresh</span>
-                          Connecting...
-                        </>
-                      ) : (
-                        <>
-                          <span className="material-icons text-sm mr-2">wifi</span>
-                          Connect{isHotspotMode ? ' & Reboot' : ''}
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                )}
+          {networks.map((network) => (
+            <button
+              key={network.ssid}
+              onClick={() => openConnectDialog(network)}
+              className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors hover:bg-muted/50
+                ${network.active ? 'bg-green-50 dark:bg-green-950/20' : ''}`}
+            >
+              <SignalIcon signal={network.signal} />
+              <div className="flex-1 min-w-0">
+                <p className="font-medium truncate">{network.ssid}</p>
+                <p className="text-xs text-muted-foreground">
+                  {network.security}
+                  {network.saved && ' · Saved'}
+                  {network.active && ' · Connected'}
+                </p>
               </div>
-            )
-          })}
+              <span className="text-xs text-muted-foreground">{network.signal}%</span>
+              {network.security !== 'Open' && (
+                <span className="material-icons text-sm text-muted-foreground">lock</span>
+              )}
+            </button>
+          ))}
         </CardContent>
       </Card>
 
@@ -383,6 +334,70 @@ export function WiFiSetupPage() {
           </div>
         </>
       )}
+
+      {/* Connect Dialog */}
+      <Dialog open={selectedNetwork !== null} onOpenChange={(open) => { if (!open) closeDialog() }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedNetwork && <SignalIcon signal={selectedNetwork.signal} />}
+              {selectedNetwork?.ssid}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedNetwork?.security !== 'Open' ? 'Secured network' : 'Open network'}
+              {selectedNetwork?.saved && ' · Saved'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {needsPassword && (
+              <div className="space-y-2">
+                <Label htmlFor="wifi-password">Password</Label>
+                <div className="relative">
+                  <Input
+                    id="wifi-password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter WiFi password"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && password) handleConnect()
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <span className="material-icons text-sm">
+                      {showPassword ? 'visibility_off' : 'visibility'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <Button
+              className="w-full"
+              onClick={handleConnect}
+              disabled={isConnecting || (!!needsPassword && !password)}
+            >
+              {isConnecting ? (
+                <>
+                  <span className="material-icons text-sm animate-spin mr-2">refresh</span>
+                  Connecting...
+                </>
+              ) : (
+                <>
+                  <span className="material-icons text-sm mr-2">wifi</span>
+                  Connect{isHotspotMode ? ' & Reboot' : ''}
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
