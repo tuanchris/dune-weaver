@@ -182,6 +182,27 @@ cmd_update() {
         sudo systemctl restart dune-weaver
     fi
 
+    # Install/update WiFi host scripts if not present
+    if [[ -f "$INSTALL_DIR/wifi/setup-wifi.sh" ]]; then
+        if [[ ! -f /usr/local/bin/autohotspot ]]; then
+            echo ""
+            echo -e "${BLUE}Installing autohotspot WiFi scripts...${NC}"
+            sudo bash "$INSTALL_DIR/wifi/setup-wifi.sh"
+        else
+            # Always update the script and service files to latest
+            echo "Updating WiFi host scripts..."
+            sudo cp "$INSTALL_DIR/wifi/autohotspot" /usr/local/bin/autohotspot
+            sudo chmod +x /usr/local/bin/autohotspot
+
+            # Update service/timer files
+            sudo cp "$INSTALL_DIR/wifi/autohotspot.service" /etc/systemd/system/autohotspot.service
+            sudo cp "$INSTALL_DIR/wifi/autohotspot-check.service" /etc/systemd/system/autohotspot-check.service 2>/dev/null || true
+            sudo cp "$INSTALL_DIR/wifi/autohotspot-check.timer" /etc/systemd/system/autohotspot-check.timer 2>/dev/null || true
+            sudo systemctl daemon-reload
+            sudo systemctl enable autohotspot-check.timer 2>/dev/null || true
+        fi
+    fi
+
     # Update touch app if installed (check both directory and service exist)
     local touch_dir="$INSTALL_DIR/dune-weaver-touch"
     if [[ -d "$touch_dir" ]] && systemctl list-unit-files dune-weaver-touch.service 2>/dev/null | grep -q dune-weaver-touch; then
@@ -366,6 +387,13 @@ cmd_checkout() {
     # Update dw CLI from the new branch
     sudo cp "$INSTALL_DIR/dw" /usr/local/bin/dw
     sudo chmod +x /usr/local/bin/dw
+
+    # Install WiFi scripts if available on this branch but not yet installed
+    if [[ -f "$INSTALL_DIR/wifi/setup-wifi.sh" ]] && [[ ! -f /usr/local/bin/autohotspot ]]; then
+        echo ""
+        echo -e "${BLUE}Installing autohotspot WiFi scripts...${NC}"
+        sudo bash "$INSTALL_DIR/wifi/setup-wifi.sh"
+    fi
 
     echo -e "${GREEN}Checkout complete!${NC}"
 }
