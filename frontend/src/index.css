@@ -1,10 +1,6 @@
 @import "tailwindcss";
 
-/* Import fonts */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap');
-
-/* Material Icons */
-@import url('https://fonts.googleapis.com/icon?family=Material+Icons|Material+Icons+Outlined');
+/* Fonts imported in main.tsx (self-hosted, no CDN dependency) */
 
 /* Theme configuration using CSS variables */
 @theme {
