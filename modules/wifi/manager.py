@@ -243,7 +243,7 @@ def get_saved_connections() -> list[dict]:
 
 
 async def connect_to_network(ssid: str, password: str) -> dict:
-    """Connect to a WiFi network and schedule reboot.
+    """Connect to a WiFi network.
 
     Uses explicit connection profile creation (nmcli con add) instead of
     'nmcli dev wifi connect' because the latter fails on Pi Trixie with
@@ -293,14 +293,11 @@ async def connect_to_network(ssid: str, password: str) -> dict:
             run_nmcli_check("con", "delete", ssid, timeout=10)
             return {"success": False, "message": error_msg}
 
-        logger.info(f"WiFi connection to '{ssid}' successful, scheduling reboot...")
-
-        # Schedule reboot so the response can be sent first
-        asyncio.get_event_loop().call_later(3, _schedule_reboot)
+        logger.info(f"WiFi connection to '{ssid}' successful")
 
         return {
             "success": True,
-            "message": f"Connected to '{ssid}'. Rebooting in 3 seconds...",
+            "message": f"Connected to '{ssid}'.",
         }
 
     except subprocess.TimeoutExpired:
@@ -356,17 +353,6 @@ def save_network(ssid: str, password: str) -> dict:
     except Exception as e:
         logger.error(f"WiFi save error: {e}")
         return {"success": False, "message": str(e)}
-
-
-def _schedule_reboot():
-    """Trigger a system reboot via systemctl (communicates over D-Bus)."""
-    try:
-        logger.info("Rebooting system for WiFi mode change...")
-        subprocess.run(["systemctl", "reboot"], check=True)
-    except FileNotFoundError:
-        logger.error("systemctl not found — ensure systemd is installed in container")
-    except Exception as e:
-        logger.error(f"Reboot failed: {e}")
 
 
 def forget_network(ssid: str) -> dict:

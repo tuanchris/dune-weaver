@@ -56,7 +56,6 @@ export function WiFiSetupPage() {
   const [isScanning, setIsScanning] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [isRebooting, setIsRebooting] = useState(false)
   const [isManualEntry, setIsManualEntry] = useState(false)
   const [manualSsid, setManualSsid] = useState('')
   const [forgetSsid, setForgetSsid] = useState<string | null>(null)
@@ -128,8 +127,11 @@ export function WiFiSetupPage() {
       })
 
       if (result.success) {
-        setIsRebooting(true)
         toast.success(result.message)
+        closeDialog()
+        fetchStatus()
+        fetchSaved()
+        scanNetworks()
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Connection failed'
@@ -223,30 +225,6 @@ export function WiFiSetupPage() {
   }
 
   const isHotspotMode = status?.mode === 'hotspot'
-
-  if (isRebooting) {
-    return (
-      <div className="container max-w-lg mx-auto px-4 py-8">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center space-y-4">
-              <span className="material-icons text-5xl text-blue-500 animate-spin">refresh</span>
-              <h2 className="text-xl font-semibold">Rebooting...</h2>
-              <p className="text-muted-foreground">
-                The system is rebooting to connect to <strong>{isManualEntry ? manualSsid : selectedNetwork?.ssid}</strong>.
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Once connected, access Dune Weaver on your home network at:
-              </p>
-              <code className="text-sm bg-muted px-2 py-1 rounded">
-                http://{status?.hostname || 'duneweaver'}.local
-              </code>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
 
   return (
     <div className="container max-w-lg mx-auto px-3 py-4 space-y-3">
@@ -403,8 +381,7 @@ export function WiFiSetupPage() {
         <>
           <Separator />
           <div className="text-center text-sm text-muted-foreground space-y-1">
-            <p>After connecting, the system will reboot.</p>
-            <p>Reconnect to your home WiFi and access Dune Weaver at:</p>
+            <p>After connecting, access Dune Weaver at:</p>
             <code className="text-xs bg-muted px-2 py-1 rounded">
               http://{status?.hostname || 'duneweaver'}.local
             </code>
@@ -621,7 +598,7 @@ export function WiFiSetupPage() {
                   ) : (
                     <>
                       <span className="material-icons text-sm mr-2">wifi</span>
-                      Connect{isHotspotMode ? ' & Reboot' : ''}
+                      Connect
                     </>
                   )}
                 </Button>
@@ -640,7 +617,7 @@ export function WiFiSetupPage() {
                 ) : (
                   <>
                     <span className="material-icons text-sm mr-2">wifi</span>
-                    Connect{isHotspotMode ? ' & Reboot' : ''}
+                    Connect
                   </>
                 )}
               </Button>
