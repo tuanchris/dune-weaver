@@ -28,11 +28,10 @@ def run_host_command(*args: str, timeout: int = 30) -> subprocess.CompletedProce
     In venv: executes directly.
     """
     if is_docker():
-        # nsenter into PID 1 to run on the host.
-        # We must use a host shell so that PATH resolution uses the host's filesystem.
-        # Without a shell, nsenter tries to resolve the binary from the container's mount.
+        # In privileged Docker, /proc/1/root gives access to the host filesystem.
+        # We chroot into it so commands like nmcli resolve from the host.
         shell_cmd = " ".join(f"'{a}'" if " " in a else a for a in args)
-        cmd = ["nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "/bin/sh", "-c", shell_cmd]
+        cmd = ["chroot", "/proc/1/root", "/bin/sh", "-c", shell_cmd]
     else:
         cmd = list(args)
 
