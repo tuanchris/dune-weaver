@@ -24,6 +24,21 @@ const navItems = [
 
 const DEFAULT_APP_NAME = 'Dune Weaver'
 
+// Detect captive portal context (DNS-redirected domains used by OS probe requests)
+const CAPTIVE_PORTAL_HOSTS = [
+  'captive.apple.com',
+  'connectivitycheck.gstatic.com',
+  'connectivitycheck.android.com',
+  'clients3.google.com',
+  'nmcheck.gnome.org',
+  'network-test.debian.org',
+  'msftconnecttest.com',
+  'www.msftconnecttest.com',
+]
+const isCaptivePortal = CAPTIVE_PORTAL_HOSTS.some(
+  (h) => window.location.hostname === h || window.location.hostname.endsWith('.' + h)
+)
+
 export function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -32,6 +47,13 @@ export function Layout() {
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [location.pathname])
+
+  // Captive portal: redirect straight to WiFi setup
+  useEffect(() => {
+    if (isCaptivePortal && location.pathname !== '/wifi-setup') {
+      navigate('/wifi-setup', { replace: true })
+    }
+  }, [location.pathname, navigate])
 
   // Multi-table context - must be called before any hooks that depend on activeTable
   const { activeTable, tables } = useTable()
@@ -1293,8 +1315,9 @@ export function Layout() {
       )}
 
       {/* Backend Connection / Homing Blocking Overlay */}
+      {/* Skip in captive portal mode (WebSocket won't connect in sandboxed webview) */}
       {/* Don't show this overlay when sensor homing failed - that has its own dialog */}
-      {!sensorHomingFailed && (!isBackendConnected || (isHoming && !homingDismissed) || homingJustCompleted) && (
+      {!isCaptivePortal && !sensorHomingFailed && (!isBackendConnected || (isHoming && !homingDismissed) || homingJustCompleted) && (
         <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center p-4">
           <div className="w-full max-w-2xl space-y-6">
             {/* Status Header */}
