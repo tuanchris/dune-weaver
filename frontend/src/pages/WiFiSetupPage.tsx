@@ -4,7 +4,7 @@ import { apiClient } from '@/lib/apiClient'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
@@ -170,7 +170,7 @@ export function WiFiSetupPage() {
   }
 
   return (
-    <div className="container max-w-lg mx-auto px-4 py-6 space-y-6">
+    <div className="container max-w-lg mx-auto px-3 py-4 space-y-3">
       {/* Hotspot Welcome Banner */}
       {isHotspotMode && (
         <Alert className="border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-800">
@@ -185,138 +185,142 @@ export function WiFiSetupPage() {
 
       {/* Current Status */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <span className="material-icons-outlined text-muted-foreground">info</span>
-            WiFi Status
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-4 pb-3 px-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="material-icons-outlined text-base text-muted-foreground">info</span>
+            <span className="font-semibold text-sm">WiFi Status</span>
+          </div>
           {status ? (
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <p className="text-muted-foreground">Mode</p>
-                <Badge variant={isHotspotMode ? 'secondary' : 'default'}>
-                  {status.mode === 'hotspot' ? 'Hotspot' :
-                   status.mode === 'client' ? 'Connected' : status.mode}
-                </Badge>
+            <div className="flex flex-wrap items-center justify-between gap-y-1 text-sm">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground text-xs">Mode</span>
+                  <Badge variant={isHotspotMode ? 'secondary' : 'default'} className="text-xs px-1.5 py-0">
+                    {status.mode === 'hotspot' ? 'Hotspot' :
+                     status.mode === 'client' ? 'Connected' : status.mode}
+                  </Badge>
+                </div>
+                {status.ssid && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground text-xs">Network</span>
+                    <span className="font-medium text-xs">{status.ssid}</span>
+                  </div>
+                )}
+                {status.ip && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground text-xs">IP</span>
+                    <span className="font-mono text-xs">{status.ip}</span>
+                  </div>
+                )}
               </div>
-              {status.ssid && (
-                <div>
-                  <p className="text-muted-foreground">Network</p>
-                  <p className="font-medium">{status.ssid}</p>
-                </div>
-              )}
-              {status.ip && (
-                <div>
-                  <p className="text-muted-foreground">IP Address</p>
-                  <p className="font-mono text-xs">{status.ip}</p>
-                </div>
-              )}
-              <div>
-                <p className="text-muted-foreground">Hostname</p>
-                <p className="font-mono text-xs">{status.hostname}.local</p>
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted-foreground text-xs">Host</span>
+                <span className="font-mono text-xs">{status.hostname}.local</span>
               </div>
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">Loading status...</p>
+          )}
+          {/* Raspberry Pi note */}
+          {!isHotspotMode && (
+            <p className="text-xs text-muted-foreground mt-2">
+              WiFi management requires a Raspberry Pi.
+            </p>
           )}
         </CardContent>
       </Card>
 
       {/* Available Networks */}
       <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <span className="material-icons-outlined text-muted-foreground">wifi_find</span>
-                Available Networks
-              </CardTitle>
-              <CardDescription>
+        <CardContent className="pt-4 pb-2 px-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="material-icons-outlined text-base text-muted-foreground">wifi_find</span>
+              <span className="font-semibold text-sm">Networks</span>
+              <span className="text-xs text-muted-foreground">
                 {networks.length > 0
-                  ? `${networks.length} network${networks.length !== 1 ? 's' : ''} found`
-                  : 'Scanning...'}
-              </CardDescription>
+                  ? `(${networks.length})`
+                  : ''}
+              </span>
             </div>
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
+              className="h-7 w-7 p-0"
               onClick={scanNetworks}
               disabled={isScanning}
             >
-              <span className={`material-icons text-sm mr-1 ${isScanning ? 'animate-spin' : ''}`}>
+              <span className={`material-icons text-base ${isScanning ? 'animate-spin' : ''}`}>
                 refresh
               </span>
-              Scan
             </Button>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-1">
-          {networks.length === 0 && isScanning && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              Scanning for networks...
-            </p>
-          )}
-          {networks.length === 0 && !isScanning && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No networks found. Try scanning again.
-            </p>
-          )}
-          {networks.map((network) => (
-            <button
-              key={network.ssid}
-              onClick={() => openConnectDialog(network)}
-              className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors hover:bg-muted/50
-                ${network.active ? 'bg-green-50 dark:bg-green-950/20' : ''}`}
-            >
-              <SignalIcon signal={network.signal} />
-              <div className="flex-1 min-w-0">
-                <p className="font-medium truncate">{network.ssid}</p>
-                <p className="text-xs text-muted-foreground">
-                  {network.security}
-                  {network.saved && ' · Saved'}
-                  {network.active && ' · Connected'}
-                </p>
-              </div>
-              <span className="text-xs text-muted-foreground">{network.signal}%</span>
-              {network.security !== 'Open' && (
-                <span className="material-icons text-sm text-muted-foreground">lock</span>
-              )}
-            </button>
-          ))}
+          <div className="space-y-0.5">
+            {networks.length === 0 && isScanning && (
+              <p className="text-sm text-muted-foreground text-center py-3">
+                Scanning for networks...
+              </p>
+            )}
+            {networks.length === 0 && !isScanning && (
+              <p className="text-sm text-muted-foreground text-center py-3">
+                No networks found. Try scanning again.
+              </p>
+            )}
+            {networks.map((network) => (
+              <button
+                key={network.ssid}
+                onClick={() => openConnectDialog(network)}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors hover:bg-muted/50
+                  ${network.active ? 'bg-green-50 dark:bg-green-950/20' : ''}`}
+              >
+                <SignalIcon signal={network.signal} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm truncate">{network.ssid}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {network.security}
+                    {network.saved && ' · Saved'}
+                    {network.active && ' · Connected'}
+                  </p>
+                </div>
+                <span className="text-xs text-muted-foreground">{network.signal}%</span>
+                {network.security !== 'Open' && (
+                  <span className="material-icons text-sm text-muted-foreground">lock</span>
+                )}
+              </button>
+            ))}
+          </div>
         </CardContent>
       </Card>
 
       {/* Saved Networks */}
       {savedConnections.length > 0 && (
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <span className="material-icons-outlined text-muted-foreground">bookmark</span>
-              Saved Networks
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            {savedConnections.map((con) => (
-              <div
-                key={con.name}
-                className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="material-icons text-muted-foreground">wifi</span>
-                  <span className="font-medium">{con.ssid}</span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleForget(con.ssid)}
-                  className="text-destructive hover:text-destructive"
+          <CardContent className="pt-4 pb-2 px-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="material-icons-outlined text-base text-muted-foreground">bookmark</span>
+              <span className="font-semibold text-sm">Saved Networks</span>
+            </div>
+            <div className="space-y-0.5">
+              {savedConnections.map((con) => (
+                <div
+                  key={con.name}
+                  className="flex items-center justify-between px-2.5 py-2 rounded-lg hover:bg-muted/50"
                 >
-                  <span className="material-icons text-sm">delete</span>
-                </Button>
-              </div>
-            ))}
+                  <div className="flex items-center gap-2.5">
+                    <span className="material-icons text-muted-foreground text-lg">wifi</span>
+                    <span className="font-medium text-sm">{con.ssid}</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                    onClick={() => handleForget(con.ssid)}
+                  >
+                    <span className="material-icons text-sm text-destructive">delete</span>
+                  </Button>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}

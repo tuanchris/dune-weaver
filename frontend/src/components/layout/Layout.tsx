@@ -161,6 +161,7 @@ export function Layout() {
 
   // Mobile menu state
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isDesktopMenuOpen, setIsDesktopMenuOpen] = useState(false)
 
   // Logs drawer state
   const [isLogsOpen, setIsLogsOpen] = useState(false)
@@ -1541,7 +1542,7 @@ export function Layout() {
                 </span>
               </Link>
             )}
-            <Popover>
+            <Popover open={isDesktopMenuOpen} onOpenChange={setIsDesktopMenuOpen}>
               <PopoverTrigger asChild>
                 <Button
                   variant="ghost"
@@ -1571,7 +1572,10 @@ export function Layout() {
                     View Logs
                   </button>
                   <button
-                    onClick={() => navigate('/wifi-setup')}
+                    onClick={() => {
+                      navigate('/wifi-setup')
+                      setIsDesktopMenuOpen(false)
+                    }}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
                   >
                     <span className="material-icons-outlined text-xl">wifi</span>
