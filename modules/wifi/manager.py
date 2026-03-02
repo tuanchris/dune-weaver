@@ -32,11 +32,15 @@ def run_host_command(*args: str, timeout: int = 30) -> subprocess.CompletedProce
     else:
         cmd = list(args)
 
-    logger.debug(f"Running host command: {' '.join(cmd)}")
+    logger.info(f"Running host command: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
-    if result.returncode != 0 and result.stderr:
-        logger.debug(f"Command stderr: {result.stderr.strip()}")
+    if result.returncode != 0:
+        logger.warning(f"Command failed (rc={result.returncode}): {' '.join(cmd)}")
+        if result.stderr:
+            logger.warning(f"  stderr: {result.stderr.strip()}")
+        if result.stdout:
+            logger.warning(f"  stdout: {result.stdout.strip()}")
 
     return result
 
@@ -89,8 +93,13 @@ def get_current_ip() -> str:
 
 
 def get_hostname() -> str:
-    """Get the system hostname."""
+    """Get the host system hostname (not the container hostname)."""
     try:
+        if is_docker():
+            result = run_host_command("hostname")
+            name = result.stdout.strip()
+            if name:
+                return name
         return socket.gethostname()
     except Exception:
         return "duneweaver"
