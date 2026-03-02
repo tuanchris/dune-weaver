@@ -360,22 +360,23 @@ def forget_network(ssid: str) -> dict:
 
 
 def _trigger_autohotspot():
-    """Re-run the autohotspot script to re-evaluate WiFi mode.
+    """Trigger an immediate autohotspot check.
 
-    Called when the active network is forgotten, so the system can
-    fall back to hotspot mode if no other known networks are available.
+    Called when the active network is forgotten so the user doesn't have
+    to wait for the next 60s timer tick. Falls back to direct nmcli
+    commands in Docker where the host script isn't available.
     """
     autohotspot_path = "/usr/local/bin/autohotspot"
     try:
         if os.path.exists(autohotspot_path):
-            logger.info("Re-running autohotspot after forgetting active network...")
+            logger.info("Triggering autohotspot --check after forgetting active network...")
             subprocess.Popen(
-                [autohotspot_path],
+                [autohotspot_path, "--check"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
         else:
-            # Fallback: directly activate hotspot if autohotspot script not found
+            # Docker fallback: directly activate hotspot via D-Bus
             logger.info("Autohotspot script not found, activating hotspot directly...")
             run_nmcli("dev", "disconnect", "wlan0")
             run_nmcli("con", "up", HOTSPOT_CON_NAME)

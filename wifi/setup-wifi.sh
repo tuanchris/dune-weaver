@@ -122,15 +122,22 @@ install_configs() {
     print_success "Autohotspot script installed"
 }
 
-# Install and enable the systemd service
+# Install and enable the systemd service and timer
 install_service() {
-    print_step "Installing autohotspot service..."
+    print_step "Installing autohotspot service and timer..."
 
+    # Boot service: runs once at startup with 30s scan
     sudo cp "$SCRIPT_DIR/autohotspot.service" /etc/systemd/system/autohotspot.service
+
+    # Periodic check: runs every 60s to detect WiFi drops and recover
+    sudo cp "$SCRIPT_DIR/autohotspot-check.service" /etc/systemd/system/autohotspot-check.service
+    sudo cp "$SCRIPT_DIR/autohotspot-check.timer" /etc/systemd/system/autohotspot-check.timer
+
     sudo systemctl daemon-reload
     sudo systemctl enable autohotspot.service
+    sudo systemctl enable --now autohotspot-check.timer
 
-    print_success "autohotspot.service installed and enabled"
+    print_success "autohotspot.service and autohotspot-check.timer installed and enabled"
 }
 
 # Main
@@ -153,6 +160,10 @@ main() {
     echo "  1. Scan for known WiFi networks (30s timeout)"
     echo "  2. If found → connect normally"
     echo "  3. If not found → create a '$(nmcli -t -f 802-11-wireless.ssid con show "$HOTSPOT_CON_NAME" 2>/dev/null | cut -d: -f2 || echo "$HOTSPOT_SSID")' hotspot"
+    echo ""
+    echo "A periodic check runs every 60 seconds to:"
+    echo "  - Fall back to hotspot if WiFi drops"
+    echo "  - Reconnect to known WiFi when it becomes available"
     echo ""
     echo "Users can connect to the hotspot and open the Dune Weaver app"
     echo "to configure WiFi credentials."

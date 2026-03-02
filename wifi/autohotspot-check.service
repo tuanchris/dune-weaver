@@ -1,0 +1,8 @@
+[Unit]
+Description=Dune Weaver Autohotspot Check
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/autohotspot --check
