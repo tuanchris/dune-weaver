@@ -27,12 +27,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import { preExecutionOptions } from '@/lib/types'
 
 // Types
@@ -1192,36 +1186,31 @@ export function BrowsePage() {
               {/* Clear Options */}
               <div className="mb-6">
                 <Label className="text-sm font-semibold mb-3 block">Clear</Label>
-                <TooltipProvider delayDuration={300}>
-                  <div className="grid grid-cols-2 gap-2">
-                    {preExecutionOptions.map((option) => (
-                      <Tooltip key={option.value}>
-                        <TooltipTrigger asChild>
-                          <label
-                            className={`relative flex cursor-pointer items-center justify-center rounded-lg border p-2.5 text-center text-sm font-medium transition-all hover:border-primary ${
-                              preExecution === option.value
-                                ? 'border-primary bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2 ring-offset-background'
-                                : 'border-border text-muted-foreground hover:text-foreground'
-                            }`}
-                          >
-                            {option.label}
-                            <input
-                              type="radio"
-                              name="preExecutionAction"
-                              value={option.value}
-                              checked={preExecution === option.value}
-                              onChange={() => setPreExecution(option.value)}
-                              className="sr-only"
-                            />
-                          </label>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" className="max-w-[200px] text-center">
-                          {option.description}
-                        </TooltipContent>
-                      </Tooltip>
-                    ))}
-                  </div>
-                </TooltipProvider>
+                <div className="grid grid-cols-2 gap-2">
+                  {preExecutionOptions.map((option) => (
+                    <label
+                      key={option.value}
+                      className={`relative flex cursor-pointer items-center justify-center rounded-lg border p-2.5 text-center text-sm font-medium transition-all hover:border-primary ${
+                        preExecution === option.value
+                          ? 'border-primary bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2 ring-offset-background'
+                          : 'border-border text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {option.label}
+                      <input
+                        type="radio"
+                        name="preExecutionAction"
+                        value={option.value}
+                        checked={preExecution === option.value}
+                        onChange={() => setPreExecution(option.value)}
+                        className="sr-only"
+                      />
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {preExecutionOptions.find(o => o.value === preExecution)?.description}
+                </p>
               </div>
 
               {/* Action Buttons */}
