@@ -24,10 +24,10 @@ export type SortOption = 'name' | 'date' | 'size' | 'favorites' | 'plays' | 'las
 export type PreExecution = 'none' | 'adaptive' | 'clear_from_in' | 'clear_from_out' | 'clear_sideway'
 export type RunMode = 'single' | 'indefinite'
 
-export const preExecutionOptions: { value: PreExecution; label: string }[] = [
-  { value: 'adaptive', label: 'Adaptive' },
-  { value: 'clear_from_in', label: 'Clear From Center' },
-  { value: 'clear_from_out', label: 'Clear From Perimeter' },
-  { value: 'clear_sideway', label: 'Clear Sideways' },
-  { value: 'none', label: 'None' },
+export const preExecutionOptions: { value: PreExecution; label: string; description: string }[] = [
+  { value: 'adaptive', label: 'Adaptive', description: 'Automatically picks the best clear direction based on where the ball is' },
+  { value: 'clear_from_in', label: 'From Center', description: 'Spirals outward from the center to erase the current pattern' },
+  { value: 'clear_from_out', label: 'From Perimeter', description: 'Spirals inward from the edge to erase the current pattern' },
+  { value: 'clear_sideway', label: 'Sideways', description: 'Sweeps side-to-side across the sand to erase the current pattern' },
+  { value: 'none', label: 'None', description: 'Start drawing immediately without clearing the sand first' },
 ]

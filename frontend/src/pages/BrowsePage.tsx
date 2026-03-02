@@ -27,6 +27,13 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { preExecutionOptions } from '@/lib/types'
 
 // Types
 interface PatternMetadata {
@@ -49,14 +56,6 @@ type Coordinate = [number, number]
 
 type SortOption = 'name' | 'date' | 'size' | 'favorites' | 'plays' | 'last_played'
 type PreExecution = 'none' | 'adaptive' | 'clear_from_in' | 'clear_from_out' | 'clear_sideway'
-
-const preExecutionOptions: { value: PreExecution; label: string }[] = [
-  { value: 'adaptive', label: 'Adaptive' },
-  { value: 'clear_from_in', label: 'Clear From Center' },
-  { value: 'clear_from_out', label: 'Clear From Perimeter' },
-  { value: 'clear_sideway', label: 'Clear Sideways' },
-  { value: 'none', label: 'None' },
-]
 
 // Context for lazy loading previews
 interface PreviewContextType {
@@ -1190,31 +1189,39 @@ export function BrowsePage() {
                 )
               })()}
 
-              {/* Pre-Execution Options */}
+              {/* Clear Options */}
               <div className="mb-6">
-                <Label className="text-sm font-semibold mb-3 block">Pre-Execution Action</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {preExecutionOptions.map((option) => (
-                    <label
-                      key={option.value}
-                      className={`relative flex cursor-pointer items-center justify-center rounded-lg border p-2.5 text-center text-sm font-medium transition-all hover:border-primary ${
-                        preExecution === option.value
-                          ? 'border-primary bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2 ring-offset-background'
-                          : 'border-border text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {option.label}
-                      <input
-                        type="radio"
-                        name="preExecutionAction"
-                        value={option.value}
-                        checked={preExecution === option.value}
-                        onChange={() => setPreExecution(option.value)}
-                        className="sr-only"
-                      />
-                    </label>
-                  ))}
-                </div>
+                <Label className="text-sm font-semibold mb-3 block">Clear</Label>
+                <TooltipProvider delayDuration={300}>
+                  <div className="grid grid-cols-2 gap-2">
+                    {preExecutionOptions.map((option) => (
+                      <Tooltip key={option.value}>
+                        <TooltipTrigger asChild>
+                          <label
+                            className={`relative flex cursor-pointer items-center justify-center rounded-lg border p-2.5 text-center text-sm font-medium transition-all hover:border-primary ${
+                              preExecution === option.value
+                                ? 'border-primary bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2 ring-offset-background'
+                                : 'border-border text-muted-foreground hover:text-foreground'
+                            }`}
+                          >
+                            {option.label}
+                            <input
+                              type="radio"
+                              name="preExecutionAction"
+                              value={option.value}
+                              checked={preExecution === option.value}
+                              onChange={() => setPreExecution(option.value)}
+                              className="sr-only"
+                            />
+                          </label>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="max-w-[200px] text-center">
+                          {option.description}
+                        </TooltipContent>
+                      </Tooltip>
+                    ))}
+                  </div>
+                </TooltipProvider>
               </div>
 
               {/* Action Buttons */}

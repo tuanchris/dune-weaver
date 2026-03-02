@@ -844,7 +844,10 @@ export function PlaylistsPage() {
                       <SelectContent>
                         {preExecutionOptions.map(opt => (
                           <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
+                            <div>
+                              <div>{opt.label}</div>
+                              <div className="text-xs text-muted-foreground font-normal">{opt.description}</div>
+                            </div>
                           </SelectItem>
                         ))}
                       </SelectContent>
