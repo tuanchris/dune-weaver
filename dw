@@ -420,10 +420,29 @@ cmd_wifi() {
             fi
             read -sp "Enter password (leave empty for open networks): " password
             echo ""
+
+            # Delete any stale connection profile for this SSID
+            sudo nmcli con delete "$ssid" 2>/dev/null || true
+
             if [[ -n "$password" ]]; then
-                sudo nmcli dev wifi connect "$ssid" password "$password" ifname wlan0
+                # Create connection with explicit security settings
+                # (nmcli dev wifi connect can fail on Trixie without key-mgmt)
+                sudo nmcli con add type wifi ifname wlan0 con-name "$ssid" \
+                    ssid "$ssid" \
+                    wifi-sec.key-mgmt wpa-psk \
+                    wifi-sec.psk "$password"
             else
-                sudo nmcli dev wifi connect "$ssid" ifname wlan0
+                sudo nmcli con add type wifi ifname wlan0 con-name "$ssid" \
+                    ssid "$ssid"
+            fi
+
+            echo -e "${BLUE}Connecting to '$ssid'...${NC}"
+            if sudo nmcli con up "$ssid"; then
+                echo -e "${GREEN}Connected!${NC}"
+            else
+                echo -e "${RED}Failed to connect. Check password and try again.${NC}"
+                sudo nmcli con delete "$ssid" 2>/dev/null || true
+                exit 1
             fi
             ;;
         hotspot)

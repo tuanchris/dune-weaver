@@ -209,25 +209,54 @@ def get_saved_connections() -> list[dict]:
 
 
 async def connect_to_network(ssid: str, password: str) -> dict:
-    """Connect to a WiFi network and schedule reboot."""
+    """Connect to a WiFi network and schedule reboot.
+
+    Uses explicit connection profile creation (nmcli con add) instead of
+    'nmcli dev wifi connect' because the latter fails on Pi Trixie with
+    'key-mgmt: property is missing' for WPA networks.
+    """
     try:
-        # Try to connect using nmcli
+        # Delete any stale connection profile for this SSID
+        run_host_command("nmcli", "con", "delete", ssid, timeout=10)
+
+        # Create connection profile with explicit security settings
         if password:
             result = run_host_command(
-                "nmcli", "dev", "wifi", "connect", ssid, "password", password,
+                "nmcli", "con", "add",
+                "type", "wifi",
                 "ifname", "wlan0",
-                timeout=30,
+                "con-name", ssid,
+                "ssid", ssid,
+                "wifi-sec.key-mgmt", "wpa-psk",
+                "wifi-sec.psk", password,
+                timeout=15,
             )
         else:
             result = run_host_command(
-                "nmcli", "dev", "wifi", "connect", ssid,
+                "nmcli", "con", "add",
+                "type", "wifi",
                 "ifname", "wlan0",
-                timeout=30,
+                "con-name", ssid,
+                "ssid", ssid,
+                timeout=15,
             )
+
+        if result.returncode != 0:
+            error_msg = result.stderr.strip() or "Failed to create connection"
+            logger.error(f"WiFi connection add failed: {error_msg}")
+            return {"success": False, "message": error_msg}
+
+        # Activate the connection
+        result = run_host_command(
+            "nmcli", "con", "up", ssid,
+            timeout=30,
+        )
 
         if result.returncode != 0:
             error_msg = result.stderr.strip() or "Failed to connect"
             logger.error(f"WiFi connect failed: {error_msg}")
+            # Clean up the failed connection profile
+            run_host_command("nmcli", "con", "delete", ssid, timeout=10)
             return {"success": False, "message": error_msg}
 
         logger.info(f"WiFi connection to '{ssid}' successful, scheduling reboot...")
