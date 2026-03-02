@@ -310,6 +310,54 @@ async def connect_to_network(ssid: str, password: str) -> dict:
         return {"success": False, "message": str(e)}
 
 
+def save_network(ssid: str, password: str) -> dict:
+    """Save a WiFi network profile without connecting.
+
+    Creates the connection profile so autohotspot can use it on next check/boot.
+    """
+    try:
+        # Delete any stale connection profile for this SSID (ignore if not found)
+        subprocess.run(
+            ["nmcli", "con", "delete", ssid],
+            capture_output=True, text=True, timeout=10,
+        )
+
+        if password:
+            result = run_nmcli_check(
+                "con", "add",
+                "type", "wifi",
+                "ifname", "wlan0",
+                "con-name", ssid,
+                "ssid", ssid,
+                "wifi-sec.key-mgmt", "wpa-psk",
+                "wifi-sec.psk", password,
+                timeout=15,
+            )
+        else:
+            result = run_nmcli_check(
+                "con", "add",
+                "type", "wifi",
+                "ifname", "wlan0",
+                "con-name", ssid,
+                "ssid", ssid,
+                timeout=15,
+            )
+
+        if result.returncode != 0:
+            error_msg = result.stderr.strip() or "Failed to save network"
+            logger.error(f"WiFi save failed: {error_msg}")
+            return {"success": False, "message": error_msg}
+
+        logger.info(f"Saved WiFi network '{ssid}' (not connecting)")
+        return {"success": True, "message": f"Saved '{ssid}'. Will connect automatically when in range."}
+
+    except subprocess.TimeoutExpired:
+        return {"success": False, "message": "Operation timed out"}
+    except Exception as e:
+        logger.error(f"WiFi save error: {e}")
+        return {"success": False, "message": str(e)}
+
+
 def _schedule_reboot():
     """Trigger a system reboot via systemctl (communicates over D-Bus)."""
     try:

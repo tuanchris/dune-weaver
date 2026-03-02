@@ -55,6 +55,7 @@ export function WiFiSetupPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [isRebooting, setIsRebooting] = useState(false)
   const [isManualEntry, setIsManualEntry] = useState(false)
   const [manualSsid, setManualSsid] = useState('')
@@ -138,6 +139,29 @@ export function WiFiSetupPage() {
     }
   }
 
+  const handleSave = async () => {
+    const ssid = manualSsid.trim()
+    if (!ssid) return
+
+    setIsSaving(true)
+    try {
+      const result = await apiClient.post<{ success: boolean; message: string }>('/api/wifi/save', {
+        ssid,
+        password: password || '',
+      })
+      if (result.success) {
+        toast.success(result.message)
+        closeDialog()
+        fetchSaved()
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to save network'
+      toast.error(message)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   const handleForget = async () => {
     if (!forgetSsid) return
     const ssid = forgetSsid
@@ -181,7 +205,7 @@ export function WiFiSetupPage() {
   }
 
   const closeDialog = () => {
-    if (!isConnecting) {
+    if (!isConnecting && !isSaving) {
       setSelectedNetwork(null)
       setPassword('')
       setShowPassword(false)
@@ -282,79 +306,6 @@ export function WiFiSetupPage() {
               WiFi management requires a Raspberry Pi.
             </p>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Available Networks */}
-      <Card>
-        <CardContent className="pt-4 pb-2 px-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <span className="material-icons-outlined text-base text-muted-foreground">wifi_find</span>
-              <span className="font-semibold text-sm">Networks</span>
-              <span className="text-xs text-muted-foreground">
-                {networks.length > 0
-                  ? `(${networks.length})`
-                  : ''}
-              </span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 p-0"
-                onClick={openManualEntry}
-                title="Add network manually"
-              >
-                <span className="material-icons text-base">add</span>
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 p-0"
-                onClick={scanNetworks}
-                disabled={isScanning}
-              >
-                <span className={`material-icons text-base ${isScanning ? 'animate-spin' : ''}`}>
-                  refresh
-                </span>
-              </Button>
-            </div>
-          </div>
-          <div className="space-y-0.5">
-            {networks.length === 0 && isScanning && (
-              <p className="text-sm text-muted-foreground text-center py-3">
-                Scanning for networks...
-              </p>
-            )}
-            {networks.length === 0 && !isScanning && (
-              <p className="text-sm text-muted-foreground text-center py-3">
-                No networks found. Try scanning again.
-              </p>
-            )}
-            {networks.map((network) => (
-              <button
-                key={network.ssid}
-                onClick={() => openConnectDialog(network)}
-                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors hover:bg-muted/50
-                  ${network.active ? 'bg-green-50 dark:bg-green-950/20' : ''}`}
-              >
-                <SignalIcon signal={network.signal} />
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm truncate">{network.ssid}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {network.security}
-                    {network.saved && ' · Saved'}
-                    {network.active && ' · Connected'}
-                  </p>
-                </div>
-                <span className="text-xs text-muted-foreground">{network.signal}%</span>
-                {network.security !== 'Open' && (
-                  <span className="material-icons text-sm text-muted-foreground">lock</span>
-                )}
-              </button>
-            ))}
-          </div>
         </CardContent>
       </Card>
 
@@ -461,6 +412,79 @@ export function WiFiSetupPage() {
         </>
       )}
 
+      {/* Available Networks */}
+      <Card>
+        <CardContent className="pt-4 pb-2 px-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="material-icons-outlined text-base text-muted-foreground">wifi_find</span>
+              <span className="font-semibold text-sm">Networks</span>
+              <span className="text-xs text-muted-foreground">
+                {networks.length > 0
+                  ? `(${networks.length})`
+                  : ''}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                onClick={openManualEntry}
+                title="Add network manually"
+              >
+                <span className="material-icons text-base">add</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                onClick={scanNetworks}
+                disabled={isScanning}
+              >
+                <span className={`material-icons text-base ${isScanning ? 'animate-spin' : ''}`}>
+                  refresh
+                </span>
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-0.5">
+            {networks.length === 0 && isScanning && (
+              <p className="text-sm text-muted-foreground text-center py-3">
+                Scanning for networks...
+              </p>
+            )}
+            {networks.length === 0 && !isScanning && (
+              <p className="text-sm text-muted-foreground text-center py-3">
+                No networks found. Try scanning again.
+              </p>
+            )}
+            {networks.map((network) => (
+              <button
+                key={network.ssid}
+                onClick={() => openConnectDialog(network)}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors hover:bg-muted/50
+                  ${network.active ? 'bg-green-50 dark:bg-green-950/20' : ''}`}
+              >
+                <SignalIcon signal={network.signal} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm truncate">{network.ssid}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {network.security}
+                    {network.saved && ' · Saved'}
+                    {network.active && ' · Connected'}
+                  </p>
+                </div>
+                <span className="text-xs text-muted-foreground">{network.signal}%</span>
+                {network.security !== 'Open' && (
+                  <span className="material-icons text-sm text-muted-foreground">lock</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Forget Confirmation Dialog */}
       <Dialog open={forgetSsid !== null} onOpenChange={(open) => { if (!open) setForgetSsid(null) }}>
         <DialogContent className="sm:max-w-md">
@@ -564,23 +588,63 @@ export function WiFiSetupPage() {
               </div>
             )}
 
-            <Button
-              className="w-full"
-              onClick={handleConnect}
-              disabled={isConnecting || (isManualEntry && !manualSsid.trim()) || (!!needsPassword && !password)}
-            >
-              {isConnecting ? (
-                <>
-                  <span className="material-icons text-sm animate-spin mr-2">refresh</span>
-                  Connecting...
-                </>
-              ) : (
-                <>
-                  <span className="material-icons text-sm mr-2">wifi</span>
-                  Connect{isHotspotMode ? ' & Reboot' : ''}
-                </>
-              )}
-            </Button>
+            {isManualEntry ? (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={handleSave}
+                  disabled={isSaving || isConnecting || !manualSsid.trim() || (!!needsPassword && !password)}
+                >
+                  {isSaving ? (
+                    <>
+                      <span className="material-icons text-sm animate-spin mr-2">refresh</span>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-icons text-sm mr-2">bookmark_add</span>
+                      Save
+                    </>
+                  )}
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handleConnect}
+                  disabled={isConnecting || isSaving || !manualSsid.trim() || (!!needsPassword && !password)}
+                >
+                  {isConnecting ? (
+                    <>
+                      <span className="material-icons text-sm animate-spin mr-2">refresh</span>
+                      Connecting...
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-icons text-sm mr-2">wifi</span>
+                      Connect{isHotspotMode ? ' & Reboot' : ''}
+                    </>
+                  )}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                className="w-full"
+                onClick={handleConnect}
+                disabled={isConnecting || (!!needsPassword && !password)}
+              >
+                {isConnecting ? (
+                  <>
+                    <span className="material-icons text-sm animate-spin mr-2">refresh</span>
+                    Connecting...
+                  </>
+                ) : (
+                  <>
+                    <span className="material-icons text-sm mr-2">wifi</span>
+                    Connect{isHotspotMode ? ' & Reboot' : ''}
+                  </>
+                )}
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>

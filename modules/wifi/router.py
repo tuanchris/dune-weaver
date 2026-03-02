@@ -55,6 +55,18 @@ async def wifi_connect(req: WiFiConnectRequest):
     return result
 
 
+@router.post("/save")
+async def wifi_save(req: WiFiConnectRequest):
+    """Save a WiFi network without connecting."""
+    if not req.ssid:
+        raise HTTPException(status_code=400, detail="SSID is required")
+
+    result = manager.save_network(req.ssid, req.password or "")
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
+
+
 @router.post("/forget")
 async def wifi_forget(req: WiFiForgetRequest):
     """Forget a saved WiFi network."""
