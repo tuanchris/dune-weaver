@@ -6,6 +6,9 @@
 # hotspot when no known network is available. Users connect to the hotspot
 # and configure WiFi through the Dune Weaver app.
 #
+# DNS redirect for captive portal is handled by NetworkManager's built-in
+# dnsmasq (via dnsmasq-shared.d config), not a separate dnsmasq instance.
+#
 # Run: bash wifi/setup-wifi.sh
 # Or:  dw wifi setup
 #
@@ -27,7 +30,7 @@ HOTSPOT_CON_NAME="DuneWeaver-Hotspot"
 HOTSPOT_SSID="Dune Weaver"
 HOTSPOT_IP="10.42.0.1/24"
 IFACE="wlan0"
-CONF_DIR="/etc/dune-weaver"
+NM_DNSMASQ_DIR="/etc/NetworkManager/dnsmasq-shared.d"
 
 print_step() {
     echo -e "\n${BLUE}==>${NC} ${GREEN}$1${NC}"
@@ -63,23 +66,6 @@ check_prereqs() {
     print_success "Prerequisites OK"
 }
 
-# Install dnsmasq for DNS redirect (captive portal)
-install_dnsmasq() {
-    print_step "Installing dnsmasq..."
-
-    if command -v dnsmasq &>/dev/null; then
-        echo "dnsmasq already installed"
-    else
-        sudo apt update
-        sudo DEBIAN_FRONTEND=noninteractive apt install -y dnsmasq
-    fi
-
-    # Disable the default dnsmasq service — we manage it manually in autohotspot
-    sudo systemctl disable --now dnsmasq 2>/dev/null || true
-
-    print_success "dnsmasq installed and default service disabled"
-}
-
 # Create the NetworkManager hotspot connection profile
 create_hotspot_profile() {
     print_step "Creating hotspot connection profile..."
@@ -110,23 +96,30 @@ create_hotspot_profile() {
     print_success "Hotspot profile created: SSID='$ssid', IP=${HOTSPOT_IP%/*}"
 }
 
-# Copy configuration files
+# Install DNS redirect config for captive portal
+install_dns_redirect() {
+    print_step "Installing DNS redirect for captive portal..."
+
+    # NetworkManager's shared mode runs its own dnsmasq.
+    # Configs in dnsmasq-shared.d/ are loaded automatically when a shared
+    # connection is active. This redirects ALL DNS to the Pi's hotspot IP,
+    # triggering captive portal detection on phones/tablets.
+    sudo mkdir -p "$NM_DNSMASQ_DIR"
+    sudo cp "$SCRIPT_DIR/dnsmasq-hotspot.conf" "$NM_DNSMASQ_DIR/dune-weaver-captive.conf"
+
+    print_success "DNS redirect installed at $NM_DNSMASQ_DIR/dune-weaver-captive.conf"
+}
+
+# Copy autohotspot script and service
 install_configs() {
-    print_step "Installing configuration files..."
-
-    # Create config directory
-    sudo mkdir -p "$CONF_DIR"
-
-    # Copy dnsmasq config
-    sudo cp "$SCRIPT_DIR/dnsmasq-hotspot.conf" "$CONF_DIR/dnsmasq-hotspot.conf"
-    echo "Installed $CONF_DIR/dnsmasq-hotspot.conf"
+    print_step "Installing autohotspot script..."
 
     # Copy autohotspot script
     sudo cp "$SCRIPT_DIR/autohotspot" /usr/local/bin/autohotspot
     sudo chmod +x /usr/local/bin/autohotspot
     echo "Installed /usr/local/bin/autohotspot"
 
-    print_success "Configuration files installed"
+    print_success "Autohotspot script installed"
 }
 
 # Install and enable the systemd service
@@ -146,8 +139,8 @@ main() {
     echo ""
 
     check_prereqs
-    install_dnsmasq
     create_hotspot_profile
+    install_dns_redirect
     install_configs
     install_service
 

@@ -6,15 +6,16 @@
 # If a known WiFi network is found, connect to it.
 # If not, create a "Dune Weaver" hotspot so users can configure WiFi via the app.
 #
-# Requires: NetworkManager (Pi Trixie), dnsmasq (for DNS redirect in hotspot mode)
+# DNS redirect for captive portal is handled by NetworkManager's built-in
+# dnsmasq via config in /etc/NetworkManager/dnsmasq-shared.d/.
+#
+# Requires: NetworkManager (Pi Trixie)
 #
 
 set -euo pipefail
 
 HOTSPOT_CON_NAME="DuneWeaver-Hotspot"
 MODE_FILE="/tmp/dw-wifi-mode"
-DNSMASQ_CONF="/etc/dune-weaver/dnsmasq-hotspot.conf"
-DNSMASQ_PID="/run/dune-weaver-dnsmasq.pid"
 SCAN_TIMEOUT=30
 SCAN_INTERVAL=5
 IFACE="wlan0"
@@ -93,9 +94,6 @@ activate_client_mode() {
     # Deactivate hotspot if it's active
     nmcli con down "$HOTSPOT_CON_NAME" 2>/dev/null || true
 
-    # Stop DNS redirect if running
-    stop_dns_redirect
-
     # Connect
     if nmcli con up "$con_name" 2>/dev/null; then
         local ip
@@ -117,51 +115,17 @@ activate_hotspot_mode() {
     nmcli dev disconnect "$IFACE" 2>/dev/null || true
 
     # Activate the hotspot profile
+    # NM's shared mode starts built-in dnsmasq for DHCP+DNS.
+    # Our config in /etc/NetworkManager/dnsmasq-shared.d/ makes it
+    # redirect all DNS queries to 10.42.0.1 for captive portal detection.
     if nmcli con up "$HOTSPOT_CON_NAME" 2>/dev/null; then
         log "Hotspot active. SSID: $(nmcli -t -f 802-11-wireless.ssid con show "$HOTSPOT_CON_NAME" 2>/dev/null | cut -d: -f2)"
-
-        # Start DNS redirect for captive portal
-        start_dns_redirect
-
+        log "DNS redirect active via NM dnsmasq (captive portal mode)"
         echo "hotspot" > "$MODE_FILE"
         return 0
     else
         log "ERROR: Failed to activate hotspot"
         return 1
-    fi
-}
-
-# Start dnsmasq for DNS redirect (captive portal detection)
-start_dns_redirect() {
-    if [ ! -f "$DNSMASQ_CONF" ]; then
-        log "WARNING: dnsmasq config not found at $DNSMASQ_CONF"
-        return 1
-    fi
-
-    # Kill any existing dnsmasq instance we started
-    stop_dns_redirect
-
-    # Start dnsmasq with our config (DNS-only, no DHCP — NM handles DHCP)
-    # Use port 53 and bind to hotspot interface
-    dnsmasq --conf-file="$DNSMASQ_CONF" \
-             --interface="$IFACE" \
-             --bind-interfaces \
-             --pid-file="$DNSMASQ_PID" \
-             --log-facility=/var/log/dune-weaver-dns.log \
-             2>/dev/null
-
-    log "DNS redirect started (captive portal mode)"
-}
-
-# Stop our dnsmasq instance
-stop_dns_redirect() {
-    if [ -f "$DNSMASQ_PID" ]; then
-        local pid
-        pid=$(cat "$DNSMASQ_PID" 2>/dev/null || true)
-        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            kill "$pid" 2>/dev/null || true
-        fi
-        rm -f "$DNSMASQ_PID"
     fi
 }
 

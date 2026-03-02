@@ -113,6 +113,10 @@ export default defineConfig({
       },
       // All /api endpoints
       '/api': 'http://localhost:8080',
+      // Captive portal detection probes (hotspot mode)
+      '/hotspot-detect.html': 'http://localhost:8080',
+      '/generate_204': 'http://localhost:8080',
+      '/connecttest.txt': 'http://localhost:8080',
       // Static assets
       '/static': 'http://localhost:8080',
       // Preview images

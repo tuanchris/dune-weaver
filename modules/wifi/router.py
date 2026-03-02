@@ -2,7 +2,8 @@
 FastAPI router for WiFi management endpoints.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
 import logging
@@ -12,6 +13,9 @@ from . import manager
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/wifi", tags=["wifi"])
+
+# Separate router for the captive portal handler (no prefix)
+captive_portal_router = APIRouter(tags=["wifi"])
 
 
 class WiFiConnectRequest(BaseModel):
@@ -63,3 +67,55 @@ async def wifi_forget(req: WiFiForgetRequest):
 async def wifi_saved():
     """Get list of saved WiFi connections."""
     return manager.get_saved_connections()
+
+
+# --- Captive portal detection endpoints ---
+# These handle the well-known URLs that phones/tablets probe to detect captive portals.
+# In hotspot mode, DNS redirects all domains to the Pi, so these probes arrive here.
+# We serve a minimal HTML page that redirects to the WiFi setup page.
+
+CAPTIVE_PORTAL_HTML = """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dune Weaver - WiFi Setup</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+               display: flex; justify-content: center; align-items: center;
+               min-height: 100vh; background: #0a0a0a; color: #fafafa; padding: 1rem; }
+        .card { background: #1a1a1a; border-radius: 12px; padding: 2rem;
+                max-width: 400px; width: 100%; text-align: center; }
+        h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+        p { color: #888; margin-bottom: 1.5rem; font-size: 0.9rem; }
+        a { display: inline-block; background: #3b82f6; color: white; padding: 0.75rem 2rem;
+            border-radius: 8px; text-decoration: none; font-weight: 500; }
+        a:hover { background: #2563eb; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Welcome to Dune Weaver</h1>
+        <p>Connect to your home WiFi to get started.</p>
+        <a href="/wifi-setup">Set Up WiFi</a>
+    </div>
+</body>
+</html>"""
+
+
+@captive_portal_router.get("/hotspot-detect.html", response_class=HTMLResponse)
+@captive_portal_router.get("/generate_204", response_class=HTMLResponse)
+@captive_portal_router.get("/connecttest.txt", response_class=HTMLResponse)
+@captive_portal_router.get("/ncsi.txt", response_class=HTMLResponse)
+@captive_portal_router.get("/redirect", response_class=HTMLResponse)
+@captive_portal_router.get("/canonical.html", response_class=HTMLResponse)
+async def captive_portal_detect():
+    """Handle captive portal detection probes.
+
+    Phones and tablets check these well-known URLs after connecting to WiFi.
+    In hotspot mode, DNS resolves all domains to the Pi, so these probes
+    arrive at our server. Returning anything other than the expected response
+    triggers the OS to show a captive portal browser.
+    """
+    return HTMLResponse(content=CAPTIVE_PORTAL_HTML, status_code=200)
