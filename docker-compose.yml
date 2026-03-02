@@ -33,6 +33,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # Mount timezone file from host for scheduling features
       - /etc/timezone:/etc/host-timezone:ro
+      # Mount hostname for WiFi module to report host identity
+      - /etc/hostname:/etc/host-hostname:ro
       # Mount systemd for host shutdown capability
       - /run/systemd/system:/run/systemd/system:ro
       - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket:ro

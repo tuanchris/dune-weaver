@@ -2,18 +2,19 @@
 WiFi management via NetworkManager (nmcli).
 
 Handles scanning, connecting, and managing WiFi connections.
-Supports both Docker (via nsenter) and direct (venv) execution.
+In Docker, nmcli communicates with the host's NetworkManager over the
+mounted D-Bus system socket — same mechanism systemctl uses for shutdown.
 """
 
 import subprocess
 import os
 import logging
 import asyncio
-import socket
 
 logger = logging.getLogger(__name__)
 
-MODE_FILE = "/tmp/dw-wifi-mode"
+HOST_HOSTNAME_FILE = "/etc/host-hostname"
+HOTSPOT_CON_NAME = "DuneWeaver-Hotspot"
 
 
 def is_docker() -> bool:
@@ -21,50 +22,59 @@ def is_docker() -> bool:
     return os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER") == "1"
 
 
-def run_host_command(*args: str, timeout: int = 30) -> subprocess.CompletedProcess:
-    """Run a command on the host, handling Docker vs venv.
+def run_nmcli(*args: str, timeout: int = 30) -> str:
+    """Run nmcli and return stdout.
 
-    In Docker: uses nsenter to execute in the host's namespaces.
-    In venv: executes directly.
+    In both Docker and venv modes, nmcli runs directly. In Docker, it
+    communicates with the host's NetworkManager via the mounted D-Bus
+    system bus socket (/var/run/dbus/system_bus_socket).
     """
-    if is_docker():
-        # In privileged Docker, /proc/1/root gives access to the host filesystem.
-        # We chroot into it so commands like nmcli resolve from the host.
-        shell_cmd = " ".join(f"'{a}'" if " " in a else a for a in args)
-        cmd = ["chroot", "/proc/1/root", "/bin/sh", "-c", shell_cmd]
-    else:
-        cmd = list(args)
-
-    logger.info(f"Running host command: {' '.join(cmd)}")
+    cmd = ["nmcli"] + list(args)
+    logger.debug(f"Running nmcli: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
     if result.returncode != 0:
-        logger.warning(f"Command failed (rc={result.returncode}): {' '.join(cmd)}")
+        logger.warning(f"nmcli failed (rc={result.returncode}): {' '.join(cmd)}")
         if result.stderr:
             logger.warning(f"  stderr: {result.stderr.strip()}")
-        if result.stdout:
-            logger.warning(f"  stdout: {result.stdout.strip()}")
+
+    return result.stdout
+
+
+def run_nmcli_check(*args: str, timeout: int = 30) -> subprocess.CompletedProcess:
+    """Run nmcli and return the full CompletedProcess (for checking returncode)."""
+    cmd = ["nmcli"] + list(args)
+    logger.debug(f"Running nmcli: {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+
+    if result.returncode != 0:
+        logger.warning(f"nmcli failed (rc={result.returncode}): {' '.join(cmd)}")
+        if result.stderr:
+            logger.warning(f"  stderr: {result.stderr.strip()}")
 
     return result
 
 
-def run_nmcli(*args: str, timeout: int = 30) -> str:
-    """Run nmcli on the host and return stdout."""
-    result = run_host_command("nmcli", *args, timeout=timeout)
-    return result.stdout
-
-
 def get_wifi_mode() -> str:
-    """Get the current WiFi mode from the mode file."""
+    """Detect WiFi mode by querying NetworkManager state.
+
+    Checks which connection is active on wlan0 — if it's the hotspot
+    profile, we're in hotspot mode; if it's another wifi connection,
+    we're in client mode.
+    """
     try:
-        if is_docker():
-            result = run_host_command("cat", MODE_FILE)
-            return result.stdout.strip() or "unknown"
-        else:
-            with open(MODE_FILE, "r") as f:
-                return f.read().strip() or "unknown"
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return "unknown"
+        output = run_nmcli("-t", "-f", "GENERAL.CONNECTION", "dev", "show", "wlan0")
+        for line in output.strip().splitlines():
+            if "GENERAL.CONNECTION" in line:
+                con_name = line.split(":", 1)[1] if ":" in line else ""
+                if con_name == HOTSPOT_CON_NAME:
+                    return "hotspot"
+                elif con_name and con_name != "--":
+                    return "client"
+                return "unknown"
+    except (subprocess.TimeoutExpired, Exception) as e:
+        logger.debug(f"Error detecting WiFi mode: {e}")
+    return "unknown"
 
 
 def get_current_ssid() -> str:
@@ -74,7 +84,7 @@ def get_current_ssid() -> str:
         for line in output.strip().splitlines():
             if "GENERAL.CONNECTION" in line:
                 ssid = line.split(":", 1)[1] if ":" in line else ""
-                if ssid and ssid != "--" and ssid != "DuneWeaver-Hotspot":
+                if ssid and ssid != "--" and ssid != HOTSPOT_CON_NAME:
                     return ssid
     except (subprocess.TimeoutExpired, Exception) as e:
         logger.debug(f"Error getting SSID: {e}")
@@ -96,16 +106,25 @@ def get_current_ip() -> str:
 
 
 def get_hostname() -> str:
-    """Get the host system hostname (not the container hostname)."""
+    """Get the host system hostname.
+
+    In Docker, reads from the mounted /etc/host-hostname file to get the
+    real host identity instead of the container ID.
+    """
     try:
-        if is_docker():
-            result = run_host_command("hostname")
-            name = result.stdout.strip()
-            if name:
-                return name
-        return socket.gethostname()
+        if is_docker() and os.path.exists(HOST_HOSTNAME_FILE):
+            with open(HOST_HOSTNAME_FILE, "r") as f:
+                name = f.read().strip()
+                if name:
+                    return name
+        # Fallback: use nmcli to query NM's hostname
+        output = run_nmcli("general", "hostname")
+        name = output.strip()
+        if name:
+            return name
     except Exception:
-        return "duneweaver"
+        pass
+    return "duneweaver"
 
 
 def get_wifi_status() -> dict:
@@ -196,7 +215,7 @@ def get_saved_connections() -> list[dict]:
         if "wireless" not in line:
             continue
         name = line.split(":")[0]
-        if name == "DuneWeaver-Hotspot":
+        if name == HOTSPOT_CON_NAME:
             continue
 
         # Get the SSID for this connection
@@ -229,12 +248,12 @@ async def connect_to_network(ssid: str, password: str) -> dict:
     """
     try:
         # Delete any stale connection profile for this SSID
-        run_host_command("nmcli", "con", "delete", ssid, timeout=10)
+        run_nmcli_check("con", "delete", ssid, timeout=10)
 
         # Create connection profile with explicit security settings
         if password:
-            result = run_host_command(
-                "nmcli", "con", "add",
+            result = run_nmcli_check(
+                "con", "add",
                 "type", "wifi",
                 "ifname", "wlan0",
                 "con-name", ssid,
@@ -244,8 +263,8 @@ async def connect_to_network(ssid: str, password: str) -> dict:
                 timeout=15,
             )
         else:
-            result = run_host_command(
-                "nmcli", "con", "add",
+            result = run_nmcli_check(
+                "con", "add",
                 "type", "wifi",
                 "ifname", "wlan0",
                 "con-name", ssid,
@@ -259,16 +278,13 @@ async def connect_to_network(ssid: str, password: str) -> dict:
             return {"success": False, "message": error_msg}
 
         # Activate the connection
-        result = run_host_command(
-            "nmcli", "con", "up", ssid,
-            timeout=30,
-        )
+        result = run_nmcli_check("con", "up", ssid, timeout=30)
 
         if result.returncode != 0:
             error_msg = result.stderr.strip() or "Failed to connect"
             logger.error(f"WiFi connect failed: {error_msg}")
             # Clean up the failed connection profile
-            run_host_command("nmcli", "con", "delete", ssid, timeout=10)
+            run_nmcli_check("con", "delete", ssid, timeout=10)
             return {"success": False, "message": error_msg}
 
         logger.info(f"WiFi connection to '{ssid}' successful, scheduling reboot...")
@@ -289,10 +305,12 @@ async def connect_to_network(ssid: str, password: str) -> dict:
 
 
 def _schedule_reboot():
-    """Trigger a system reboot."""
+    """Trigger a system reboot via systemctl (communicates over D-Bus)."""
     try:
         logger.info("Rebooting system for WiFi mode change...")
-        run_host_command("reboot")
+        subprocess.run(["systemctl", "reboot"], check=True)
+    except FileNotFoundError:
+        logger.error("systemctl not found — ensure systemd is installed in container")
     except Exception as e:
         logger.error(f"Reboot failed: {e}")
 
@@ -310,7 +328,7 @@ def forget_network(ssid: str) -> dict:
         return {"success": False, "message": f"No saved connection found for '{ssid}'"}
 
     try:
-        result = run_host_command("nmcli", "con", "delete", con_name, timeout=15)
+        result = run_nmcli_check("con", "delete", con_name, timeout=15)
         if result.returncode == 0:
             logger.info(f"Forgot WiFi network '{ssid}' (connection: {con_name})")
             return {"success": True, "message": f"Forgot '{ssid}'"}

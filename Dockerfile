@@ -17,6 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libgpiod2 libgpiod-dev \
         scons \
         systemd \
+        # nmcli for WiFi management (talks to host NetworkManager via mounted dbus socket)
+        network-manager \
         # Docker CLI for container self-restart/update
         ca-certificates curl gnupg \
     && pip install --upgrade pip \
