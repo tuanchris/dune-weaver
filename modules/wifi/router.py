@@ -27,6 +27,10 @@ class WiFiForgetRequest(BaseModel):
     ssid: str
 
 
+class HotspotPasswordRequest(BaseModel):
+    password: Optional[str] = ""
+
+
 @router.get("/status")
 async def wifi_status():
     """Get current WiFi mode, connection, and IP."""
@@ -67,6 +71,21 @@ async def wifi_forget(req: WiFiForgetRequest):
 async def wifi_saved():
     """Get list of saved WiFi connections."""
     return manager.get_saved_connections()
+
+
+@router.get("/hotspot/password")
+async def get_hotspot_password():
+    """Get the current hotspot password."""
+    return manager.get_hotspot_password()
+
+
+@router.post("/hotspot/password")
+async def set_hotspot_password(req: HotspotPasswordRequest):
+    """Set or remove the hotspot password."""
+    result = manager.set_hotspot_password(req.password or "")
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
 
 
 # --- Captive portal detection endpoints ---

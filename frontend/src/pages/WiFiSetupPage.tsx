@@ -12,6 +12,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -55,6 +56,13 @@ export function WiFiSetupPage() {
   const [isScanning, setIsScanning] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [isRebooting, setIsRebooting] = useState(false)
+  const [isManualEntry, setIsManualEntry] = useState(false)
+  const [manualSsid, setManualSsid] = useState('')
+  const [forgetSsid, setForgetSsid] = useState<string | null>(null)
+  const [apPassword, setApPassword] = useState('')
+  const [apPasswordInput, setApPasswordInput] = useState('')
+  const [showApPassword, setShowApPassword] = useState(false)
+  const [isSavingApPassword, setIsSavingApPassword] = useState(false)
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -69,6 +77,16 @@ export function WiFiSetupPage() {
     try {
       const data = await apiClient.get<SavedConnection[]>('/api/wifi/saved')
       setSavedConnections(data)
+    } catch {
+      // Silently fail
+    }
+  }, [])
+
+  const fetchApPassword = useCallback(async () => {
+    try {
+      const data = await apiClient.get<{ password: string }>('/api/wifi/hotspot/password')
+      setApPassword(data.password)
+      setApPasswordInput(data.password)
     } catch {
       // Silently fail
     }
@@ -90,19 +108,21 @@ export function WiFiSetupPage() {
     fetchStatus()
     scanNetworks()
     fetchSaved()
-  }, [fetchStatus, scanNetworks, fetchSaved])
+    fetchApPassword()
+  }, [fetchStatus, scanNetworks, fetchSaved, fetchApPassword])
 
-  const needsPassword = selectedNetwork &&
+  const needsPassword = isManualEntry || (selectedNetwork &&
     selectedNetwork.security !== 'Open' &&
-    !selectedNetwork.saved
+    !selectedNetwork.saved)
 
   const handleConnect = async () => {
-    if (!selectedNetwork) return
+    const ssid = isManualEntry ? manualSsid.trim() : selectedNetwork?.ssid
+    if (!ssid) return
 
     setIsConnecting(true)
     try {
       const result = await apiClient.post<{ success: boolean; message: string }>('/api/wifi/connect', {
-        ssid: selectedNetwork.ssid,
+        ssid,
         password: needsPassword ? password : '',
       })
 
@@ -118,7 +138,10 @@ export function WiFiSetupPage() {
     }
   }
 
-  const handleForget = async (ssid: string) => {
+  const handleForget = async () => {
+    if (!forgetSsid) return
+    const ssid = forgetSsid
+    setForgetSsid(null)
     try {
       await apiClient.post('/api/wifi/forget', { ssid })
       toast.success(`Forgot '${ssid}'`)
@@ -126,6 +149,28 @@ export function WiFiSetupPage() {
       scanNetworks()
     } catch {
       toast.error('Failed to forget network')
+    }
+  }
+
+  const isForgetActive = forgetSsid === status?.ssid
+  const otherSavedCount = savedConnections.filter(c => c.ssid !== forgetSsid).length
+  const willStartHotspot = isForgetActive && otherSavedCount === 0
+
+  const handleSaveApPassword = async () => {
+    setIsSavingApPassword(true)
+    try {
+      const result = await apiClient.post<{ success: boolean; message: string }>('/api/wifi/hotspot/password', {
+        password: apPasswordInput,
+      })
+      if (result.success) {
+        setApPassword(apPasswordInput)
+        toast.success(result.message)
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update password'
+      toast.error(message)
+    } finally {
+      setIsSavingApPassword(false)
     }
   }
 
@@ -140,7 +185,17 @@ export function WiFiSetupPage() {
       setSelectedNetwork(null)
       setPassword('')
       setShowPassword(false)
+      setIsManualEntry(false)
+      setManualSsid('')
     }
+  }
+
+  const openManualEntry = () => {
+    setIsManualEntry(true)
+    setManualSsid('')
+    setPassword('')
+    setShowPassword(false)
+    setSelectedNetwork({ ssid: '', signal: 0, security: 'Manual', saved: false, active: false })
   }
 
   const isHotspotMode = status?.mode === 'hotspot'
@@ -154,7 +209,7 @@ export function WiFiSetupPage() {
               <span className="material-icons text-5xl text-blue-500 animate-spin">refresh</span>
               <h2 className="text-xl font-semibold">Rebooting...</h2>
               <p className="text-muted-foreground">
-                The system is rebooting to connect to <strong>{selectedNetwork?.ssid}</strong>.
+                The system is rebooting to connect to <strong>{isManualEntry ? manualSsid : selectedNetwork?.ssid}</strong>.
               </p>
               <p className="text-sm text-muted-foreground">
                 Once connected, access Dune Weaver on your home network at:
@@ -243,17 +298,28 @@ export function WiFiSetupPage() {
                   : ''}
               </span>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0"
-              onClick={scanNetworks}
-              disabled={isScanning}
-            >
-              <span className={`material-icons text-base ${isScanning ? 'animate-spin' : ''}`}>
-                refresh
-              </span>
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                onClick={openManualEntry}
+                title="Add network manually"
+              >
+                <span className="material-icons text-base">add</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                onClick={scanNetworks}
+                disabled={isScanning}
+              >
+                <span className={`material-icons text-base ${isScanning ? 'animate-spin' : ''}`}>
+                  refresh
+                </span>
+              </Button>
+            </div>
           </div>
           <div className="space-y-0.5">
             {networks.length === 0 && isScanning && (
@@ -314,7 +380,7 @@ export function WiFiSetupPage() {
                     variant="ghost"
                     size="sm"
                     className="h-7 w-7 p-0"
-                    onClick={() => handleForget(con.ssid)}
+                    onClick={() => setForgetSsid(con.ssid)}
                   >
                     <span className="material-icons text-sm text-destructive">delete</span>
                   </Button>
@@ -324,6 +390,62 @@ export function WiFiSetupPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Hotspot Password */}
+      <Card>
+        <CardContent className="pt-4 pb-3 px-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="material-icons-outlined text-base text-muted-foreground">wifi_tethering</span>
+            <span className="font-semibold text-sm">Hotspot Password</span>
+            {!apPassword && (
+              <Badge variant="secondary" className="text-xs px-1.5 py-0">Open</Badge>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            Set a password for the Dune Weaver hotspot. Leave empty for an open network.
+          </p>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Input
+                type={showApPassword ? 'text' : 'password'}
+                value={apPasswordInput}
+                onChange={(e) => setApPasswordInput(e.target.value)}
+                placeholder="No password (open)"
+                className="pr-8 h-8 text-sm"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && apPasswordInput !== apPassword) handleSaveApPassword()
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowApPassword(!showApPassword)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <span className="material-icons text-sm">
+                  {showApPassword ? 'visibility_off' : 'visibility'}
+                </span>
+              </button>
+            </div>
+            <Button
+              size="sm"
+              className="h-8"
+              onClick={handleSaveApPassword}
+              disabled={isSavingApPassword || apPasswordInput === apPassword || (apPasswordInput.length > 0 && apPasswordInput.length < 8)}
+            >
+              {isSavingApPassword ? (
+                <span className="material-icons text-sm animate-spin">refresh</span>
+              ) : (
+                'Save'
+              )}
+            </Button>
+          </div>
+          {apPasswordInput && apPasswordInput.length < 8 && apPasswordInput.length > 0 && (
+            <p className="text-xs text-destructive mt-1">
+              Password must be at least 8 characters
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Help */}
       {isHotspotMode && (
@@ -339,21 +461,81 @@ export function WiFiSetupPage() {
         </>
       )}
 
+      {/* Forget Confirmation Dialog */}
+      <Dialog open={forgetSsid !== null} onOpenChange={(open) => { if (!open) setForgetSsid(null) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Forget '{forgetSsid}'?</DialogTitle>
+            <DialogDescription>
+              {willStartHotspot ? (
+                <>
+                  This is your only saved network. Forgetting it will start the
+                  {' '}<strong>Dune Weaver</strong> hotspot. Connect to the Dune Weaver WiFi to access this page again.
+                </>
+              ) : isForgetActive ? (
+                <>
+                  You are currently connected to this network. The system will
+                  try the next saved network, or start the hotspot if none are in range.
+                </>
+              ) : (
+                'The saved credentials for this network will be removed.'
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-row gap-2 sm:justify-end">
+            <Button variant="outline" onClick={() => setForgetSsid(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleForget}>
+              Forget
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Connect Dialog */}
       <Dialog open={selectedNetwork !== null} onOpenChange={(open) => { if (!open) closeDialog() }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              {selectedNetwork && <SignalIcon signal={selectedNetwork.signal} />}
-              {selectedNetwork?.ssid}
+              {isManualEntry ? (
+                <>
+                  <span className="material-icons text-lg text-muted-foreground">add_circle_outline</span>
+                  Add Network
+                </>
+              ) : (
+                <>
+                  {selectedNetwork && <SignalIcon signal={selectedNetwork.signal} />}
+                  {selectedNetwork?.ssid}
+                </>
+              )}
             </DialogTitle>
             <DialogDescription>
-              {selectedNetwork?.security !== 'Open' ? 'Secured network' : 'Open network'}
-              {selectedNetwork?.saved && ' · Saved'}
+              {isManualEntry
+                ? 'Enter the network name and password'
+                : <>
+                    {selectedNetwork?.security !== 'Open' ? 'Secured network' : 'Open network'}
+                    {selectedNetwork?.saved && ' · Saved'}
+                  </>
+              }
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
+            {isManualEntry && (
+              <div className="space-y-2">
+                <Label htmlFor="wifi-ssid">Network Name (SSID)</Label>
+                <Input
+                  id="wifi-ssid"
+                  type="text"
+                  value={manualSsid}
+                  onChange={(e) => setManualSsid(e.target.value)}
+                  placeholder="Enter network name"
+                  autoFocus
+                />
+              </div>
+            )}
+
             {needsPassword && (
               <div className="space-y-2">
                 <Label htmlFor="wifi-password">Password</Label>
@@ -364,7 +546,7 @@ export function WiFiSetupPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter WiFi password"
-                    autoFocus
+                    autoFocus={!isManualEntry}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && password) handleConnect()
                     }}
@@ -385,7 +567,7 @@ export function WiFiSetupPage() {
             <Button
               className="w-full"
               onClick={handleConnect}
-              disabled={isConnecting || (!!needsPassword && !password)}
+              disabled={isConnecting || (isManualEntry && !manualSsid.trim()) || (!!needsPassword && !password)}
             >
               {isConnecting ? (
                 <>

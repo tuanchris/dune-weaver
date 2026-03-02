@@ -359,6 +359,60 @@ def forget_network(ssid: str) -> dict:
         return {"success": False, "message": str(e)}
 
 
+def get_hotspot_password() -> dict:
+    """Get the current hotspot password (empty string if open network)."""
+    try:
+        output = run_nmcli("-s", "-t", "-f", "802-11-wireless-security.psk",
+                           "con", "show", HOTSPOT_CON_NAME)
+        for line in output.strip().splitlines():
+            if "802-11-wireless-security.psk" in line:
+                psk = line.split(":", 1)[1] if ":" in line else ""
+                return {"password": psk}
+        return {"password": ""}
+    except Exception as e:
+        logger.error(f"Error getting hotspot password: {e}")
+        return {"password": ""}
+
+
+def set_hotspot_password(password: str) -> dict:
+    """Set or remove the hotspot password.
+
+    If password is non-empty, enables WPA-PSK. If empty, removes security
+    (open network). Restarts the hotspot if it's currently active.
+    """
+    try:
+        if password:
+            if len(password) < 8:
+                return {"success": False, "message": "Password must be at least 8 characters"}
+            result = run_nmcli_check(
+                "con", "modify", HOTSPOT_CON_NAME,
+                "wifi-sec.key-mgmt", "wpa-psk",
+                "wifi-sec.psk", password,
+            )
+        else:
+            # Remove security settings entirely to make it an open network
+            result = run_nmcli_check(
+                "con", "modify", HOTSPOT_CON_NAME,
+                "remove", "802-11-wireless-security",
+            )
+
+        if result.returncode != 0:
+            error_msg = result.stderr.strip() or "Failed to update hotspot password"
+            return {"success": False, "message": error_msg}
+
+        # Restart hotspot if currently active so changes take effect
+        if get_wifi_mode() == "hotspot":
+            run_nmcli_check("con", "down", HOTSPOT_CON_NAME, timeout=10)
+            run_nmcli_check("con", "up", HOTSPOT_CON_NAME, timeout=10)
+
+        msg = "Hotspot password updated" if password else "Hotspot password removed (open network)"
+        logger.info(msg)
+        return {"success": True, "message": msg}
+    except Exception as e:
+        logger.error(f"Error setting hotspot password: {e}")
+        return {"success": False, "message": str(e)}
+
+
 def _trigger_autohotspot():
     """Trigger an immediate autohotspot check.
 
