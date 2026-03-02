@@ -56,36 +56,38 @@ def run_nmcli_check(*args: str, timeout: int = 30) -> subprocess.CompletedProces
 
 
 def get_wifi_mode() -> str:
-    """Detect WiFi mode by querying NetworkManager state.
+    """Detect WiFi mode by querying NetworkManager active connections.
 
-    Checks which connection is active on wlan0 — if it's the hotspot
-    profile, we're in hotspot mode; if it's another wifi connection,
-    we're in client mode.
+    Uses 'nmcli con show --active' instead of 'nmcli dev show wlan0'
+    because the latter can behave differently in AP (hotspot) mode
+    across NM versions.
     """
     try:
-        output = run_nmcli("-t", "-f", "GENERAL.CONNECTION", "dev", "show", "wlan0")
+        output = run_nmcli("-t", "-f", "NAME,TYPE,DEVICE", "con", "show", "--active")
+        logger.info(f"Active connections: {output.strip()}")
         for line in output.strip().splitlines():
-            if "GENERAL.CONNECTION" in line:
-                con_name = line.split(":", 1)[1] if ":" in line else ""
+            parts = line.split(":")
+            if len(parts) >= 3 and parts[2] == "wlan0":
+                con_name = parts[0]
                 if con_name == HOTSPOT_CON_NAME:
                     return "hotspot"
-                elif con_name and con_name != "--":
-                    return "client"
-                return "unknown"
+                return "client"
     except (subprocess.TimeoutExpired, Exception) as e:
-        logger.debug(f"Error detecting WiFi mode: {e}")
+        logger.warning(f"Error detecting WiFi mode: {e}")
     return "unknown"
 
 
 def get_current_ssid() -> str:
     """Get the SSID of the currently connected WiFi network."""
     try:
-        output = run_nmcli("-t", "-f", "GENERAL.CONNECTION", "dev", "show", "wlan0")
+        # Use active connections to find the wifi connection on wlan0
+        output = run_nmcli("-t", "-f", "NAME,TYPE,DEVICE", "con", "show", "--active")
         for line in output.strip().splitlines():
-            if "GENERAL.CONNECTION" in line:
-                ssid = line.split(":", 1)[1] if ":" in line else ""
-                if ssid and ssid != "--" and ssid != HOTSPOT_CON_NAME:
-                    return ssid
+            parts = line.split(":")
+            if len(parts) >= 3 and parts[2] == "wlan0":
+                con_name = parts[0]
+                if con_name and con_name != HOTSPOT_CON_NAME:
+                    return con_name
     except (subprocess.TimeoutExpired, Exception) as e:
         logger.debug(f"Error getting SSID: {e}")
     return ""
@@ -95,6 +97,7 @@ def get_current_ip() -> str:
     """Get the current IP address of the wlan0 interface."""
     try:
         output = run_nmcli("-t", "-f", "IP4.ADDRESS", "dev", "show", "wlan0")
+        logger.debug(f"IP output: {output.strip()}")
         for line in output.strip().splitlines():
             if "IP4.ADDRESS" in line:
                 addr = line.split(":", 1)[1] if ":" in line else ""
