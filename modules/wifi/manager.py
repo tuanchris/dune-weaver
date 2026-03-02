@@ -322,7 +322,15 @@ def _schedule_reboot():
 
 
 def forget_network(ssid: str) -> dict:
-    """Delete a saved WiFi connection by SSID."""
+    """Delete a saved WiFi connection by SSID.
+
+    If the forgotten network was the active connection, triggers the
+    autohotspot script to re-evaluate and fall back to hotspot mode.
+    """
+    # Check if this is the currently active connection
+    current_ssid = get_current_ssid()
+    was_active = current_ssid == ssid or current_ssid == ssid.replace(" ", "")
+
     saved = get_saved_connections()
     con_name = None
     for con in saved:
@@ -337,9 +345,39 @@ def forget_network(ssid: str) -> dict:
         result = run_nmcli_check("con", "delete", con_name, timeout=15)
         if result.returncode == 0:
             logger.info(f"Forgot WiFi network '{ssid}' (connection: {con_name})")
+
+            # If we just forgot the active connection, re-run autohotspot
+            # so it can fall back to hotspot mode
+            if was_active:
+                _trigger_autohotspot()
+
             return {"success": True, "message": f"Forgot '{ssid}'"}
         else:
             error_msg = result.stderr.strip() or "Failed to delete connection"
             return {"success": False, "message": error_msg}
     except Exception as e:
         return {"success": False, "message": str(e)}
+
+
+def _trigger_autohotspot():
+    """Re-run the autohotspot script to re-evaluate WiFi mode.
+
+    Called when the active network is forgotten, so the system can
+    fall back to hotspot mode if no other known networks are available.
+    """
+    autohotspot_path = "/usr/local/bin/autohotspot"
+    try:
+        if os.path.exists(autohotspot_path):
+            logger.info("Re-running autohotspot after forgetting active network...")
+            subprocess.Popen(
+                [autohotspot_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            # Fallback: directly activate hotspot if autohotspot script not found
+            logger.info("Autohotspot script not found, activating hotspot directly...")
+            run_nmcli("dev", "disconnect", "wlan0")
+            run_nmcli("con", "up", HOTSPOT_CON_NAME)
+    except Exception as e:
+        logger.error(f"Failed to trigger autohotspot: {e}")
