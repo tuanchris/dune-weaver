@@ -270,6 +270,62 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(idle_timeout_monitor())
 
+    # Start Still Sands LED monitor for idle table
+    async def still_sands_led_monitor():
+        """Monitor Still Sands transitions when the table is idle and no playlist is running.
+
+        Handles the case where a Still Sands period starts/ends while the table is completely
+        idle (no pattern or playlist active). Without this, LEDs would stay on all night
+        if the table was idle when the quiet period began.
+        """
+        import time
+        from modules.core.pattern_manager import is_in_scheduled_pause_period, start_idle_led_timeout
+        from modules.led.idle_timeout_manager import idle_timeout_manager
+
+        was_in_still_sands = False
+        while True:
+            try:
+                await asyncio.sleep(30)  # Check every 30 seconds
+
+                # Skip if LED control during Still Sands is disabled
+                if not state.scheduled_pause_control_wled:
+                    was_in_still_sands = False
+                    continue
+
+                # Skip if no LED controller configured
+                if not state.led_controller or not state.led_controller.is_configured:
+                    was_in_still_sands = False
+                    continue
+
+                # Skip if a pattern or playlist is actively running —
+                # the pattern_manager handles Still Sands in that case
+                is_playing = bool(state.current_playing_file or state.current_playlist)
+                if is_playing:
+                    was_in_still_sands = False
+                    continue
+
+                in_still_sands = is_in_scheduled_pause_period()
+
+                if in_still_sands and not was_in_still_sands:
+                    # Entering Still Sands while idle — turn off LEDs
+                    status = state.led_controller.check_status()
+                    is_powered_on = status.get("power", False) or status.get("power_on", False)
+                    if is_powered_on:
+                        logger.info("Still Sands period started while idle, turning off LEDs")
+                        state.led_controller.set_power(0)
+                elif not in_still_sands and was_in_still_sands:
+                    # Leaving Still Sands while idle — restore idle effect and restart timeout
+                    logger.info("Still Sands period ended while idle, restoring idle LED effect")
+                    await start_idle_led_timeout(check_still_sands=False)
+
+                was_in_still_sands = in_still_sands
+
+            except Exception as e:
+                logger.error(f"Error in Still Sands LED monitor: {e}")
+                await asyncio.sleep(60)  # Wait longer on error
+
+    asyncio.create_task(still_sands_led_monitor())
+
     yield  # This separates startup from shutdown code
 
     # Shutdown
