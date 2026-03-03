@@ -180,9 +180,12 @@ async def lifespan(app: FastAPI):
             # Initialize hardware and start idle effect (matches behavior of /set_led_config)
             status = state.led_controller.check_status()
             if status.get("connected", False):
-                state.led_controller.effect_idle(state.dw_led_idle_effect)
-                _start_idle_led_timeout()
-                logger.info("DW LEDs hardware initialized and idle effect started")
+                if state.led_automation_enabled:
+                    state.led_controller.effect_idle(state.dw_led_idle_effect)
+                    _start_idle_led_timeout()
+                    logger.info("DW LEDs hardware initialized and idle effect started")
+                else:
+                    logger.info("DW LEDs hardware initialized (manual mode, no auto-effect)")
             else:
                 error_msg = status.get("error", "Unknown error")
                 logger.warning(f"DW LED hardware initialization failed: {error_msg}")
@@ -232,6 +235,9 @@ async def lifespan(app: FastAPI):
                 await asyncio.sleep(30)  # Check every 30 seconds
 
                 if not state.dw_led_idle_timeout_enabled:
+                    continue
+
+                if not state.led_automation_enabled:
                     continue
 
                 if not state.led_controller or not state.led_controller.is_configured:
@@ -315,8 +321,11 @@ async def lifespan(app: FastAPI):
                         state.led_controller.set_power(0)
                 elif not in_still_sands and was_in_still_sands:
                     # Leaving Still Sands while idle — restore idle effect and restart timeout
-                    logger.info("Still Sands period ended while idle, restoring idle LED effect")
-                    await start_idle_led_timeout(check_still_sands=False)
+                    if state.led_automation_enabled:
+                        logger.info("Still Sands period ended while idle, restoring idle LED effect")
+                        await start_idle_led_timeout(check_still_sands=False)
+                    else:
+                        logger.info("Manual mode: Still Sands ended, LEDs remain off")
 
                 was_in_still_sands = in_still_sands
 
@@ -492,6 +501,7 @@ class DwLedSettingsUpdate(BaseModel):
 class LedSettingsUpdate(BaseModel):
     provider: Optional[str] = None  # "none", "wled", "dw_leds"
     wled_ip: Optional[str] = None
+    control_mode: Optional[str] = None  # "manual" or "automated"
     dw_led: Optional[DwLedSettingsUpdate] = None
 
 class MqttSettingsUpdate(BaseModel):
@@ -752,6 +762,7 @@ async def get_all_settings():
         "led": {
             "provider": state.led_provider,
             "wled_ip": state.wled_ip,
+            "control_mode": state.dw_led_control_mode,
             "dw_led": {
                 "num_leds": state.dw_led_num_leds,
                 "gpio_pin": state.dw_led_gpio_pin,
@@ -960,6 +971,8 @@ async def update_settings(settings_update: SettingsUpdate):
                 led_reinit_needed = True
         if led.wled_ip is not None:
             state.wled_ip = led.wled_ip or None
+        if led.control_mode is not None:
+            state.dw_led_control_mode = led.control_mode
         if led.dw_led:
             dw = led.dw_led
             if dw.num_leds is not None:

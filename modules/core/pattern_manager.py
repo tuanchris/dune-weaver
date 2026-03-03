@@ -353,6 +353,13 @@ async def start_idle_led_timeout(check_still_sands: bool = True):
     if not state.led_controller:
         return
 
+    if not state.led_automation_enabled:
+        # Manual mode: Still Sands can still turn OFF, but skip idle effect + timeout
+        if check_still_sands and is_in_scheduled_pause_period() and state.scheduled_pause_control_wled:
+            logger.info("Manual mode: Turning off LEDs during Still Sands period")
+            await state.led_controller.set_power_async(0)
+        return
+
     # Still Sands with LED control: turn off instead of idle effect
     if check_still_sands and is_in_scheduled_pause_period() and state.scheduled_pause_control_wled:
         logger.info("Turning off LED lights during Still Sands period")
@@ -1243,7 +1250,7 @@ async def _execute_pattern_internal(file_path):
     smoothed_rate = None  # For exponential smoothing of time-per-unit-weight rate
     # For WLED: always trigger (uses hardcoded preset 2)
     # For DW_LED: only trigger if effect is configured
-    if state.led_controller and (state.led_provider == "wled" or state.dw_led_playing_effect):
+    if state.led_controller and state.led_automation_enabled and (state.led_provider == "wled" or state.dw_led_playing_effect):
         logger.info(f"Setting LED to playing effect: {state.dw_led_playing_effect}")
         await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
         # Cancel idle timeout when playing starts
@@ -1356,7 +1363,7 @@ async def _execute_pattern_internal(file_path):
                 if state.led_controller:
                     # Always power LEDs back on if they were turned off for scheduled pause,
                     # regardless of whether a playing effect is configured
-                    if wled_was_off_for_scheduled:
+                    if wled_was_off_for_scheduled and state.led_automation_enabled:
                         logger.info("Turning LED lights back on as Still Sands period ended")
                         await state.led_controller.set_power_async(1)
                         # CRITICAL: Give LED controller time to fully power on before sending more commands
@@ -1365,7 +1372,7 @@ async def _execute_pattern_internal(file_path):
                     # Apply playing effect if configured
                     # For WLED: always trigger (uses hardcoded preset 2)
                     # For DW_LED: only trigger if effect is configured
-                    should_trigger_led = state.led_provider == "wled" or state.dw_led_playing_effect
+                    should_trigger_led = state.led_automation_enabled and (state.led_provider == "wled" or state.dw_led_playing_effect)
                     if should_trigger_led:
                         await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
                     # Cancel idle timeout when resuming from pause
@@ -1614,14 +1621,14 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                         if state.led_controller:
                             # Always power LEDs back on if they were turned off for scheduled pause,
                             # regardless of whether a playing effect is configured
-                            if wled_was_off_for_scheduled:
+                            if wled_was_off_for_scheduled and state.led_automation_enabled:
                                 logger.info("Turning LED lights back on as Still Sands period ended")
                                 await state.led_controller.set_power_async(1)
                                 await asyncio.sleep(0.5)
                             # Apply playing effect if configured
                             # For WLED: always trigger (uses hardcoded preset 2)
                             # For DW_LED: only trigger if effect is configured
-                            should_trigger_led = state.led_provider == "wled" or state.dw_led_playing_effect
+                            should_trigger_led = state.led_automation_enabled and (state.led_provider == "wled" or state.dw_led_playing_effect)
                             if should_trigger_led:
                                 await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
                             idle_timeout_manager.cancel_timeout()

@@ -78,6 +78,9 @@ export function LEDPage() {
   // Ref for debouncing color picker API calls
   const colorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // LED control mode
+  const [controlMode, setControlMode] = useState<'manual' | 'automated'>('automated')
+
   // Effect automation state
   const [idleEffect, setIdleEffect] = useState<EffectSettings | null>(null)
   const [playingEffect, setPlayingEffect] = useState<EffectSettings | null>(null)
@@ -89,14 +92,20 @@ export function LEDPage() {
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        const data = await apiClient.get<{ provider?: string; wled_ip?: string; dw_led_num_leds?: number; dw_led_gpio_pin?: number }>('/get_led_config')
+        const [configData, settingsData] = await Promise.all([
+          apiClient.get<{ provider?: string; wled_ip?: string; dw_led_num_leds?: number; dw_led_gpio_pin?: number }>('/get_led_config'),
+          apiClient.get<{ led?: { control_mode?: string } }>('/api/settings'),
+        ])
         // Map backend response fields to our interface
         setLedConfig({
-          provider: (data.provider as LedConfig['provider']) || 'none',
-          wled_ip: data.wled_ip,
-          num_leds: data.dw_led_num_leds,
-          gpio_pin: data.dw_led_gpio_pin,
+          provider: (configData.provider as LedConfig['provider']) || 'none',
+          wled_ip: configData.wled_ip,
+          num_leds: configData.dw_led_num_leds,
+          gpio_pin: configData.dw_led_gpio_pin,
         })
+        if (settingsData.led?.control_mode) {
+          setControlMode(settingsData.led.control_mode as 'manual' | 'automated')
+        }
       } catch (error) {
         console.error('Error fetching LED config:', error)
       } finally {
@@ -177,6 +186,16 @@ export function LEDPage() {
       setIdleTimeoutInput(String(data.minutes || 30))
     } catch (error) {
       console.error('Error fetching idle timeout:', error)
+    }
+  }
+
+  const handleControlModeChange = async (mode: 'manual' | 'automated') => {
+    setControlMode(mode)
+    try {
+      await apiClient.patch('/api/settings', { led: { control_mode: mode } })
+      toast.success(mode === 'manual' ? 'Manual / HA mode' : 'DW Automated mode')
+    } catch {
+      toast.error('Failed to update control mode')
     }
   }
 
@@ -386,15 +405,69 @@ export function LEDPage() {
     )
   }
 
+  // Mode selector card (shared between WLED and DW LEDs views)
+  const modeSelector = (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <span className="material-icons-outlined text-muted-foreground">tune</span>
+          LED Control Mode
+        </CardTitle>
+        <CardDescription>
+          Choose how Dune Weaver manages LED effects during playback and idle states
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            onClick={() => handleControlModeChange('manual')}
+            className={`p-4 rounded-lg border-2 text-left transition-all ${
+              controlMode === 'manual'
+                ? 'border-primary bg-primary/5'
+                : 'border-border hover:border-muted-foreground/30'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <span className="material-icons-outlined text-base">front_hand</span>
+              <span className="font-medium text-sm">Manual / Home Assistant</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Effects persist until changed. Still Sands turns off only.
+            </p>
+          </button>
+          <button
+            onClick={() => handleControlModeChange('automated')}
+            className={`p-4 rounded-lg border-2 text-left transition-all ${
+              controlMode === 'automated'
+                ? 'border-primary bg-primary/5'
+                : 'border-border hover:border-muted-foreground/30'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <span className="material-icons-outlined text-base">smart_toy</span>
+              <span className="font-medium text-sm">DW Automated</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Auto-switch effects on play/idle. Still Sands turns off and on.
+            </p>
+          </button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+
   // WLED iframe view
   if (ledConfig.provider === 'wled' && ledConfig.wled_ip) {
     return (
-      <div className="flex flex-col w-full py-4" style={{ height: 'calc(100vh - 180px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))' }}>
-        <iframe
-          src={`http://${ledConfig.wled_ip}`}
-          className="w-full h-full rounded-lg border border-border"
-          title="WLED Control"
-        />
+      <div className="flex flex-col w-full max-w-5xl mx-auto gap-4 py-3 sm:py-6 px-0 sm:px-4">
+        {modeSelector}
+        <div style={{ height: 'calc(100vh - 380px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))' }}>
+          <iframe
+            src={`http://${ledConfig.wled_ip}`}
+            className="w-full h-full rounded-lg border border-border"
+            title="WLED Control"
+          />
+        </div>
       </div>
     )
   }
@@ -409,6 +482,8 @@ export function LEDPage() {
       </div>
 
       <Separator />
+
+      {modeSelector}
 
       {/* Main Control Grid - 2 columns on large screens */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -636,7 +711,8 @@ export function LEDPage() {
             </CardContent>
           </Card>
 
-          {/* Auto Turn Off */}
+          {/* Auto Turn Off - hidden in manual mode */}
+          {controlMode === 'automated' && (
           <Card className="flex-1 flex flex-col">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -685,10 +761,12 @@ export function LEDPage() {
               )}
             </CardContent>
           </Card>
+          )}
         </div>
       </div>
 
-      {/* Automation Settings - Full Width */}
+      {/* Automation Settings - Full Width - hidden in manual mode */}
+      {controlMode === 'automated' && (
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
@@ -763,6 +841,7 @@ export function LEDPage() {
           </div>
         </CardContent>
       </Card>
+      )}
     </div>
   )
 }

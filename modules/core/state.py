@@ -115,6 +115,7 @@ class AppState:
         # Idle timeout settings
         self.dw_led_idle_timeout_enabled = False  # Enable automatic LED turn off after idle period
         self.dw_led_idle_timeout_minutes = 30  # Idle timeout duration in minutes
+        self.dw_led_control_mode = "automated"  # "manual" or "automated"
         self.dw_led_last_activity_time = None  # Last activity timestamp (runtime only, not persisted)
         self.table_type = None
         self.table_type_override = None  # User override for table type detection
@@ -443,6 +444,10 @@ class AppState:
         return 'timeout'
 
     @property
+    def led_automation_enabled(self) -> bool:
+        return self.dw_led_control_mode == "automated"
+
+    @property
     def shuffle(self):
         return self._shuffle
 
@@ -508,6 +513,7 @@ class AppState:
             "dw_led_playing_effect": self.dw_led_playing_effect,
             "dw_led_idle_timeout_enabled": self.dw_led_idle_timeout_enabled,
             "dw_led_idle_timeout_minutes": self.dw_led_idle_timeout_minutes,
+            "dw_led_control_mode": self.dw_led_control_mode,
             "app_name": self.app_name,
             "table_id": self.table_id,
             "table_name": self.table_name,
@@ -624,6 +630,7 @@ class AppState:
 
         self.dw_led_idle_timeout_enabled = data.get('dw_led_idle_timeout_enabled', False)
         self.dw_led_idle_timeout_minutes = data.get('dw_led_idle_timeout_minutes', 30)
+        self.dw_led_control_mode = data.get('dw_led_control_mode', "automated")
 
         self.app_name = data.get("app_name", "Dune Weaver")
         self.table_id = data.get("table_id", None)
