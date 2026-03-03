@@ -1354,19 +1354,18 @@ async def _execute_pattern_internal(file_path):
 
                 logger.info("Execution resumed...")
                 if state.led_controller:
-                    # Turn LED controller back on if it was turned off for scheduled pause
+                    # Always power LEDs back on if they were turned off for scheduled pause,
+                    # regardless of whether a playing effect is configured
+                    if wled_was_off_for_scheduled:
+                        logger.info("Turning LED lights back on as Still Sands period ended")
+                        await state.led_controller.set_power_async(1)
+                        # CRITICAL: Give LED controller time to fully power on before sending more commands
+                        # Without this delay, rapid-fire requests can crash controllers on resource-constrained Pis
+                        await asyncio.sleep(0.5)
+                    # Apply playing effect if configured
                     # For WLED: always trigger (uses hardcoded preset 2)
                     # For DW_LED: only trigger if effect is configured
                     should_trigger_led = state.led_provider == "wled" or state.dw_led_playing_effect
-                    if wled_was_off_for_scheduled:
-                        if should_trigger_led:
-                            logger.info("Turning LED lights back on as Still Sands period ended")
-                            await state.led_controller.set_power_async(1)
-                            # CRITICAL: Give LED controller time to fully power on before sending more commands
-                            # Without this delay, rapid-fire requests can crash controllers on resource-constrained Pis
-                            await asyncio.sleep(0.5)
-                        else:
-                            logger.info("No playing effect configured, keeping LEDs off after Still Sands")
                     if should_trigger_led:
                         await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
                     # Cancel idle timeout when resuming from pause
@@ -1613,16 +1612,16 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                     if result == 'completed':
                         logger.info("Still Sands period ended. Resuming playlist...")
                         if state.led_controller:
+                            # Always power LEDs back on if they were turned off for scheduled pause,
+                            # regardless of whether a playing effect is configured
+                            if wled_was_off_for_scheduled:
+                                logger.info("Turning LED lights back on as Still Sands period ended")
+                                await state.led_controller.set_power_async(1)
+                                await asyncio.sleep(0.5)
+                            # Apply playing effect if configured
                             # For WLED: always trigger (uses hardcoded preset 2)
                             # For DW_LED: only trigger if effect is configured
                             should_trigger_led = state.led_provider == "wled" or state.dw_led_playing_effect
-                            if wled_was_off_for_scheduled:
-                                if should_trigger_led:
-                                    logger.info("Turning LED lights back on as Still Sands period ended")
-                                    await state.led_controller.set_power_async(1)
-                                    await asyncio.sleep(0.5)
-                                else:
-                                    logger.info("No playing effect configured, keeping LEDs off after Still Sands")
                             if should_trigger_led:
                                 await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
                             idle_timeout_manager.cancel_timeout()
