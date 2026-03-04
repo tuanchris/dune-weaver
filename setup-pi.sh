@@ -11,7 +11,6 @@
 #   bash setup-pi.sh
 #
 # Options:
-#   --no-docker     Use Python venv instead of Docker
 #   --no-wifi-fix   Skip WiFi stability fix
 #   --no-hotspot    Skip autohotspot setup
 #   --help          Show help
@@ -27,7 +26,6 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Default options
-USE_DOCKER=true
 FIX_WIFI=true  # Applied by default for stability
 SETUP_HOTSPOT=true  # Autohotspot for first-time WiFi setup
 INSTALL_DIR="$HOME/dune-weaver"
@@ -36,10 +34,6 @@ REPO_URL="https://github.com/tuanchris/dune-weaver"
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --no-docker)
-            USE_DOCKER=false
-            shift
-            ;;
         --no-wifi-fix)
             FIX_WIFI=false
             shift
@@ -58,7 +52,6 @@ while [[ $# -gt 0 ]]; do
             echo "  cd ~/dune-weaver && bash setup-pi.sh [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --no-docker     Use Python venv instead of Docker"
             echo "  --no-wifi-fix   Skip WiFi stability fix (applied by default)"
             echo "  --no-hotspot    Skip autohotspot setup"
             echo "  --help, -h      Show this help message"
@@ -89,12 +82,40 @@ print_success() {
     echo -e "${GREEN}$1${NC}"
 }
 
-# Install essential packages (git, vim)
-install_essentials() {
-    print_step "Installing essential packages..."
+# Install system dependencies
+install_system_deps() {
+    print_step "Installing system dependencies..."
     sudo apt update
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" git vim
-    print_success "Essential packages installed"
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
+        python3-venv python3-pip python3-dev \
+        gcc g++ make \
+        libjpeg-dev zlib1g-dev \
+        libgpiod2 libgpiod-dev \
+        nginx git vim
+    print_success "System dependencies installed"
+}
+
+# Install Node.js 20 via nodesource
+install_nodejs() {
+    print_step "Installing Node.js..."
+
+    if command -v node &> /dev/null; then
+        local node_version
+        node_version=$(node --version)
+        echo "Node.js already installed: $node_version"
+        # Check if version is 20+
+        local major
+        major=$(echo "$node_version" | sed 's/v//' | cut -d. -f1)
+        if [[ "$major" -ge 20 ]]; then
+            print_success "Node.js version is sufficient"
+            return
+        fi
+        echo "Upgrading to Node.js 20..."
+    fi
+
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y nodejs
+    print_success "Node.js $(node --version) installed"
 }
 
 # Check if running on Raspberry Pi
@@ -177,44 +198,12 @@ update_system() {
     print_success "System updated"
 }
 
-# Install Docker
-install_docker() {
-    print_step "Installing Docker..."
-
-    if command -v docker &> /dev/null; then
-        echo "Docker already installed: $(docker --version)"
-    else
-        curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
-        sudo sh /tmp/get-docker.sh
-        rm /tmp/get-docker.sh
-        print_success "Docker installed"
-    fi
-
-    # Add user to docker group
-    if ! groups $USER | grep -q docker; then
-        print_step "Adding $USER to docker group..."
-        sudo usermod -aG docker $USER
-        DOCKER_GROUP_ADDED=true
-        print_warning "You'll need to log out and back in for docker group changes to take effect"
-    fi
-}
-
-# Install Python dependencies (non-Docker)
-install_python_deps() {
-    print_step "Installing Python dependencies..."
-
-    # Install system packages
-    sudo apt install -y python3-venv python3-pip git
-
-    print_success "Python dependencies installed"
-}
-
 # Verify we're in the dune-weaver directory
 ensure_repo() {
     print_step "Setting up dune-weaver repository..."
 
     # Check if we're already in the dune-weaver directory
-    if [[ -f "docker-compose.yml" ]] && [[ -f "main.py" ]]; then
+    if [[ -f "main.py" ]] && [[ -f "requirements.txt" ]]; then
         INSTALL_DIR="$(pwd)"
         print_success "Using existing repo at $INSTALL_DIR"
         return
@@ -236,29 +225,8 @@ ensure_repo() {
     print_success "Cloned to $INSTALL_DIR"
 }
 
-# Install dw CLI command
-install_cli() {
-    print_step "Installing 'dw' command..."
-
-    # Copy dw script to /usr/local/bin
-    sudo cp "$INSTALL_DIR/dw" /usr/local/bin/dw
-    sudo chmod +x /usr/local/bin/dw
-
-    print_success "'dw' command installed"
-}
-
-# Deploy with Docker
-deploy_docker() {
-    print_step "Deploying Dune Weaver with Docker Compose..."
-
-    cd "$INSTALL_DIR"
-    sudo docker compose up -d --quiet-pull
-
-    print_success "Docker deployment complete!"
-}
-
-# Deploy with Python venv
-deploy_python() {
+# Deploy native (venv + systemd + nginx)
+deploy_native() {
     print_step "Setting up Python virtual environment..."
 
     cd "$INSTALL_DIR"
@@ -272,31 +240,57 @@ deploy_python() {
     pip install --upgrade pip
     pip install -r requirements.txt
 
+    # Build frontend
+    print_step "Building frontend..."
+    cd "$INSTALL_DIR/frontend"
+    npm ci
+    npm run build
+    cd "$INSTALL_DIR"
+
+    # Configure nginx
+    print_step "Configuring nginx..."
+    sudo cp "$INSTALL_DIR/nginx/dune-weaver.conf" /etc/nginx/sites-available/dune-weaver.conf
+    sudo sed -i "s|INSTALL_DIR_PLACEHOLDER|$INSTALL_DIR|g" /etc/nginx/sites-available/dune-weaver.conf
+    sudo ln -sf /etc/nginx/sites-available/dune-weaver.conf /etc/nginx/sites-enabled/dune-weaver.conf
+    sudo rm -f /etc/nginx/sites-enabled/default
+    sudo nginx -t
+    sudo systemctl restart nginx
+    sudo systemctl enable nginx
+
     # Create systemd service
     print_step "Creating systemd service..."
-
-    sudo tee /etc/systemd/system/dune-weaver.service > /dev/null << EOF
-[Unit]
-Description=Dune Weaver Backend
-After=network.target
-
-[Service]
-ExecStart=$INSTALL_DIR/.venv/bin/python $INSTALL_DIR/main.py
-WorkingDirectory=$INSTALL_DIR
-Restart=always
-User=$USER
-Environment=PYTHONUNBUFFERED=1
-
-[Install]
-WantedBy=multi-user.target
-EOF
+    sudo cp "$INSTALL_DIR/dune-weaver.service" /etc/systemd/system/dune-weaver.service
+    sudo sed -i "s|USER_PLACEHOLDER|$USER|g" /etc/systemd/system/dune-weaver.service
+    sudo sed -i "s|INSTALL_DIR_PLACEHOLDER|$INSTALL_DIR|g" /etc/systemd/system/dune-weaver.service
 
     # Enable and start service
     sudo systemctl daemon-reload
     sudo systemctl enable dune-weaver
     sudo systemctl start dune-weaver
 
-    print_success "Python deployment complete!"
+    # Create sudoers entry for passwordless systemctl commands
+    print_step "Configuring sudo permissions..."
+    sudo tee /etc/sudoers.d/dune-weaver > /dev/null << EOF
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart dune-weaver
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop dune-weaver
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start dune-weaver
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl poweroff
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx
+EOF
+    sudo chmod 0440 /etc/sudoers.d/dune-weaver
+
+    print_success "Native deployment complete!"
+}
+
+# Install dw CLI command
+install_cli() {
+    print_step "Installing 'dw' command..."
+
+    # Copy dw script to /usr/local/bin
+    sudo cp "$INSTALL_DIR/dw" /usr/local/bin/dw
+    sudo chmod +x /usr/local/bin/dw
+
+    print_success "'dw' command installed"
 }
 
 # Setup autohotspot
@@ -336,8 +330,8 @@ print_final_instructions() {
     echo -e "${GREEN}============================================${NC}"
     echo ""
     echo -e "Access the web interface at:"
-    echo -e "  ${BLUE}http://$IP:8080${NC}"
-    echo -e "  ${BLUE}http://$HOSTNAME.local:8080${NC}"
+    echo -e "  ${BLUE}http://$IP${NC}"
+    echo -e "  ${BLUE}http://$HOSTNAME.local${NC}"
     echo ""
 
     echo "Manage with the 'dw' command:"
@@ -355,10 +349,6 @@ print_final_instructions() {
         echo "a 'Dune Weaver' hotspot will be created automatically."
         echo "Connect to it and open the app to configure WiFi."
         echo ""
-    fi
-
-    if [[ "$DOCKER_GROUP_ADDED" == "true" ]]; then
-        print_warning "Please log out and back in for docker group changes to take effect"
     fi
 
     if [[ "$NEEDS_REBOOT" == "true" ]]; then
@@ -382,19 +372,13 @@ main() {
     echo -e "${NC}"
     echo "Raspberry Pi Setup Script"
     echo ""
-
-    # Detect deployment method
-    if [[ "$USE_DOCKER" == "true" ]]; then
-        echo "Deployment method: Docker (recommended)"
-    else
-        echo "Deployment method: Python virtual environment"
-    fi
     echo "Install directory: $INSTALL_DIR"
     echo ""
 
     # Run setup steps
     check_raspberry_pi
-    install_essentials
+    install_system_deps
+    install_nodejs
     ensure_repo
     update_system
     disable_wlan_powersave
@@ -407,14 +391,7 @@ main() {
         setup_autohotspot
     fi
 
-    if [[ "$USE_DOCKER" == "true" ]]; then
-        install_docker
-        deploy_docker
-    else
-        install_python_deps
-        deploy_python
-    fi
-
+    deploy_native
     install_cli
     print_final_instructions
 }

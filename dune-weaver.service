@@ -1,0 +1,17 @@
+[Unit]
+Description=Dune Weaver Sand Table Controller
+After=network.target
+
+[Service]
+Type=simple
+User=USER_PLACEHOLDER
+WorkingDirectory=INSTALL_DIR_PLACEHOLDER
+ExecStart=INSTALL_DIR_PLACEHOLDER/.venv/bin/python INSTALL_DIR_PLACEHOLDER/main.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+CPUAffinity=0 1 2
+SupplementaryGroups=dialout gpio
+
+[Install]
+WantedBy=multi-user.target

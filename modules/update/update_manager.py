@@ -52,13 +52,10 @@ def check_git_updates():
 def update_software():
     """Update the software to the latest version.
 
-    This runs inside the Docker container, so it:
-    1. Pulls latest code via git (mounted volume at /app)
-    2. Pulls new Docker image for the backend
-    3. Restarts the container to apply updates
+    Pulls latest code, installs updated Python dependencies,
+    and restarts the systemd service.
 
-    Note: For a complete update including container recreation,
-    run 'dw update' from the host machine instead.
+    For a full update (including frontend rebuild), run 'dw update' instead.
     """
     error_log = []
     logger.info("Starting software update process")
@@ -73,53 +70,35 @@ def update_software():
             error_log.append(error_message)
             return None
 
-    # Step 1: Pull latest code via git (works because /app is mounted from host)
+    # Step 1: Pull latest code via git
     logger.info("Pulling latest code from git...")
     git_result = run_command(
         ["git", "pull", "--ff-only"],
-        "Failed to pull latest code from git",
-        cwd="/app"
+        "Failed to pull latest code from git"
     )
     if git_result:
         logger.info("Git pull completed successfully")
 
-    # Step 2: Pull new Docker image for the backend only
-    # Note: There is no separate frontend image - it's either bundled or built locally
-    logger.info("Pulling latest Docker image...")
+    # Step 2: Install updated Python dependencies
+    logger.info("Installing updated dependencies...")
     run_command(
-        ["docker", "pull", "ghcr.io/tuanchris/dune-weaver:main"],
-        "Failed to pull backend Docker image"
+        [".venv/bin/pip", "install", "-r", "requirements.txt"],
+        "Failed to install updated dependencies"
     )
 
-    # Step 3: Restart the backend container to apply updates
-    # We can't recreate ourselves from inside the container, so we just restart
-    # For full container recreation with new images, use 'dw update' from host
-    logger.info("Restarting backend container...")
-
-    # Use docker restart which works from inside the container
+    # Step 3: Restart the service
+    logger.info("Restarting dune-weaver service...")
     restart_result = run_command(
-        ["docker", "restart", "dune-weaver-backend"],
-        "Failed to restart backend container"
+        ["sudo", "systemctl", "restart", "dune-weaver"],
+        "Failed to restart dune-weaver service"
     )
 
     if not restart_result:
-        # If docker restart fails, try a graceful approach
-        logger.info("Attempting graceful restart via compose...")
-        try:
-            # Just restart, don't try to recreate (which would fail)
-            subprocess.run(
-                ["docker", "compose", "restart", "backend"],
-                check=True,
-                cwd="/app"
-            )
-            logger.info("Container restarted successfully via compose")
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            logger.warning(f"Compose restart also failed: {e}")
-            error_log.append("Container restart failed - please run 'dw update' from host")
+        error_log.append("Service restart failed - please run 'dw restart' manually")
 
     if error_log:
         logger.error(f"Software update completed with errors: {error_log}")
-        return False, "Update completed with errors. For best results, run 'dw update' from the host machine.", error_log
+        return False, "Update completed with errors. Run 'dw update' for a full update.", error_log
 
     logger.info("Software update completed successfully")
     return True, None, None

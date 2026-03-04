@@ -2,8 +2,6 @@
 WiFi management via NetworkManager (nmcli).
 
 Handles scanning, connecting, and managing WiFi connections.
-In Docker, nmcli communicates with the host's NetworkManager over the
-mounted D-Bus system socket — same mechanism systemctl uses for shutdown.
 """
 
 import subprocess
@@ -13,22 +11,11 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
-HOST_HOSTNAME_FILE = "/etc/host-hostname"
 HOTSPOT_CON_NAME = "DuneWeaver-Hotspot"
 
 
-def is_docker() -> bool:
-    """Check if running inside a Docker container."""
-    return os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER") == "1"
-
-
 def run_nmcli(*args: str, timeout: int = 30) -> str:
-    """Run nmcli and return stdout.
-
-    In both Docker and venv modes, nmcli runs directly. In Docker, it
-    communicates with the host's NetworkManager via the mounted D-Bus
-    system bus socket (/var/run/dbus/system_bus_socket).
-    """
+    """Run nmcli and return stdout."""
     cmd = ["nmcli"] + list(args)
     logger.debug(f"Running nmcli: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -109,18 +96,8 @@ def get_current_ip() -> str:
 
 
 def get_hostname() -> str:
-    """Get the host system hostname.
-
-    In Docker, reads from the mounted /etc/host-hostname file to get the
-    real host identity instead of the container ID.
-    """
+    """Get the system hostname via NetworkManager."""
     try:
-        if is_docker() and os.path.exists(HOST_HOSTNAME_FILE):
-            with open(HOST_HOSTNAME_FILE, "r") as f:
-                name = f.read().strip()
-                if name:
-                    return name
-        # Fallback: use nmcli to query NM's hostname
         output = run_nmcli("general", "hostname")
         name = output.strip()
         if name:
@@ -451,8 +428,7 @@ def _trigger_autohotspot():
     """Trigger an immediate autohotspot check.
 
     Called when the active network is forgotten so the user doesn't have
-    to wait for the next 60s timer tick. Falls back to direct nmcli
-    commands in Docker where the host script isn't available.
+    to wait for the next 60s timer tick.
     """
     autohotspot_path = "/usr/local/bin/autohotspot"
     try:
@@ -464,7 +440,6 @@ def _trigger_autohotspot():
                 stderr=subprocess.DEVNULL,
             )
         else:
-            # Docker fallback: directly activate hotspot via D-Bus
             logger.info("Autohotspot script not found, activating hotspot directly...")
             run_nmcli("dev", "disconnect", "wlan0")
             run_nmcli("con", "up", HOTSPOT_CON_NAME)

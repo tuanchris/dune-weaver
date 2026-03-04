@@ -1,7 +1,7 @@
 [Unit]
 Description=Dune Weaver Autohotspot
 After=NetworkManager.service
-Before=docker.service
+Before=dune-weaver.service
 
 [Service]
 Type=oneshot

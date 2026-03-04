@@ -3946,7 +3946,7 @@ async def get_version_info(force_refresh: bool = False):
 
 @app.post("/api/update")
 async def trigger_update():
-    """Trigger software update by pulling latest Docker images and recreating containers."""
+    """Trigger software update by pulling latest code and restarting the service."""
     try:
         logger.info("Update triggered via API")
         success, error_message, error_log = update_manager.update_software()
@@ -3979,11 +3979,10 @@ async def shutdown_system():
         def delayed_shutdown():
             time.sleep(2)  # Give time for response to be sent
             try:
-                # Use systemctl to shutdown the host (via mounted systemd socket)
-                subprocess.run(["systemctl", "poweroff"], check=True)
-                logger.info("Host shutdown command executed successfully via systemctl")
+                subprocess.run(["sudo", "systemctl", "poweroff"], check=True)
+                logger.info("System shutdown command executed successfully")
             except FileNotFoundError:
-                logger.error("systemctl command not found - ensure systemd volumes are mounted")
+                logger.error("systemctl command not found")
             except Exception as e:
                 logger.error(f"Error executing host shutdown command: {e}")
 
@@ -4001,7 +4000,7 @@ async def shutdown_system():
 
 @app.post("/api/system/restart")
 async def restart_system():
-    """Restart the Docker containers using docker compose"""
+    """Restart the Dune Weaver service via systemctl."""
     try:
         logger.warning("Restart initiated via API")
 
@@ -4009,14 +4008,12 @@ async def restart_system():
         def delayed_restart():
             time.sleep(2)  # Give time for response to be sent
             try:
-                # Use docker restart directly with container name
-                # This is simpler and doesn't require the compose file path
-                subprocess.run(["docker", "restart", "dune-weaver-backend"], check=True)
-                logger.info("Docker restart command executed successfully")
+                subprocess.run(["sudo", "systemctl", "restart", "dune-weaver"], check=True)
+                logger.info("Service restart command executed successfully")
             except FileNotFoundError:
-                logger.error("docker command not found")
+                logger.error("systemctl command not found")
             except Exception as e:
-                logger.error(f"Error executing docker restart: {e}")
+                logger.error(f"Error executing service restart: {e}")
 
         import threading
         restart_thread = threading.Thread(target=delayed_restart)

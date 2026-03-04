@@ -237,15 +237,10 @@ def _get_timezone():
     else:
         # Fall back to system timezone detection
         try:
-            if os.path.exists('/etc/host-timezone'):
-                with open('/etc/host-timezone', 'r') as f:
-                    user_tz = f.read().strip()
-                    logger.info(f"Still Sands using timezone: {user_tz} (from host system)")
-            # Fallback to /etc/timezone if host-timezone doesn't exist
-            elif os.path.exists('/etc/timezone'):
+            if os.path.exists('/etc/timezone'):
                 with open('/etc/timezone', 'r') as f:
                     user_tz = f.read().strip()
-                    logger.info(f"Still Sands using timezone: {user_tz} (from container)")
+                    logger.info(f"Still Sands using timezone: {user_tz} (from system)")
             # Fallback to TZ environment variable
             elif os.environ.get('TZ'):
                 user_tz = os.environ.get('TZ')

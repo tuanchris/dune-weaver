@@ -5,15 +5,15 @@
 # Usage: dw <command>
 #
 # Commands:
-#   install     Run initial setup (Docker + WiFi fix)
+#   install     Run initial setup
 #   start       Start Dune Weaver
 #   stop        Stop Dune Weaver
 #   restart     Restart Dune Weaver
 #   update      Pull latest changes and restart
 #   logs        View live logs (Ctrl+C to exit)
-#   status      Show container status
-#   shell       Open a shell in the container
-#   checkout    Switch to a branch and pull its Docker images
+#   status      Show service status
+#   shell       Open a shell with the venv activated
+#   checkout    Switch to a branch and rebuild
 #   touch       Manage touch screen app
 #   wifi        Manage WiFi and hotspot
 #   help        Show this help message
@@ -42,19 +42,6 @@ find_install_dir() {
     fi
 }
 
-# Check if using Docker or systemd
-is_docker_mode() {
-    # Docker mode if docker-compose.yml exists and docker is available
-    [[ -f "$INSTALL_DIR/docker-compose.yml" ]] && command -v docker &> /dev/null
-}
-
-# Set IMAGE_TAG from current git branch (e.g. feature/foo -> feature-foo)
-set_image_tag() {
-    local branch
-    branch=$(git -C "$INSTALL_DIR" rev-parse --abbrev-ref HEAD)
-    export IMAGE_TAG="${branch//\//-}"
-}
-
 INSTALL_DIR=$(find_install_dir)
 
 # Check if installed
@@ -74,7 +61,7 @@ check_installed() {
 cmd_install() {
     if [[ -z "$INSTALL_DIR" ]]; then
         # Not installed, check if we're in the right directory
-        if [[ -f "./docker-compose.yml" ]] && [[ -f "./main.py" ]]; then
+        if [[ -f "./main.py" ]] && [[ -f "./requirements.txt" ]]; then
             INSTALL_DIR=$(pwd)
         else
             echo -e "${RED}Error: Run this from the dune-weaver directory${NC}"
@@ -93,47 +80,21 @@ cmd_install() {
 cmd_start() {
     check_installed
     echo -e "${BLUE}Starting Dune Weaver...${NC}"
-    cd "$INSTALL_DIR"
-
-    if is_docker_mode; then
-        set_image_tag
-        sudo -E docker compose up -d
-    else
-        sudo systemctl start dune-weaver
-    fi
-
-    local fe_port="${FRONTEND_PORT:-80}"
-    local port_suffix=""
-    [[ "$fe_port" != "80" ]] && port_suffix=":$fe_port"
-    echo -e "${GREEN}Started!${NC} Access at http://$(hostname -I | awk '{print $1}')${port_suffix}"
+    sudo systemctl start dune-weaver
+    echo -e "${GREEN}Started!${NC} Access at http://$(hostname -I | awk '{print $1}')"
 }
 
 cmd_stop() {
     check_installed
     echo -e "${BLUE}Stopping Dune Weaver...${NC}"
-    cd "$INSTALL_DIR"
-
-    if is_docker_mode; then
-        sudo docker compose down
-    else
-        sudo systemctl stop dune-weaver
-    fi
-
+    sudo systemctl stop dune-weaver
     echo -e "${GREEN}Stopped${NC}"
 }
 
 cmd_restart() {
     check_installed
     echo -e "${BLUE}Restarting Dune Weaver...${NC}"
-    cd "$INSTALL_DIR"
-
-    if is_docker_mode; then
-        set_image_tag
-        sudo -E docker compose restart
-    else
-        sudo systemctl restart dune-weaver
-    fi
-
+    sudo systemctl restart dune-weaver
     echo -e "${GREEN}Restarted${NC}"
 }
 
@@ -157,30 +118,31 @@ cmd_update() {
         exec /usr/local/bin/dw update --continue
     fi
 
-    if is_docker_mode; then
-        set_image_tag
-        echo -e "Image tag: ${BLUE}${IMAGE_TAG}${NC}"
+    echo "Updating Python dependencies..."
+    source .venv/bin/activate
+    pip install -r requirements.txt
 
-        echo "Pulling latest Docker image..."
-        sudo -E docker compose pull
+    echo "Rebuilding frontend..."
+    cd "$INSTALL_DIR/frontend"
+    npm ci
+    npm run build
+    cd "$INSTALL_DIR"
 
-        echo "Stopping current container..."
-        sudo docker compose down
+    # Update nginx config
+    echo "Updating nginx config..."
+    sudo cp "$INSTALL_DIR/nginx/dune-weaver.conf" /etc/nginx/sites-available/dune-weaver.conf
+    sudo sed -i "s|INSTALL_DIR_PLACEHOLDER|$INSTALL_DIR|g" /etc/nginx/sites-available/dune-weaver.conf
+    sudo nginx -t && sudo systemctl restart nginx
 
-        echo "Starting with new version..."
-        sudo -E docker compose up -d --remove-orphans
+    # Update systemd service
+    echo "Updating systemd service..."
+    sudo cp "$INSTALL_DIR/dune-weaver.service" /etc/systemd/system/dune-weaver.service
+    sudo sed -i "s|USER_PLACEHOLDER|$USER|g" /etc/systemd/system/dune-weaver.service
+    sudo sed -i "s|INSTALL_DIR_PLACEHOLDER|$INSTALL_DIR|g" /etc/systemd/system/dune-weaver.service
+    sudo systemctl daemon-reload
 
-        echo "Cleaning up unused Docker resources..."
-        sudo docker image prune -f
-        sudo docker container prune -f
-    else
-        echo "Updating Python dependencies..."
-        source .venv/bin/activate
-        pip install -r requirements.txt
-
-        echo "Restarting service..."
-        sudo systemctl restart dune-weaver
-    fi
+    echo "Restarting service..."
+    sudo systemctl restart dune-weaver
 
     # Install/update WiFi host scripts if not present
     if [[ -f "$INSTALL_DIR/wifi/setup-wifi.sh" ]]; then
@@ -228,48 +190,27 @@ cmd_update() {
 
 cmd_logs() {
     check_installed
-    cd "$INSTALL_DIR"
 
     # Parse optional line count (e.g., dw logs 100)
     local lines="${1:-}"
-    local follow="-f"
 
     if [[ -n "$lines" ]]; then
-        follow="--tail $lines"
-    fi
-
-    if is_docker_mode; then
-        sudo docker compose logs $follow
+        sudo journalctl -u dune-weaver -n "$lines"
     else
-        if [[ -n "$lines" ]]; then
-            sudo journalctl -u dune-weaver -n "$lines"
-        else
-            sudo journalctl -u dune-weaver -f
-        fi
+        sudo journalctl -u dune-weaver -f
     fi
 }
 
 cmd_status() {
     check_installed
-    cd "$INSTALL_DIR"
-
-    if is_docker_mode; then
-        sudo docker compose ps
-    else
-        sudo systemctl status dune-weaver
-    fi
+    sudo systemctl status dune-weaver
 }
 
 cmd_shell() {
     check_installed
     cd "$INSTALL_DIR"
-
-    if is_docker_mode; then
-        sudo docker compose exec dune-weaver /bin/bash
-    else
-        echo -e "${YELLOW}Shell not available in systemd mode${NC}"
-        echo "Use: cd $INSTALL_DIR && source .venv/bin/activate"
-    fi
+    echo -e "${BLUE}Activating venv...${NC}"
+    exec bash --init-file <(echo "source '$INSTALL_DIR/.venv/bin/activate'; cd '$INSTALL_DIR'; echo 'Dune Weaver venv activated. Type \"exit\" to leave.'")
 }
 
 # Touch app commands (systemd service)
@@ -368,25 +309,24 @@ cmd_checkout() {
 
     echo -e "Switched to branch: ${GREEN}${branch}${NC}"
 
-    # Pull and restart Docker images for the new branch
-    if is_docker_mode; then
-        set_image_tag
-        echo -e "Image tag: ${BLUE}${IMAGE_TAG}${NC}"
+    # Rebuild frontend
+    echo "Rebuilding frontend..."
+    cd "$INSTALL_DIR/frontend"
+    npm ci
+    npm run build
+    cd "$INSTALL_DIR"
 
-        echo "Pulling Docker images..."
-        sudo -E docker compose pull
-
-        echo "Restarting with new images..."
-        sudo docker compose down
-        sudo -E docker compose up -d --remove-orphans
-
-        echo "Cleaning up old images..."
-        sudo docker image prune -f
-    fi
+    # Update Python dependencies
+    echo "Updating Python dependencies..."
+    source .venv/bin/activate
+    pip install -r requirements.txt
 
     # Update dw CLI from the new branch
     sudo cp "$INSTALL_DIR/dw" /usr/local/bin/dw
     sudo chmod +x /usr/local/bin/dw
+
+    # Restart service
+    sudo systemctl restart dune-weaver
 
     # Install WiFi scripts if available on this branch but not yet installed
     if [[ -f "$INSTALL_DIR/wifi/setup-wifi.sh" ]] && [[ ! -f /usr/local/bin/autohotspot ]]; then
@@ -507,15 +447,15 @@ cmd_help() {
     echo "Usage: dw <command>"
     echo ""
     echo "Commands:"
-    echo "  install     Run initial setup (Docker + WiFi fix)"
+    echo "  install     Run initial setup"
     echo "  start       Start Dune Weaver"
     echo "  stop        Stop Dune Weaver"
     echo "  restart     Restart Dune Weaver"
     echo "  update      Pull latest changes and restart"
-    echo "  checkout    Switch to a branch and pull its Docker images"
+    echo "  checkout    Switch to a branch and rebuild"
     echo "  logs [N]    View logs (N=number of lines, or follow if omitted)"
-    echo "  status      Show container status"
-    echo "  shell       Open a shell in the container"
+    echo "  status      Show service status"
+    echo "  shell       Open a shell with the venv activated"
     echo "  touch       Manage touch screen app (run 'dw touch help')"
     echo "  wifi        Manage WiFi and hotspot (run 'dw wifi help')"
     echo "  help        Show this help message"

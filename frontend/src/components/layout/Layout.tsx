@@ -595,13 +595,13 @@ export function Layout() {
   }
 
   const handleRestart = async () => {
-    if (!confirm('Are you sure you want to restart Docker containers?')) return
+    if (!confirm('Are you sure you want to restart Dune Weaver?')) return
 
     try {
       await apiClient.post('/api/system/restart')
-      toast.success('Docker containers are restarting...')
+      toast.success('Dune Weaver is restarting...')
     } catch {
-      toast.error('Failed to restart Docker containers')
+      toast.error('Failed to restart Dune Weaver')
     }
   }
 
@@ -1634,7 +1634,7 @@ export function Layout() {
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-amber-500"
                   >
                     <span className="material-icons-outlined text-xl">restart_alt</span>
-                    Restart Docker
+                    Restart
                   </button>
                   <button
                     onClick={handleShutdown}
@@ -1725,7 +1725,7 @@ export function Layout() {
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-amber-500"
                   >
                     <span className="material-icons-outlined text-xl">restart_alt</span>
-                    Restart Docker
+                    Restart
                   </button>
                   <button
                     onClick={() => {
