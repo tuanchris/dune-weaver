@@ -375,7 +375,25 @@ configure_uart() {
     echo ""
 
     if [[ "$uart_choice" == "2" ]]; then
-        print_step "Configuring UART over GPIO pins..."
+        echo ""
+        echo "UART setup requires running raspi-config to change serial port settings."
+        echo "When prompted:"
+        echo "  - 'Would you like a login shell over serial?' → Select ${GREEN}No${NC}"
+        echo "  - 'Would you like the serial port hardware enabled?' → Select ${GREEN}Yes${NC}"
+        echo ""
+        read -p "Press Enter to continue..." -r
+        echo ""
+
+        # Disable serial console, enable serial hardware
+        if command -v raspi-config &> /dev/null; then
+            sudo raspi-config nonint do_serial 2
+            echo "Serial console disabled, serial hardware enabled"
+        else
+            print_warning "raspi-config not found, please run 'sudo raspi-config' manually"
+            print_warning "Go to: 3 Interface Options > I6 Serial Port > No (console) > Yes (hardware)"
+        fi
+
+        print_step "Configuring UART overlays..."
 
         # Add UART overlays to config.txt if not already present
         local needs_change=false
@@ -390,15 +408,6 @@ configure_uart() {
             echo "Added UART overlays to $CONFIG_FILE"
         else
             echo "UART overlays already present in $CONFIG_FILE"
-        fi
-
-        # Disable serial console, enable serial hardware (non-interactive)
-        # do_serial 2 = console off, hardware on
-        if command -v raspi-config &> /dev/null; then
-            sudo raspi-config nonint do_serial 2
-            echo "Serial console disabled, serial hardware enabled"
-        else
-            print_warning "raspi-config not found, please disable serial console manually"
         fi
 
         NEEDS_REBOOT=true
