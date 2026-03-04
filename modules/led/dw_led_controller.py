@@ -107,13 +107,28 @@ class DWLEDController:
             board_pin = pin_map[self.gpio_pin]
 
             # Initialize NeoPixel strip
-            self._pixels = neopixel_module.NeoPixel(
+            pixels = neopixel_module.NeoPixel(
                 board_pin,
                 self.num_leds,
                 brightness=self.brightness,
                 auto_write=False,
                 pixel_order=self.pixel_order
             )
+
+            # Test that .show() actually works — the constructor succeeds without
+            # root, but .show() needs DMA via /dev/mem. If it fails here we get a
+            # clean Python exception; if we let the effect loop hit it first the
+            # underlying C library can SEGV and crash the whole process.
+            try:
+                pixels.show()
+            except Exception as e:
+                pixels.deinit()
+                error_msg = f"NeoPixel hardware test failed (likely needs root): {e}"
+                self._init_error = error_msg
+                logger.warning(error_msg)
+                return False
+
+            self._pixels = pixels
 
             # Create segment for the entire strip
             self._segment = Segment(self._pixels, 0, self.num_leds)
