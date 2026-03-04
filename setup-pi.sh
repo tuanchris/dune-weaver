@@ -82,6 +82,28 @@ print_success() {
     echo -e "${GREEN}$1${NC}"
 }
 
+# Temporary swap for memory-constrained boards (e.g. Pi Zero 2W with 512MB)
+SWAP_FILE="/tmp/dw-build-swap"
+
+enable_swap() {
+    local total_mb
+    total_mb=$(awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo)
+    if [[ "$total_mb" -lt 1024 ]]; then
+        echo "Low memory detected (${total_mb}MB). Enabling temporary swap..."
+        sudo dd if=/dev/zero of="$SWAP_FILE" bs=1M count=1024 status=none 2>/dev/null || true
+        sudo chmod 600 "$SWAP_FILE"
+        sudo mkswap "$SWAP_FILE" > /dev/null 2>&1 || true
+        sudo swapon "$SWAP_FILE" 2>/dev/null || true
+    fi
+}
+
+disable_swap() {
+    if [[ -f "$SWAP_FILE" ]]; then
+        sudo swapoff "$SWAP_FILE" 2>/dev/null || true
+        sudo rm -f "$SWAP_FILE"
+    fi
+}
+
 # Install system dependencies
 install_system_deps() {
     print_step "Installing system dependencies..."
@@ -282,12 +304,14 @@ deploy_native() {
     pip install --upgrade pip
     pip install -r requirements.txt
 
-    # Build frontend
+    # Build frontend (swap helps Pi Zero 2W survive npm ci)
+    enable_swap
     print_step "Building frontend..."
     cd "$INSTALL_DIR/frontend"
     npm ci --loglevel=error
     npx vite build
     cd "$INSTALL_DIR"
+    disable_swap
 
     # Ensure nginx (www-data) can traverse to static files
     # chmod o+x grants traversal only, not directory listing
