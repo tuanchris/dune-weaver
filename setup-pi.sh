@@ -88,7 +88,7 @@ install_system_deps() {
     sudo apt update
     sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
         python3-venv python3-pip python3-dev \
-        gcc g++ make \
+        gcc g++ make swig \
         libjpeg-dev zlib1g-dev \
         libgpiod-dev gpiod \
         nginx git vim
