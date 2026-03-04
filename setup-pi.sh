@@ -364,7 +364,7 @@ configure_uart() {
     fi
 
     echo ""
-    echo -e "${BLUE}How is your Raspberry Pi connected to the sand table controller (DLC32/ESP32)?${NC}"
+    echo -e "${GREEN}How is your Raspberry Pi connected to the sand table controller (DLC32/ESP32)?${NC}"
     echo ""
     echo "  1) USB cable"
     echo "  2) UART over GPIO pins (TX/RX wired to header pins)"
