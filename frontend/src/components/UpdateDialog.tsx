@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { apiClient } from '@/lib/apiClient'
 import { Button } from '@/components/ui/button'
 import {
@@ -32,32 +32,17 @@ export function UpdateDialog({ open, onOpenChange, currentVersion, latestVersion
   const [state, setState] = useState<UpdateState>('confirming')
   const [errorMessage, setErrorMessage] = useState('')
   const [messageIndex, setMessageIndex] = useState(0)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const messageRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  const cleanup = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current)
-      pollRef.current = null
-    }
-    if (messageRef.current) {
-      clearInterval(messageRef.current)
-      messageRef.current = null
-    }
-  }, [])
 
   // Reset state when dialog closes
   useEffect(() => {
     if (!open) {
-      cleanup()
+      if (messageRef.current) clearInterval(messageRef.current)
       setState('confirming')
       setErrorMessage('')
       setMessageIndex(0)
     }
-  }, [open, cleanup])
-
-  // Cleanup on unmount
-  useEffect(() => cleanup, [cleanup])
+  }, [open])
 
   // Rotate fun messages every 4 seconds while updating
   useEffect(() => {
@@ -69,30 +54,6 @@ export function UpdateDialog({ open, onOpenChange, currentVersion, latestVersion
       if (messageRef.current) clearInterval(messageRef.current)
     }
   }, [state])
-
-  // Poll backend every 3 seconds while updating
-  useEffect(() => {
-    if (state !== 'updating') return
-
-    // Wait a few seconds before starting to poll (give the service time to go down)
-    const startDelay = setTimeout(() => {
-      pollRef.current = setInterval(async () => {
-        try {
-          await apiClient.request('/api/version')
-          // Backend is back — reload the page
-          cleanup()
-          window.location.reload()
-        } catch {
-          // Still down, keep polling
-        }
-      }, 3000)
-    }, 5000)
-
-    return () => {
-      clearTimeout(startDelay)
-      if (pollRef.current) clearInterval(pollRef.current)
-    }
-  }, [state, cleanup])
 
   const handleUpdate = async () => {
     setState('updating')
@@ -111,14 +72,12 @@ export function UpdateDialog({ open, onOpenChange, currentVersion, latestVersion
     }
   }
 
-  const isUpdating = state === 'updating'
-
   return (
-    <Dialog open={open} onOpenChange={isUpdating ? undefined : onOpenChange}>
+    <Dialog open={open} onOpenChange={state === 'confirming' ? onOpenChange : undefined}>
       <DialogContent
-        onPointerDownOutside={isUpdating ? (e) => e.preventDefault() : undefined}
-        onEscapeKeyDown={isUpdating ? (e) => e.preventDefault() : undefined}
-        className={isUpdating ? '[&>button:last-child]:hidden' : ''}
+        onPointerDownOutside={state === 'updating' ? (e) => e.preventDefault() : undefined}
+        onEscapeKeyDown={state === 'updating' ? (e) => e.preventDefault() : undefined}
+        className={state === 'updating' ? '[&>button:last-child]:hidden' : ''}
       >
         {state === 'confirming' && (
           <>
@@ -163,7 +122,7 @@ export function UpdateDialog({ open, onOpenChange, currentVersion, latestVersion
               <p className="text-sm text-muted-foreground">
                 This usually takes 1-2 minutes.
                 <br />
-                The page will reload automatically.
+                Please reload the page after a couple of minutes.
               </p>
             </div>
           </div>

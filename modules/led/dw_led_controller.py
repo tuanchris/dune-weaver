@@ -2,7 +2,6 @@
 Dune Weaver LED Controller - Embedded NeoPixel LED controller for Raspberry Pi
 Provides direct GPIO control of WS2812B LED strips with beautiful effects
 """
-import os
 import threading
 import time
 import logging
@@ -59,14 +58,6 @@ class DWLEDController:
         """Lazy initialization of NeoPixel hardware"""
         if self._initialized:
             return True
-
-        # Guard: the rpi_ws281x C library will SEGV if it can't access /dev/mem.
-        # Python try/except can't catch a segfault, so check permissions first.
-        if os.path.exists('/dev/mem') and not os.access('/dev/mem', os.R_OK | os.W_OK):
-            error_msg = "Cannot access /dev/mem — NeoPixel requires root permissions. Run the service with sudo."
-            self._init_error = error_msg
-            logger.warning(error_msg)
-            return False
 
         # Try standard NeoPixel library first (works on Pi 4 and earlier)
         # If that fails, fall back to Pi 5-specific library
