@@ -106,6 +106,7 @@ cmd_update() {
     # Check if we should skip the pull phase (called after re-exec)
     if [[ "$1" != "--continue" ]]; then
         echo "Pulling latest code..."
+        git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
         git pull
 
         # Update dw CLI
