@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=USER_PLACEHOLDER
+User=root
 WorkingDirectory=INSTALL_DIR_PLACEHOLDER
 ExecStart=INSTALL_DIR_PLACEHOLDER/.venv/bin/python INSTALL_DIR_PLACEHOLDER/main.py
 Restart=always
