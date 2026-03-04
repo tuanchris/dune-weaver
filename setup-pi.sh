@@ -497,6 +497,9 @@ main() {
     echo "Install directory: $INSTALL_DIR"
     echo ""
 
+    # Ask connection type upfront (before long-running installs)
+    configure_uart
+
     # Run setup steps
     check_raspberry_pi
     install_system_deps
@@ -513,7 +516,6 @@ main() {
         setup_autohotspot
     fi
 
-    configure_uart
     install_lgpio
     deploy_native
     install_cli
