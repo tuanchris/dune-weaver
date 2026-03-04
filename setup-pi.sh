@@ -90,7 +90,7 @@ install_system_deps() {
         python3-venv python3-pip python3-dev \
         gcc g++ make \
         libjpeg-dev zlib1g-dev \
-        libgpiod2 libgpiod-dev \
+        libgpiod-dev gpiod \
         nginx git vim
     print_success "System dependencies installed"
 }
