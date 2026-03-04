@@ -474,7 +474,7 @@ print_final_instructions() {
     fi
 
     if [[ "$NEEDS_REBOOT" == "true" ]]; then
-        print_warning "A reboot is recommended to apply WiFi fixes"
+        print_warning "A reboot is required to apply configuration changes"
         read -p "Reboot now? (y/N) " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
