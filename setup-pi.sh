@@ -95,34 +95,44 @@ install_system_deps() {
     print_success "System dependencies installed"
 }
 
-# Install lgpio C library from source (not packaged in Trixie)
+# Install lgpio C library from source (not packaged in Debian Trixie)
 install_lgpio() {
-    # Check if already installed
-    if ldconfig -p | grep -q liblgpio; then
+    # Build from source if not already present
+    if ! ldconfig -p | grep -q liblgpio; then
+        print_step "Building lgpio C library from source..."
+        local tmpdir
+        tmpdir=$(mktemp -d)
+        cd "$tmpdir"
+        wget -q https://github.com/joan2937/lg/archive/master.zip
+        unzip -q master.zip
+        cd lg-master
+        make
+        sudo make install
+        cd /
+        rm -rf "$tmpdir"
+        sudo ldconfig
+        print_success "lgpio C library built and installed"
+    else
         echo "lgpio C library already installed"
-        return
     fi
 
-    print_step "Building lgpio C library from source..."
-    local tmpdir
-    tmpdir=$(mktemp -d)
-    cd "$tmpdir"
-    wget -q https://github.com/joan2937/lg/archive/master.zip
-    unzip -q master.zip
-    cd lg-master
-    make
-    sudo make install
-    cd /
-    rm -rf "$tmpdir"
-    # joan2937/lg installs to /usr/local/lib/ but pip's build links
-    # against /usr/lib/aarch64-linux-gnu/ — symlink so the linker finds it
+    # joan2937/lg installs to /usr/local/lib/ but pip's build hardcodes
+    # -L/usr/lib/aarch64-linux-gnu/ — always ensure symlinks exist
     local syslib="/usr/lib/aarch64-linux-gnu"
-    if [[ -f /usr/local/lib/liblgpio.so ]] && [[ ! -f "$syslib/liblgpio.so" ]]; then
+    if [[ -f /usr/local/lib/liblgpio.so ]] && [[ ! -e "$syslib/liblgpio.so" ]]; then
+        print_step "Symlinking liblgpio into system library path..."
         sudo ln -sf /usr/local/lib/liblgpio.so "$syslib/liblgpio.so"
         sudo ln -sf /usr/local/lib/liblgpio.a "$syslib/liblgpio.a" 2>/dev/null || true
+        # Also symlink headers for compilation
+        if [[ -d /usr/local/include/lgpio ]] && [[ ! -e /usr/include/lgpio ]]; then
+            sudo ln -sf /usr/local/include/lgpio /usr/include/lgpio
+        fi
+        if [[ -f /usr/local/include/lgpio.h ]] && [[ ! -e /usr/include/lgpio.h ]]; then
+            sudo ln -sf /usr/local/include/lgpio.h /usr/include/lgpio.h
+        fi
+        sudo ldconfig
+        print_success "lgpio symlinks created"
     fi
-    sudo ldconfig
-    print_success "lgpio C library installed"
 }
 
 # Install Node.js 20 via nodesource
