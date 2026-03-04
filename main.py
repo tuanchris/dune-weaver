@@ -517,6 +517,7 @@ class MqttSettingsUpdate(BaseModel):
 
 class MachineSettingsUpdate(BaseModel):
     table_type_override: Optional[str] = None  # Override detected table type, or empty string/"auto" to clear
+    gear_ratio_override: Optional[float] = None  # Override gear ratio, or 0/negative to clear
     timezone: Optional[str] = None  # IANA timezone (e.g., "America/New_York", "UTC")
 
 class SecuritySettingsUpdate(BaseModel):
@@ -792,6 +793,7 @@ async def get_all_settings():
             "table_type_override": state.table_type_override,
             "effective_table_type": state.table_type_override or state.table_type,
             "gear_ratio": state.gear_ratio,
+            "gear_ratio_override": state.gear_ratio_override,
             "x_steps_per_mm": state.x_steps_per_mm,
             "y_steps_per_mm": state.y_steps_per_mm,
             "timezone": state.timezone,
@@ -1027,6 +1029,23 @@ async def update_settings(settings_update: SettingsUpdate):
         if m.table_type_override is not None:
             # Empty string or "auto" clears the override
             state.table_type_override = None if m.table_type_override in ("", "auto") else m.table_type_override
+        if m.gear_ratio_override is not None:
+            # Zero or negative clears the override; positive value sets it
+            state.gear_ratio_override = None if m.gear_ratio_override <= 0 else m.gear_ratio_override
+            # Apply immediately to current gear_ratio
+            if state.gear_ratio_override is not None:
+                state.gear_ratio = state.gear_ratio_override
+            else:
+                # Cleared — revert to auto-detected value (table type, then env var)
+                effective_table_type = state.table_type_override or state.table_type
+                mini_types = ['dune_weaver_mini', 'dune_weaver_mini_pro', 'dune_weaver_mini_pro_byj', 'dune_weaver_gold']
+                state.gear_ratio = 6.25 if effective_table_type in mini_types else 10
+                env_gr = os.getenv('GEAR_RATIO')
+                if env_gr is not None:
+                    try:
+                        state.gear_ratio = float(env_gr)
+                    except ValueError:
+                        pass
         if m.timezone is not None:
             # Validate timezone by trying to create a ZoneInfo object
             try:
@@ -4010,6 +4029,156 @@ async def restart_system():
             content={"success": False, "message": str(e)},
             status_code=500
         )
+
+###############################################################################
+# FluidNC Config Endpoints
+###############################################################################
+
+class FluidNCCommandRequest(BaseModel):
+    command: str
+    timeout: Optional[float] = 3.0
+
+class FluidNCConfigUpdate(BaseModel):
+    axes: Optional[dict] = None   # { "x": { "steps_per_mm": 320, ... }, "y": {...} }
+    start: Optional[dict] = None  # { "must_home": false }
+
+
+@app.post("/api/fluidnc/command")
+async def fluidnc_command(request: FluidNCCommandRequest):
+    """Send a raw command to FluidNC and return the response lines."""
+    if not state.conn or not state.conn.is_connected():
+        raise HTTPException(status_code=400, detail="Not connected to controller")
+    if state.current_playing_file and not state.pause_requested:
+        raise HTTPException(status_code=409, detail="Cannot send commands while a pattern is running")
+
+    from modules.connection import fluidnc_config
+
+    try:
+        responses = await asyncio.to_thread(
+            fluidnc_config.send_command, request.command, request.timeout or 3.0
+        )
+        return {"success": True, "command": request.command, "responses": responses}
+    except ConnectionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"FluidNC command error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/fluidnc/config")
+async def fluidnc_config_read():
+    """Read all curated FluidNC settings from the controller."""
+    if not state.conn or not state.conn.is_connected():
+        raise HTTPException(status_code=400, detail="Not connected to controller")
+
+    from modules.connection import fluidnc_config
+
+    try:
+        settings = await asyncio.to_thread(fluidnc_config.read_all_settings)
+        return {"success": True, "settings": settings}
+    except ConnectionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"FluidNC config read error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Mapping from UI flat keys back to FluidNC config tree paths.
+# direction_inverted is handled specially (toggles :low on the raw pin).
+_AXIS_KEY_TO_PATH = {
+    "steps_per_mm": "axes/{axis}/steps_per_mm",
+    "max_rate_mm_per_min": "axes/{axis}/max_rate_mm_per_min",
+    "acceleration_mm_per_sec2": "axes/{axis}/acceleration_mm_per_sec2",
+    "homing_cycle": "axes/{axis}/homing/cycle",
+    "homing_positive_direction": "axes/{axis}/homing/positive_direction",
+    "homing_mpos_mm": "axes/{axis}/homing/mpos_mm",
+    "homing_feed_mm_per_min": "axes/{axis}/homing/feed_mm_per_min",
+    "homing_seek_mm_per_min": "axes/{axis}/homing/seek_mm_per_min",
+    "homing_settle_ms": "axes/{axis}/homing/settle_ms",
+    "homing_seek_scaler": "axes/{axis}/homing/seek_scaler",
+    "homing_feed_scaler": "axes/{axis}/homing/feed_scaler",
+    "pulloff_mm": "axes/{axis}/motor0/pulloff_mm",
+}
+
+
+@app.patch("/api/fluidnc/config")
+async def fluidnc_config_write(update: FluidNCConfigUpdate):
+    """Write changed FluidNC settings and persist to flash."""
+    if not state.conn or not state.conn.is_connected():
+        raise HTTPException(status_code=400, detail="Not connected to controller")
+    if state.current_playing_file and not state.pause_requested:
+        raise HTTPException(status_code=409, detail="Cannot modify config while a pattern is running")
+
+    from modules.connection import fluidnc_config
+
+    changes_applied: list[str] = []
+    restart_required = False
+
+    def apply_changes():
+        nonlocal restart_required
+        # Apply axis settings
+        if update.axes:
+            for axis in ("x", "y"):
+                axis_data = update.axes.get(axis)
+                if not axis_data:
+                    continue
+                for key, value in axis_data.items():
+                    if key in ("direction_pin", "direction_inverted_raw"):
+                        # Skip derived/raw keys handled below
+                        continue
+
+                    if key == "direction_inverted":
+                        # Toggle :low on direction pin
+                        success, new_state = fluidnc_config.toggle_direction_pin(axis)
+                        if success:
+                            changes_applied.append(f"{axis}/direction_pin")
+                            restart_required = True
+                        continue
+
+                    path_template = _AXIS_KEY_TO_PATH.get(key)
+                    if path_template:
+                        path = path_template.format(axis=axis)
+                        str_value = str(value).lower() if isinstance(value, bool) else str(value)
+                        if fluidnc_config.write_setting(path, str_value):
+                            changes_applied.append(path)
+
+        # Apply global settings
+        if update.start:
+            for key, value in update.start.items():
+                path = f"start/{key}"
+                str_value = str(value).lower() if isinstance(value, bool) else str(value)
+                if fluidnc_config.write_setting(path, str_value):
+                    changes_applied.append(path)
+
+        # Sync steps_per_mm into app state so Machine Settings reflects changes
+        if update.axes:
+            x_steps = update.axes.get("x", {}).get("steps_per_mm")
+            y_steps = update.axes.get("y", {}).get("steps_per_mm")
+            if x_steps is not None:
+                state.x_steps_per_mm = float(x_steps)
+            if y_steps is not None:
+                state.y_steps_per_mm = float(y_steps)
+            if x_steps is not None or y_steps is not None:
+                state.save()
+
+        # Persist to flash
+        saved = fluidnc_config.save_config() if changes_applied else False
+        return saved
+
+    try:
+        saved = await asyncio.to_thread(apply_changes)
+        return {
+            "success": True,
+            "saved": saved,
+            "changes_applied": changes_applied,
+            "restart_required": restart_required,
+        }
+    except ConnectionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"FluidNC config write error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 def entrypoint():
     import uvicorn

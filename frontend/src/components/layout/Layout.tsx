@@ -88,6 +88,8 @@ export function Layout() {
   const isConnected = useStatusStore((s) => s.status?.connection_status ?? false)
   const isHoming = useStatusStore((s) => s.status?.is_homing ?? false)
   const sensorHomingFailed = useStatusStore((s) => s.status?.sensor_homing_failed ?? false)
+  const firmwareVersion = useStatusStore((s) => s.status?.firmware_version ?? null)
+  const tableType = useStatusStore((s) => s.status?.table_type ?? null)
   const statusCurrentFile = useStatusStore((s) => s.status?.current_file ?? null)
   const statusIsRunning = useStatusStore((s) => s.status?.is_running ?? false)
   const statusIsPaused = useStatusStore((s) => s.status?.is_paused ?? false)
@@ -115,6 +117,13 @@ export function Layout() {
   const [showPasswordDialog, setShowPasswordDialog] = useState(false)
   const [passwordInput, setPasswordInput] = useState('')
   const [passwordError, setPasswordError] = useState(false)
+
+  // FluidNC version warning — each table type has an expected version
+  const expectedFirmwareVersion = tableType === 'dune_weaver_mini' ? 'v3.8.3' : 'v3.9.5'
+  const showFirmwareWarning = useMemo(() => {
+    if (!firmwareVersion) return false
+    return firmwareVersion !== expectedFirmwareVersion
+  }, [firmwareVersion, expectedFirmwareVersion])
 
   // Fetch app settings
   const fetchAppSettings = () => {
@@ -741,8 +750,9 @@ export function Layout() {
     const showOverlay = !isBackendConnected || isHoming || homingJustCompleted
 
     if (!showOverlay) {
-      setConnectionLogs([])
-      // Close WebSocket if open - only if OPEN (CONNECTING will close in onopen)
+      // Don't clear logs here — they'll be cleared when the next session starts.
+      // Clearing here races with the homingJustCompleted setState, wiping logs
+      // before the completion overlay renders.
       if (blockingLogsWsRef.current && blockingLogsWsRef.current.readyState === WebSocket.OPEN) {
         blockingLogsWsRef.current.close()
       }
@@ -776,6 +786,7 @@ export function Layout() {
 
     // If homing, connect to logs WebSocket to stream real logs
     if (isHoming && isBackendConnected) {
+      setConnectionLogs([])
       addLog('INFO', 'Homing started...')
 
       let shouldConnect = true
@@ -848,6 +859,7 @@ export function Layout() {
 
     // If backend disconnected, show connection retry logs
     if (!isBackendConnected) {
+      setConnectionLogs([])
       addLog('INFO', `Attempting to connect to backend at ${window.location.host}...`)
 
       const interval = setInterval(() => {
@@ -1504,7 +1516,8 @@ export function Layout() {
           <div className="absolute inset-0 bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/50" style={{ height: 'calc(5rem + env(safe-area-inset-top, 0px))' }} />
         )}
         <div className="relative w-full max-w-5xl mx-auto px-3 sm:px-4 pt-3 pointer-events-none">
-          <div className="flex h-12 items-center justify-between px-4 rounded-full bg-card shadow-lg border border-border pointer-events-auto">
+          <div className="rounded-full bg-card shadow-lg border border-border pointer-events-auto">
+          <div className="flex h-12 items-center justify-between px-4">
           <div className="flex items-center gap-2">
             <Link to="/">
               <img
@@ -1545,6 +1558,15 @@ export function Layout() {
               </button>
             </TableSelector>
           </div>
+
+          {showFirmwareWarning && (
+            <div className="flex items-center gap-1.5 min-w-0 mx-2 text-amber-500">
+              <span className="material-icons-outlined text-base shrink-0">warning</span>
+              <span className="text-xs truncate">
+                FluidNC {firmwareVersion} — change to {expectedFirmwareVersion}
+              </span>
+            </div>
+          )}
 
           {/* Desktop actions */}
           <div className="hidden md:flex items-center gap-0 ml-2">
@@ -1719,6 +1741,7 @@ export function Layout() {
               </PopoverContent>
             </Popover>
             </div>
+          </div>
           </div>
         </div>
       </header>

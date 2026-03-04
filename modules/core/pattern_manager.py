@@ -1987,7 +1987,9 @@ def get_status():
         "original_pause_time": getattr(state, 'original_pause_time', None),
         "connection_status": state.conn.is_connected() if state.conn else False,
         "current_theta": state.current_theta,
-        "current_rho": state.current_rho
+        "current_rho": state.current_rho,
+        "firmware_version": state.firmware_version,
+        "table_type": state.table_type_override or state.table_type
     }
     
     # Add playlist information if available

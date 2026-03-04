@@ -68,6 +68,10 @@ class AppState:
         # This indicates to the UI that sensor homing failed and user action is needed
         self.sensor_homing_failed = False
 
+        # Firmware info (runtime only, detected on connect, not persisted)
+        self.firmware_type = None  # 'fluidnc', 'grbl', or 'unknown'
+        self.firmware_version = None  # e.g., "v3.7.2"
+
         # Angular homing compass reference point
         # This is the angular offset in degrees where the sensor is placed
         # After homing, theta will be set to this value
@@ -119,6 +123,7 @@ class AppState:
         self.dw_led_last_activity_time = None  # Last activity timestamp (runtime only, not persisted)
         self.table_type = None
         self.table_type_override = None  # User override for table type detection
+        self.gear_ratio_override = None  # User override for gear ratio (highest priority)
         self._playlist_mode = "loop"
         self._pause_time = 0
         self._clear_pattern = "none"
@@ -542,6 +547,7 @@ class AppState:
             "mqtt_device_id": self.mqtt_device_id,
             "mqtt_device_name": self.mqtt_device_name,
             "table_type_override": self.table_type_override,
+            "gear_ratio_override": self.gear_ratio_override,
             "security_mode": self.security_mode,
             "security_password_hash": self.security_password_hash,
         }
@@ -662,6 +668,7 @@ class AppState:
         self.mqtt_device_id = data.get("mqtt_device_id", "dune_weaver")
         self.mqtt_device_name = data.get("mqtt_device_name", "Dune Weaver")
         self.table_type_override = data.get("table_type_override", None)
+        self.gear_ratio_override = data.get("gear_ratio_override", None)
         self.security_mode = data.get("security_mode", "off")
         self.security_password_hash = data.get("security_password_hash", "")
 

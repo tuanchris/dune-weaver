@@ -36,6 +36,8 @@ export interface StatusData {
   connection_status: boolean
   current_theta: number
   current_rho: number
+  firmware_version: string | null
+  table_type: string | null
 }
 
 interface StatusStore {

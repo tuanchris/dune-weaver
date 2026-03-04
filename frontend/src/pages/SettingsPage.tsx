@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { apiClient } from '@/lib/apiClient'
 import { useOnBackendConnected } from '@/hooks/useBackendConnection'
@@ -38,6 +38,7 @@ interface Settings {
   detected_table_type?: string
   effective_table_type?: string
   gear_ratio?: number
+  gear_ratio_override?: number | null
   x_steps_per_mm?: number
   y_steps_per_mm?: number
   available_table_types?: { value: string; label: string }[]
@@ -352,6 +353,7 @@ export function SettingsPage() {
         detected_table_type: data.machine?.detected_table_type,
         effective_table_type: data.machine?.effective_table_type,
         gear_ratio: data.machine?.gear_ratio,
+        gear_ratio_override: data.machine?.gear_ratio_override ?? null,
         x_steps_per_mm: data.machine?.x_steps_per_mm,
         y_steps_per_mm: data.machine?.y_steps_per_mm,
         available_table_types: data.machine?.available_table_types,
@@ -644,6 +646,7 @@ export function SettingsPage() {
       await apiClient.patch('/api/settings', {
         machine: {
           table_type_override: settings.table_type_override || '',
+          gear_ratio_override: settings.gear_ratio_override ?? 0,
         },
       })
       toast.success('Machine settings saved')
@@ -898,6 +901,35 @@ export function SettingsPage() {
                 Choose how the system connects on startup: Auto picks the first available port, Disabled requires manual connection, or select a specific port.
               </p>
             </div>
+
+            {/* Home on Connect */}
+            <div className="p-4 rounded-lg border space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium flex items-center gap-2">
+                    <span className="material-icons-outlined text-base">power</span>
+                    Home on Connect
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Automatically home when connecting on startup. Disable to connect without homing and home manually later.
+                  </p>
+                </div>
+                <Switch
+                  checked={settings.home_on_connect !== false}
+                  onCheckedChange={async (checked) => {
+                    setSettings({ ...settings, home_on_connect: checked })
+                    try {
+                      await apiClient.patch('/api/settings', {
+                        homing: { home_on_connect: checked },
+                      })
+                      toast.success(checked ? 'Home on connect enabled' : 'Home on connect disabled')
+                    } catch {
+                      toast.error('Failed to save setting')
+                    }
+                  }}
+                />
+              </div>
+            </div>
           </AccordionContent>
         </AccordionItem>
 
@@ -977,12 +1009,64 @@ export function SettingsPage() {
               </p>
             </div>
 
+            {/* Gear Ratio Override */}
+            <div className="space-y-3">
+              <Label>Gear Ratio Override</Label>
+              <div className="flex gap-3">
+                <Input
+                  type="number"
+                  step={0.25}
+                  min={0}
+                  placeholder="Auto-detect"
+                  value={settings.gear_ratio_override ?? ''}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      gear_ratio_override: e.target.value ? parseFloat(e.target.value) : null,
+                    })
+                  }
+                  className="flex-1"
+                />
+                <Button
+                  onClick={handleSaveMachineSettings}
+                  disabled={isLoading === 'machine'}
+                  className="gap-2"
+                >
+                  {isLoading === 'machine' ? (
+                    <span className="material-icons-outlined animate-spin">sync</span>
+                  ) : (
+                    <span className="material-icons-outlined">save</span>
+                  )}
+                  Save
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Override the gear ratio used for angular/radial coupling compensation. Leave empty to auto-detect from table type (6.25 for mini, 10 for standard).
+              </p>
+            </div>
+
             <Alert className="flex items-start">
               <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
               <AlertDescription>
                 Table type is normally detected automatically from GRBL settings. Use override if auto-detection is incorrect for your hardware.
               </AlertDescription>
             </Alert>
+
+            <Link
+              to="/setup"
+              className="flex items-center justify-between w-full p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <span className="material-icons-outlined text-muted-foreground">build</span>
+                <div className="text-left">
+                  <p className="font-medium text-sm">Hardware Setup & Calibration</p>
+                  <p className="text-xs text-muted-foreground">
+                    Calibrate motor directions and edit FluidNC settings
+                  </p>
+                </div>
+              </div>
+              <span className="material-icons-outlined text-muted-foreground">arrow_forward</span>
+            </Link>
 
           </AccordionContent>
         </AccordionItem>
@@ -1062,27 +1146,6 @@ export function SettingsPage() {
                 </p>
               </div>
             )}
-
-            {/* Home on Connect */}
-            <div className="p-4 rounded-lg border space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium flex items-center gap-2">
-                    <span className="material-icons-outlined text-base">power</span>
-                    Home on Connect
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Automatically home when connecting on startup. Disable to connect without homing and home manually later.
-                  </p>
-                </div>
-                <Switch
-                  checked={settings.home_on_connect !== false}
-                  onCheckedChange={(checked) =>
-                    setSettings({ ...settings, home_on_connect: checked })
-                  }
-                />
-              </div>
-            </div>
 
             {/* Auto-Home During Playlists */}
             <div className="p-4 rounded-lg border space-y-3">

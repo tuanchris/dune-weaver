@@ -1,6 +1,7 @@
 import threading
 import time
 import logging
+import re
 import serial
 import serial.tools.list_ports
 import websocket
@@ -579,13 +580,10 @@ def _detect_firmware():
 
                     if 'fluidnc' in response_lower:
                         firmware_type = 'fluidnc'
-                        # Try to extract version from response like "FluidNC v3.7.2"
-                        if 'v' in response_lower:
-                            parts = response.split()
-                            for part in parts:
-                                if part.lower().startswith('v') and any(c.isdigit() for c in part):
-                                    version = part
-                                    break
+                        # Extract version like "v3.7.2" from response
+                        ver_match = re.search(r'v(\d+\.\d+\.\d+)', response_lower)
+                        if ver_match:
+                            version = f"v{ver_match.group(1)}"
                         break
                     elif 'grbl' in response_lower and 'fluidnc' not in response_lower:
                         firmware_type = 'grbl'
@@ -876,6 +874,8 @@ def get_machine_steps(timeout=10):
 
     # Detect firmware type
     firmware_type, firmware_version = _detect_firmware()
+    state.firmware_type = firmware_type
+    state.firmware_version = firmware_version
 
     if firmware_type == 'fluidnc':
         if firmware_version:
@@ -946,6 +946,11 @@ def get_machine_steps(timeout=10):
             logger.info(f"Machine type detected: {state.table_type}, overridden to: {effective_table_type}, gear ratio: {state.gear_ratio}")
         else:
             logger.info(f"Machine type detected: {state.table_type}, gear ratio: {state.gear_ratio} (hardcoded)")
+
+        # User UI override takes highest priority
+        if state.gear_ratio_override is not None:
+            state.gear_ratio = state.gear_ratio_override
+            logger.info(f"Gear ratio overridden to: {state.gear_ratio} (user override)")
 
         return True
     else:
