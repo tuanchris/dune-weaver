@@ -285,7 +285,7 @@ deploy_native() {
     # Build frontend
     print_step "Building frontend..."
     cd "$INSTALL_DIR/frontend"
-    npm ci
+    npm ci --loglevel=error
     npm run build
     cd "$INSTALL_DIR"
 
