@@ -356,6 +356,78 @@ setup_autohotspot() {
     print_success "Autohotspot setup complete"
 }
 
+# Configure UART for GPIO pin connection to DLC32/ESP32
+configure_uart() {
+    local CONFIG_FILE="/boot/firmware/config.txt"
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        CONFIG_FILE="/boot/config.txt"
+    fi
+
+    echo ""
+    echo -e "${BLUE}How is your Raspberry Pi connected to the sand table controller (DLC32/ESP32)?${NC}"
+    echo ""
+    echo "  1) USB cable (most common)"
+    echo "  2) UART over GPIO pins (TX/RX wired to header pins)"
+    echo ""
+    read -p "Enter choice [1/2] (default: 1): " -n 1 -r uart_choice
+    echo ""
+
+    if [[ "$uart_choice" == "2" ]]; then
+        print_step "Configuring UART over GPIO pins..."
+
+        # Add UART overlays to config.txt if not already present
+        local needs_change=false
+        for overlay in "dtoverlay=pi3-miniuart-bt" "dtoverlay=miniuart-bt" "enable_uart=1"; do
+            if ! grep -q "^${overlay}$" "$CONFIG_FILE" 2>/dev/null; then
+                echo "$overlay" | sudo tee -a "$CONFIG_FILE" > /dev/null
+                needs_change=true
+            fi
+        done
+
+        if [[ "$needs_change" == "true" ]]; then
+            echo "Added UART overlays to $CONFIG_FILE"
+        else
+            echo "UART overlays already present in $CONFIG_FILE"
+        fi
+
+        # Disable serial console, enable serial hardware (non-interactive)
+        # do_serial 2 = console off, hardware on
+        if command -v raspi-config &> /dev/null; then
+            sudo raspi-config nonint do_serial 2
+            echo "Serial console disabled, serial hardware enabled"
+        else
+            print_warning "raspi-config not found, please disable serial console manually"
+        fi
+
+        NEEDS_REBOOT=true
+        print_success "UART configured. A reboot is required for changes to take effect."
+    else
+        # USB mode — check if UART config exists and offer to clean it up
+        local has_uart=false
+        for overlay in "dtoverlay=pi3-miniuart-bt" "dtoverlay=miniuart-bt" "enable_uart=1"; do
+            if grep -q "^${overlay}$" "$CONFIG_FILE" 2>/dev/null; then
+                has_uart=true
+                break
+            fi
+        done
+
+        if [[ "$has_uart" == "true" ]]; then
+            echo -e "${YELLOW}UART overlays found in $CONFIG_FILE from a previous setup.${NC}"
+            read -p "Remove them? (y/N): " -n 1 -r remove_uart
+            echo ""
+            if [[ "$remove_uart" =~ ^[Yy]$ ]]; then
+                sudo sed -i '/^dtoverlay=pi3-miniuart-bt$/d' "$CONFIG_FILE"
+                sudo sed -i '/^dtoverlay=miniuart-bt$/d' "$CONFIG_FILE"
+                sudo sed -i '/^enable_uart=1$/d' "$CONFIG_FILE"
+                NEEDS_REBOOT=true
+                print_success "UART overlays removed. A reboot is recommended."
+            fi
+        else
+            echo "USB connection selected, no UART changes needed."
+        fi
+    fi
+}
+
 # Get IP address
 get_ip_address() {
     # Try multiple methods to get IP
@@ -441,6 +513,7 @@ main() {
         setup_autohotspot
     fi
 
+    configure_uart
     install_lgpio
     deploy_native
     install_cli
