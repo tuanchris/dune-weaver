@@ -125,7 +125,7 @@ cmd_update() {
     echo "Rebuilding frontend..."
     cd "$INSTALL_DIR/frontend"
     npm ci --loglevel=error
-    npm run build
+    npx vite build
     cd "$INSTALL_DIR"
 
     # Update nginx config
@@ -313,7 +313,7 @@ cmd_checkout() {
     echo "Rebuilding frontend..."
     cd "$INSTALL_DIR/frontend"
     npm ci --loglevel=error
-    npm run build
+    npx vite build
     cd "$INSTALL_DIR"
 
     # Update Python dependencies

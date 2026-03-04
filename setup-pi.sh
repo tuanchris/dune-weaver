@@ -286,7 +286,7 @@ deploy_native() {
     print_step "Building frontend..."
     cd "$INSTALL_DIR/frontend"
     npm ci --loglevel=error
-    npm run build
+    npx vite build
     cd "$INSTALL_DIR"
 
     # Ensure nginx (www-data) can traverse to static files
