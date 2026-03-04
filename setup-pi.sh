@@ -376,10 +376,13 @@ configure_uart() {
 
     if [[ "$uart_choice" == "2" ]]; then
         echo ""
-        echo "UART setup requires running raspi-config to change serial port settings."
-        echo "When prompted:"
-        echo "  - 'Would you like a login shell over serial?' → Select ${GREEN}No${NC}"
-        echo "  - 'Would you like the serial port hardware enabled?' → Select ${GREEN}Yes${NC}"
+        echo -e "${YELLOW}============================================${NC}"
+        echo -e "${YELLOW}  UART Setup — raspi-config will run next${NC}"
+        echo -e "${YELLOW}============================================${NC}"
+        echo ""
+        echo -e "  When prompted, select:"
+        echo -e "    Login shell over serial?     →  ${GREEN}No${NC}"
+        echo -e "    Serial port hardware?        →  ${GREEN}Yes${NC}"
         echo ""
         read -p "Press Enter to continue..." -r
         echo ""
