@@ -25,10 +25,19 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Resolve the real user when run via sudo
+if [[ -n "$SUDO_USER" ]]; then
+    REAL_USER="$SUDO_USER"
+    REAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+else
+    REAL_USER="$USER"
+    REAL_HOME="$HOME"
+fi
+
 # Default options
 FIX_WIFI=true  # Applied by default for stability
 SETUP_HOTSPOT=true  # Autohotspot for first-time WiFi setup
-INSTALL_DIR="$HOME/dune-weaver"
+INSTALL_DIR="$REAL_HOME/dune-weaver"
 REPO_URL="https://github.com/tuanchris/dune-weaver"
 
 # Parse arguments
@@ -88,10 +97,10 @@ install_system_deps() {
     sudo apt update
     sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
         python3-venv python3-pip python3-dev \
-        gcc g++ make swig \
+        gcc g++ make swig scons \
         libjpeg-dev zlib1g-dev \
         libgpiod-dev gpiod \
-        nginx git vim
+        curl nginx git vim
     print_success "System dependencies installed"
 }
 
@@ -218,11 +227,24 @@ ensure_repo() {
         return
     fi
 
-    # Clone the repository
+    # Clone the repository (as the real user, not root)
     print_step "Cloning dune-weaver repository..."
-    git clone "$REPO_URL" --single-branch "$INSTALL_DIR"
+    if [[ -n "$SUDO_USER" ]]; then
+        sudo -u "$REAL_USER" git clone "$REPO_URL" --single-branch "$INSTALL_DIR"
+    else
+        git clone "$REPO_URL" --single-branch "$INSTALL_DIR"
+    fi
     cd "$INSTALL_DIR"
     print_success "Cloned to $INSTALL_DIR"
+}
+
+# Run a command as the real user (handles sudo case)
+run_as_user() {
+    if [[ -n "$SUDO_USER" ]]; then
+        sudo -u "$REAL_USER" "$@"
+    else
+        "$@"
+    fi
 }
 
 # Deploy native (venv + systemd + nginx)
@@ -231,20 +253,19 @@ deploy_native() {
 
     cd "$INSTALL_DIR"
 
-    # Create venv
-    python3 -m venv .venv
-    source .venv/bin/activate
+    # Create venv (as real user, not root)
+    run_as_user python3 -m venv .venv
 
     # Install dependencies
     print_step "Installing Python packages..."
-    pip install --upgrade pip
-    pip install -r requirements.txt
+    run_as_user .venv/bin/pip install --upgrade pip
+    run_as_user .venv/bin/pip install -r requirements.txt
 
     # Build frontend
     print_step "Building frontend..."
     cd "$INSTALL_DIR/frontend"
-    npm ci
-    npm run build
+    run_as_user npm ci
+    run_as_user npm run build
     cd "$INSTALL_DIR"
 
     # Configure nginx
@@ -260,7 +281,7 @@ deploy_native() {
     # Create systemd service
     print_step "Creating systemd service..."
     sudo cp "$INSTALL_DIR/dune-weaver.service" /etc/systemd/system/dune-weaver.service
-    sudo sed -i "s|USER_PLACEHOLDER|$USER|g" /etc/systemd/system/dune-weaver.service
+    sudo sed -i "s|USER_PLACEHOLDER|$REAL_USER|g" /etc/systemd/system/dune-weaver.service
     sudo sed -i "s|INSTALL_DIR_PLACEHOLDER|$INSTALL_DIR|g" /etc/systemd/system/dune-weaver.service
 
     # Enable and start service
@@ -271,11 +292,11 @@ deploy_native() {
     # Create sudoers entry for passwordless systemctl commands
     print_step "Configuring sudo permissions..."
     sudo tee /etc/sudoers.d/dune-weaver > /dev/null << EOF
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart dune-weaver
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop dune-weaver
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start dune-weaver
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl poweroff
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx
+$REAL_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart dune-weaver
+$REAL_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop dune-weaver
+$REAL_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start dune-weaver
+$REAL_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl poweroff
+$REAL_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx
 EOF
     sudo chmod 0440 /etc/sudoers.d/dune-weaver
 
