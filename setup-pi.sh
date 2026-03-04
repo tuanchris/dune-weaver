@@ -114,7 +114,13 @@ install_lgpio() {
     sudo make install
     cd /
     rm -rf "$tmpdir"
-    # Update linker cache so pip can find liblgpio.so
+    # joan2937/lg installs to /usr/local/lib/ but pip's build links
+    # against /usr/lib/aarch64-linux-gnu/ — symlink so the linker finds it
+    local syslib="/usr/lib/aarch64-linux-gnu"
+    if [[ -f /usr/local/lib/liblgpio.so ]] && [[ ! -f "$syslib/liblgpio.so" ]]; then
+        sudo ln -sf /usr/local/lib/liblgpio.so "$syslib/liblgpio.so"
+        sudo ln -sf /usr/local/lib/liblgpio.a "$syslib/liblgpio.a" 2>/dev/null || true
+    fi
     sudo ldconfig
     print_success "lgpio C library installed"
 }
