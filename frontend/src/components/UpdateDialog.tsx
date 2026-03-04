@@ -122,7 +122,7 @@ export function UpdateDialog({ open, onOpenChange, currentVersion, latestVersion
               <p className="text-sm text-muted-foreground">
                 This usually takes 1-2 minutes.
                 <br />
-                Please reload the page after a couple of minutes.
+                Please reload the page once the update is done.
               </p>
             </div>
           </div>
