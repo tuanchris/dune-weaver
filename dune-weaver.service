@@ -11,8 +11,7 @@ Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
 CPUAffinity=0 1 2
-SupplementaryGroups=dialout gpio kmem
-AmbientCapabilities=CAP_SYS_RAWIO
+SupplementaryGroups=dialout gpio
 
 [Install]
 WantedBy=multi-user.target
