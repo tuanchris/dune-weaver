@@ -95,43 +95,45 @@ install_system_deps() {
     print_success "System dependencies installed"
 }
 
-# Install lgpio C library from source (not packaged in Debian Trixie)
+# Ensure lgpio C library is available for pip to build against
 install_lgpio() {
-    # Build from source if not already present
-    if ! ldconfig -p | grep -q liblgpio; then
-        print_step "Building lgpio C library from source..."
-        local tmpdir
-        tmpdir=$(mktemp -d)
-        cd "$tmpdir"
-        wget -q https://github.com/joan2937/lg/archive/master.zip
-        unzip -q master.zip
-        cd lg-master
-        make
-        sudo make install
-        cd /
-        rm -rf "$tmpdir"
-        sudo ldconfig
-        print_success "lgpio C library built and installed"
-    else
-        echo "lgpio C library already installed"
-    fi
-
-    # joan2937/lg installs to /usr/local/lib/ but pip's build hardcodes
-    # -L/usr/lib/aarch64-linux-gnu/ — always ensure symlinks exist
     local syslib="/usr/lib/aarch64-linux-gnu"
-    if [[ -f /usr/local/lib/liblgpio.so ]] && [[ ! -e "$syslib/liblgpio.so" ]]; then
-        print_step "Symlinking liblgpio into system library path..."
-        sudo ln -sf /usr/local/lib/liblgpio.so "$syslib/liblgpio.so"
-        sudo ln -sf /usr/local/lib/liblgpio.a "$syslib/liblgpio.a" 2>/dev/null || true
-        # Also symlink headers for compilation
-        if [[ -d /usr/local/include/lgpio ]] && [[ ! -e /usr/include/lgpio ]]; then
-            sudo ln -sf /usr/local/include/lgpio /usr/include/lgpio
+
+    # Raspberry Pi OS Trixie ships liblgpio.so.1 but no unversioned
+    # liblgpio.so symlink (normally provided by a -dev package).
+    # The build-time linker needs the unversioned name (-llgpio → liblgpio.so).
+    if [[ ! -e "$syslib/liblgpio.so" ]]; then
+        # Check if the versioned library exists (from Pi OS)
+        local versioned
+        versioned=$(ls "$syslib"/liblgpio.so.* 2>/dev/null | head -1)
+
+        if [[ -n "$versioned" ]]; then
+            print_step "Creating liblgpio.so build symlink..."
+            sudo ln -sf "$versioned" "$syslib/liblgpio.so"
+            sudo ldconfig
+            print_success "liblgpio.so symlink created (-> $(basename "$versioned"))"
+        else
+            # Not in system paths — build from source
+            print_step "Building lgpio C library from source..."
+            local tmpdir
+            tmpdir=$(mktemp -d)
+            cd "$tmpdir"
+            wget -q https://github.com/joan2937/lg/archive/master.zip
+            unzip -q master.zip
+            cd lg-master
+            make
+            sudo make install
+            cd /
+            rm -rf "$tmpdir"
+            # Symlink from /usr/local/lib into system path
+            if [[ -f /usr/local/lib/liblgpio.so ]]; then
+                sudo ln -sf /usr/local/lib/liblgpio.so "$syslib/liblgpio.so"
+            fi
+            sudo ldconfig
+            print_success "lgpio C library built and installed"
         fi
-        if [[ -f /usr/local/include/lgpio.h ]] && [[ ! -e /usr/include/lgpio.h ]]; then
-            sudo ln -sf /usr/local/include/lgpio.h /usr/include/lgpio.h
-        fi
-        sudo ldconfig
-        print_success "lgpio symlinks created"
+    else
+        echo "liblgpio.so already available for linking"
     fi
 }
 
