@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { apiClient } from '@/lib/apiClient'
+import { useStatusStore } from '@/stores/useStatusStore'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -17,7 +18,7 @@ interface UpdateDialogProps {
   latestVersion: string
 }
 
-type UpdateState = 'confirming' | 'updating' | 'error'
+type UpdateState = 'confirming' | 'updating' | 'complete' | 'error'
 
 const FUN_MESSAGES = [
   'Shifting the sands...',
@@ -33,6 +34,10 @@ export function UpdateDialog({ open, onOpenChange, currentVersion, latestVersion
   const [errorMessage, setErrorMessage] = useState('')
   const [messageIndex, setMessageIndex] = useState(0)
   const messageRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Track that we've seen the WS go down (so reconnect means update finished)
+  const sawDisconnect = useRef(false)
+
+  const isBackendConnected = useStatusStore((s) => s.isBackendConnected)
 
   // Reset state when dialog closes
   useEffect(() => {
@@ -41,8 +46,28 @@ export function UpdateDialog({ open, onOpenChange, currentVersion, latestVersion
       setState('confirming')
       setErrorMessage('')
       setMessageIndex(0)
+      sawDisconnect.current = false
     }
   }, [open])
+
+  // Track WS disconnect/reconnect while updating
+  useEffect(() => {
+    if (state !== 'updating') return
+
+    if (!isBackendConnected) {
+      sawDisconnect.current = true
+    } else if (sawDisconnect.current) {
+      // WS came back after being down — update is done
+      setState('complete')
+    }
+  }, [state, isBackendConnected])
+
+  // Auto-reload shortly after complete
+  useEffect(() => {
+    if (state !== 'complete') return
+    const timer = setTimeout(() => window.location.reload(), 2000)
+    return () => clearTimeout(timer)
+  }, [state])
 
   // Rotate fun messages every 4 seconds while updating
   useEffect(() => {
@@ -58,6 +83,7 @@ export function UpdateDialog({ open, onOpenChange, currentVersion, latestVersion
   const handleUpdate = async () => {
     setState('updating')
     setMessageIndex(0)
+    sawDisconnect.current = false
     try {
       const res = await apiClient.request<{ success: boolean; message: string }>('/api/update', {
         method: 'POST',
@@ -72,12 +98,14 @@ export function UpdateDialog({ open, onOpenChange, currentVersion, latestVersion
     }
   }
 
+  const isBlocked = state === 'updating' || state === 'complete'
+
   return (
-    <Dialog open={open} onOpenChange={state === 'confirming' ? onOpenChange : undefined}>
+    <Dialog open={open} onOpenChange={isBlocked ? undefined : onOpenChange}>
       <DialogContent
-        onPointerDownOutside={state === 'updating' ? (e) => e.preventDefault() : undefined}
-        onEscapeKeyDown={state === 'updating' ? (e) => e.preventDefault() : undefined}
-        className={state === 'updating' ? '[&>button:last-child]:hidden' : ''}
+        onPointerDownOutside={isBlocked ? (e) => e.preventDefault() : undefined}
+        onEscapeKeyDown={isBlocked ? (e) => e.preventDefault() : undefined}
+        className={isBlocked ? '[&>button:last-child]:hidden' : ''}
       >
         {state === 'confirming' && (
           <>
@@ -104,7 +132,6 @@ export function UpdateDialog({ open, onOpenChange, currentVersion, latestVersion
 
         {state === 'updating' && (
           <div className="flex flex-col items-center py-8 gap-6">
-            {/* Animated spinner */}
             <div className="relative w-16 h-16">
               <div className="absolute inset-0 rounded-full border-4 border-muted" />
               <div className="absolute inset-0 rounded-full border-4 border-t-primary animate-spin" />
@@ -114,7 +141,6 @@ export function UpdateDialog({ open, onOpenChange, currentVersion, latestVersion
                 style={{ animation: 'spin 1.5s linear infinite reverse' }}
               />
             </div>
-
             <div className="text-center space-y-2">
               <p className="text-lg font-medium animate-pulse">
                 {FUN_MESSAGES[messageIndex]}
@@ -122,8 +148,20 @@ export function UpdateDialog({ open, onOpenChange, currentVersion, latestVersion
               <p className="text-sm text-muted-foreground">
                 This usually takes 1-2 minutes.
                 <br />
-                Please reload the page once the update is done.
+                The page will reload automatically.
               </p>
+            </div>
+          </div>
+        )}
+
+        {state === 'complete' && (
+          <div className="flex flex-col items-center py-8 gap-4">
+            <div className="w-16 h-16 flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+              <span className="material-icons text-green-600 dark:text-green-400 text-4xl">check_circle</span>
+            </div>
+            <div className="text-center space-y-1">
+              <p className="text-lg font-medium">Update complete!</p>
+              <p className="text-sm text-muted-foreground">Reloading...</p>
             </div>
           </div>
         )}
