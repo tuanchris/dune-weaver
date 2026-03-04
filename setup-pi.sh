@@ -289,6 +289,14 @@ deploy_native() {
     npm run build
     cd "$INSTALL_DIR"
 
+    # Ensure nginx (www-data) can traverse to static files
+    # chmod o+x grants traversal only, not directory listing
+    local dir="$INSTALL_DIR"
+    while [[ "$dir" != "/" ]]; do
+        sudo chmod o+x "$dir"
+        dir=$(dirname "$dir")
+    done
+
     # Configure nginx
     print_step "Configuring nginx..."
     sudo cp "$INSTALL_DIR/nginx/dune-weaver.conf" /etc/nginx/sites-available/dune-weaver.conf
