@@ -3952,17 +3952,19 @@ async def trigger_update():
     We fire-and-forget so the response returns immediately before the
     service goes down for restart.
     """
-    import shutil
     try:
         logger.info("Update triggered via API")
-        dw_path = shutil.which('dw') or '/usr/local/bin/dw'
-        subprocess.Popen(
-            [dw_path, 'update'],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-            cwd=os.path.dirname(os.path.abspath(__file__))
-        )
+        dw_path = '/usr/local/bin/dw'
+        log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'update.log')
+        logger.info(f"Running: {dw_path} update (log: {log_file})")
+        with open(log_file, 'w') as f:
+            subprocess.Popen(
+                [dw_path, 'update'],
+                stdout=f,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                cwd=os.path.dirname(os.path.abspath(__file__))
+            )
         return JSONResponse(content={
             "success": True,
             "message": "Update started"
