@@ -366,8 +366,10 @@ configure_uart() {
     echo ""
     echo -e "${BLUE}How is your Raspberry Pi connected to the sand table controller (DLC32/ESP32)?${NC}"
     echo ""
-    echo "  1) USB cable (most common)"
+    echo "  1) USB cable"
     echo "  2) UART over GPIO pins (TX/RX wired to header pins)"
+    echo ""
+    echo -e "  ${YELLOW}Note: USB is not reliable on Pi 3B+. Use UART for Pi 3B+.${NC}"
     echo ""
     read -p "Enter choice [1/2] (default: 1): " -n 1 -r uart_choice
     echo ""
