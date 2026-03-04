@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/select'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { SearchableSelect } from '@/components/ui/searchable-select'
+import { UpdateDialog } from '@/components/UpdateDialog'
 
 // Types
 
@@ -185,6 +186,7 @@ export function SettingsPage() {
     latest: string
     update_available: boolean
   } | null>(null)
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
 
   // Helper to scroll to element with header offset
   const scrollToSection = (sectionId: string) => {
@@ -2504,13 +2506,18 @@ export function SettingsPage() {
             </div>
 
             {versionInfo?.update_available && (
-              <Alert className="flex items-start">
-                <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
-                <AlertDescription>
-                  To update, SSH into your Raspberry Pi and run <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono">dw update</code>
-                </AlertDescription>
-              </Alert>
+              <Button onClick={() => setUpdateDialogOpen(true)} className="w-full">
+                <span className="material-icons text-base mr-2">system_update</span>
+                Update Now
+              </Button>
             )}
+
+            <UpdateDialog
+              open={updateDialogOpen}
+              onOpenChange={setUpdateDialogOpen}
+              currentVersion={versionInfo?.current || ''}
+              latestVersion={versionInfo?.latest || ''}
+            />
           </AccordionContent>
         </AccordionItem>
       </Accordion>

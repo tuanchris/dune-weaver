@@ -3946,22 +3946,27 @@ async def get_version_info(force_refresh: bool = False):
 
 @app.post("/api/update")
 async def trigger_update():
-    """Trigger software update by pulling latest code and restarting the service."""
+    """Trigger software update by running `dw update` as a detached process.
+
+    The `dw` CLI handles pulling code and restarting the service.
+    We fire-and-forget so the response returns immediately before the
+    service goes down for restart.
+    """
+    import shutil
     try:
         logger.info("Update triggered via API")
-        success, error_message, error_log = update_manager.update_software()
-
-        if success:
-            return JSONResponse(content={
-                "success": True,
-                "message": "Update started. Containers are being recreated with the latest images. The page will reload shortly."
-            })
-        else:
-            return JSONResponse(content={
-                "success": False,
-                "message": error_message or "Update failed",
-                "errors": error_log
-            })
+        dw_path = shutil.which('dw') or '/usr/local/bin/dw'
+        subprocess.Popen(
+            [dw_path, 'update'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            cwd=os.path.dirname(os.path.abspath(__file__))
+        )
+        return JSONResponse(content={
+            "success": True,
+            "message": "Update started"
+        })
     except Exception as e:
         logger.error(f"Error triggering update: {e}")
         return JSONResponse(
