@@ -82,28 +82,6 @@ print_success() {
     echo -e "${GREEN}$1${NC}"
 }
 
-# Temporary swap for memory-constrained boards (e.g. Pi Zero 2W with 512MB)
-SWAP_FILE="/tmp/dw-build-swap"
-
-enable_swap() {
-    local total_mb
-    total_mb=$(awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo)
-    if [[ "$total_mb" -lt 1024 ]]; then
-        echo "Low memory detected (${total_mb}MB). Enabling temporary swap..."
-        sudo dd if=/dev/zero of="$SWAP_FILE" bs=1M count=1024 status=none 2>/dev/null || true
-        sudo chmod 600 "$SWAP_FILE"
-        sudo mkswap "$SWAP_FILE" > /dev/null 2>&1 || true
-        sudo swapon "$SWAP_FILE" 2>/dev/null || true
-    fi
-}
-
-disable_swap() {
-    if [[ -f "$SWAP_FILE" ]]; then
-        sudo swapoff "$SWAP_FILE" 2>/dev/null || true
-        sudo rm -f "$SWAP_FILE"
-    fi
-}
-
 # Install system dependencies
 install_system_deps() {
     print_step "Installing system dependencies..."
@@ -157,29 +135,6 @@ install_lgpio() {
     else
         echo "liblgpio.so already available for linking"
     fi
-}
-
-# Install Node.js 20 via nodesource
-install_nodejs() {
-    print_step "Installing Node.js..."
-
-    if command -v node &> /dev/null; then
-        local node_version
-        node_version=$(node --version)
-        echo "Node.js already installed: $node_version"
-        # Check if version is 20+
-        local major
-        major=$(echo "$node_version" | sed 's/v//' | cut -d. -f1)
-        if [[ "$major" -ge 20 ]]; then
-            print_success "Node.js version is sufficient"
-            return
-        fi
-        echo "Upgrading to Node.js 20..."
-    fi
-
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y nodejs
-    print_success "Node.js $(node --version) installed"
 }
 
 # Check if running on Raspberry Pi
@@ -303,15 +258,6 @@ deploy_native() {
     print_step "Installing Python packages..."
     pip install --upgrade pip
     pip install -r requirements.txt
-
-    # Build frontend (swap helps Pi Zero 2W survive npm ci)
-    enable_swap
-    print_step "Building frontend..."
-    cd "$INSTALL_DIR/frontend"
-    npm ci --loglevel=error
-    npx vite build
-    cd "$INSTALL_DIR"
-    disable_swap
 
     # Ensure nginx (www-data) can traverse to static files
     # chmod o+x grants traversal only, not directory listing
@@ -466,6 +412,32 @@ configure_uart() {
     fi
 }
 
+# Remove software that is no longer needed on the Pi
+cleanup_unused() {
+    print_step "Cleaning up unused software..."
+
+    # Remove Node.js / npm if present from a prior install
+    if dpkg -l nodejs 2>/dev/null | grep -q '^ii'; then
+        echo "Removing Node.js (no longer needed — frontend is pre-built)..."
+        sudo apt purge -y nodejs || true
+        sudo rm -f /etc/apt/sources.list.d/nodesource.list \
+                    /etc/apt/keyrings/nodesource.gpg 2>/dev/null || true
+        sudo apt autoremove -y
+        print_success "Node.js removed"
+    fi
+
+    # Remove Docker if present from old Docker-based deployment
+    if dpkg -l docker-ce 2>/dev/null | grep -q '^ii'; then
+        echo "Removing Docker (old deployment method)..."
+        # Stop running containers
+        sudo docker stop $(sudo docker ps -aq) 2>/dev/null || true
+        sudo apt purge -y docker-ce docker-ce-cli containerd.io docker-compose-plugin 2>/dev/null || true
+        sudo rm -rf /var/lib/docker
+        sudo apt autoremove -y
+        print_success "Docker removed"
+    fi
+}
+
 # Get IP address
 get_ip_address() {
     # Try multiple methods to get IP
@@ -541,7 +513,6 @@ main() {
     # Run setup steps
     check_raspberry_pi
     install_system_deps
-    install_nodejs
     ensure_repo
     update_system
     disable_wlan_powersave
@@ -557,6 +528,7 @@ main() {
     install_lgpio
     deploy_native
     install_cli
+    cleanup_unused
     print_final_instructions
 }
 
