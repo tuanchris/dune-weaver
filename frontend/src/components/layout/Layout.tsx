@@ -682,7 +682,7 @@ export function Layout() {
   const isSecurityUnlocked = securityMode !== 'off' && hasSecurityPassword && isUnlocked
 
   // Redirect away from restricted pages if play_only is active and not unlocked
-  const restrictedPaths = ['/settings', '/table-control']
+  const restrictedPaths = ['/settings', '/table-control', '/setup', '/wifi-setup']
   useEffect(() => {
     if (isPlayOnlyActive && restrictedPaths.includes(location.pathname)) {
       navigate('/')
