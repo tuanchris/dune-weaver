@@ -101,6 +101,7 @@ class AppState:
         self.wled_ip = None
         self.led_provider = "none"  # "wled", "dw_leds", or "none"
         self.led_controller = None
+        self.screen_controller = None
 
         # DW LED settings
         self.dw_led_num_leds = 60  # Number of LEDs in strip

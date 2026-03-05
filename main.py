@@ -19,6 +19,7 @@ import signal
 import asyncio
 from contextlib import asynccontextmanager
 from modules.led.led_interface import LEDInterface
+from modules.screen.screen_controller import ScreenController
 from modules.led.idle_timeout_manager import idle_timeout_manager
 from modules.core.cache_manager import get_cache_path, generate_image_preview, get_pattern_metadata
 from modules.core.version_manager import version_manager
@@ -199,6 +200,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to initialize LED controller: {str(e)}")
         state.led_controller = None
+
+    # Initialize screen controller for LCD backlight control
+    try:
+        state.screen_controller = ScreenController()
+        if state.screen_controller.available:
+            logger.info("Screen controller initialized (backlight control available)")
+        else:
+            logger.info("Screen controller initialized (no backlight device found)")
+    except Exception as e:
+        logger.warning(f"Failed to initialize screen controller: {e}")
+        state.screen_controller = None
 
     # Note: auto_play is now handled in connect_and_home() after homing completes
 
@@ -3875,6 +3887,49 @@ async def dw_leds_get_idle_timeout():
         "minutes": state.dw_led_idle_timeout_minutes,
         "remaining_minutes": remaining_minutes
     }
+
+# ── Screen (LCD backlight) control endpoints ──────────────────────
+
+@app.get("/api/screen/status")
+async def screen_status():
+    """Get screen controller status."""
+    if not state.screen_controller:
+        return {"available": False, "message": "Screen controller not initialized"}
+    return state.screen_controller.get_status()
+
+@app.post("/api/screen/power")
+async def screen_power(request: dict):
+    """Turn screen on/off. Body: {"on": true/false}"""
+    if not state.screen_controller or not state.screen_controller.available:
+        raise HTTPException(status_code=400, detail="Screen control not available")
+
+    on = request.get("on", True)
+    result = state.screen_controller.set_power(on)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("message", "Unknown error"))
+
+    # Publish updated state to MQTT
+    if state.mqtt_handler and state.mqtt_handler.is_enabled:
+        state.mqtt_handler._publish_screen_state()
+
+    return result
+
+@app.post("/api/screen/brightness")
+async def screen_brightness(request: dict):
+    """Set screen brightness. Body: {"value": 0-max_brightness}"""
+    if not state.screen_controller or not state.screen_controller.available:
+        raise HTTPException(status_code=400, detail="Screen control not available")
+
+    value = request.get("value", 128)
+    result = state.screen_controller.set_brightness(value)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("message", "Unknown error"))
+
+    # Publish updated state to MQTT
+    if state.mqtt_handler and state.mqtt_handler.is_enabled:
+        state.mqtt_handler._publish_screen_state()
+
+    return result
 
 @app.get("/table_control")
 async def table_control_page(request: Request):
