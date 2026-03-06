@@ -5,7 +5,6 @@ Effects 0-30: Static, Blink, Rainbow, Scan, etc.
 Ported from WLED FX.cpp
 """
 import random
-import math
 from ..segment import Segment
 from ..utils.colors import *
 

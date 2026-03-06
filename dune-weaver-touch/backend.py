@@ -1362,7 +1362,7 @@ class Backend(QObject):
                     logger.info(f"Auto-detected max brightness: {self._lcd_max_brightness}")
                 else:
                     self._lcd_max_brightness = 255  # Sensible fallback
-                    logger.warning(f"Could not read max_brightness, defaulting to 255")
+                    logger.warning("Could not read max_brightness, defaulting to 255")
             except Exception as e:
                 self._lcd_max_brightness = 255
                 logger.warning(f"Failed to read max_brightness: {e}, defaulting to 255")

@@ -296,9 +296,7 @@ async def lifespan(app: FastAPI):
         idle (no pattern or playlist active). Without this, LEDs would stay on all night
         if the table was idle when the quiet period began.
         """
-        import time
         from modules.core.pattern_manager import is_in_scheduled_pause_period, start_idle_led_timeout
-        from modules.led.idle_timeout_manager import idle_timeout_manager
 
         was_in_still_sands = False
         while True:

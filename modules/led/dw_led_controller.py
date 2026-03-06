@@ -7,7 +7,7 @@ import time
 import logging
 from typing import Optional, Dict, List, Tuple
 from .dw_leds.segment import Segment
-from .dw_leds.effects.basic_effects import get_effect, get_all_effects, FRAMETIME
+from .dw_leds.effects.basic_effects import get_effect, get_all_effects
 from .dw_leds.utils.palettes import get_palette_name, PALETTE_NAMES
 from .dw_leds.utils.colors import rgb_to_color
 

@@ -9,11 +9,10 @@ Testing overrides (environment variables):
 
 import asyncio
 import aiohttp
-import json
 import os
 import time
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 import logging
 
 logger = logging.getLogger(__name__)

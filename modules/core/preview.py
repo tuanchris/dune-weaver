@@ -32,7 +32,7 @@ def _generate_preview(pattern_file, format='WEBP'):
             text_height = bbox[3] - bbox[1]
             text_x = (DISPLAY_SIZE - text_width) / 2
             text_y = (DISPLAY_SIZE - text_height) / 2
-        except:
+        except Exception:
             text_x = DISPLAY_SIZE / 4 
             text_y = DISPLAY_SIZE / 2
         draw.text((text_x, text_y), text, fill="black")
