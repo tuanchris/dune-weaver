@@ -119,6 +119,34 @@ cmd_update() {
         exec /usr/local/bin/dw update --continue
     fi
 
+    # Detect Docker-to-native migration: no venv means first native run
+    if [[ ! -d "$INSTALL_DIR/.venv" ]]; then
+        echo ""
+        echo -e "${YELLOW}Migrating to native deployment (first time setup)...${NC}"
+        echo "This may take a few minutes."
+        echo ""
+
+        # Install native system dependencies (nginx, python3-venv, gcc, etc.)
+        echo "Installing system dependencies..."
+        sudo apt update
+        sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
+            python3-venv python3-pip python3-dev \
+            gcc g++ make swig unzip wget \
+            libjpeg-dev zlib1g-dev \
+            libgpiod-dev gpiod \
+            nginx
+
+        # Create Python venv
+        echo "Creating Python virtual environment..."
+        python3 -m venv .venv
+
+        # Stop and remove Docker containers/service if running
+        if command -v docker &> /dev/null; then
+            echo "Stopping Docker containers..."
+            sudo docker compose down 2>/dev/null || true
+        fi
+    fi
+
     echo "Updating Python dependencies..."
     source .venv/bin/activate
     pip install -r requirements.txt
@@ -127,6 +155,8 @@ cmd_update() {
     echo "Updating nginx config..."
     sudo cp "$INSTALL_DIR/nginx/dune-weaver.conf" /etc/nginx/sites-available/dune-weaver.conf
     sudo sed -i "s|INSTALL_DIR_PLACEHOLDER|$INSTALL_DIR|g" /etc/nginx/sites-available/dune-weaver.conf
+    sudo ln -sf /etc/nginx/sites-available/dune-weaver.conf /etc/nginx/sites-enabled/dune-weaver.conf
+    sudo rm -f /etc/nginx/sites-enabled/default
     sudo nginx -t && sudo systemctl restart nginx
 
     # Update systemd service
@@ -135,6 +165,7 @@ cmd_update() {
     sudo sed -i "s|USER_PLACEHOLDER|$USER|g" /etc/systemd/system/dune-weaver.service
     sudo sed -i "s|INSTALL_DIR_PLACEHOLDER|$INSTALL_DIR|g" /etc/systemd/system/dune-weaver.service
     sudo systemctl daemon-reload
+    sudo systemctl enable dune-weaver
 
     echo "Restarting service..."
     sudo systemctl restart dune-weaver
