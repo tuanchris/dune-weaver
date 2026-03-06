@@ -1,0 +1,237 @@
+#!/bin/bash
+#
+# Dune Weaver Autohotspot
+#
+# Two modes:
+#   Boot mode (no args):  Scans for known WiFi with 30s retry timeout.
+#   Check mode (--check): Quick single-pass check, runs every 60s via timer.
+#
+# Logic:
+#   - If connected to known WiFi → do nothing
+#   - If in hotspot mode and known WiFi appears → switch to client, reboot
+#   - If disconnected → scan once → connect or activate hotspot
+#
+# DNS redirect for captive portal is handled by NetworkManager's built-in
+# dnsmasq via config in /etc/NetworkManager/dnsmasq-shared.d/.
+#
+# Requires: NetworkManager (Pi Trixie)
+#
+
+set -euo pipefail
+
+HOTSPOT_CON_NAME="DuneWeaver-Hotspot"
+MODE_FILE="/tmp/dw-wifi-mode"
+SCAN_TIMEOUT=30
+SCAN_INTERVAL=5
+IFACE="wlan0"
+
+log() {
+    echo "[autohotspot] $*"
+    logger -t autohotspot "$*"
+}
+
+# Wait for NetworkManager to be ready
+wait_for_nm() {
+    local waited=0
+    while [ $waited -lt 10 ]; do
+        if nmcli general status &>/dev/null; then
+            return 0
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+    log "ERROR: NetworkManager not ready after 10s"
+    return 1
+}
+
+# Get list of saved WiFi connection names
+get_saved_wifi() {
+    nmcli -t -f NAME,TYPE con show | grep ':.*wireless' | cut -d: -f1 | grep -v "^${HOTSPOT_CON_NAME}$" || true
+}
+
+# Get current wlan0 connection state: "client", "hotspot", or "disconnected"
+get_current_state() {
+    local active
+    active=$(nmcli -t -f NAME,TYPE,DEVICE con show --active 2>/dev/null || true)
+
+    while IFS= read -r line; do
+        local name device
+        name=$(echo "$line" | cut -d: -f1)
+        device=$(echo "$line" | rev | cut -d: -f1 | rev)
+        if [ "$device" = "$IFACE" ]; then
+            if [ "$name" = "$HOTSPOT_CON_NAME" ]; then
+                echo "hotspot"
+                return
+            fi
+            echo "client"
+            return
+        fi
+    done <<< "$active"
+
+    echo "disconnected"
+}
+
+# Scan for available networks and check if any match saved connections
+check_for_known_wifi() {
+    # Trigger a fresh scan
+    nmcli dev wifi rescan ifname "$IFACE" 2>/dev/null || true
+    sleep 2
+
+    # Get available SSIDs
+    local available
+    available=$(nmcli -t -f SSID dev wifi list ifname "$IFACE" 2>/dev/null | sort -u | grep -v '^$' || true)
+
+    if [ -z "$available" ]; then
+        return 1
+    fi
+
+    # Get saved connections
+    local saved
+    saved=$(get_saved_wifi)
+
+    if [ -z "$saved" ]; then
+        return 1
+    fi
+
+    # Check if any saved connection matches an available network
+    while IFS= read -r saved_name; do
+        # Get the SSID associated with this saved connection
+        local saved_ssid
+        saved_ssid=$(nmcli -t -f connection.id,802-11-wireless.ssid con show "$saved_name" 2>/dev/null | grep '802-11-wireless.ssid' | cut -d: -f2 || true)
+
+        # If we couldn't get the SSID from connection details, use the connection name as SSID
+        if [ -z "$saved_ssid" ]; then
+            saved_ssid="$saved_name"
+        fi
+
+        if echo "$available" | grep -qxF "$saved_ssid"; then
+            echo "$saved_name"
+            return 0
+        fi
+    done <<< "$saved"
+
+    return 1
+}
+
+# Activate client mode with a known connection
+activate_client_mode() {
+    local con_name="$1"
+    log "Found known network, activating connection: $con_name"
+
+    # Deactivate hotspot if it's active
+    nmcli con down "$HOTSPOT_CON_NAME" 2>/dev/null || true
+
+    # Connect
+    if nmcli con up "$con_name" 2>/dev/null; then
+        local ip
+        ip=$(nmcli -t -f IP4.ADDRESS dev show "$IFACE" 2>/dev/null | head -1 | cut -d: -f2 | cut -d/ -f1 || echo "unknown")
+        log "Client mode active. Connected to '$con_name', IP: $ip"
+        echo "client" > "$MODE_FILE"
+        return 0
+    else
+        log "Failed to connect to '$con_name'"
+        return 1
+    fi
+}
+
+# Activate hotspot mode
+activate_hotspot_mode() {
+    log "No known WiFi found. Activating hotspot mode..."
+
+    # Make sure we're not connected to anything
+    nmcli dev disconnect "$IFACE" 2>/dev/null || true
+
+    # Activate the hotspot profile
+    # NM's shared mode starts built-in dnsmasq for DHCP+DNS.
+    # Our config in /etc/NetworkManager/dnsmasq-shared.d/ makes it
+    # redirect all DNS queries to 10.42.0.1 for captive portal detection.
+    if nmcli con up "$HOTSPOT_CON_NAME" 2>/dev/null; then
+        log "Hotspot active. SSID: $(nmcli -t -f 802-11-wireless.ssid con show "$HOTSPOT_CON_NAME" 2>/dev/null | cut -d: -f2)"
+        log "DNS redirect active via NM dnsmasq (captive portal mode)"
+        echo "hotspot" > "$MODE_FILE"
+        return 0
+    else
+        log "ERROR: Failed to activate hotspot"
+        return 1
+    fi
+}
+
+# Boot mode: scan with retry loop, then fallback to hotspot
+boot_mode() {
+    log "Boot mode: scanning for known WiFi (${SCAN_TIMEOUT}s timeout)..."
+
+    # Wait for NetworkManager
+    if ! wait_for_nm; then
+        log "NetworkManager not available, exiting"
+        exit 1
+    fi
+
+    # Check if hotspot profile exists
+    if ! nmcli con show "$HOTSPOT_CON_NAME" &>/dev/null; then
+        log "Hotspot profile '$HOTSPOT_CON_NAME' not found. Run 'dw wifi setup' first."
+        echo "client" > "$MODE_FILE"
+        exit 0
+    fi
+
+    # Scan for known WiFi with timeout
+    local elapsed=0
+    while [ $elapsed -lt $SCAN_TIMEOUT ]; do
+        local match
+        if match=$(check_for_known_wifi); then
+            activate_client_mode "$match"
+            exit 0
+        fi
+
+        log "No known WiFi found yet, retrying... (${elapsed}s/${SCAN_TIMEOUT}s)"
+        sleep $SCAN_INTERVAL
+        elapsed=$((elapsed + SCAN_INTERVAL))
+    done
+
+    # No known WiFi found after timeout — go to hotspot mode
+    activate_hotspot_mode
+}
+
+# Check mode: quick single-pass check for periodic timer
+check_mode() {
+    # Check if hotspot profile exists
+    if ! nmcli con show "$HOTSPOT_CON_NAME" &>/dev/null; then
+        exit 0
+    fi
+
+    local state
+    state=$(get_current_state)
+
+    case "$state" in
+        client)
+            # Already connected — nothing to do
+            ;;
+        hotspot)
+            # In hotspot mode — check if a known network has appeared
+            local match
+            if match=$(check_for_known_wifi); then
+                log "Known WiFi found while in hotspot mode, switching to client..."
+                activate_client_mode "$match"
+            fi
+            ;;
+        disconnected)
+            # WiFi dropped — try to reconnect or fall back to hotspot
+            log "WiFi disconnected, attempting recovery..."
+            local match
+            if match=$(check_for_known_wifi); then
+                activate_client_mode "$match"
+            else
+                activate_hotspot_mode
+            fi
+            ;;
+    esac
+}
+
+# Main
+case "${1:-}" in
+    --check)
+        check_mode
+        ;;
+    *)
+        boot_mode
+        ;;
+esac

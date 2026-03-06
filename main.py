@@ -19,12 +19,15 @@ import signal
 import asyncio
 from contextlib import asynccontextmanager
 from modules.led.led_interface import LEDInterface
+from modules.screen.screen_controller import ScreenController
 from modules.led.idle_timeout_manager import idle_timeout_manager
 from modules.core.cache_manager import get_cache_path, generate_image_preview, get_pattern_metadata
 from modules.core.version_manager import version_manager
 from modules.core.log_handler import init_memory_handler, get_memory_handler
+from modules.wifi.router import router as wifi_router, captive_portal_router
 import json
 import base64
+import hashlib
 import time
 import subprocess
 
@@ -103,26 +106,29 @@ async def lifespan(app: FastAPI):
             # Connect without homing first (fast)
             await asyncio.to_thread(connection_manager.connect_device, False)
 
-            # If connected, perform homing in background
+            # If connected, perform homing in background (unless disabled)
             if state.conn and state.conn.is_connected():
-                logger.info("Device connected, starting homing in background...")
-                state.is_homing = True
-                try:
-                    success = await asyncio.to_thread(connection_manager.home)
-                    if not success:
-                        logger.warning("Background homing failed or was skipped")
-                        # If sensor homing failed, close connection and wait for user action
-                        if state.sensor_homing_failed:
-                            logger.error("Sensor homing failed - closing connection. User must check sensor or switch to crash homing.")
-                            if state.conn:
-                                await asyncio.to_thread(state.conn.close)
-                                state.conn = None
-                            return  # Don't proceed with auto-play
-                finally:
-                    state.is_homing = False
-                    logger.info("Background homing completed")
+                if not state.home_on_connect:
+                    logger.info("Device connected. Home-on-connect is disabled — skipping automatic homing.")
+                else:
+                    logger.info("Device connected, starting homing in background...")
+                    state.is_homing = True
+                    try:
+                        success = await asyncio.to_thread(connection_manager.home)
+                        if not success:
+                            logger.warning("Background homing failed or was skipped")
+                            # If sensor homing failed, close connection and wait for user action
+                            if state.sensor_homing_failed:
+                                logger.error("Sensor homing failed - closing connection. User must check sensor or switch to crash homing.")
+                                if state.conn:
+                                    await asyncio.to_thread(state.conn.close)
+                                    state.conn = None
+                                return  # Don't proceed with auto-play
+                    finally:
+                        state.is_homing = False
+                        logger.info("Background homing completed")
 
-                # After homing, check for auto_play mode
+                # After homing (or skip), check for auto_play mode
                 if state.auto_play_enabled and state.auto_play_playlist:
                     logger.info(f"Homing complete, checking auto_play playlist: {state.auto_play_playlist}")
                     try:
@@ -175,9 +181,12 @@ async def lifespan(app: FastAPI):
             # Initialize hardware and start idle effect (matches behavior of /set_led_config)
             status = state.led_controller.check_status()
             if status.get("connected", False):
-                state.led_controller.effect_idle(state.dw_led_idle_effect)
-                _start_idle_led_timeout()
-                logger.info("DW LEDs hardware initialized and idle effect started")
+                if state.led_automation_enabled:
+                    state.led_controller.effect_idle(state.dw_led_idle_effect)
+                    _start_idle_led_timeout()
+                    logger.info("DW LEDs hardware initialized and idle effect started")
+                else:
+                    logger.info("DW LEDs hardware initialized (manual mode, no auto-effect)")
             else:
                 error_msg = status.get("error", "Unknown error")
                 logger.warning(f"DW LED hardware initialization failed: {error_msg}")
@@ -191,6 +200,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to initialize LED controller: {str(e)}")
         state.led_controller = None
+
+    # Initialize screen controller for LCD backlight control
+    try:
+        state.screen_controller = ScreenController()
+        if state.screen_controller.available:
+            logger.info("Screen controller initialized (backlight control available)")
+        else:
+            logger.info("Screen controller initialized (no backlight device found)")
+    except Exception as e:
+        logger.warning(f"Failed to initialize screen controller: {e}")
+        state.screen_controller = None
 
     # Note: auto_play is now handled in connect_and_home() after homing completes
 
@@ -229,6 +249,9 @@ async def lifespan(app: FastAPI):
                 if not state.dw_led_idle_timeout_enabled:
                     continue
 
+                if not state.led_automation_enabled:
+                    continue
+
                 if not state.led_controller or not state.led_controller.is_configured:
                     continue
 
@@ -265,6 +288,65 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(idle_timeout_monitor())
 
+    # Start Still Sands LED monitor for idle table
+    async def still_sands_led_monitor():
+        """Monitor Still Sands transitions when the table is idle and no playlist is running.
+
+        Handles the case where a Still Sands period starts/ends while the table is completely
+        idle (no pattern or playlist active). Without this, LEDs would stay on all night
+        if the table was idle when the quiet period began.
+        """
+        import time
+        from modules.core.pattern_manager import is_in_scheduled_pause_period, start_idle_led_timeout
+        from modules.led.idle_timeout_manager import idle_timeout_manager
+
+        was_in_still_sands = False
+        while True:
+            try:
+                await asyncio.sleep(30)  # Check every 30 seconds
+
+                # Skip if LED control during Still Sands is disabled
+                if not state.scheduled_pause_control_wled:
+                    was_in_still_sands = False
+                    continue
+
+                # Skip if no LED controller configured
+                if not state.led_controller or not state.led_controller.is_configured:
+                    was_in_still_sands = False
+                    continue
+
+                # Skip if a pattern or playlist is actively running —
+                # the pattern_manager handles Still Sands in that case
+                is_playing = bool(state.current_playing_file or state.current_playlist)
+                if is_playing:
+                    was_in_still_sands = False
+                    continue
+
+                in_still_sands = is_in_scheduled_pause_period()
+
+                if in_still_sands and not was_in_still_sands:
+                    # Entering Still Sands while idle — turn off LEDs
+                    status = state.led_controller.check_status()
+                    is_powered_on = status.get("power", False) or status.get("power_on", False)
+                    if is_powered_on:
+                        logger.info("Still Sands period started while idle, turning off LEDs")
+                        state.led_controller.set_power(0)
+                elif not in_still_sands and was_in_still_sands:
+                    # Leaving Still Sands while idle — restore idle effect and restart timeout
+                    if state.led_automation_enabled:
+                        logger.info("Still Sands period ended while idle, restoring idle LED effect")
+                        await start_idle_led_timeout(check_still_sands=False)
+                    else:
+                        logger.info("Manual mode: Still Sands ended, LEDs remain off")
+
+                was_in_still_sands = in_still_sands
+
+            except Exception as e:
+                logger.error(f"Error in Still Sands LED monitor: {e}")
+                await asyncio.sleep(60)  # Wait longer on error
+
+    asyncio.create_task(still_sands_led_monitor())
+
     yield  # This separates startup from shutdown code
 
     # Shutdown
@@ -285,6 +367,10 @@ app.add_middleware(
 
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Include WiFi management router
+app.include_router(wifi_router)
+app.include_router(captive_portal_router)
 
 # Global semaphore to limit concurrent preview processing
 # Prevents resource exhaustion when loading many previews simultaneously
@@ -407,6 +493,7 @@ class ScheduledPauseSettingsUpdate(BaseModel):
 class HomingSettingsUpdate(BaseModel):
     mode: Optional[int] = None
     angular_offset_degrees: Optional[float] = None
+    home_on_connect: Optional[bool] = None  # Auto-home after connecting on startup
     auto_home_enabled: Optional[bool] = None
     auto_home_after_patterns: Optional[int] = None
     hard_reset_theta: Optional[bool] = None  # Enable hard reset ($Bye) when resetting theta
@@ -426,6 +513,7 @@ class DwLedSettingsUpdate(BaseModel):
 class LedSettingsUpdate(BaseModel):
     provider: Optional[str] = None  # "none", "wled", "dw_leds"
     wled_ip: Optional[str] = None
+    control_mode: Optional[str] = None  # "manual" or "automated"
     dw_led: Optional[DwLedSettingsUpdate] = None
 
 class MqttSettingsUpdate(BaseModel):
@@ -441,7 +529,15 @@ class MqttSettingsUpdate(BaseModel):
 
 class MachineSettingsUpdate(BaseModel):
     table_type_override: Optional[str] = None  # Override detected table type, or empty string/"auto" to clear
+    gear_ratio_override: Optional[float] = None  # Override gear ratio, or 0/negative to clear
     timezone: Optional[str] = None  # IANA timezone (e.g., "America/New_York", "UTC")
+
+class SecuritySettingsUpdate(BaseModel):
+    mode: Optional[str] = None  # "off", "lockdown", "play_only"
+    password: Optional[str] = None  # Write-only, stored as SHA-256 hash
+
+class SecurityVerifyRequest(BaseModel):
+    password: str
 
 class SettingsUpdate(BaseModel):
     """Request model for PATCH /api/settings - all fields optional for partial updates"""
@@ -454,6 +550,7 @@ class SettingsUpdate(BaseModel):
     led: Optional[LedSettingsUpdate] = None
     mqtt: Optional[MqttSettingsUpdate] = None
     machine: Optional[MachineSettingsUpdate] = None
+    security: Optional[SecuritySettingsUpdate] = None
 
 # Store active WebSocket connections
 active_status_connections = set()
@@ -670,6 +767,7 @@ async def get_all_settings():
             "mode": state.homing,
             "user_override": state.homing_user_override,  # True if user explicitly set, False if auto-detected
             "angular_offset_degrees": state.angular_homing_offset_degrees,
+            "home_on_connect": state.home_on_connect,
             "auto_home_enabled": state.auto_home_enabled,
             "auto_home_after_patterns": state.auto_home_after_patterns,
             "hard_reset_theta": state.hard_reset_theta  # Enable hard reset when resetting theta
@@ -677,6 +775,7 @@ async def get_all_settings():
         "led": {
             "provider": state.led_provider,
             "wled_ip": state.wled_ip,
+            "control_mode": state.dw_led_control_mode,
             "dw_led": {
                 "num_leds": state.dw_led_num_leds,
                 "gpio_pin": state.dw_led_gpio_pin,
@@ -706,6 +805,7 @@ async def get_all_settings():
             "table_type_override": state.table_type_override,
             "effective_table_type": state.table_type_override or state.table_type,
             "gear_ratio": state.gear_ratio,
+            "gear_ratio_override": state.gear_ratio_override,
             "x_steps_per_mm": state.x_steps_per_mm,
             "y_steps_per_mm": state.y_steps_per_mm,
             "timezone": state.timezone,
@@ -717,6 +817,10 @@ async def get_all_settings():
                 {"value": "dune_weaver", "label": "Dune Weaver"},
                 {"value": "dune_weaver_pro", "label": "Dune Weaver Pro"}
             ]
+        },
+        "security": {
+            "mode": state.security_mode,
+            "has_password": bool(state.security_password_hash)
         }
     }
 
@@ -862,6 +966,8 @@ async def update_settings(settings_update: SettingsUpdate):
             state.homing_user_override = True  # User explicitly set preference
         if h.angular_offset_degrees is not None:
             state.angular_homing_offset_degrees = h.angular_offset_degrees
+        if h.home_on_connect is not None:
+            state.home_on_connect = h.home_on_connect
         if h.auto_home_enabled is not None:
             state.auto_home_enabled = h.auto_home_enabled
         if h.auto_home_after_patterns is not None:
@@ -879,6 +985,8 @@ async def update_settings(settings_update: SettingsUpdate):
                 led_reinit_needed = True
         if led.wled_ip is not None:
             state.wled_ip = led.wled_ip or None
+        if led.control_mode is not None:
+            state.dw_led_control_mode = led.control_mode
         if led.dw_led:
             dw = led.dw_led
             if dw.num_leds is not None:
@@ -933,6 +1041,23 @@ async def update_settings(settings_update: SettingsUpdate):
         if m.table_type_override is not None:
             # Empty string or "auto" clears the override
             state.table_type_override = None if m.table_type_override in ("", "auto") else m.table_type_override
+        if m.gear_ratio_override is not None:
+            # Zero or negative clears the override; positive value sets it
+            state.gear_ratio_override = None if m.gear_ratio_override <= 0 else m.gear_ratio_override
+            # Apply immediately to current gear_ratio
+            if state.gear_ratio_override is not None:
+                state.gear_ratio = state.gear_ratio_override
+            else:
+                # Cleared — revert to auto-detected value (table type, then env var)
+                effective_table_type = state.table_type_override or state.table_type
+                mini_types = ['dune_weaver_mini', 'dune_weaver_mini_pro', 'dune_weaver_mini_pro_byj', 'dune_weaver_gold']
+                state.gear_ratio = 6.25 if effective_table_type in mini_types else 10
+                env_gr = os.getenv('GEAR_RATIO')
+                if env_gr is not None:
+                    try:
+                        state.gear_ratio = float(env_gr)
+                    except ValueError:
+                        pass
         if m.timezone is not None:
             # Validate timezone by trying to create a ZoneInfo object
             try:
@@ -953,6 +1078,20 @@ async def update_settings(settings_update: SettingsUpdate):
                 logger.warning(f"Invalid timezone '{m.timezone}': {e}")
         updated_categories.append("machine")
 
+    # Security settings
+    if settings_update.security:
+        sec = settings_update.security
+        if sec.mode is not None:
+            if sec.mode not in ("off", "lockdown", "play_only"):
+                raise HTTPException(status_code=400, detail="Invalid security mode. Must be 'off', 'lockdown', or 'play_only'.")
+            state.security_mode = sec.mode
+            # When turning off, clear the password hash
+            if sec.mode == "off":
+                state.security_password_hash = ""
+        if sec.password is not None and sec.password != "":
+            state.security_password_hash = hashlib.sha256(sec.password.encode('utf-8')).hexdigest()
+        updated_categories.append("security")
+
     # Save state
     state.save()
 
@@ -968,6 +1107,14 @@ async def update_settings(settings_update: SettingsUpdate):
         "requires_restart": requires_restart,
         "led_reinit_needed": led_reinit_needed
     }
+
+@app.post("/api/security/verify", tags=["settings"])
+async def verify_security_password(request: SecurityVerifyRequest):
+    """Verify a security password against the stored hash."""
+    if not state.security_password_hash:
+        return {"valid": False}
+    input_hash = hashlib.sha256(request.password.encode('utf-8')).hexdigest()
+    return {"valid": input_hash == state.security_password_hash}
 
 # ============================================================================
 # Multi-Table Identity Endpoints
@@ -2160,6 +2307,7 @@ async def get_all_pattern_history():
 
     try:
         history_map = {}
+        play_counts = {}
         with open(EXECUTION_LOG_FILE, 'r') as f:
             for line in f:
                 line = line.strip()
@@ -2171,12 +2319,15 @@ async def get_all_pattern_history():
                     if entry.get('completed', False):
                         pattern_name = entry.get('pattern_name')
                         if pattern_name:
+                            play_counts[pattern_name] = play_counts.get(pattern_name, 0) + 1
                             # Keep the most recent match (last one in file wins)
                             history_map[pattern_name] = {
                                 "actual_time_seconds": entry.get('actual_time_seconds'),
                                 "actual_time_formatted": entry.get('actual_time_formatted'),
                                 "speed": entry.get('speed'),
-                                "timestamp": entry.get('timestamp')
+                                "timestamp": entry.get('timestamp'),
+                                "play_count": play_counts[pattern_name],
+                                "last_played": entry.get('timestamp')
                             }
                 except json.JSONDecodeError:
                     continue
@@ -3737,6 +3888,49 @@ async def dw_leds_get_idle_timeout():
         "remaining_minutes": remaining_minutes
     }
 
+# ── Screen (LCD backlight) control endpoints ──────────────────────
+
+@app.get("/api/screen/status")
+async def screen_status():
+    """Get screen controller status."""
+    if not state.screen_controller:
+        return {"available": False, "message": "Screen controller not initialized"}
+    return state.screen_controller.get_status()
+
+@app.post("/api/screen/power")
+async def screen_power(request: dict):
+    """Turn screen on/off. Body: {"on": true/false}"""
+    if not state.screen_controller or not state.screen_controller.available:
+        raise HTTPException(status_code=400, detail="Screen control not available")
+
+    on = request.get("on", True)
+    result = state.screen_controller.set_power(on)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("message", "Unknown error"))
+
+    # Publish updated state to MQTT
+    if state.mqtt_handler and state.mqtt_handler.is_enabled:
+        state.mqtt_handler._publish_screen_state()
+
+    return result
+
+@app.post("/api/screen/brightness")
+async def screen_brightness(request: dict):
+    """Set screen brightness. Body: {"value": 0-max_brightness}"""
+    if not state.screen_controller or not state.screen_controller.available:
+        raise HTTPException(status_code=400, detail="Screen control not available")
+
+    value = request.get("value", 128)
+    result = state.screen_controller.set_brightness(value)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("message", "Unknown error"))
+
+    # Publish updated state to MQTT
+    if state.mqtt_handler and state.mqtt_handler.is_enabled:
+        state.mqtt_handler._publish_screen_state()
+
+    return result
+
 @app.get("/table_control")
 async def table_control_page(request: Request):
     return get_redirect_response(request)
@@ -3807,22 +4001,29 @@ async def get_version_info(force_refresh: bool = False):
 
 @app.post("/api/update")
 async def trigger_update():
-    """Trigger software update by pulling latest Docker images and recreating containers."""
+    """Trigger software update by running `dw update` as a detached process.
+
+    The `dw` CLI handles pulling code and restarting the service.
+    We fire-and-forget so the response returns immediately before the
+    service goes down for restart.
+    """
     try:
         logger.info("Update triggered via API")
-        success, error_message, error_log = update_manager.update_software()
-
-        if success:
-            return JSONResponse(content={
-                "success": True,
-                "message": "Update started. Containers are being recreated with the latest images. The page will reload shortly."
-            })
-        else:
-            return JSONResponse(content={
-                "success": False,
-                "message": error_message or "Update failed",
-                "errors": error_log
-            })
+        dw_path = '/usr/local/bin/dw'
+        log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'update.log')
+        logger.info(f"Running: {dw_path} update (log: {log_file})")
+        with open(log_file, 'w') as f:
+            subprocess.Popen(
+                [dw_path, 'update'],
+                stdout=f,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                cwd=os.path.dirname(os.path.abspath(__file__))
+            )
+        return JSONResponse(content={
+            "success": True,
+            "message": "Update started"
+        })
     except Exception as e:
         logger.error(f"Error triggering update: {e}")
         return JSONResponse(
@@ -3840,11 +4041,10 @@ async def shutdown_system():
         def delayed_shutdown():
             time.sleep(2)  # Give time for response to be sent
             try:
-                # Use systemctl to shutdown the host (via mounted systemd socket)
-                subprocess.run(["systemctl", "poweroff"], check=True)
-                logger.info("Host shutdown command executed successfully via systemctl")
+                subprocess.run(["sudo", "systemctl", "poweroff"], check=True)
+                logger.info("System shutdown command executed successfully")
             except FileNotFoundError:
-                logger.error("systemctl command not found - ensure systemd volumes are mounted")
+                logger.error("systemctl command not found")
             except Exception as e:
                 logger.error(f"Error executing host shutdown command: {e}")
 
@@ -3862,7 +4062,7 @@ async def shutdown_system():
 
 @app.post("/api/system/restart")
 async def restart_system():
-    """Restart the Docker containers using docker compose"""
+    """Restart the Dune Weaver service via systemctl."""
     try:
         logger.warning("Restart initiated via API")
 
@@ -3870,14 +4070,12 @@ async def restart_system():
         def delayed_restart():
             time.sleep(2)  # Give time for response to be sent
             try:
-                # Use docker restart directly with container name
-                # This is simpler and doesn't require the compose file path
-                subprocess.run(["docker", "restart", "dune-weaver-backend"], check=True)
-                logger.info("Docker restart command executed successfully")
+                subprocess.run(["sudo", "systemctl", "restart", "dune-weaver"], check=True)
+                logger.info("Service restart command executed successfully")
             except FileNotFoundError:
-                logger.error("docker command not found")
+                logger.error("systemctl command not found")
             except Exception as e:
-                logger.error(f"Error executing docker restart: {e}")
+                logger.error(f"Error executing service restart: {e}")
 
         import threading
         restart_thread = threading.Thread(target=delayed_restart)
@@ -3890,6 +4088,156 @@ async def restart_system():
             content={"success": False, "message": str(e)},
             status_code=500
         )
+
+###############################################################################
+# FluidNC Config Endpoints
+###############################################################################
+
+class FluidNCCommandRequest(BaseModel):
+    command: str
+    timeout: Optional[float] = 3.0
+
+class FluidNCConfigUpdate(BaseModel):
+    axes: Optional[dict] = None   # { "x": { "steps_per_mm": 320, ... }, "y": {...} }
+    start: Optional[dict] = None  # { "must_home": false }
+
+
+@app.post("/api/fluidnc/command")
+async def fluidnc_command(request: FluidNCCommandRequest):
+    """Send a raw command to FluidNC and return the response lines."""
+    if not state.conn or not state.conn.is_connected():
+        raise HTTPException(status_code=400, detail="Not connected to controller")
+    if state.current_playing_file and not state.pause_requested:
+        raise HTTPException(status_code=409, detail="Cannot send commands while a pattern is running")
+
+    from modules.connection import fluidnc_config
+
+    try:
+        responses = await asyncio.to_thread(
+            fluidnc_config.send_command, request.command, request.timeout or 3.0
+        )
+        return {"success": True, "command": request.command, "responses": responses}
+    except ConnectionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"FluidNC command error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/fluidnc/config")
+async def fluidnc_config_read():
+    """Read all curated FluidNC settings from the controller."""
+    if not state.conn or not state.conn.is_connected():
+        raise HTTPException(status_code=400, detail="Not connected to controller")
+
+    from modules.connection import fluidnc_config
+
+    try:
+        settings = await asyncio.to_thread(fluidnc_config.read_all_settings)
+        return {"success": True, "settings": settings}
+    except ConnectionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"FluidNC config read error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Mapping from UI flat keys back to FluidNC config tree paths.
+# direction_inverted is handled specially (toggles :low on the raw pin).
+_AXIS_KEY_TO_PATH = {
+    "steps_per_mm": "axes/{axis}/steps_per_mm",
+    "max_rate_mm_per_min": "axes/{axis}/max_rate_mm_per_min",
+    "acceleration_mm_per_sec2": "axes/{axis}/acceleration_mm_per_sec2",
+    "homing_cycle": "axes/{axis}/homing/cycle",
+    "homing_positive_direction": "axes/{axis}/homing/positive_direction",
+    "homing_mpos_mm": "axes/{axis}/homing/mpos_mm",
+    "homing_feed_mm_per_min": "axes/{axis}/homing/feed_mm_per_min",
+    "homing_seek_mm_per_min": "axes/{axis}/homing/seek_mm_per_min",
+    "homing_settle_ms": "axes/{axis}/homing/settle_ms",
+    "homing_seek_scaler": "axes/{axis}/homing/seek_scaler",
+    "homing_feed_scaler": "axes/{axis}/homing/feed_scaler",
+    "pulloff_mm": "axes/{axis}/motor0/pulloff_mm",
+}
+
+
+@app.patch("/api/fluidnc/config")
+async def fluidnc_config_write(update: FluidNCConfigUpdate):
+    """Write changed FluidNC settings and persist to flash."""
+    if not state.conn or not state.conn.is_connected():
+        raise HTTPException(status_code=400, detail="Not connected to controller")
+    if state.current_playing_file and not state.pause_requested:
+        raise HTTPException(status_code=409, detail="Cannot modify config while a pattern is running")
+
+    from modules.connection import fluidnc_config
+
+    changes_applied: list[str] = []
+    restart_required = False
+
+    def apply_changes():
+        nonlocal restart_required
+        # Apply axis settings
+        if update.axes:
+            for axis in ("x", "y"):
+                axis_data = update.axes.get(axis)
+                if not axis_data:
+                    continue
+                for key, value in axis_data.items():
+                    if key in ("direction_pin", "direction_inverted_raw"):
+                        # Skip derived/raw keys handled below
+                        continue
+
+                    if key == "direction_inverted":
+                        # Toggle :low on direction pin
+                        success, new_state = fluidnc_config.toggle_direction_pin(axis)
+                        if success:
+                            changes_applied.append(f"{axis}/direction_pin")
+                            restart_required = True
+                        continue
+
+                    path_template = _AXIS_KEY_TO_PATH.get(key)
+                    if path_template:
+                        path = path_template.format(axis=axis)
+                        str_value = str(value).lower() if isinstance(value, bool) else str(value)
+                        if fluidnc_config.write_setting(path, str_value):
+                            changes_applied.append(path)
+
+        # Apply global settings
+        if update.start:
+            for key, value in update.start.items():
+                path = f"start/{key}"
+                str_value = str(value).lower() if isinstance(value, bool) else str(value)
+                if fluidnc_config.write_setting(path, str_value):
+                    changes_applied.append(path)
+
+        # Sync steps_per_mm into app state so Machine Settings reflects changes
+        if update.axes:
+            x_steps = update.axes.get("x", {}).get("steps_per_mm")
+            y_steps = update.axes.get("y", {}).get("steps_per_mm")
+            if x_steps is not None:
+                state.x_steps_per_mm = float(x_steps)
+            if y_steps is not None:
+                state.y_steps_per_mm = float(y_steps)
+            if x_steps is not None or y_steps is not None:
+                state.save()
+
+        # Persist to flash
+        saved = fluidnc_config.save_config() if changes_applied else False
+        return saved
+
+    try:
+        saved = await asyncio.to_thread(apply_changes)
+        return {
+            "success": True,
+            "saved": saved,
+            "changes_applied": changes_applied,
+            "restart_required": restart_required,
+        }
+    except ConnectionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"FluidNC config write error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 def entrypoint():
     import uvicorn

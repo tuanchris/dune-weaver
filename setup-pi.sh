@@ -11,8 +11,8 @@
 #   bash setup-pi.sh
 #
 # Options:
-#   --no-docker     Use Python venv instead of Docker
 #   --no-wifi-fix   Skip WiFi stability fix
+#   --no-hotspot    Skip autohotspot setup
 #   --help          Show help
 #
 
@@ -26,20 +26,20 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Default options
-USE_DOCKER=true
 FIX_WIFI=true  # Applied by default for stability
+SETUP_HOTSPOT=true  # Autohotspot for first-time WiFi setup
 INSTALL_DIR="$HOME/dune-weaver"
 REPO_URL="https://github.com/tuanchris/dune-weaver"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --no-docker)
-            USE_DOCKER=false
-            shift
-            ;;
         --no-wifi-fix)
             FIX_WIFI=false
+            shift
+            ;;
+        --no-hotspot)
+            SETUP_HOTSPOT=false
             shift
             ;;
         --help|-h)
@@ -52,8 +52,8 @@ while [[ $# -gt 0 ]]; do
             echo "  cd ~/dune-weaver && bash setup-pi.sh [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --no-docker     Use Python venv instead of Docker"
             echo "  --no-wifi-fix   Skip WiFi stability fix (applied by default)"
+            echo "  --no-hotspot    Skip autohotspot setup"
             echo "  --help, -h      Show this help message"
             exit 0
             ;;
@@ -82,12 +82,59 @@ print_success() {
     echo -e "${GREEN}$1${NC}"
 }
 
-# Install essential packages (git, vim)
-install_essentials() {
-    print_step "Installing essential packages..."
+# Install system dependencies
+install_system_deps() {
+    print_step "Installing system dependencies..."
     sudo apt update
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" git vim
-    print_success "Essential packages installed"
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
+        python3-venv python3-pip python3-dev \
+        gcc g++ make swig unzip wget \
+        libjpeg-dev zlib1g-dev \
+        libgpiod-dev gpiod \
+        nginx git vim
+    print_success "System dependencies installed"
+}
+
+# Ensure lgpio C library is available for pip to build against
+install_lgpio() {
+    local syslib="/usr/lib/aarch64-linux-gnu"
+
+    # Raspberry Pi OS Trixie ships liblgpio.so.1 but no unversioned
+    # liblgpio.so symlink (normally provided by a -dev package).
+    # The build-time linker needs the unversioned name (-llgpio → liblgpio.so).
+    if [[ ! -e "$syslib/liblgpio.so" ]]; then
+        # Check if the versioned library exists (from Pi OS)
+        local versioned
+        versioned=$(ls "$syslib"/liblgpio.so.* 2>/dev/null | head -1)
+
+        if [[ -n "$versioned" ]]; then
+            print_step "Creating liblgpio.so build symlink..."
+            sudo ln -sf "$versioned" "$syslib/liblgpio.so"
+            sudo ldconfig
+            print_success "liblgpio.so symlink created (-> $(basename "$versioned"))"
+        else
+            # Not in system paths — build from source
+            print_step "Building lgpio C library from source..."
+            local tmpdir
+            tmpdir=$(mktemp -d)
+            cd "$tmpdir"
+            wget -q https://github.com/joan2937/lg/archive/master.zip
+            unzip -q master.zip
+            cd lg-master
+            make
+            sudo make install
+            cd /
+            rm -rf "$tmpdir"
+            # Symlink from /usr/local/lib into system path
+            if [[ -f /usr/local/lib/liblgpio.so ]]; then
+                sudo ln -sf /usr/local/lib/liblgpio.so "$syslib/liblgpio.so"
+            fi
+            sudo ldconfig
+            print_success "lgpio C library built and installed"
+        fi
+    else
+        echo "liblgpio.so already available for linking"
+    fi
 }
 
 # Check if running on Raspberry Pi
@@ -170,44 +217,12 @@ update_system() {
     print_success "System updated"
 }
 
-# Install Docker
-install_docker() {
-    print_step "Installing Docker..."
-
-    if command -v docker &> /dev/null; then
-        echo "Docker already installed: $(docker --version)"
-    else
-        curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
-        sudo sh /tmp/get-docker.sh
-        rm /tmp/get-docker.sh
-        print_success "Docker installed"
-    fi
-
-    # Add user to docker group
-    if ! groups $USER | grep -q docker; then
-        print_step "Adding $USER to docker group..."
-        sudo usermod -aG docker $USER
-        DOCKER_GROUP_ADDED=true
-        print_warning "You'll need to log out and back in for docker group changes to take effect"
-    fi
-}
-
-# Install Python dependencies (non-Docker)
-install_python_deps() {
-    print_step "Installing Python dependencies..."
-
-    # Install system packages
-    sudo apt install -y python3-venv python3-pip git
-
-    print_success "Python dependencies installed"
-}
-
 # Verify we're in the dune-weaver directory
 ensure_repo() {
     print_step "Setting up dune-weaver repository..."
 
     # Check if we're already in the dune-weaver directory
-    if [[ -f "docker-compose.yml" ]] && [[ -f "main.py" ]]; then
+    if [[ -f "main.py" ]] && [[ -f "requirements.txt" ]]; then
         INSTALL_DIR="$(pwd)"
         print_success "Using existing repo at $INSTALL_DIR"
         return
@@ -229,29 +244,8 @@ ensure_repo() {
     print_success "Cloned to $INSTALL_DIR"
 }
 
-# Install dw CLI command
-install_cli() {
-    print_step "Installing 'dw' command..."
-
-    # Copy dw script to /usr/local/bin
-    sudo cp "$INSTALL_DIR/dw" /usr/local/bin/dw
-    sudo chmod +x /usr/local/bin/dw
-
-    print_success "'dw' command installed"
-}
-
-# Deploy with Docker
-deploy_docker() {
-    print_step "Deploying Dune Weaver with Docker Compose..."
-
-    cd "$INSTALL_DIR"
-    sudo docker compose up -d --quiet-pull
-
-    print_success "Docker deployment complete!"
-}
-
-# Deploy with Python venv
-deploy_python() {
+# Deploy native (venv + systemd + nginx)
+deploy_native() {
     print_step "Setting up Python virtual environment..."
 
     cd "$INSTALL_DIR"
@@ -265,31 +259,183 @@ deploy_python() {
     pip install --upgrade pip
     pip install -r requirements.txt
 
+    # Ensure nginx (www-data) can traverse to static files
+    # chmod o+x grants traversal only, not directory listing
+    local dir="$INSTALL_DIR"
+    while [[ "$dir" != "/" ]]; do
+        sudo chmod o+x "$dir"
+        dir=$(dirname "$dir")
+    done
+
+    # Configure nginx
+    print_step "Configuring nginx..."
+    sudo cp "$INSTALL_DIR/nginx/dune-weaver.conf" /etc/nginx/sites-available/dune-weaver.conf
+    sudo sed -i "s|INSTALL_DIR_PLACEHOLDER|$INSTALL_DIR|g" /etc/nginx/sites-available/dune-weaver.conf
+    sudo ln -sf /etc/nginx/sites-available/dune-weaver.conf /etc/nginx/sites-enabled/dune-weaver.conf
+    sudo rm -f /etc/nginx/sites-enabled/default
+    sudo nginx -t
+    sudo systemctl restart nginx
+    sudo systemctl enable nginx
+
     # Create systemd service
     print_step "Creating systemd service..."
-
-    sudo tee /etc/systemd/system/dune-weaver.service > /dev/null << EOF
-[Unit]
-Description=Dune Weaver Backend
-After=network.target
-
-[Service]
-ExecStart=$INSTALL_DIR/.venv/bin/python $INSTALL_DIR/main.py
-WorkingDirectory=$INSTALL_DIR
-Restart=always
-User=$USER
-Environment=PYTHONUNBUFFERED=1
-
-[Install]
-WantedBy=multi-user.target
-EOF
+    sudo cp "$INSTALL_DIR/dune-weaver.service" /etc/systemd/system/dune-weaver.service
+    sudo sed -i "s|USER_PLACEHOLDER|$USER|g" /etc/systemd/system/dune-weaver.service
+    sudo sed -i "s|INSTALL_DIR_PLACEHOLDER|$INSTALL_DIR|g" /etc/systemd/system/dune-weaver.service
 
     # Enable and start service
     sudo systemctl daemon-reload
     sudo systemctl enable dune-weaver
     sudo systemctl start dune-weaver
 
-    print_success "Python deployment complete!"
+    # Create sudoers entry for passwordless systemctl commands
+    print_step "Configuring sudo permissions..."
+    sudo tee /etc/sudoers.d/dune-weaver > /dev/null << EOF
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart dune-weaver
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop dune-weaver
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start dune-weaver
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl poweroff
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx
+EOF
+    sudo chmod 0440 /etc/sudoers.d/dune-weaver
+
+    print_success "Native deployment complete!"
+}
+
+# Install dw CLI command
+install_cli() {
+    print_step "Installing 'dw' command..."
+
+    # Copy dw script to /usr/local/bin
+    sudo cp "$INSTALL_DIR/dw" /usr/local/bin/dw
+    sudo chmod +x /usr/local/bin/dw
+
+    print_success "'dw' command installed"
+}
+
+# Setup autohotspot
+setup_autohotspot() {
+    print_step "Setting up autohotspot..."
+
+    if [[ ! -f "$INSTALL_DIR/wifi/setup-wifi.sh" ]]; then
+        print_warning "wifi/setup-wifi.sh not found, skipping autohotspot setup"
+        return
+    fi
+
+    bash "$INSTALL_DIR/wifi/setup-wifi.sh"
+    print_success "Autohotspot setup complete"
+}
+
+# Configure UART for GPIO pin connection to DLC32/ESP32
+configure_uart() {
+    local CONFIG_FILE="/boot/firmware/config.txt"
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        CONFIG_FILE="/boot/config.txt"
+    fi
+
+    echo ""
+    echo -e "${GREEN}How is your Raspberry Pi connected to the sand table controller (DLC32/ESP32)?${NC}"
+    echo ""
+    echo "  1) USB cable"
+    echo "  2) UART over GPIO pins (TX/RX wired to header pins)"
+    echo ""
+    echo -e "  ${YELLOW}Note: USB is not reliable on Pi 3B+. Use UART for Pi 3B+.${NC}"
+    echo ""
+    read -p "Enter choice [1/2] (default: 1): " -n 1 -r uart_choice
+    echo ""
+
+    if [[ "$uart_choice" == "2" ]]; then
+        echo ""
+        echo -e "${YELLOW}============================================${NC}"
+        echo -e "${YELLOW}  UART Setup — raspi-config will run next${NC}"
+        echo -e "${YELLOW}============================================${NC}"
+        echo ""
+        echo -e "  When prompted, select:"
+        echo -e "    Login shell over serial?     →  ${GREEN}No${NC}"
+        echo -e "    Serial port hardware?        →  ${GREEN}Yes${NC}"
+        echo ""
+        read -p "Press Enter to continue..." -r
+        echo ""
+
+        # Disable serial console, enable serial hardware
+        if command -v raspi-config &> /dev/null; then
+            sudo raspi-config nonint do_serial 2
+            echo "Serial console disabled, serial hardware enabled"
+        else
+            print_warning "raspi-config not found, please run 'sudo raspi-config' manually"
+            print_warning "Go to: 3 Interface Options > I6 Serial Port > No (console) > Yes (hardware)"
+        fi
+
+        print_step "Configuring UART overlays..."
+
+        # Add UART overlays to config.txt if not already present
+        local needs_change=false
+        for overlay in "dtoverlay=pi3-miniuart-bt" "dtoverlay=miniuart-bt" "enable_uart=1"; do
+            if ! grep -q "^${overlay}$" "$CONFIG_FILE" 2>/dev/null; then
+                echo "$overlay" | sudo tee -a "$CONFIG_FILE" > /dev/null
+                needs_change=true
+            fi
+        done
+
+        if [[ "$needs_change" == "true" ]]; then
+            echo "Added UART overlays to $CONFIG_FILE"
+        else
+            echo "UART overlays already present in $CONFIG_FILE"
+        fi
+
+        NEEDS_REBOOT=true
+        print_success "UART configured. A reboot is required for changes to take effect."
+    else
+        # USB mode — check if UART config exists and offer to clean it up
+        local has_uart=false
+        for overlay in "dtoverlay=pi3-miniuart-bt" "dtoverlay=miniuart-bt" "enable_uart=1"; do
+            if grep -q "^${overlay}$" "$CONFIG_FILE" 2>/dev/null; then
+                has_uart=true
+                break
+            fi
+        done
+
+        if [[ "$has_uart" == "true" ]]; then
+            echo -e "${YELLOW}UART overlays found in $CONFIG_FILE from a previous setup.${NC}"
+            read -p "Remove them? (y/N): " -n 1 -r remove_uart
+            echo ""
+            if [[ "$remove_uart" =~ ^[Yy]$ ]]; then
+                sudo sed -i '/^dtoverlay=pi3-miniuart-bt$/d' "$CONFIG_FILE"
+                sudo sed -i '/^dtoverlay=miniuart-bt$/d' "$CONFIG_FILE"
+                sudo sed -i '/^enable_uart=1$/d' "$CONFIG_FILE"
+                NEEDS_REBOOT=true
+                print_success "UART overlays removed. A reboot is recommended."
+            fi
+        else
+            echo "USB connection selected, no UART changes needed."
+        fi
+    fi
+}
+
+# Remove software that is no longer needed on the Pi
+cleanup_unused() {
+    print_step "Cleaning up unused software..."
+
+    # Remove Node.js / npm if present from a prior install
+    if dpkg -l nodejs 2>/dev/null | grep -q '^ii'; then
+        echo "Removing Node.js (no longer needed — frontend is pre-built)..."
+        sudo apt purge -y nodejs || true
+        sudo rm -f /etc/apt/sources.list.d/nodesource.list \
+                    /etc/apt/keyrings/nodesource.gpg 2>/dev/null || true
+        sudo apt autoremove -y
+        print_success "Node.js removed"
+    fi
+
+    # Remove Docker if present from old Docker-based deployment
+    if dpkg -l docker-ce 2>/dev/null | grep -q '^ii'; then
+        echo "Removing Docker (old deployment method)..."
+        # Stop running containers
+        sudo docker stop $(sudo docker ps -aq) 2>/dev/null || true
+        sudo apt purge -y docker-ce docker-ce-cli containerd.io docker-compose-plugin 2>/dev/null || true
+        sudo rm -rf /var/lib/docker
+        sudo apt autoremove -y
+        print_success "Docker removed"
+    fi
 }
 
 # Get IP address
@@ -316,8 +462,8 @@ print_final_instructions() {
     echo -e "${GREEN}============================================${NC}"
     echo ""
     echo -e "Access the web interface at:"
-    echo -e "  ${BLUE}http://$IP:8080${NC}"
-    echo -e "  ${BLUE}http://$HOSTNAME.local:8080${NC}"
+    echo -e "  ${BLUE}http://$IP${NC}"
+    echo -e "  ${BLUE}http://$HOSTNAME.local${NC}"
     echo ""
 
     echo "Manage with the 'dw' command:"
@@ -326,15 +472,19 @@ print_final_instructions() {
     echo "  dw update      Pull latest and restart"
     echo "  dw stop        Stop Dune Weaver"
     echo "  dw status      Show status"
+    echo "  dw wifi help   WiFi and hotspot management"
     echo "  dw help        Show all commands"
     echo ""
 
-    if [[ "$DOCKER_GROUP_ADDED" == "true" ]]; then
-        print_warning "Please log out and back in for docker group changes to take effect"
+    if [[ "$SETUP_HOTSPOT" == "true" ]]; then
+        echo -e "${BLUE}Autohotspot:${NC} If no known WiFi is found on boot,"
+        echo "a 'Dune Weaver' hotspot will be created automatically."
+        echo "Connect to it and open the app to configure WiFi."
+        echo ""
     fi
 
     if [[ "$NEEDS_REBOOT" == "true" ]]; then
-        print_warning "A reboot is recommended to apply WiFi fixes"
+        print_warning "A reboot is required to apply configuration changes"
         read -p "Reboot now? (y/N) " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
@@ -354,19 +504,15 @@ main() {
     echo -e "${NC}"
     echo "Raspberry Pi Setup Script"
     echo ""
-
-    # Detect deployment method
-    if [[ "$USE_DOCKER" == "true" ]]; then
-        echo "Deployment method: Docker (recommended)"
-    else
-        echo "Deployment method: Python virtual environment"
-    fi
     echo "Install directory: $INSTALL_DIR"
     echo ""
 
+    # Ask connection type upfront (before long-running installs)
+    configure_uart
+
     # Run setup steps
     check_raspberry_pi
-    install_essentials
+    install_system_deps
     ensure_repo
     update_system
     disable_wlan_powersave
@@ -375,15 +521,14 @@ main() {
         apply_wifi_fix
     fi
 
-    if [[ "$USE_DOCKER" == "true" ]]; then
-        install_docker
-        deploy_docker
-    else
-        install_python_deps
-        deploy_python
+    if [[ "$SETUP_HOTSPOT" == "true" ]]; then
+        setup_autohotspot
     fi
 
+    install_lgpio
+    deploy_native
     install_cli
+    cleanup_unused
     print_final_instructions
 }
 

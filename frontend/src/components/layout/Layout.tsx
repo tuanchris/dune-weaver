@@ -1,8 +1,9 @@
-import { Outlet, Link, useLocation } from 'react-router-dom'
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { toast } from 'sonner'
 import { NowPlayingBar } from '@/components/NowPlayingBar'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Separator } from '@/components/ui/separator'
 import { cacheAllPreviews } from '@/lib/previewCache'
@@ -23,13 +24,36 @@ const navItems = [
 
 const DEFAULT_APP_NAME = 'Dune Weaver'
 
+// Detect captive portal context (DNS-redirected domains used by OS probe requests)
+const CAPTIVE_PORTAL_HOSTS = [
+  'captive.apple.com',
+  'connectivitycheck.gstatic.com',
+  'connectivitycheck.android.com',
+  'clients3.google.com',
+  'nmcheck.gnome.org',
+  'network-test.debian.org',
+  'msftconnecttest.com',
+  'www.msftconnecttest.com',
+]
+const isCaptivePortal = CAPTIVE_PORTAL_HOSTS.some(
+  (h) => window.location.hostname === h || window.location.hostname.endsWith('.' + h)
+)
+
 export function Layout() {
   const location = useLocation()
+  const navigate = useNavigate()
 
   // Scroll to top on route change
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [location.pathname])
+
+  // Captive portal: redirect straight to WiFi setup
+  useEffect(() => {
+    if (isCaptivePortal && location.pathname !== '/wifi-setup') {
+      navigate('/wifi-setup', { replace: true })
+    }
+  }, [location.pathname, navigate])
 
   // Multi-table context - must be called before any hooks that depend on activeTable
   const { activeTable, tables } = useTable()
@@ -38,6 +62,8 @@ export function Layout() {
   const hasMultipleTables = tables.length > 1
 
   const [isDark, setIsDark] = useState(() => {
+    // Force light mode in captive portal to match the webview chrome
+    if (isCaptivePortal) return false
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('theme')
       if (saved) return saved === 'dark'
@@ -62,6 +88,8 @@ export function Layout() {
   const isConnected = useStatusStore((s) => s.status?.connection_status ?? false)
   const isHoming = useStatusStore((s) => s.status?.is_homing ?? false)
   const sensorHomingFailed = useStatusStore((s) => s.status?.sensor_homing_failed ?? false)
+  const firmwareVersion = useStatusStore((s) => s.status?.firmware_version ?? null)
+  const tableType = useStatusStore((s) => s.status?.table_type ?? null)
   const statusCurrentFile = useStatusStore((s) => s.status?.current_file ?? null)
   const statusIsRunning = useStatusStore((s) => s.status?.is_running ?? false)
   const statusIsPaused = useStatusStore((s) => s.status?.is_paused ?? false)
@@ -80,9 +108,26 @@ export function Layout() {
   // Update availability
   const [updateAvailable, setUpdateAvailable] = useState(false)
 
+  // Security state
+  const [securityMode, setSecurityMode] = useState<'off' | 'lockdown' | 'play_only'>('off')
+  const [hasSecurityPassword, setHasSecurityPassword] = useState(false)
+  const [isUnlocked, setIsUnlocked] = useState(() => {
+    return sessionStorage.getItem('security-unlocked') === 'true'
+  })
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false)
+  const [passwordInput, setPasswordInput] = useState('')
+  const [passwordError, setPasswordError] = useState(false)
+
+  // FluidNC version warning — each table type has an expected version
+  const expectedFirmwareVersion = tableType === 'dune_weaver_mini' ? 'v3.8.3' : 'v3.9.5'
+  const showFirmwareWarning = useMemo(() => {
+    if (!firmwareVersion) return false
+    return firmwareVersion !== expectedFirmwareVersion
+  }, [firmwareVersion, expectedFirmwareVersion])
+
   // Fetch app settings
   const fetchAppSettings = () => {
-    apiClient.get<{ app?: { name?: string; custom_logo?: string } }>('/api/settings')
+    apiClient.get<{ app?: { name?: string; custom_logo?: string }; security?: { mode?: string; has_password?: boolean } }>('/api/settings')
       .then((settings) => {
         if (settings.app?.name) {
           setAppName(settings.app.name)
@@ -90,6 +135,10 @@ export function Layout() {
           setAppName(DEFAULT_APP_NAME)
         }
         setCustomLogo(settings.app?.custom_logo || null)
+        // Security settings
+        const mode = settings.security?.mode as 'off' | 'lockdown' | 'play_only' | undefined
+        setSecurityMode(mode || 'off')
+        setHasSecurityPassword(settings.security?.has_password || false)
       })
       .catch(() => {})
   }
@@ -97,14 +146,19 @@ export function Layout() {
   useEffect(() => {
     fetchAppSettings()
 
-    // Listen for branding updates from Settings page
+    // Listen for branding/security updates from Settings page
     const handleBrandingUpdate = () => {
       fetchAppSettings()
     }
+    const handleSecurityUpdate = () => {
+      fetchAppSettings()
+    }
     window.addEventListener('branding-updated', handleBrandingUpdate)
+    window.addEventListener('security-updated', handleSecurityUpdate)
 
     return () => {
       window.removeEventListener('branding-updated', handleBrandingUpdate)
+      window.removeEventListener('security-updated', handleSecurityUpdate)
     }
     // Refetch when active table changes
   }, [activeTable?.id])
@@ -140,6 +194,7 @@ export function Layout() {
 
   // Mobile menu state
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isDesktopMenuOpen, setIsDesktopMenuOpen] = useState(false)
 
   // Logs drawer state
   const [isLogsOpen, setIsLogsOpen] = useState(false)
@@ -540,13 +595,13 @@ export function Layout() {
   }
 
   const handleRestart = async () => {
-    if (!confirm('Are you sure you want to restart Docker containers?')) return
+    if (!confirm('Are you sure you want to restart Dune Weaver?')) return
 
     try {
       await apiClient.post('/api/system/restart')
-      toast.success('Docker containers are restarting...')
+      toast.success('Dune Weaver is restarting...')
     } catch {
-      toast.error('Failed to restart Docker containers')
+      toast.error('Failed to restart Dune Weaver')
     }
   }
 
@@ -588,6 +643,60 @@ export function Layout() {
       setIsRecoveringHoming(false)
     }
   }
+
+  // Security password verification
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPasswordError(false)
+    try {
+      const result = await apiClient.post<{ valid: boolean }>('/api/security/verify', {
+        password: passwordInput,
+      })
+      if (result.valid) {
+        sessionStorage.setItem('security-unlocked', 'true')
+        setIsUnlocked(true)
+        setPasswordInput('')
+        // If unlocking via play-only dialog, navigate to settings
+        if (showPasswordDialog) {
+          setShowPasswordDialog(false)
+          navigate('/settings')
+        }
+      } else {
+        setPasswordError(true)
+      }
+    } catch {
+      setPasswordError(true)
+    }
+  }
+
+  // Re-lock the app
+  const handleLock = () => {
+    sessionStorage.removeItem('security-unlocked')
+    setIsUnlocked(false)
+    navigate('/')
+  }
+
+  // Determine if security is active and blocking
+  const isLockdownActive = securityMode === 'lockdown' && hasSecurityPassword && !isUnlocked
+  const isPlayOnlyActive = securityMode === 'play_only' && hasSecurityPassword && !isUnlocked
+  const isSecurityUnlocked = securityMode !== 'off' && hasSecurityPassword && isUnlocked
+
+  // Redirect away from restricted pages if play_only is active and not unlocked
+  const restrictedPaths = ['/settings', '/table-control', '/setup', '/wifi-setup']
+  useEffect(() => {
+    if (isPlayOnlyActive && restrictedPaths.includes(location.pathname)) {
+      navigate('/')
+    }
+  }, [isPlayOnlyActive, location.pathname, navigate])
+
+  // Filter nav items based on security mode
+  const playOnlyHiddenPaths = ['/settings', '/table-control']
+  const visibleNavItems = useMemo(() => {
+    if (isPlayOnlyActive) {
+      return navItems.filter((item) => !playOnlyHiddenPaths.includes(item.path))
+    }
+    return navItems
+  }, [isPlayOnlyActive])
 
   // Update document title based on current page
   useEffect(() => {
@@ -641,8 +750,9 @@ export function Layout() {
     const showOverlay = !isBackendConnected || isHoming || homingJustCompleted
 
     if (!showOverlay) {
-      setConnectionLogs([])
-      // Close WebSocket if open - only if OPEN (CONNECTING will close in onopen)
+      // Don't clear logs here — they'll be cleared when the next session starts.
+      // Clearing here races with the homingJustCompleted setState, wiping logs
+      // before the completion overlay renders.
       if (blockingLogsWsRef.current && blockingLogsWsRef.current.readyState === WebSocket.OPEN) {
         blockingLogsWsRef.current.close()
       }
@@ -676,6 +786,7 @@ export function Layout() {
 
     // If homing, connect to logs WebSocket to stream real logs
     if (isHoming && isBackendConnected) {
+      setConnectionLogs([])
       addLog('INFO', 'Homing started...')
 
       let shouldConnect = true
@@ -748,6 +859,7 @@ export function Layout() {
 
     // If backend disconnected, show connection retry logs
     if (!isBackendConnected) {
+      setConnectionLogs([])
       addLog('INFO', `Attempting to connect to backend at ${window.location.host}...`)
 
       const interval = setInterval(() => {
@@ -963,6 +1075,72 @@ export function Layout() {
 
   return (
     <div className="min-h-dvh bg-background flex flex-col">
+      {/* Security Lockdown Overlay */}
+      {isLockdownActive && (
+        <div className="fixed inset-0 z-[60] bg-background flex items-center justify-center p-4">
+          <div className="w-full max-w-sm space-y-6 text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-2">
+              <span className="material-icons-outlined text-4xl text-primary">lock</span>
+            </div>
+            <h2 className="text-2xl font-bold">{displayName}</h2>
+            <p className="text-muted-foreground">This table is locked. Enter the password to continue.</p>
+            <form onSubmit={handlePasswordSubmit} className="space-y-3">
+              <Input
+                type="password"
+                placeholder="Password"
+                value={passwordInput}
+                onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(false) }}
+                autoFocus
+              />
+              {passwordError && (
+                <p className="text-sm text-destructive">Incorrect password</p>
+              )}
+              <Button type="submit" className="w-full">Unlock</Button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Security Password Dialog (for play-only mode) */}
+      {showPasswordDialog && (
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-background rounded-lg shadow-xl w-full max-w-sm">
+            <div className="p-6 space-y-4">
+              <div className="text-center space-y-2">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-2">
+                  <span className="material-icons-outlined text-2xl text-primary">lock</span>
+                </div>
+                <h3 className="text-lg font-semibold">Settings Locked</h3>
+                <p className="text-sm text-muted-foreground">Enter the password to access settings.</p>
+              </div>
+              <form onSubmit={handlePasswordSubmit} className="space-y-3">
+                <Input
+                  type="password"
+                  placeholder="Password"
+                  value={passwordInput}
+                  onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(false) }}
+                  autoFocus
+                />
+                {passwordError && (
+                  <p className="text-sm text-destructive">Incorrect password</p>
+                )}
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="flex-1"
+                    onClick={() => { setShowPasswordDialog(false); setPasswordInput(''); setPasswordError(false) }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" className="flex-1">Unlock</Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sensor Homing Failure Popup */}
       {sensorHomingFailed && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
@@ -1151,8 +1329,9 @@ export function Layout() {
       )}
 
       {/* Backend Connection / Homing Blocking Overlay */}
+      {/* Skip in captive portal mode (WebSocket won't connect in sandboxed webview) */}
       {/* Don't show this overlay when sensor homing failed - that has its own dialog */}
-      {!sensorHomingFailed && (!isBackendConnected || (isHoming && !homingDismissed) || homingJustCompleted) && (
+      {!isCaptivePortal && !sensorHomingFailed && (!isBackendConnected || (isHoming && !homingDismissed) || homingJustCompleted) && (
         <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center p-4">
           <div className="w-full max-w-2xl space-y-6">
             {/* Status Header */}
@@ -1337,7 +1516,8 @@ export function Layout() {
           <div className="absolute inset-0 bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/50" style={{ height: 'calc(5rem + env(safe-area-inset-top, 0px))' }} />
         )}
         <div className="relative w-full max-w-5xl mx-auto px-3 sm:px-4 pt-3 pointer-events-none">
-          <div className="flex h-12 items-center justify-between px-4 rounded-full bg-card shadow-lg border border-border pointer-events-auto">
+          <div className="rounded-full bg-card shadow-lg border border-border pointer-events-auto">
+          <div className="flex h-12 items-center justify-between px-4">
           <div className="flex items-center gap-2">
             <Link to="/">
               <img
@@ -1379,8 +1559,28 @@ export function Layout() {
             </TableSelector>
           </div>
 
+          {showFirmwareWarning && (
+            <div className="flex items-center gap-1.5 min-w-0 mx-2 text-amber-500">
+              <span className="material-icons-outlined text-base shrink-0">warning</span>
+              <span className="text-xs truncate">
+                FluidNC {firmwareVersion} — change to {expectedFirmwareVersion}
+              </span>
+            </div>
+          )}
+
           {/* Desktop actions */}
           <div className="hidden md:flex items-center gap-0 ml-2">
+            {isSecurityUnlocked && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-full"
+                onClick={handleLock}
+                title="Lock"
+              >
+                <span className="material-icons-outlined">lock_open</span>
+              </Button>
+            )}
             {updateAvailable && (
               <Link to="/settings?section=version" title="Software update available">
                 <span className="relative flex items-center justify-center w-8 h-8 rounded-full hover:bg-accent transition-colors">
@@ -1389,7 +1589,7 @@ export function Layout() {
                 </span>
               </Link>
             )}
-            <Popover>
+            <Popover open={isDesktopMenuOpen} onOpenChange={setIsDesktopMenuOpen}>
               <PopoverTrigger asChild>
                 <Button
                   variant="ghost"
@@ -1418,13 +1618,23 @@ export function Layout() {
                     <span className="material-icons-outlined text-xl">article</span>
                     View Logs
                   </button>
+                  <button
+                    onClick={() => {
+                      navigate('/wifi-setup')
+                      setIsDesktopMenuOpen(false)
+                    }}
+                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
+                  >
+                    <span className="material-icons-outlined text-xl">wifi</span>
+                    WiFi Setup
+                  </button>
                   <Separator className="my-1" />
                   <button
                     onClick={handleRestart}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-amber-500"
                   >
                     <span className="material-icons-outlined text-xl">restart_alt</span>
-                    Restart Docker
+                    Restart
                   </button>
                   <button
                     onClick={handleShutdown}
@@ -1440,6 +1650,17 @@ export function Layout() {
 
           {/* Mobile actions */}
           <div className="flex md:hidden items-center gap-0 ml-2">
+            {isSecurityUnlocked && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-full"
+                onClick={handleLock}
+                title="Lock"
+              >
+                <span className="material-icons-outlined">lock_open</span>
+              </Button>
+            )}
             {updateAvailable && (
               <Link to="/settings?section=version" title="Software update available">
                 <span className="relative flex items-center justify-center w-8 h-8 rounded-full hover:bg-accent transition-colors">
@@ -1485,6 +1706,16 @@ export function Layout() {
                     <span className="material-icons-outlined text-xl">article</span>
                     View Logs
                   </button>
+                  <button
+                    onClick={() => {
+                      navigate('/wifi-setup')
+                      setIsMobileMenuOpen(false)
+                    }}
+                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
+                  >
+                    <span className="material-icons-outlined text-xl">wifi</span>
+                    WiFi Setup
+                  </button>
                   <Separator className="my-1" />
                   <button
                     onClick={() => {
@@ -1494,7 +1725,7 @@ export function Layout() {
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-amber-500"
                   >
                     <span className="material-icons-outlined text-xl">restart_alt</span>
-                    Restart Docker
+                    Restart
                   </button>
                   <button
                     onClick={() => {
@@ -1510,6 +1741,7 @@ export function Layout() {
               </PopoverContent>
             </Popover>
             </div>
+          </div>
           </div>
         </div>
       </header>
@@ -1528,7 +1760,7 @@ export function Layout() {
               : 'calc(8rem + env(safe-area-inset-bottom, 0px))' // floating pill + nav + safe area
         }}
       >
-        <Outlet />
+        <Outlet context={{ isPlayOnlyActive }} />
       </main>
 
       {/* Now Playing Bar */}
@@ -1714,8 +1946,8 @@ export function Layout() {
 
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card pb-safe">
-        <div className="max-w-5xl mx-auto grid grid-cols-5 h-16">
-          {navItems.map((item) => {
+        <div className={`max-w-5xl mx-auto grid h-16`} style={{ gridTemplateColumns: `repeat(${visibleNavItems.length + (isPlayOnlyActive ? 1 : 0)}, minmax(0, 1fr))` }}>
+          {visibleNavItems.map((item) => {
             const isActive = location.pathname === item.path
             return (
               <Link
@@ -1738,6 +1970,16 @@ export function Layout() {
               </Link>
             )
           })}
+          {/* Lock icon replacing Settings when play-only mode is active */}
+          {isPlayOnlyActive && (
+            <button
+              onClick={() => { setShowPasswordDialog(true); setPasswordInput(''); setPasswordError(false) }}
+              className="relative flex flex-col items-center justify-center gap-1 transition-all duration-200 text-muted-foreground hover:text-foreground active:scale-95"
+            >
+              <span className="material-icons-outlined text-xl">lock</span>
+              <span className="text-xs font-medium">Settings</span>
+            </button>
+          )}
         </div>
       </nav>
     </div>

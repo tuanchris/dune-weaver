@@ -1,5 +1,5 @@
 #!/bin/sh
-# Pre-commit hook: runs Ruff on staged Python files and frontend tests on staged TS/TSX files
+# Pre-commit hook: runs Ruff on staged Python files, frontend tests and build on staged TS/TSX/CSS files
 #
 # Install: cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
 
@@ -27,18 +27,30 @@ if [ -n "$STAGED_PY" ]; then
     fi
 fi
 
-# --- Frontend tests on staged TS/TSX files ---
-STAGED_FE=$(git diff --cached --name-only --diff-filter=ACM -- 'frontend/src/**/*.ts' 'frontend/src/**/*.tsx')
+# --- Frontend checks on staged UI files ---
+STAGED_FE=$(git diff --cached --name-only --diff-filter=ACM -- 'frontend/src/**/*.ts' 'frontend/src/**/*.tsx' 'frontend/src/**/*.css' 'frontend/index.html' 'frontend/vite.config.ts' 'frontend/tsconfig*.json' 'frontend/tailwind.config.*' 'frontend/components.json')
 
 if [ -n "$STAGED_FE" ]; then
-    printf "${YELLOW}Running frontend tests...${NC}\n"
     if [ -d "frontend/node_modules" ]; then
+        # Run tests first
+        printf "${YELLOW}Running frontend tests...${NC}\n"
         if ! (cd frontend && npx vitest run --reporter=dot 2>&1); then
             printf "${RED}Frontend tests failed. Fix them before committing.${NC}\n"
             exit 1
         fi
         printf "${GREEN}Frontend tests passed.${NC}\n"
+
+        # Build production bundle
+        printf "${YELLOW}Building frontend...${NC}\n"
+        if ! (cd frontend && npm run build 2>&1); then
+            printf "${RED}Frontend build failed. Fix errors before committing.${NC}\n"
+            exit 1
+        fi
+        printf "${GREEN}Frontend build succeeded.${NC}\n"
+
+        # Stage the updated build output so it's included in this commit
+        git add static/dist/
     else
-        printf "${YELLOW}frontend/node_modules not found, skipping tests. Run: cd frontend && npm install${NC}\n"
+        printf "${YELLOW}frontend/node_modules not found, skipping tests and build. Run: cd frontend && npm install${NC}\n"
     fi
 fi

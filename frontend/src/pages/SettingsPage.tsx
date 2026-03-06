@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { apiClient } from '@/lib/apiClient'
 import { useOnBackendConnected } from '@/hooks/useBackendConnection'
@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/select'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { SearchableSelect } from '@/components/ui/searchable-select'
+import { UpdateDialog } from '@/components/UpdateDialog'
 
 // Types
 
@@ -38,12 +39,14 @@ interface Settings {
   detected_table_type?: string
   effective_table_type?: string
   gear_ratio?: number
+  gear_ratio_override?: number | null
   x_steps_per_mm?: number
   y_steps_per_mm?: number
   available_table_types?: { value: string; label: string }[]
   // Homing settings
   homing_mode?: number
   angular_offset?: number
+  home_on_connect?: boolean
   auto_home_enabled?: boolean
   auto_home_after_patterns?: number
   hard_reset_theta?: boolean
@@ -99,6 +102,7 @@ interface MqttConfig {
 
 export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const sectionParam = searchParams.get('section')
 
   // Connection state
@@ -170,12 +174,19 @@ export function SettingsPage() {
   // Pattern search state for clearing patterns
   const [patternFiles, setPatternFiles] = useState<string[]>([])
 
+  // Security state
+  const [securityMode, setSecurityMode] = useState<'off' | 'lockdown' | 'play_only'>('off')
+  const [securityPassword, setSecurityPassword] = useState('')
+  const [securityPasswordConfirm, setSecurityPasswordConfirm] = useState('')
+  const [hasExistingPassword, setHasExistingPassword] = useState(false)
+
   // Version state
   const [versionInfo, setVersionInfo] = useState<{
     current: string
     latest: string
     update_available: boolean
   } | null>(null)
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
 
   // Helper to scroll to element with header offset
   const scrollToSection = (sectionId: string) => {
@@ -221,6 +232,7 @@ export function SettingsPage() {
       case 'machine':
       case 'homing':
       case 'clearing':
+      case 'security':
         // These all share settings data
         if (!loadedSections.has('_settings')) {
           setLoadedSections((prev) => new Set(prev).add('_settings'))
@@ -343,12 +355,14 @@ export function SettingsPage() {
         detected_table_type: data.machine?.detected_table_type,
         effective_table_type: data.machine?.effective_table_type,
         gear_ratio: data.machine?.gear_ratio,
+        gear_ratio_override: data.machine?.gear_ratio_override ?? null,
         x_steps_per_mm: data.machine?.x_steps_per_mm,
         y_steps_per_mm: data.machine?.y_steps_per_mm,
         available_table_types: data.machine?.available_table_types,
         // Homing settings
         homing_mode: data.homing?.mode,
         angular_offset: data.homing?.angular_offset_degrees,
+        home_on_connect: data.homing?.home_on_connect,
         auto_home_enabled: data.homing?.auto_home_enabled,
         auto_home_after_patterns: data.homing?.auto_home_after_patterns,
         hard_reset_theta: data.homing?.hard_reset_theta,
@@ -382,6 +396,11 @@ export function SettingsPage() {
           timezone: data.scheduled_pause.timezone || '',
           time_slots: data.scheduled_pause.time_slots || [],
         })
+      }
+      // Set security settings
+      if (data.security) {
+        setSecurityMode(data.security.mode || 'off')
+        setHasExistingPassword(data.security.has_password || false)
       }
       // Set MQTT config from the same response
       if (data.mqtt) {
@@ -629,6 +648,7 @@ export function SettingsPage() {
       await apiClient.patch('/api/settings', {
         machine: {
           table_type_override: settings.table_type_override || '',
+          gear_ratio_override: settings.gear_ratio_override ?? 0,
         },
       })
       toast.success('Machine settings saved')
@@ -646,6 +666,7 @@ export function SettingsPage() {
         homing: {
           mode: settings.homing_mode,
           angular_offset_degrees: settings.angular_offset,
+          home_on_connect: settings.home_on_connect,
           auto_home_enabled: settings.auto_home_enabled,
           auto_home_after_patterns: settings.auto_home_after_patterns,
           hard_reset_theta: settings.hard_reset_theta,
@@ -882,6 +903,35 @@ export function SettingsPage() {
                 Choose how the system connects on startup: Auto picks the first available port, Disabled requires manual connection, or select a specific port.
               </p>
             </div>
+
+            {/* Home on Connect */}
+            <div className="p-4 rounded-lg border space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium flex items-center gap-2">
+                    <span className="material-icons-outlined text-base">power</span>
+                    Home on Connect
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Automatically home when connecting on startup. Disable to connect without homing and home manually later.
+                  </p>
+                </div>
+                <Switch
+                  checked={settings.home_on_connect !== false}
+                  onCheckedChange={async (checked) => {
+                    setSettings({ ...settings, home_on_connect: checked })
+                    try {
+                      await apiClient.patch('/api/settings', {
+                        homing: { home_on_connect: checked },
+                      })
+                      toast.success(checked ? 'Home on connect enabled' : 'Home on connect disabled')
+                    } catch {
+                      toast.error('Failed to save setting')
+                    }
+                  }}
+                />
+              </div>
+            </div>
           </AccordionContent>
         </AccordionItem>
 
@@ -961,12 +1011,64 @@ export function SettingsPage() {
               </p>
             </div>
 
+            {/* Gear Ratio Override */}
+            <div className="space-y-3">
+              <Label>Gear Ratio Override</Label>
+              <div className="flex gap-3">
+                <Input
+                  type="number"
+                  step={0.25}
+                  min={0}
+                  placeholder="Auto-detect"
+                  value={settings.gear_ratio_override ?? ''}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      gear_ratio_override: e.target.value ? parseFloat(e.target.value) : null,
+                    })
+                  }
+                  className="flex-1"
+                />
+                <Button
+                  onClick={handleSaveMachineSettings}
+                  disabled={isLoading === 'machine'}
+                  className="gap-2"
+                >
+                  {isLoading === 'machine' ? (
+                    <span className="material-icons-outlined animate-spin">sync</span>
+                  ) : (
+                    <span className="material-icons-outlined">save</span>
+                  )}
+                  Save
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Override the gear ratio used for angular/radial coupling compensation. Leave empty to auto-detect from table type (6.25 for mini, 10 for standard).
+              </p>
+            </div>
+
             <Alert className="flex items-start">
               <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
               <AlertDescription>
                 Table type is normally detected automatically from GRBL settings. Use override if auto-detection is incorrect for your hardware.
               </AlertDescription>
             </Alert>
+
+            <Link
+              to="/setup"
+              className="flex items-center justify-between w-full p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <span className="material-icons-outlined text-muted-foreground">build</span>
+                <div className="text-left">
+                  <p className="font-medium text-sm">Hardware Setup & Calibration</p>
+                  <p className="text-xs text-muted-foreground">
+                    Calibrate motor directions and edit FluidNC settings
+                  </p>
+                </div>
+              </div>
+              <span className="material-icons-outlined text-muted-foreground">arrow_forward</span>
+            </Link>
 
           </AccordionContent>
         </AccordionItem>
@@ -2173,6 +2275,186 @@ export function SettingsPage() {
           </AccordionContent>
         </AccordionItem>
 
+        {/* Security */}
+        <AccordionItem value="security" id="section-security" className="border rounded-lg px-4 overflow-visible bg-card">
+          <AccordionTrigger className="hover:no-underline">
+            <div className="flex items-center gap-3">
+              <span className="material-icons-outlined text-muted-foreground">
+                lock
+              </span>
+              <div className="text-left">
+                <div className="font-semibold">Security</div>
+                <div className="text-sm text-muted-foreground font-normal">
+                  App lock and access control
+                </div>
+              </div>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="pt-4 pb-6 space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Restrict access to the app to prevent unauthorized changes. Useful for shared spaces or when the table is accessible to children.
+            </p>
+
+            {/* Security Mode */}
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">Security Mode</Label>
+              <RadioGroup
+                value={securityMode}
+                onValueChange={(value) => {
+                  const newMode = value as 'off' | 'lockdown' | 'play_only'
+                  if (newMode === 'off' && securityMode !== 'off') {
+                    if (!confirm('Turn off security? This will remove the password and unlock the app.')) return
+                  }
+                  setSecurityMode(newMode)
+                  // Clear password fields when switching modes
+                  setSecurityPassword('')
+                  setSecurityPasswordConfirm('')
+                }}
+                className="space-y-2"
+              >
+                <div className="flex items-start gap-3 p-3 rounded-lg border">
+                  <RadioGroupItem value="off" id="security-off" className="mt-0.5" />
+                  <div>
+                    <Label htmlFor="security-off" className="font-medium cursor-pointer">Off</Label>
+                    <p className="text-sm text-muted-foreground">No restrictions. Anyone can use the app.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 p-3 rounded-lg border">
+                  <RadioGroupItem value="play_only" id="security-play-only" className="mt-0.5" />
+                  <div>
+                    <Label htmlFor="security-play-only" className="font-medium cursor-pointer">Play Only</Label>
+                    <p className="text-sm text-muted-foreground">Anyone can browse and play patterns. Settings require a password.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 p-3 rounded-lg border">
+                  <RadioGroupItem value="lockdown" id="security-lockdown" className="mt-0.5" />
+                  <div>
+                    <Label htmlFor="security-lockdown" className="font-medium cursor-pointer">Full Lockdown</Label>
+                    <p className="text-sm text-muted-foreground">Password required to access the entire app.</p>
+                  </div>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {/* Password fields (shown when mode != off) */}
+            {securityMode !== 'off' && (
+              <div className="space-y-3 pt-2">
+                <Separator />
+                {hasExistingPassword && (
+                  <p className="text-sm text-muted-foreground">
+                    A password is currently set. Enter a new password below to change it, or leave blank to keep the existing one.
+                  </p>
+                )}
+                <div className="space-y-2">
+                  <Label htmlFor="security-password">
+                    {hasExistingPassword ? 'New Password' : 'Password'}
+                  </Label>
+                  <Input
+                    id="security-password"
+                    type="password"
+                    placeholder={hasExistingPassword ? 'Leave blank to keep current' : 'Enter password'}
+                    value={securityPassword}
+                    onChange={(e) => setSecurityPassword(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="security-password-confirm">Confirm Password</Label>
+                  <Input
+                    id="security-password-confirm"
+                    type="password"
+                    placeholder="Confirm password"
+                    value={securityPasswordConfirm}
+                    onChange={(e) => setSecurityPasswordConfirm(e.target.value)}
+                  />
+                </div>
+                {securityPassword && securityPasswordConfirm && securityPassword !== securityPasswordConfirm && (
+                  <p className="text-sm text-destructive">Passwords do not match</p>
+                )}
+              </div>
+            )}
+
+            {/* Save button */}
+            <Button
+              onClick={async () => {
+                // Validate
+                if (securityMode !== 'off') {
+                  if (securityPassword && securityPassword !== securityPasswordConfirm) {
+                    toast.error('Passwords do not match')
+                    return
+                  }
+                  if (!hasExistingPassword && !securityPassword) {
+                    toast.error('Please set a password')
+                    return
+                  }
+                }
+
+                setIsLoading('security')
+                try {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const payload: any = { security: { mode: securityMode } }
+                  if (securityPassword) {
+                    payload.security.password = securityPassword
+                  }
+                  await apiClient.patch('/api/settings', payload)
+                  toast.success('Security settings saved')
+                  setSecurityPassword('')
+                  setSecurityPasswordConfirm('')
+                  setHasExistingPassword(securityMode !== 'off')
+                  // Notify Layout to refetch security state
+                  window.dispatchEvent(new CustomEvent('security-updated'))
+                } catch {
+                  toast.error('Failed to save security settings')
+                } finally {
+                  setIsLoading(null)
+                }
+              }}
+              disabled={
+                isLoading === 'security' ||
+                (securityMode !== 'off' && securityPassword !== '' && securityPassword !== securityPasswordConfirm) ||
+                (securityMode !== 'off' && !hasExistingPassword && !securityPassword)
+              }
+              className="w-full gap-2"
+            >
+              {isLoading === 'security' ? (
+                <span className="material-icons-outlined animate-spin">sync</span>
+              ) : (
+                <span className="material-icons-outlined">save</span>
+              )}
+              Save Security Settings
+            </Button>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* WiFi */}
+        <AccordionItem value="wifi" id="section-wifi" className="border rounded-lg px-4 overflow-visible bg-card">
+          <AccordionTrigger className="hover:no-underline">
+            <div className="flex items-center gap-3">
+              <span className="material-icons-outlined text-muted-foreground">
+                wifi
+              </span>
+              <div className="text-left">
+                <div className="font-semibold">WiFi</div>
+                <div className="text-sm text-muted-foreground font-normal">
+                  Network connection settings
+                </div>
+              </div>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="pt-4 pb-6 space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Manage WiFi connections, scan for networks, and configure hotspot mode.
+            </p>
+            <Button
+              variant="outline"
+              className="w-full gap-2"
+              onClick={() => navigate('/wifi-setup')}
+            >
+              <span className="material-icons-outlined">settings</span>
+              Open WiFi Setup
+            </Button>
+          </AccordionContent>
+        </AccordionItem>
+
         {/* Software Version */}
         <AccordionItem value="version" id="section-version" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
@@ -2224,13 +2506,18 @@ export function SettingsPage() {
             </div>
 
             {versionInfo?.update_available && (
-              <Alert className="flex items-start">
-                <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
-                <AlertDescription>
-                  To update, SSH into your Raspberry Pi and run <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono">dw update</code>
-                </AlertDescription>
-              </Alert>
+              <Button onClick={() => setUpdateDialogOpen(true)} className="w-full">
+                <span className="material-icons text-base mr-2">system_update</span>
+                Update Now
+              </Button>
             )}
+
+            <UpdateDialog
+              open={updateDialogOpen}
+              onOpenChange={setUpdateDialogOpen}
+              currentVersion={versionInfo?.current || ''}
+              latestVersion={versionInfo?.latest || ''}
+            />
           </AccordionContent>
         </AccordionItem>
       </Accordion>

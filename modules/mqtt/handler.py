@@ -51,6 +51,10 @@ class MQTTHandler(BaseMQTTHandler):
         self.completion_topic = f"{self.device_id}/state/completion"
         self.time_remaining_topic = f"{self.device_id}/state/time_remaining"
 
+        # Screen control topics
+        self.screen_power_topic = f"{self.device_id}/screen/power/set"
+        self.screen_brightness_topic = f"{self.device_id}/screen/brightness/set"
+
         # LED control topics
         self.led_power_topic = f"{self.device_id}/led/power/set"
         self.led_brightness_topic = f"{self.device_id}/led/brightness/set"
@@ -165,6 +169,23 @@ class MQTTHandler(BaseMQTTHandler):
             }
         }
         self._publish_discovery("button", "play", play_config)
+
+        # Skip Button
+        skip_config = {
+            "name": "Skip to next pattern",
+            "unique_id": f"{self.device_id}_skip",
+            "command_topic": f"{self.device_id}/command/skip",
+            "device": base_device,
+            "icon": "mdi:skip-next",
+            "entity_category": "config",
+            "enabled_by_default": True,
+            "availability": {
+                "topic": f"{self.device_id}/command/skip/available",
+                "payload_available": "true",
+                "payload_not_available": "false"
+            }
+        }
+        self._publish_discovery("button", "skip", skip_config)
 
         # Speed Control
         speed_config = {
@@ -383,6 +404,38 @@ class MQTTHandler(BaseMQTTHandler):
             }
             self._publish_discovery("light", "led_color", led_color_config)
 
+        # Screen Control Entities (only if screen controller is available)
+        if state.screen_controller and state.screen_controller.available:
+            screen_status = state.screen_controller.get_status()
+
+            # Screen Power Switch
+            screen_power_config = {
+                "name": f"{self.device_name} Screen Power",
+                "unique_id": f"{self.device_id}_screen_power",
+                "command_topic": self.screen_power_topic,
+                "state_topic": f"{self.device_id}/screen/power/state",
+                "payload_on": "ON",
+                "payload_off": "OFF",
+                "device": base_device,
+                "icon": "mdi:monitor",
+                "optimistic": False
+            }
+            self._publish_discovery("switch", "screen_power", screen_power_config)
+
+            # Screen Brightness Number
+            screen_brightness_config = {
+                "name": f"{self.device_name} Screen Brightness",
+                "unique_id": f"{self.device_id}_screen_brightness",
+                "command_topic": self.screen_brightness_topic,
+                "state_topic": f"{self.device_id}/screen/brightness/state",
+                "device": base_device,
+                "icon": "mdi:brightness-6",
+                "min": 0,
+                "max": screen_status.get("max_brightness", 255),
+                "mode": "slider"
+            }
+            self._publish_discovery("number", "screen_brightness", screen_brightness_config)
+
     def _publish_discovery(self, component: str, config_type: str, config: dict):
         """Helper method to publish HA discovery configs."""
         if not self.is_enabled:
@@ -407,8 +460,12 @@ class MQTTHandler(BaseMQTTHandler):
         self.client.publish(f"{self.device_id}/command/pause/available", 
                           "true" if running_state == "running" else "false", 
                           retain=True)
-        self.client.publish(f"{self.device_id}/command/play/available", 
-                          "true" if running_state == "paused" else "false", 
+        self.client.publish(f"{self.device_id}/command/play/available",
+                          "true" if running_state == "paused" else "false",
+                          retain=True)
+        # Skip is available when running and a playlist is active
+        self.client.publish(f"{self.device_id}/command/skip/available",
+                          "true" if running_state in ("running", "paused") and bool(self.state.current_playlist) else "false",
                           retain=True)
                           
     def _publish_pattern_state(self, current_file=None):
@@ -530,6 +587,19 @@ class MQTTHandler(BaseMQTTHandler):
         except Exception as e:
             logger.error(f"Error publishing LED state: {e}")
 
+    def _publish_screen_state(self):
+        """Helper to publish screen (LCD backlight) state to MQTT."""
+        if not state.screen_controller or not state.screen_controller.available:
+            return
+
+        try:
+            status = state.screen_controller.get_status()
+            power_state = "ON" if status["power_on"] else "OFF"
+            self.client.publish(f"{self.device_id}/screen/power/state", power_state, retain=True)
+            self.client.publish(f"{self.device_id}/screen/brightness/state", status["brightness"], retain=True)
+        except Exception as e:
+            logger.error(f"Error publishing screen state: {e}")
+
     def update_state(self, current_file=None, is_running=None, playlist=None, playlist_name=None):
         """Update state in Home Assistant. Only publishes the attributes that are explicitly passed."""
         if not self.is_enabled:
@@ -562,6 +632,7 @@ class MQTTHandler(BaseMQTTHandler):
                 (f"{self.device_id}/command/stop", 0),
                 (f"{self.device_id}/command/pause", 0),
                 (f"{self.device_id}/command/play", 0),
+                (f"{self.device_id}/command/skip", 0),
                 (f"{self.device_id}/playlist/mode/set", 0),
                 (f"{self.device_id}/playlist/pause_time/set", 0),
                 (f"{self.device_id}/playlist/clear_pattern/set", 0),
@@ -572,6 +643,8 @@ class MQTTHandler(BaseMQTTHandler):
                 (self.led_speed_topic, 0),
                 (self.led_intensity_topic, 0),
                 (self.led_color_topic, 0),
+                (self.screen_power_topic, 0),
+                (self.screen_brightness_topic, 0),
             ])
             # Publish discovery configurations
             self.setup_ha_discovery()
@@ -656,6 +729,14 @@ class MQTTHandler(BaseMQTTHandler):
                 if bool(self.state.current_playing_file) and self.state.pause_requested:
                     # Check if callback is async or sync
                     callback = self.callback_registry['resume']
+                    if asyncio.iscoroutinefunction(callback):
+                        asyncio.run_coroutine_threadsafe(callback(), self.main_loop)
+                    else:
+                        callback()
+            elif msg.topic == f"{self.device_id}/command/skip":
+                # Handle skip command - only if a playlist is running
+                if self.state.current_playlist:
+                    callback = self.callback_registry['skip']
                     if asyncio.iscoroutinefunction(callback):
                         asyncio.run_coroutine_threadsafe(callback(), self.main_loop)
                     else:
@@ -753,6 +834,18 @@ class MQTTHandler(BaseMQTTHandler):
                                               json.dumps({"r": r, "g": g, "b": b}), retain=True)
                 except json.JSONDecodeError:
                     logger.error(f"Invalid JSON for color command: {msg.payload}")
+            elif msg.topic == self.screen_power_topic:
+                # Handle screen power command
+                payload = msg.payload.decode()
+                if state.screen_controller and state.screen_controller.available:
+                    state.screen_controller.set_power(payload == "ON")
+                    self._publish_screen_state()
+            elif msg.topic == self.screen_brightness_topic:
+                # Handle screen brightness command
+                brightness = int(msg.payload.decode())
+                if state.screen_controller and state.screen_controller.available:
+                    state.screen_controller.set_brightness(brightness)
+                    self._publish_screen_state()
             else:
                 # Handle other commands
                 payload = json.loads(msg.payload.decode())
@@ -785,6 +878,9 @@ class MQTTHandler(BaseMQTTHandler):
 
                 # Update LED state
                 self._publish_led_state()
+
+                # Update screen state
+                self._publish_screen_state()
 
                 # Publish keepalive status
                 status = {
@@ -828,6 +924,7 @@ class MQTTHandler(BaseMQTTHandler):
             self._publish_progress_state()
             self._publish_playlist_settings_state()
             self._publish_led_state()
+            self._publish_screen_state()
 
             # Setup Home Assistant discovery
             self.setup_ha_discovery()

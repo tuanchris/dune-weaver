@@ -1,6 +1,7 @@
 import threading
 import time
 import logging
+import re
 import serial
 import serial.tools.list_ports
 import websocket
@@ -579,13 +580,10 @@ def _detect_firmware():
 
                     if 'fluidnc' in response_lower:
                         firmware_type = 'fluidnc'
-                        # Try to extract version from response like "FluidNC v3.7.2"
-                        if 'v' in response_lower:
-                            parts = response.split()
-                            for part in parts:
-                                if part.lower().startswith('v') and any(c.isdigit() for c in part):
-                                    version = part
-                                    break
+                        # Extract version like "v3.7.2" from response
+                        ver_match = re.search(r'v(\d+\.\d+\.\d+)', response_lower)
+                        if ver_match:
+                            version = f"v{ver_match.group(1)}"
                         break
                     elif 'grbl' in response_lower and 'fluidnc' not in response_lower:
                         firmware_type = 'grbl'
@@ -876,6 +874,8 @@ def get_machine_steps(timeout=10):
 
     # Detect firmware type
     firmware_type, firmware_version = _detect_firmware()
+    state.firmware_type = firmware_type
+    state.firmware_version = firmware_version
 
     if firmware_type == 'fluidnc':
         if firmware_version:
@@ -899,23 +899,30 @@ def get_machine_steps(timeout=10):
         x_steps_per_mm, y_steps_per_mm = _get_steps_grbl()
     
     # Process results and determine table type
+    # Uses tolerance-based matching (±5) to handle firmware float variations
+    # (e.g., 287 vs 287.0) and checks both axes for reliable identification
+    def _steps_match(actual, expected, tolerance=5):
+        return abs(actual - expected) <= tolerance
+
     settings_complete = (x_steps_per_mm is not None and y_steps_per_mm is not None)
     if settings_complete:
-        if y_steps_per_mm == 180 and x_steps_per_mm == 256:
+        if _steps_match(y_steps_per_mm, 180) and _steps_match(x_steps_per_mm, 256):
             state.table_type = 'dune_weaver_mini'
-        elif y_steps_per_mm == 210 and x_steps_per_mm == 256:
+        elif _steps_match(y_steps_per_mm, 210) and _steps_match(x_steps_per_mm, 256):
             state.table_type = 'dune_weaver_mini_pro_byj'
-        elif (y_steps_per_mm == 270 or y_steps_per_mm == 250) and x_steps_per_mm == 200:
-            state.table_type = 'dune_weaver_gold'
-        elif y_steps_per_mm == 287:
-            state.table_type = 'dune_weaver'
-        elif y_steps_per_mm == 164:
+        elif _steps_match(y_steps_per_mm, 164) and _steps_match(x_steps_per_mm, 200):
             state.table_type = 'dune_weaver_mini_pro'
-        elif y_steps_per_mm >= 320:
+        elif (_steps_match(y_steps_per_mm, 270) or _steps_match(y_steps_per_mm, 250)) and _steps_match(x_steps_per_mm, 200):
+            state.table_type = 'dune_weaver_gold'
+        elif _steps_match(y_steps_per_mm, 620) and _steps_match(x_steps_per_mm, 320):
+            state.table_type = 'dune_weaver_pro_pulley'
+        elif _steps_match(y_steps_per_mm, 533) and _steps_match(x_steps_per_mm, 320):
             state.table_type = 'dune_weaver_pro'
+        elif _steps_match(y_steps_per_mm, 287) and _steps_match(x_steps_per_mm, 320):
+            state.table_type = 'dune_weaver'
         else:
             state.table_type = None
-            logger.warning(f"Unknown table type with Y steps/mm: {y_steps_per_mm}")
+            logger.warning(f"Unknown table type with X steps/mm: {x_steps_per_mm}, Y steps/mm: {y_steps_per_mm}")
 
         # Use override if set, otherwise use detected table type
         effective_table_type = state.table_type_override or state.table_type
@@ -939,6 +946,11 @@ def get_machine_steps(timeout=10):
             logger.info(f"Machine type detected: {state.table_type}, overridden to: {effective_table_type}, gear ratio: {state.gear_ratio}")
         else:
             logger.info(f"Machine type detected: {state.table_type}, gear ratio: {state.gear_ratio} (hardcoded)")
+
+        # User UI override takes highest priority
+        if state.gear_ratio_override is not None:
+            state.gear_ratio = state.gear_ratio_override
+            logger.info(f"Gear ratio overridden to: {state.gear_ratio} (user override)")
 
         return True
     else:

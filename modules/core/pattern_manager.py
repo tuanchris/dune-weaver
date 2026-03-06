@@ -237,15 +237,10 @@ def _get_timezone():
     else:
         # Fall back to system timezone detection
         try:
-            if os.path.exists('/etc/host-timezone'):
-                with open('/etc/host-timezone', 'r') as f:
-                    user_tz = f.read().strip()
-                    logger.info(f"Still Sands using timezone: {user_tz} (from host system)")
-            # Fallback to /etc/timezone if host-timezone doesn't exist
-            elif os.path.exists('/etc/timezone'):
+            if os.path.exists('/etc/timezone'):
                 with open('/etc/timezone', 'r') as f:
                     user_tz = f.read().strip()
-                    logger.info(f"Still Sands using timezone: {user_tz} (from container)")
+                    logger.info(f"Still Sands using timezone: {user_tz} (from system)")
             # Fallback to TZ environment variable
             elif os.environ.get('TZ'):
                 user_tz = os.environ.get('TZ')
@@ -351,6 +346,13 @@ async def start_idle_led_timeout(check_still_sands: bool = True):
                           (e.g., during pause with "finish pattern first" mode).
     """
     if not state.led_controller:
+        return
+
+    if not state.led_automation_enabled:
+        # Manual mode: Still Sands can still turn OFF, but skip idle effect + timeout
+        if check_still_sands and is_in_scheduled_pause_period() and state.scheduled_pause_control_wled:
+            logger.info("Manual mode: Turning off LEDs during Still Sands period")
+            await state.led_controller.set_power_async(0)
         return
 
     # Still Sands with LED control: turn off instead of idle effect
@@ -1177,12 +1179,26 @@ async def _execute_pattern_internal(file_path):
     coordinates = await asyncio.to_thread(parse_theta_rho_file, file_path)
     total_coordinates = len(coordinates)
 
-    # Cache coordinates in state for frontend preview (avoids re-parsing large files)
-    state._current_coordinates = coordinates
-
     if total_coordinates < 2:
         logger.warning("Not enough coordinates for interpolation")
         return False
+
+    # Normalize theta values to avoid unnecessary revolutions at pattern start.
+    # Many community patterns have theta starting at high values (e.g., 498 rad ≈ 79 revolutions).
+    # Some patterns also start with two "0 0" origin points before jumping to a large theta.
+    # Detect this preamble and use the third coordinate as the reference instead.
+    ref_theta = coordinates[0][0]
+    if (len(coordinates) >= 3
+            and abs(coordinates[0][0]) < 1e-9 and abs(coordinates[0][1]) < 1e-9
+            and abs(coordinates[1][0]) < 1e-9 and abs(coordinates[1][1]) < 1e-9):
+        ref_theta = coordinates[2][0]
+    theta_offset = ref_theta - (ref_theta % (2 * pi))
+    if abs(theta_offset) > 1e-9:
+        coordinates = [(theta - theta_offset, rho) for theta, rho in coordinates]
+        logger.info(f"Normalized pattern theta by {theta_offset:.2f} rad ({theta_offset / (2 * pi):.1f} revolutions)")
+
+    # Cache coordinates in state for frontend preview (avoids re-parsing large files)
+    state._current_coordinates = coordinates
 
     # Pre-calculate rho-based weights for more accurate time estimation
     # Moves near center (low rho) are slower than perimeter moves due to
@@ -1229,7 +1245,7 @@ async def _execute_pattern_internal(file_path):
     smoothed_rate = None  # For exponential smoothing of time-per-unit-weight rate
     # For WLED: always trigger (uses hardcoded preset 2)
     # For DW_LED: only trigger if effect is configured
-    if state.led_controller and (state.led_provider == "wled" or state.dw_led_playing_effect):
+    if state.led_controller and state.led_automation_enabled and (state.led_provider == "wled" or state.dw_led_playing_effect):
         logger.info(f"Setting LED to playing effect: {state.dw_led_playing_effect}")
         await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
         # Cancel idle timeout when playing starts
@@ -1340,19 +1356,18 @@ async def _execute_pattern_internal(file_path):
 
                 logger.info("Execution resumed...")
                 if state.led_controller:
-                    # Turn LED controller back on if it was turned off for scheduled pause
+                    # Always power LEDs back on if they were turned off for scheduled pause,
+                    # regardless of whether a playing effect is configured
+                    if wled_was_off_for_scheduled and state.led_automation_enabled:
+                        logger.info("Turning LED lights back on as Still Sands period ended")
+                        await state.led_controller.set_power_async(1)
+                        # CRITICAL: Give LED controller time to fully power on before sending more commands
+                        # Without this delay, rapid-fire requests can crash controllers on resource-constrained Pis
+                        await asyncio.sleep(0.5)
+                    # Apply playing effect if configured
                     # For WLED: always trigger (uses hardcoded preset 2)
                     # For DW_LED: only trigger if effect is configured
-                    should_trigger_led = state.led_provider == "wled" or state.dw_led_playing_effect
-                    if wled_was_off_for_scheduled:
-                        if should_trigger_led:
-                            logger.info("Turning LED lights back on as Still Sands period ended")
-                            await state.led_controller.set_power_async(1)
-                            # CRITICAL: Give LED controller time to fully power on before sending more commands
-                            # Without this delay, rapid-fire requests can crash controllers on resource-constrained Pis
-                            await asyncio.sleep(0.5)
-                        else:
-                            logger.info("No playing effect configured, keeping LEDs off after Still Sands")
+                    should_trigger_led = state.led_automation_enabled and (state.led_provider == "wled" or state.dw_led_playing_effect)
                     if should_trigger_led:
                         await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
                     # Cancel idle timeout when resuming from pause
@@ -1429,7 +1444,9 @@ async def _execute_pattern_internal(file_path):
 
     # Set LED back to idle when pattern completes normally (not stopped early)
     # This also handles Still Sands: turns off LEDs if in scheduled pause period with LED control
-    if not state.stop_requested:
+    # Skip during clear pattern - the main pattern starts immediately after, so triggering
+    # idle LED here would cause a brief flicker (idle effect → playing effect in ~0.3s)
+    if not state.stop_requested and not state.is_clearing:
         await start_idle_led_timeout()
 
     return was_completed
@@ -1597,16 +1614,16 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                     if result == 'completed':
                         logger.info("Still Sands period ended. Resuming playlist...")
                         if state.led_controller:
+                            # Always power LEDs back on if they were turned off for scheduled pause,
+                            # regardless of whether a playing effect is configured
+                            if wled_was_off_for_scheduled and state.led_automation_enabled:
+                                logger.info("Turning LED lights back on as Still Sands period ended")
+                                await state.led_controller.set_power_async(1)
+                                await asyncio.sleep(0.5)
+                            # Apply playing effect if configured
                             # For WLED: always trigger (uses hardcoded preset 2)
                             # For DW_LED: only trigger if effect is configured
-                            should_trigger_led = state.led_provider == "wled" or state.dw_led_playing_effect
-                            if wled_was_off_for_scheduled:
-                                if should_trigger_led:
-                                    logger.info("Turning LED lights back on as Still Sands period ended")
-                                    await state.led_controller.set_power_async(1)
-                                    await asyncio.sleep(0.5)
-                                else:
-                                    logger.info("No playing effect configured, keeping LEDs off after Still Sands")
+                            should_trigger_led = state.led_automation_enabled and (state.led_provider == "wled" or state.dw_led_playing_effect)
                             if should_trigger_led:
                                 await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
                             idle_timeout_manager.cancel_timeout()
@@ -1618,14 +1635,31 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                     # This will be set again when the next pattern starts
                     state.current_playing_file = None
                     # Trigger idle LED state during pause between patterns
-                    await start_idle_led_timeout(check_still_sands=False)
+                    await start_idle_led_timeout(check_still_sands=True)
                     state.original_pause_time = pause_time
                     pause_start = time.time()
+                    # Track Still Sands state for edge detection during long pauses
+                    was_in_still_sands = is_in_scheduled_pause_period() and state.scheduled_pause_control_wled
                     while time.time() - pause_start < pause_time:
                         state.pause_time_remaining = pause_start + pause_time - time.time()
-                        if state.skip_requested:
-                            logger.info("Pause interrupted by skip request")
+                        if state.skip_requested or state.stop_requested:
+                            if state.stop_requested:
+                                logger.info("Pause interrupted by stop request")
+                            else:
+                                logger.info("Pause interrupted by skip request")
                             break
+                        # Monitor Still Sands transitions during pause
+                        in_still_sands = is_in_scheduled_pause_period() and state.scheduled_pause_control_wled
+                        if in_still_sands and not was_in_still_sands:
+                            # Entering Still Sands period — turn off LEDs
+                            logger.info("Still Sands period started during pause, turning off LEDs")
+                            if state.led_controller:
+                                await state.led_controller.set_power_async(0)
+                        elif not in_still_sands and was_in_still_sands:
+                            # Leaving Still Sands period — restore idle effect
+                            logger.info("Still Sands period ended during pause, restoring idle LED effect")
+                            await start_idle_led_timeout(check_still_sands=False)
+                        was_in_still_sands = in_still_sands
                         await asyncio.sleep(1)
                     # Clear both pause state vars immediately (so UI updates right away)
                     state.pause_time_remaining = 0
@@ -1657,14 +1691,31 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                     # Clear current_playing_file to report "idle" state to MQTT/HA during pause
                     state.current_playing_file = None
                     # Trigger idle LED state during pause between playlist cycles
-                    await start_idle_led_timeout(check_still_sands=False)
+                    await start_idle_led_timeout(check_still_sands=True)
                     state.original_pause_time = pause_time
                     pause_start = time.time()
+                    # Track Still Sands state for edge detection during long pauses
+                    was_in_still_sands = is_in_scheduled_pause_period() and state.scheduled_pause_control_wled
                     while time.time() - pause_start < pause_time:
                         state.pause_time_remaining = pause_start + pause_time - time.time()
-                        if state.skip_requested:
-                            logger.info("Pause interrupted by skip request")
+                        if state.skip_requested or state.stop_requested:
+                            if state.stop_requested:
+                                logger.info("Pause interrupted by stop request")
+                            else:
+                                logger.info("Pause interrupted by skip request")
                             break
+                        # Monitor Still Sands transitions during pause
+                        in_still_sands = is_in_scheduled_pause_period() and state.scheduled_pause_control_wled
+                        if in_still_sands and not was_in_still_sands:
+                            # Entering Still Sands period — turn off LEDs
+                            logger.info("Still Sands period started during pause, turning off LEDs")
+                            if state.led_controller:
+                                await state.led_controller.set_power_async(0)
+                        elif not in_still_sands and was_in_still_sands:
+                            # Leaving Still Sands period — restore idle effect
+                            logger.info("Still Sands period ended during pause, restoring idle LED effect")
+                            await start_idle_led_timeout(check_still_sands=False)
+                        was_in_still_sands = in_still_sands
                         await asyncio.sleep(1)
                     # Clear both pause state vars immediately (so UI updates right away)
                     state.pause_time_remaining = 0
@@ -1931,7 +1982,9 @@ def get_status():
         "original_pause_time": getattr(state, 'original_pause_time', None),
         "connection_status": state.conn.is_connected() if state.conn else False,
         "current_theta": state.current_theta,
-        "current_rho": state.current_rho
+        "current_rho": state.current_rho,
+        "firmware_version": state.firmware_version,
+        "table_type": state.table_type_override or state.table_type
     }
     
     # Add playlist information if available

@@ -5,16 +5,17 @@
 # Usage: dw <command>
 #
 # Commands:
-#   install     Run initial setup (Docker + WiFi fix)
+#   install     Run initial setup
 #   start       Start Dune Weaver
 #   stop        Stop Dune Weaver
 #   restart     Restart Dune Weaver
 #   update      Pull latest changes and restart
 #   logs        View live logs (Ctrl+C to exit)
-#   status      Show container status
-#   shell       Open a shell in the container
-#   checkout    Switch to a branch and pull its Docker images
+#   status      Show service status
+#   shell       Open a shell with the venv activated
+#   checkout    Switch to a branch and rebuild
 #   touch       Manage touch screen app
+#   wifi        Manage WiFi and hotspot
 #   help        Show this help message
 #
 
@@ -41,19 +42,6 @@ find_install_dir() {
     fi
 }
 
-# Check if using Docker or systemd
-is_docker_mode() {
-    # Docker mode if docker-compose.yml exists and docker is available
-    [[ -f "$INSTALL_DIR/docker-compose.yml" ]] && command -v docker &> /dev/null
-}
-
-# Set IMAGE_TAG from current git branch (e.g. feature/foo -> feature-foo)
-set_image_tag() {
-    local branch
-    branch=$(git -C "$INSTALL_DIR" rev-parse --abbrev-ref HEAD)
-    export IMAGE_TAG="${branch//\//-}"
-}
-
 INSTALL_DIR=$(find_install_dir)
 
 # Check if installed
@@ -73,7 +61,7 @@ check_installed() {
 cmd_install() {
     if [[ -z "$INSTALL_DIR" ]]; then
         # Not installed, check if we're in the right directory
-        if [[ -f "./docker-compose.yml" ]] && [[ -f "./main.py" ]]; then
+        if [[ -f "./main.py" ]] && [[ -f "./requirements.txt" ]]; then
             INSTALL_DIR=$(pwd)
         else
             echo -e "${RED}Error: Run this from the dune-weaver directory${NC}"
@@ -92,47 +80,21 @@ cmd_install() {
 cmd_start() {
     check_installed
     echo -e "${BLUE}Starting Dune Weaver...${NC}"
-    cd "$INSTALL_DIR"
-
-    if is_docker_mode; then
-        set_image_tag
-        sudo -E docker compose up -d
-    else
-        sudo systemctl start dune-weaver
-    fi
-
-    local fe_port="${FRONTEND_PORT:-80}"
-    local port_suffix=""
-    [[ "$fe_port" != "80" ]] && port_suffix=":$fe_port"
-    echo -e "${GREEN}Started!${NC} Access at http://$(hostname -I | awk '{print $1}')${port_suffix}"
+    sudo systemctl start dune-weaver
+    echo -e "${GREEN}Started!${NC} Access at http://$(hostname -I | awk '{print $1}')"
 }
 
 cmd_stop() {
     check_installed
     echo -e "${BLUE}Stopping Dune Weaver...${NC}"
-    cd "$INSTALL_DIR"
-
-    if is_docker_mode; then
-        sudo docker compose down
-    else
-        sudo systemctl stop dune-weaver
-    fi
-
+    sudo systemctl stop dune-weaver
     echo -e "${GREEN}Stopped${NC}"
 }
 
 cmd_restart() {
     check_installed
     echo -e "${BLUE}Restarting Dune Weaver...${NC}"
-    cd "$INSTALL_DIR"
-
-    if is_docker_mode; then
-        set_image_tag
-        sudo -E docker compose restart
-    else
-        sudo systemctl restart dune-weaver
-    fi
-
+    sudo systemctl restart dune-weaver
     echo -e "${GREEN}Restarted${NC}"
 }
 
@@ -144,6 +106,7 @@ cmd_update() {
     # Check if we should skip the pull phase (called after re-exec)
     if [[ "$1" != "--continue" ]]; then
         echo "Pulling latest code..."
+        git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
         git pull
 
         # Update dw CLI
@@ -156,29 +119,45 @@ cmd_update() {
         exec /usr/local/bin/dw update --continue
     fi
 
-    if is_docker_mode; then
-        set_image_tag
-        echo -e "Image tag: ${BLUE}${IMAGE_TAG}${NC}"
+    echo "Updating Python dependencies..."
+    source .venv/bin/activate
+    pip install -r requirements.txt
 
-        echo "Pulling latest Docker image..."
-        sudo -E docker compose pull
+    # Update nginx config
+    echo "Updating nginx config..."
+    sudo cp "$INSTALL_DIR/nginx/dune-weaver.conf" /etc/nginx/sites-available/dune-weaver.conf
+    sudo sed -i "s|INSTALL_DIR_PLACEHOLDER|$INSTALL_DIR|g" /etc/nginx/sites-available/dune-weaver.conf
+    sudo nginx -t && sudo systemctl restart nginx
 
-        echo "Stopping current container..."
-        sudo docker compose down
+    # Update systemd service
+    echo "Updating systemd service..."
+    sudo cp "$INSTALL_DIR/dune-weaver.service" /etc/systemd/system/dune-weaver.service
+    sudo sed -i "s|USER_PLACEHOLDER|$USER|g" /etc/systemd/system/dune-weaver.service
+    sudo sed -i "s|INSTALL_DIR_PLACEHOLDER|$INSTALL_DIR|g" /etc/systemd/system/dune-weaver.service
+    sudo systemctl daemon-reload
 
-        echo "Starting with new version..."
-        sudo -E docker compose up -d --remove-orphans
+    echo "Restarting service..."
+    sudo systemctl restart dune-weaver
 
-        echo "Cleaning up unused Docker resources..."
-        sudo docker image prune -f
-        sudo docker container prune -f
-    else
-        echo "Updating Python dependencies..."
-        source .venv/bin/activate
-        pip install -r requirements.txt
+    # Install/update WiFi host scripts if not present
+    if [[ -f "$INSTALL_DIR/wifi/setup-wifi.sh" ]]; then
+        if [[ ! -f /usr/local/bin/autohotspot ]]; then
+            echo ""
+            echo -e "${BLUE}Installing autohotspot WiFi scripts...${NC}"
+            sudo bash "$INSTALL_DIR/wifi/setup-wifi.sh"
+        else
+            # Always update the script and service files to latest
+            echo "Updating WiFi host scripts..."
+            sudo cp "$INSTALL_DIR/wifi/autohotspot" /usr/local/bin/autohotspot
+            sudo chmod +x /usr/local/bin/autohotspot
 
-        echo "Restarting service..."
-        sudo systemctl restart dune-weaver
+            # Update service/timer files
+            sudo cp "$INSTALL_DIR/wifi/autohotspot.service" /etc/systemd/system/autohotspot.service
+            sudo cp "$INSTALL_DIR/wifi/autohotspot-check.service" /etc/systemd/system/autohotspot-check.service 2>/dev/null || true
+            sudo cp "$INSTALL_DIR/wifi/autohotspot-check.timer" /etc/systemd/system/autohotspot-check.timer 2>/dev/null || true
+            sudo systemctl daemon-reload
+            sudo systemctl enable autohotspot-check.timer 2>/dev/null || true
+        fi
     fi
 
     # Update touch app if installed (check both directory and service exist)
@@ -202,52 +181,33 @@ cmd_update() {
     fi
 
     echo -e "${GREEN}Update complete!${NC}"
+    echo ""
+    echo -e "${YELLOW}Please reload the web page in your browser to see the changes.${NC}"
 }
 
 cmd_logs() {
     check_installed
-    cd "$INSTALL_DIR"
 
     # Parse optional line count (e.g., dw logs 100)
     local lines="${1:-}"
-    local follow="-f"
 
     if [[ -n "$lines" ]]; then
-        follow="--tail $lines"
-    fi
-
-    if is_docker_mode; then
-        sudo docker compose logs $follow
+        sudo journalctl -u dune-weaver -n "$lines"
     else
-        if [[ -n "$lines" ]]; then
-            sudo journalctl -u dune-weaver -n "$lines"
-        else
-            sudo journalctl -u dune-weaver -f
-        fi
+        sudo journalctl -u dune-weaver -f
     fi
 }
 
 cmd_status() {
     check_installed
-    cd "$INSTALL_DIR"
-
-    if is_docker_mode; then
-        sudo docker compose ps
-    else
-        sudo systemctl status dune-weaver
-    fi
+    sudo systemctl status dune-weaver
 }
 
 cmd_shell() {
     check_installed
     cd "$INSTALL_DIR"
-
-    if is_docker_mode; then
-        sudo docker compose exec dune-weaver /bin/bash
-    else
-        echo -e "${YELLOW}Shell not available in systemd mode${NC}"
-        echo "Use: cd $INSTALL_DIR && source .venv/bin/activate"
-    fi
+    echo -e "${BLUE}Activating venv...${NC}"
+    exec bash --init-file <(echo "source '$INSTALL_DIR/.venv/bin/activate'; cd '$INSTALL_DIR'; echo 'Dune Weaver venv activated. Type \"exit\" to leave.'")
 }
 
 # Touch app commands (systemd service)
@@ -346,27 +306,129 @@ cmd_checkout() {
 
     echo -e "Switched to branch: ${GREEN}${branch}${NC}"
 
-    # Pull and restart Docker images for the new branch
-    if is_docker_mode; then
-        set_image_tag
-        echo -e "Image tag: ${BLUE}${IMAGE_TAG}${NC}"
-
-        echo "Pulling Docker images..."
-        sudo -E docker compose pull
-
-        echo "Restarting with new images..."
-        sudo docker compose down
-        sudo -E docker compose up -d --remove-orphans
-
-        echo "Cleaning up old images..."
-        sudo docker image prune -f
-    fi
+    # Update Python dependencies
+    echo "Updating Python dependencies..."
+    source .venv/bin/activate
+    pip install -r requirements.txt
 
     # Update dw CLI from the new branch
     sudo cp "$INSTALL_DIR/dw" /usr/local/bin/dw
     sudo chmod +x /usr/local/bin/dw
 
+    # Restart service
+    sudo systemctl restart dune-weaver
+
+    # Install WiFi scripts if available on this branch but not yet installed
+    if [[ -f "$INSTALL_DIR/wifi/setup-wifi.sh" ]] && [[ ! -f /usr/local/bin/autohotspot ]]; then
+        echo ""
+        echo -e "${BLUE}Installing autohotspot WiFi scripts...${NC}"
+        sudo bash "$INSTALL_DIR/wifi/setup-wifi.sh"
+    fi
+
     echo -e "${GREEN}Checkout complete!${NC}"
+}
+
+# WiFi / Hotspot commands
+cmd_wifi() {
+    local subcmd="${1:-help}"
+
+    case "$subcmd" in
+        status)
+            check_installed
+            echo -e "${BLUE}WiFi Status${NC}"
+            echo ""
+
+            # Show current mode
+            local mode="unknown"
+            if [[ -f /tmp/dw-wifi-mode ]]; then
+                mode=$(cat /tmp/dw-wifi-mode)
+            fi
+            echo -e "Mode: ${GREEN}${mode}${NC}"
+
+            # Show connected network
+            local ssid
+            ssid=$(nmcli -t -f GENERAL.CONNECTION dev show wlan0 2>/dev/null | head -1 | cut -d: -f2)
+            if [[ -n "$ssid" && "$ssid" != "--" ]]; then
+                echo -e "Network: ${GREEN}${ssid}${NC}"
+            fi
+
+            # Show IP
+            local ip
+            ip=$(nmcli -t -f IP4.ADDRESS dev show wlan0 2>/dev/null | head -1 | cut -d: -f2 | cut -d/ -f1)
+            if [[ -n "$ip" ]]; then
+                echo -e "IP: ${GREEN}${ip}${NC}"
+            fi
+            ;;
+        scan)
+            echo -e "${BLUE}Scanning for WiFi networks...${NC}"
+            nmcli dev wifi rescan 2>/dev/null || true
+            sleep 2
+            nmcli dev wifi list
+            ;;
+        connect)
+            echo -e "${BLUE}Available WiFi networks:${NC}"
+            nmcli dev wifi rescan 2>/dev/null || true
+            sleep 2
+            nmcli dev wifi list
+            echo ""
+            read -p "Enter SSID to connect to: " ssid
+            if [[ -z "$ssid" ]]; then
+                echo -e "${RED}No SSID provided${NC}"
+                exit 1
+            fi
+            read -sp "Enter password (leave empty for open networks): " password
+            echo ""
+
+            # Delete any stale connection profile for this SSID
+            sudo nmcli con delete "$ssid" 2>/dev/null || true
+
+            if [[ -n "$password" ]]; then
+                # Create connection with explicit security settings
+                # (nmcli dev wifi connect can fail on Trixie without key-mgmt)
+                sudo nmcli con add type wifi ifname wlan0 con-name "$ssid" \
+                    ssid "$ssid" \
+                    wifi-sec.key-mgmt wpa-psk \
+                    wifi-sec.psk "$password"
+            else
+                sudo nmcli con add type wifi ifname wlan0 con-name "$ssid" \
+                    ssid "$ssid"
+            fi
+
+            echo -e "${BLUE}Connecting to '$ssid'...${NC}"
+            if sudo nmcli con up "$ssid"; then
+                echo -e "${GREEN}Connected!${NC}"
+            else
+                echo -e "${RED}Failed to connect. Check password and try again.${NC}"
+                sudo nmcli con delete "$ssid" 2>/dev/null || true
+                exit 1
+            fi
+            ;;
+        hotspot)
+            echo -e "${BLUE}Switching to hotspot mode...${NC}"
+            sudo nmcli dev disconnect wlan0 2>/dev/null || true
+            sudo nmcli con up DuneWeaver-Hotspot 2>/dev/null
+            echo "hotspot" | sudo tee /tmp/dw-wifi-mode > /dev/null
+            echo -e "${GREEN}Hotspot active!${NC} Connect to the 'Dune Weaver' WiFi network."
+            ;;
+        setup)
+            check_installed
+            cd "$INSTALL_DIR"
+            sudo bash wifi/setup-wifi.sh
+            ;;
+        help|*)
+            echo -e "${GREEN}WiFi Commands${NC}"
+            echo ""
+            echo "Usage: dw wifi <command>"
+            echo ""
+            echo "Commands:"
+            echo "  status      Show current WiFi mode and connection"
+            echo "  scan        Scan for available networks"
+            echo "  connect     Interactive: scan + select + connect"
+            echo "  hotspot     Force hotspot mode"
+            echo "  setup       Run initial autohotspot setup"
+            echo "  help        Show this help message"
+            ;;
+    esac
 }
 
 cmd_help() {
@@ -375,16 +437,17 @@ cmd_help() {
     echo "Usage: dw <command>"
     echo ""
     echo "Commands:"
-    echo "  install     Run initial setup (Docker + WiFi fix)"
+    echo "  install     Run initial setup"
     echo "  start       Start Dune Weaver"
     echo "  stop        Stop Dune Weaver"
     echo "  restart     Restart Dune Weaver"
     echo "  update      Pull latest changes and restart"
-    echo "  checkout    Switch to a branch and pull its Docker images"
+    echo "  checkout    Switch to a branch and rebuild"
     echo "  logs [N]    View logs (N=number of lines, or follow if omitted)"
-    echo "  status      Show container status"
-    echo "  shell       Open a shell in the container"
+    echo "  status      Show service status"
+    echo "  shell       Open a shell with the venv activated"
     echo "  touch       Manage touch screen app (run 'dw touch help')"
+    echo "  wifi        Manage WiFi and hotspot (run 'dw wifi help')"
     echo "  help        Show this help message"
     echo ""
     if [[ -n "$INSTALL_DIR" ]]; then
@@ -425,6 +488,10 @@ case "${1:-help}" in
     touch)
         shift
         cmd_touch "$@"
+        ;;
+    wifi)
+        shift
+        cmd_wifi "$@"
         ;;
     help|--help|-h)
         cmd_help

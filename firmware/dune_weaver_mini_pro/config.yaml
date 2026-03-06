@@ -33,7 +33,7 @@ axes:
     steps_per_mm: 164
     max_rate_mm_per_min: 500
     acceleration_mm_per_sec2: 10
-    max_travel_mm: 6.25
+    max_travel_mm: 22
     soft_limits: false
     motor0:
       limit_neg_pin: gpio.35

@@ -34,6 +34,8 @@ class DWLEDController:
         self.gpio_pin = gpio_pin
         self.brightness = brightness
         self.pixel_order = pixel_order
+        self.is_rgbw = 'W' in pixel_order.upper()
+        self._off_color = (0, 0, 0, 0) if self.is_rgbw else (0, 0, 0)
 
         # State
         self._powered_on = False
@@ -116,7 +118,7 @@ class DWLEDController:
             )
 
             # Create segment for the entire strip
-            self._segment = Segment(self._pixels, 0, self.num_leds)
+            self._segment = Segment(self._pixels, 0, self.num_leds, is_rgbw=self.is_rgbw)
             self._segment.speed = self._speed
             self._segment.intensity = self._intensity
             self._segment.palette_id = self._current_palette_id
@@ -188,7 +190,7 @@ class DWLEDController:
 
             # Turn off all pixels immediately when powering off
             if not self._powered_on and self._pixels:
-                self._pixels.fill((0, 0, 0))
+                self._pixels.fill(self._off_color)
                 self._pixels.show()
 
             # Start effect thread if not running
@@ -522,7 +524,7 @@ class DWLEDController:
 
         with self._lock:
             if self._pixels:
-                self._pixels.fill((0, 0, 0))
+                self._pixels.fill(self._off_color)
                 self._pixels.show()
                 self._pixels.deinit()
             self._pixels = None

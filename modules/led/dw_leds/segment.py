@@ -11,16 +11,18 @@ from .utils.palettes import color_from_palette, get_palette
 class Segment:
     """LED segment with effect support"""
 
-    def __init__(self, pixels, start: int, stop: int):
+    def __init__(self, pixels, start: int, stop: int, is_rgbw: bool = False):
         """
         Initialize a segment
         pixels: neopixel.NeoPixel object
         start: starting LED index
         stop: ending LED index (exclusive)
+        is_rgbw: True for RGBW strips (SK6812), writes 4-tuples instead of 3
         """
         self.pixels = pixels
         self.start = start
         self.stop = stop
+        self.is_rgbw = is_rgbw
         self.length = stop - start
 
         # Colors (up to 3 colors like WLED)
@@ -67,7 +69,11 @@ class Segment:
         r = get_r(color)
         g = get_g(color)
         b = get_b(color)
-        self.pixels[actual_idx] = (r, g, b)
+        if self.is_rgbw:
+            w = get_w(color)
+            self.pixels[actual_idx] = (r, g, b, w)
+        else:
+            self.pixels[actual_idx] = (r, g, b)
 
     def fill(self, color: int):
         """Fill entire segment with color"""

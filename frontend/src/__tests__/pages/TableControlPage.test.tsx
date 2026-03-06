@@ -3,10 +3,13 @@ import { renderWithProviders, screen, waitFor, userEvent } from '../../test/util
 import { server } from '../../test/mocks/server'
 import { http, HttpResponse } from 'msw'
 import { TableControlPage } from '../../pages/TableControlPage'
+import { useStatusStore } from '../../stores/useStatusStore'
 
 describe('TableControlPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Reset Zustand store to prevent real WebSocket data from leaking into tests
+    useStatusStore.setState({ status: null, isBackendConnected: false, connectionAttempts: 0 })
   })
 
   describe('Rendering', () => {
