@@ -16,6 +16,7 @@
 #   checkout    Switch to a branch and rebuild
 #   touch       Manage touch screen app
 #   wifi        Manage WiFi and hotspot
+#   flash       Flash FluidNC firmware onto ESP32
 #   help        Show this help message
 #
 
@@ -462,6 +463,11 @@ cmd_wifi() {
     esac
 }
 
+cmd_flash() {
+    check_installed
+    bash "$INSTALL_DIR/flash-fluidnc.sh"
+}
+
 cmd_help() {
     echo -e "${GREEN}Dune Weaver CLI${NC}"
     echo ""
@@ -479,6 +485,7 @@ cmd_help() {
     echo "  shell       Open a shell with the venv activated"
     echo "  touch       Manage touch screen app (run 'dw touch help')"
     echo "  wifi        Manage WiFi and hotspot (run 'dw wifi help')"
+    echo "  flash       Flash FluidNC firmware onto connected ESP32"
     echo "  help        Show this help message"
     echo ""
     if [[ -n "$INSTALL_DIR" ]]; then
@@ -523,6 +530,9 @@ case "${1:-help}" in
     wifi)
         shift
         cmd_wifi "$@"
+        ;;
+    flash)
+        cmd_flash
         ;;
     help|--help|-h)
         cmd_help
