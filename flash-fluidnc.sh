@@ -335,8 +335,11 @@ try:
     # Set this config as the active one and restart to apply
     time.sleep(1)
     ser.write(b"$Config/Filename=config.yaml\n")
-    time.sleep(0.5)
+    ser.flush()
+    time.sleep(1)
     ser.write(b"$Bye\n")
+    ser.flush()
+    time.sleep(1)
     ser.close()
 
 except Exception as e:
