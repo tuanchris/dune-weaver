@@ -332,8 +332,10 @@ try:
     else:
         print("CONFIG_UPLOAD_FAIL")
 
-    # Send restart command to apply new config
+    # Set this config as the active one and restart to apply
     time.sleep(1)
+    ser.write(b"$Config/Filename=config.yaml\n")
+    time.sleep(0.5)
     ser.write(b"$Bye\n")
     ser.close()
 
