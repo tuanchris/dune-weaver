@@ -13,6 +13,19 @@
 
 set -e
 
+# Warn if running as root/sudo — venv and pip won't work correctly
+if [[ $EUID -eq 0 ]]; then
+    echo -e "\033[1;33mWarning:\033[0m Running as root is not recommended."
+    echo "If you need serial port access, add your user to the dialout group instead:"
+    echo "  sudo usermod -a -G dialout \$USER"
+    echo "Then log out and back in, and run: bash flash-fluidnc.sh"
+    echo ""
+    read -p "Continue anyway? [y/N]: " root_confirm
+    if [[ ! "$root_confirm" =~ ^[Yy] ]]; then
+        exit 1
+    fi
+fi
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -116,6 +129,14 @@ fi
 echo -e "Using port: ${GREEN}${PORT}${NC}"
 
 # ─── Step 3: Check for esptool ─────────────────────────────────────────────
+
+# Activate the Dune Weaver venv if available (avoids PEP 668 externally-managed errors)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/.venv/bin/activate" ]]; then
+    source "$SCRIPT_DIR/.venv/bin/activate"
+elif [[ -f "$HOME/dune-weaver/.venv/bin/activate" ]]; then
+    source "$HOME/dune-weaver/.venv/bin/activate"
+fi
 
 if ! command -v esptool.py &> /dev/null && ! command -v esptool &> /dev/null; then
     echo ""
