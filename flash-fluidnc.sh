@@ -62,23 +62,23 @@ echo -e "${NC}"
 
 echo -e "${BOLD}Select your table type:${NC}"
 echo ""
-echo -e "  ${GREEN}1)${NC} Dune Weaver"
-echo -e "  ${GREEN}2)${NC} Dune Weaver Pro"
+echo -e "  ${GREEN}1)${NC} Dune Weaver Pro"
+echo -e "  ${GREEN}2)${NC} Dune Weaver Mini Pro"
 echo -e "  ${GREEN}3)${NC} Dune Weaver Gold"
-echo -e "  ${GREEN}4)${NC} Dune Weaver Mini Pro"
+echo -e "  ${GREEN}4)${NC} Dune Weaver"
 echo -e "  ${GREEN}5)${NC} Dune Weaver Mini"
 echo ""
 read -p "Enter choice [1-5]: " table_choice
 
 case "$table_choice" in
     1)
-        TABLE_NAME="Dune Weaver"
-        CONFIG_DIR="dune_weaver"
+        TABLE_NAME="Dune Weaver Pro"
+        CONFIG_DIR="dune_weaver_pro"
         VERSION="$VERSION_ALL"
         ;;
     2)
-        TABLE_NAME="Dune Weaver Pro"
-        CONFIG_DIR="dune_weaver_pro"
+        TABLE_NAME="Dune Weaver Mini Pro"
+        CONFIG_DIR="dune_weaver_mini_pro"
         VERSION="$VERSION_ALL"
         ;;
     3)
@@ -87,8 +87,8 @@ case "$table_choice" in
         VERSION="$VERSION_ALL"
         ;;
     4)
-        TABLE_NAME="Dune Weaver Mini Pro"
-        CONFIG_DIR="dune_weaver_mini_pro"
+        TABLE_NAME="Dune Weaver"
+        CONFIG_DIR="dune_weaver"
         VERSION="$VERSION_ALL"
         ;;
     5)
