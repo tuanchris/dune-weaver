@@ -332,14 +332,25 @@ try:
     else:
         print("CONFIG_UPLOAD_FAIL")
 
-    # Set this config as the active one and restart to apply
-    time.sleep(1)
+    # Drain any xmodem response data before sending commands
+    time.sleep(2)
+    while ser.in_waiting:
+        ser.read(ser.in_waiting)
+        time.sleep(0.1)
+
+    # Set this config as the active one
     ser.write(b"$Config/Filename=config.yaml\n")
     ser.flush()
     time.sleep(1)
-    ser.write(b"$Bye\n")
+    # Drain response
+    while ser.in_waiting:
+        ser.read(ser.in_waiting)
+        time.sleep(0.1)
+
+    # Restart to apply the new config
+    ser.write(b"$System/Control=RESTART\n")
     ser.flush()
-    time.sleep(1)
+    time.sleep(2)
     ser.close()
 
 except Exception as e:
