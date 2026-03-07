@@ -4237,6 +4237,110 @@ async def fluidnc_config_write(update: FluidNCConfigUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ─── Firmware Flash Endpoints ────────────────────────────────────────────────
+
+FIRMWARE_TABLES = {
+    "dune_weaver_pro": "Dune Weaver Pro",
+    "dune_weaver_mini_pro": "Dune Weaver Mini Pro",
+    "dune_weaver_gold": "Dune Weaver Gold",
+    "dune_weaver": "Dune Weaver",
+    "dune_weaver_mini": "Dune Weaver Mini",
+}
+
+_flash_process: Optional[asyncio.subprocess.Process] = None
+_flash_output: list[str] = []
+_flash_running = False
+
+
+@app.get("/api/firmware/tables")
+async def list_firmware_tables():
+    """List available table types and their config files."""
+    base = os.path.dirname(os.path.abspath(__file__))
+    tables = []
+    for key, name in FIRMWARE_TABLES.items():
+        config_path = os.path.join(base, "firmware", key, "config.yaml")
+        tables.append({
+            "id": key,
+            "name": name,
+            "config_exists": os.path.exists(config_path),
+        })
+    return {"tables": tables}
+
+
+class FlashRequest(BaseModel):
+    table_type: str
+    port: str
+
+
+@app.post("/api/firmware/flash")
+async def flash_firmware(request: FlashRequest):
+    """Run the flash script in non-interactive mode."""
+    global _flash_process, _flash_output, _flash_running
+
+    if _flash_running:
+        raise HTTPException(status_code=409, detail="Flash already in progress")
+
+    if request.table_type not in FIRMWARE_TABLES:
+        raise HTTPException(status_code=400, detail=f"Unknown table type: {request.table_type}")
+
+    if not os.path.exists(request.port):
+        raise HTTPException(status_code=400, detail=f"Serial port not found: {request.port}")
+
+    base = os.path.dirname(os.path.abspath(__file__))
+    script = os.path.join(base, "flash-fluidnc.sh")
+
+    if not os.path.exists(script):
+        raise HTTPException(status_code=500, detail="Flash script not found")
+
+    # Disconnect from the serial port if currently connected, so the flash script can use it
+    if state.conn and state.conn.is_connected():
+        try:
+            await asyncio.to_thread(connection_manager.disconnect)
+            logger.info("Disconnected from controller for firmware flash")
+        except Exception as e:
+            logger.warning(f"Failed to disconnect before flash: {e}")
+
+    _flash_output.clear()
+    _flash_running = True
+
+    async def run_flash():
+        global _flash_process, _flash_running
+        try:
+            _flash_process = await asyncio.create_subprocess_exec(
+                "bash", script, "--table", request.table_type, "--port", request.port,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env={**os.environ, "TERM": "dumb"},
+            )
+            while True:
+                line = await _flash_process.stdout.readline()
+                if not line:
+                    break
+                decoded = line.decode("utf-8", errors="replace").rstrip()
+                _flash_output.append(decoded)
+                logger.debug(f"[flash] {decoded}")
+            await _flash_process.wait()
+        except Exception as e:
+            _flash_output.append(f"ERROR: {e}")
+            logger.error(f"Flash process error: {e}")
+        finally:
+            _flash_running = False
+            _flash_process = None
+
+    asyncio.create_task(run_flash())
+    return {"success": True, "message": "Flash started"}
+
+
+@app.get("/api/firmware/flash-status")
+async def flash_status():
+    """Get the current flash progress."""
+    return {
+        "running": _flash_running,
+        "output": _flash_output,
+        "line_count": len(_flash_output),
+    }
+
+
 def entrypoint():
     import uvicorn
     logger.info("Starting FastAPI server on port 8080...")

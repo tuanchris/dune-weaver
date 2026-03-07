@@ -2,16 +2,28 @@
 #
 # Flash FluidNC firmware onto a connected ESP32 board
 #
-# Usage: bash flash-fluidnc.sh
+# Usage:
+#   bash flash-fluidnc.sh                              # Interactive mode
+#   bash flash-fluidnc.sh --table <type> --port <port> # Non-interactive mode
 #
-# Interactive script that:
-#   1. Lets user choose FluidNC version (v3.9.5 for all tables, v3.8.3 for Mini Dune Weaver)
-#   2. Lets user select a serial port
-#   3. Downloads, extracts, and flashes the firmware
-#   4. Confirms success by checking esptool output
+# Non-interactive options:
+#   --table <type>  Table type: dune_weaver, dune_weaver_pro, dune_weaver_gold,
+#                   dune_weaver_mini_pro, dune_weaver_mini
+#   --port <port>   Serial port (e.g. /dev/ttyUSB0)
 #
 
 set -e
+
+# Parse CLI arguments for non-interactive mode
+CLI_TABLE=""
+CLI_PORT=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --table) CLI_TABLE="$2"; shift 2 ;;
+        --port)  CLI_PORT="$2"; shift 2 ;;
+        *)       echo "Unknown option: $1"; exit 1 ;;
+    esac
+done
 
 # Warn if running as root/sudo — venv and pip won't work correctly
 if [[ $EUID -eq 0 ]]; then
@@ -60,47 +72,52 @@ echo "  ║         for Dune Weaver               ║"
 echo "  ╚═══════════════════════════════════════╝"
 echo -e "${NC}"
 
-echo -e "${BOLD}Select your table type:${NC}"
-echo ""
-echo -e "  ${GREEN}1)${NC} Dune Weaver Pro"
-echo -e "  ${GREEN}2)${NC} Dune Weaver Mini Pro"
-echo -e "  ${GREEN}3)${NC} Dune Weaver Gold"
-echo -e "  ${GREEN}4)${NC} Dune Weaver"
-echo -e "  ${GREEN}5)${NC} Dune Weaver Mini"
-echo ""
-read -p "Enter choice [1-5]: " table_choice
+# Map table type string to name and version
+resolve_table() {
+    case "$1" in
+        dune_weaver_pro)
+            TABLE_NAME="Dune Weaver Pro"; CONFIG_DIR="dune_weaver_pro"; VERSION="$VERSION_ALL" ;;
+        dune_weaver_mini_pro)
+            TABLE_NAME="Dune Weaver Mini Pro"; CONFIG_DIR="dune_weaver_mini_pro"; VERSION="$VERSION_ALL" ;;
+        dune_weaver_gold)
+            TABLE_NAME="Dune Weaver Gold"; CONFIG_DIR="dune_weaver_gold"; VERSION="$VERSION_ALL" ;;
+        dune_weaver)
+            TABLE_NAME="Dune Weaver"; CONFIG_DIR="dune_weaver"; VERSION="$VERSION_ALL" ;;
+        dune_weaver_mini)
+            TABLE_NAME="Dune Weaver Mini"; CONFIG_DIR="dune_weaver_mini"; VERSION="$VERSION_MINI" ;;
+        *)
+            echo -e "${RED}Unknown table type: $1${NC}"
+            echo "Valid types: dune_weaver_pro, dune_weaver_mini_pro, dune_weaver_gold, dune_weaver, dune_weaver_mini"
+            exit 1 ;;
+    esac
+}
 
-case "$table_choice" in
-    1)
-        TABLE_NAME="Dune Weaver Pro"
-        CONFIG_DIR="dune_weaver_pro"
-        VERSION="$VERSION_ALL"
-        ;;
-    2)
-        TABLE_NAME="Dune Weaver Mini Pro"
-        CONFIG_DIR="dune_weaver_mini_pro"
-        VERSION="$VERSION_ALL"
-        ;;
-    3)
-        TABLE_NAME="Dune Weaver Gold"
-        CONFIG_DIR="dune_weaver_gold"
-        VERSION="$VERSION_ALL"
-        ;;
-    4)
-        TABLE_NAME="Dune Weaver"
-        CONFIG_DIR="dune_weaver"
-        VERSION="$VERSION_ALL"
-        ;;
-    5)
-        TABLE_NAME="Dune Weaver Mini"
-        CONFIG_DIR="dune_weaver_mini"
-        VERSION="$VERSION_MINI"
-        ;;
-    *)
-        echo -e "${RED}Invalid choice. Exiting.${NC}"
-        exit 1
-        ;;
-esac
+if [[ -n "$CLI_TABLE" ]]; then
+    # Non-interactive mode
+    resolve_table "$CLI_TABLE"
+else
+    # Interactive mode
+    echo -e "${BOLD}Select your table type:${NC}"
+    echo ""
+    echo -e "  ${GREEN}1)${NC} Dune Weaver Pro"
+    echo -e "  ${GREEN}2)${NC} Dune Weaver Mini Pro"
+    echo -e "  ${GREEN}3)${NC} Dune Weaver Gold"
+    echo -e "  ${GREEN}4)${NC} Dune Weaver"
+    echo -e "  ${GREEN}5)${NC} Dune Weaver Mini"
+    echo ""
+    read -p "Enter choice [1-5]: " table_choice
+
+    case "$table_choice" in
+        1) resolve_table "dune_weaver_pro" ;;
+        2) resolve_table "dune_weaver_mini_pro" ;;
+        3) resolve_table "dune_weaver_gold" ;;
+        4) resolve_table "dune_weaver" ;;
+        5) resolve_table "dune_weaver_mini" ;;
+        *)
+            echo -e "${RED}Invalid choice. Exiting.${NC}"
+            exit 1 ;;
+    esac
+fi
 
 echo -e "\nSelected: ${GREEN}${TABLE_NAME}${NC} (FluidNC v${VERSION})"
 
@@ -114,52 +131,63 @@ echo -e "Config: ${GREEN}${CONFIG_FILE}${NC}"
 
 # ─── Step 2: Detect and select serial port ─────────────────────────────────
 
-echo ""
-echo -e "${BOLD}Detecting serial ports...${NC}"
-
-# Collect available serial ports (Linux + macOS patterns)
-PORTS=()
-for port in /dev/ttyUSB* /dev/ttyACM* /dev/cu.usbserial* /dev/cu.wchusbserial* /dev/cu.SLAB_USBtoUART*; do
-    if [[ -e "$port" ]]; then
-        PORTS+=("$port")
-    fi
-done
-
-if [[ ${#PORTS[@]} -eq 0 ]]; then
-    echo -e "${RED}No serial ports found!${NC}"
-    echo ""
-    echo "Make sure your ESP32 board is connected via USB."
-    echo "On Linux, you may need to add your user to the 'dialout' group:"
-    echo "  sudo usermod -a -G dialout \$USER"
-    exit 1
-fi
-
-if [[ ${#PORTS[@]} -eq 1 ]]; then
-    PORT="${PORTS[0]}"
-    echo -e "Found port: ${GREEN}${PORT}${NC}"
-    read -p "Press Enter to use this port (or 'n' to cancel): " confirm
-    if [[ "$confirm" =~ ^[Nn] ]]; then
-        echo -e "${RED}Exiting.${NC}"
+if [[ -n "$CLI_PORT" ]]; then
+    # Non-interactive mode
+    PORT="$CLI_PORT"
+    if [[ ! -e "$PORT" ]]; then
+        echo -e "${RED}Port not found: ${PORT}${NC}"
         exit 1
     fi
+    echo -e "Using port: ${GREEN}${PORT}${NC}"
 else
-    echo -e "Found ${GREEN}${#PORTS[@]}${NC} serial ports:"
+    # Interactive mode
     echo ""
-    for i in "${!PORTS[@]}"; do
-        echo -e "  ${GREEN}$((i + 1)))${NC} ${PORTS[$i]}"
-    done
-    echo ""
-    read -p "Select port [1-${#PORTS[@]}]: " port_choice
+    echo -e "${BOLD}Detecting serial ports...${NC}"
 
-    if [[ "$port_choice" -ge 1 && "$port_choice" -le ${#PORTS[@]} ]] 2>/dev/null; then
-        PORT="${PORTS[$((port_choice - 1))]}"
-    else
-        echo -e "${RED}Invalid choice. Exiting.${NC}"
+    # Collect available serial ports (Linux + macOS patterns)
+    PORTS=()
+    for port in /dev/ttyUSB* /dev/ttyACM* /dev/cu.usbserial* /dev/cu.wchusbserial* /dev/cu.SLAB_USBtoUART*; do
+        if [[ -e "$port" ]]; then
+            PORTS+=("$port")
+        fi
+    done
+
+    if [[ ${#PORTS[@]} -eq 0 ]]; then
+        echo -e "${RED}No serial ports found!${NC}"
+        echo ""
+        echo "Make sure your ESP32 board is connected via USB."
+        echo "On Linux, you may need to add your user to the 'dialout' group:"
+        echo "  sudo usermod -a -G dialout \$USER"
         exit 1
     fi
-fi
 
-echo -e "Using port: ${GREEN}${PORT}${NC}"
+    if [[ ${#PORTS[@]} -eq 1 ]]; then
+        PORT="${PORTS[0]}"
+        echo -e "Found port: ${GREEN}${PORT}${NC}"
+        read -p "Press Enter to use this port (or 'n' to cancel): " confirm
+        if [[ "$confirm" =~ ^[Nn] ]]; then
+            echo -e "${RED}Exiting.${NC}"
+            exit 1
+        fi
+    else
+        echo -e "Found ${GREEN}${#PORTS[@]}${NC} serial ports:"
+        echo ""
+        for i in "${!PORTS[@]}"; do
+            echo -e "  ${GREEN}$((i + 1)))${NC} ${PORTS[$i]}"
+        done
+        echo ""
+        read -p "Select port [1-${#PORTS[@]}]: " port_choice
+
+        if [[ "$port_choice" -ge 1 && "$port_choice" -le ${#PORTS[@]} ]] 2>/dev/null; then
+            PORT="${PORTS[$((port_choice - 1))]}"
+        else
+            echo -e "${RED}Invalid choice. Exiting.${NC}"
+            exit 1
+        fi
+    fi
+
+    echo -e "Using port: ${GREEN}${PORT}${NC}"
+fi
 
 # ─── Step 3: Check for esptool ─────────────────────────────────────────────
 

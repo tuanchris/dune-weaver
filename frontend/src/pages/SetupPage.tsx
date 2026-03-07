@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { apiClient } from '@/lib/apiClient'
@@ -10,6 +10,13 @@ import { Switch } from '@/components/ui/switch'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Accordion,
   AccordionContent,
@@ -838,6 +845,195 @@ function ConfigEditor() {
   )
 }
 
+// ─── Firmware Flasher ────────────────────────────────────────────────────────
+
+interface TableType {
+  id: string
+  name: string
+  config_exists: boolean
+}
+
+function FirmwareFlasher() {
+  const [tables, setTables] = useState<TableType[]>([])
+  const [selectedTable, setSelectedTable] = useState('')
+  const [ports, setPorts] = useState<string[]>([])
+  const [selectedPort, setSelectedPort] = useState('')
+  const [flashing, setFlashing] = useState(false)
+  const [output, setOutput] = useState<string[]>([])
+  const [finished, setFinished] = useState(false)
+  const [flashSuccess, setFlashSuccess] = useState(false)
+  const outputRef = useRef<HTMLDivElement>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Load tables and ports on mount
+  useEffect(() => {
+    apiClient.get<{ tables: TableType[] }>('/api/firmware/tables').then((res) => {
+      setTables(res.tables)
+    }).catch(() => toast.error('Failed to load table types'))
+
+    apiClient.get<string[]>('/list_serial_ports').then((res) => {
+      setPorts(res)
+      if (res.length === 1) setSelectedPort(res[0])
+    }).catch(() => toast.error('Failed to list serial ports'))
+  }, [])
+
+  // Auto-scroll output
+  useEffect(() => {
+    if (outputRef.current) {
+      outputRef.current.scrollTop = outputRef.current.scrollHeight
+    }
+  }, [output])
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+    }
+  }, [])
+
+  const startFlash = async () => {
+    if (!selectedTable || !selectedPort) {
+      toast.error('Select a table type and serial port')
+      return
+    }
+
+    setFlashing(true)
+    setFinished(false)
+    setFlashSuccess(false)
+    setOutput([])
+
+    try {
+      await apiClient.post('/api/firmware/flash', {
+        table_type: selectedTable,
+        port: selectedPort,
+      })
+
+      // Poll for output
+      let lastLineCount = 0
+      pollRef.current = setInterval(async () => {
+        try {
+          const status = await apiClient.get<{
+            running: boolean
+            output: string[]
+            line_count: number
+          }>('/api/firmware/flash-status')
+
+          if (status.line_count > lastLineCount) {
+            setOutput(status.output)
+            lastLineCount = status.line_count
+          }
+
+          if (!status.running) {
+            if (pollRef.current) clearInterval(pollRef.current)
+            pollRef.current = null
+            setFlashing(false)
+            setFinished(true)
+            const hasSuccess = status.output.some(
+              (l) => l.includes('setup complete') || l.includes('flash successful')
+            )
+            setFlashSuccess(hasSuccess)
+          }
+        } catch {
+          // Ignore poll errors
+        }
+      }, 1000)
+    } catch (err) {
+      toast.error(`Flash failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      setFlashing(false)
+    }
+  }
+
+  // Strip ANSI color codes for display
+  const stripAnsi = (str: string) => str.replace(/\x1b\[[0-9;]*m/g, '')
+
+  return (
+    <div className="space-y-4">
+      <Alert>
+        <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
+        <AlertDescription>
+          Flash the FluidNC filesystem and upload the correct config for your table type.
+          This does not require an active connection — the flasher uses the serial port directly.
+        </AlertDescription>
+      </Alert>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Table Type</Label>
+          <Select value={selectedTable} onValueChange={setSelectedTable} disabled={flashing}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select your table..." />
+            </SelectTrigger>
+            <SelectContent>
+              {tables.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Serial Port</Label>
+          <Select value={selectedPort} onValueChange={setSelectedPort} disabled={flashing}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select port..." />
+            </SelectTrigger>
+            <SelectContent>
+              {ports.length === 0 ? (
+                <SelectItem value="_none" disabled>
+                  No ports found
+                </SelectItem>
+              ) : (
+                ports.map((p) => (
+                  <SelectItem key={p} value={p}>
+                    {p}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <Button
+        onClick={startFlash}
+        disabled={flashing || !selectedTable || !selectedPort}
+      >
+        {flashing ? (
+          <span className="material-icons-outlined animate-spin mr-2 text-base">sync</span>
+        ) : (
+          <span className="material-icons-outlined mr-2 text-base">memory</span>
+        )}
+        {flashing ? 'Flashing...' : 'Flash Firmware'}
+      </Button>
+
+      {output.length > 0 && (
+        <div
+          ref={outputRef}
+          className="bg-black text-green-400 font-mono text-xs p-4 rounded-lg max-h-64 overflow-y-auto whitespace-pre-wrap"
+        >
+          {output.map((line, i) => (
+            <div key={i}>{stripAnsi(line)}</div>
+          ))}
+        </div>
+      )}
+
+      {finished && (
+        <Alert variant={flashSuccess ? 'default' : 'destructive'}>
+          <span className={`material-icons-outlined text-base mr-2 shrink-0 ${flashSuccess ? 'text-green-500' : ''}`}>
+            {flashSuccess ? 'check_circle' : 'error'}
+          </span>
+          <AlertDescription>
+            {flashSuccess
+              ? 'Firmware flashed and config uploaded successfully! The board is restarting.'
+              : 'Flash completed with errors. Check the output above for details.'}
+          </AlertDescription>
+        </Alert>
+      )}
+    </div>
+  )
+}
+
 // ─── Setup Page ──────────────────────────────────────────────────────────────
 
 export function SetupPage() {
@@ -868,7 +1064,7 @@ export function SetupPage() {
       </Alert>
 
       {/* Main content */}
-      <Accordion type="multiple" defaultValue={['calibration', 'config']}>
+      <Accordion type="multiple" defaultValue={['calibration']}>
         <AccordionItem value="calibration" className="border rounded-lg px-4 bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
@@ -898,7 +1094,7 @@ export function SetupPage() {
               </div>
             </div>
           </AccordionTrigger>
-          <AccordionContent className="pt-4 pb-6" forceMount>
+          <AccordionContent className="pt-4 pb-6">
             <Alert className="mb-4">
               <span className="material-icons-outlined text-base mr-2 shrink-0">warning</span>
               <AlertDescription>
@@ -906,6 +1102,23 @@ export function SetupPage() {
               </AlertDescription>
             </Alert>
             <ConfigEditor />
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem value="flash" className="border rounded-lg px-4 mt-2 bg-card">
+          <AccordionTrigger className="hover:no-underline">
+            <div className="flex items-center gap-3">
+              <span className="material-icons-outlined text-muted-foreground">memory</span>
+              <div className="text-left">
+                <div className="font-semibold">Flash Firmware</div>
+                <div className="text-sm text-muted-foreground font-normal">
+                  Flash FluidNC filesystem and upload table config
+                </div>
+              </div>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="pt-4 pb-6">
+            <FirmwareFlasher />
           </AccordionContent>
         </AccordionItem>
       </Accordion>
