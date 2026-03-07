@@ -71,6 +71,13 @@ class Segment:
         b = get_b(color)
         if self.is_rgbw:
             w = get_w(color)
+            if w == 0 and (r > 0 and g > 0 and b > 0):
+                # Auto white balance: extract white component from RGB
+                # This uses the dedicated white LED for better color accuracy
+                w = min(r, g, b)
+                r -= w
+                g -= w
+                b -= w
             self.pixels[actual_idx] = (r, g, b, w)
         else:
             self.pixels[actual_idx] = (r, g, b)
