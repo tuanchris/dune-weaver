@@ -35,6 +35,9 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+# Script directory (for finding firmware configs)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Versions
 VERSION_ALL="3.9.5"
 VERSION_MINI="3.8.3"
@@ -48,7 +51,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# ─── Step 1: Choose version ────────────────────────────────────────────────
+# ─── Step 1: Choose table type and version ────────────────────────────────
 
 echo -e "${BOLD}${CYAN}"
 echo "  ╔═══════════════════════════════════════╗"
@@ -57,27 +60,57 @@ echo "  ║         for Dune Weaver               ║"
 echo "  ╚═══════════════════════════════════════╝"
 echo -e "${NC}"
 
-echo -e "${BOLD}Select FluidNC version:${NC}"
+echo -e "${BOLD}Select your table type:${NC}"
 echo ""
-echo -e "  ${GREEN}1)${NC} v${VERSION_ALL}  -  All tables (Dune Weaver, Pro, Gold, Mini Pro)"
-echo -e "  ${GREEN}2)${NC} v${VERSION_MINI}  -  Mini Dune Weaver only"
+echo -e "  ${GREEN}1)${NC} Dune Weaver"
+echo -e "  ${GREEN}2)${NC} Dune Weaver Pro"
+echo -e "  ${GREEN}3)${NC} Dune Weaver Gold"
+echo -e "  ${GREEN}4)${NC} Dune Weaver Mini Pro"
+echo -e "  ${GREEN}5)${NC} Dune Weaver Mini"
 echo ""
-read -p "Enter choice [1/2]: " version_choice
+read -p "Enter choice [1-5]: " table_choice
 
-case "$version_choice" in
+case "$table_choice" in
     1)
+        TABLE_NAME="Dune Weaver"
+        CONFIG_DIR="dune_weaver"
         VERSION="$VERSION_ALL"
-        echo -e "\nSelected: ${GREEN}FluidNC v${VERSION}${NC}"
         ;;
     2)
+        TABLE_NAME="Dune Weaver Pro"
+        CONFIG_DIR="dune_weaver_pro"
+        VERSION="$VERSION_ALL"
+        ;;
+    3)
+        TABLE_NAME="Dune Weaver Gold"
+        CONFIG_DIR="dune_weaver_gold"
+        VERSION="$VERSION_ALL"
+        ;;
+    4)
+        TABLE_NAME="Dune Weaver Mini Pro"
+        CONFIG_DIR="dune_weaver_mini_pro"
+        VERSION="$VERSION_ALL"
+        ;;
+    5)
+        TABLE_NAME="Dune Weaver Mini"
+        CONFIG_DIR="dune_weaver_mini"
         VERSION="$VERSION_MINI"
-        echo -e "\nSelected: ${GREEN}FluidNC v${VERSION}${NC}"
         ;;
     *)
         echo -e "${RED}Invalid choice. Exiting.${NC}"
         exit 1
         ;;
 esac
+
+echo -e "\nSelected: ${GREEN}${TABLE_NAME}${NC} (FluidNC v${VERSION})"
+
+# Locate the config file for the selected table
+CONFIG_FILE="$SCRIPT_DIR/firmware/${CONFIG_DIR}/config.yaml"
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo -e "${RED}Config file not found: ${CONFIG_FILE}${NC}"
+    exit 1
+fi
+echo -e "Config: ${GREEN}${CONFIG_FILE}${NC}"
 
 # ─── Step 2: Detect and select serial port ─────────────────────────────────
 
@@ -131,7 +164,6 @@ echo -e "Using port: ${GREEN}${PORT}${NC}"
 # ─── Step 3: Check for esptool ─────────────────────────────────────────────
 
 # Find a working pip/venv to install esptool (avoids PEP 668 externally-managed errors)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR=""
 if [[ -f "$SCRIPT_DIR/.venv/bin/activate" ]]; then
     VENV_DIR="$SCRIPT_DIR/.venv"
@@ -195,7 +227,7 @@ fi
 
 FLASH_DIR="$WORK_DIR/$EXTRACT_DIR"
 
-# ─── Step 5: Flash firmware ────────────────────────────────────────────────
+# ─── Step 5: Flash filesystem ─────────────────────────────────────────────
 
 echo ""
 echo -e "${BOLD}${CYAN}══════════════════════════════════════════${NC}"
@@ -207,31 +239,8 @@ echo ""
 
 FLASH_SUCCESS=true
 
-# --- 5a: Flash WiFi firmware ---
-echo -e "${BLUE}[1/2] Flashing WiFi firmware...${NC}"
-echo ""
-
-WIFI_OUTPUT=$($ESPTOOL --chip esp32 --port "$PORT" --baud 460800 \
-    --before default_reset --after hard_reset \
-    write_flash -z --flash_mode dio --flash_freq 80m --flash_size detect \
-    0x1000  "$FLASH_DIR/wifi/bootloader.bin" \
-    0x8000  "$FLASH_DIR/wifi/partitions.bin" \
-    0xe000  "$FLASH_DIR/common/boot_app0.bin" \
-    0x10000 "$FLASH_DIR/wifi/firmware.bin" 2>&1) || true
-
-echo "$WIFI_OUTPUT"
-echo ""
-
-if echo "$WIFI_OUTPUT" | grep -q "Hard resetting via RTS pin"; then
-    echo -e "${GREEN}Firmware flash successful!${NC}"
-else
-    echo -e "${RED}Firmware flash may have failed!${NC}"
-    FLASH_SUCCESS=false
-fi
-
-# --- 5b: Flash filesystem (LittleFS) ---
-echo ""
-echo -e "${BLUE}[2/2] Flashing filesystem (LittleFS)...${NC}"
+# Flash filesystem (LittleFS) only — firmware is already on the board
+echo -e "${BLUE}[1/2] Flashing filesystem (LittleFS)...${NC}"
 echo ""
 
 FS_OUTPUT=$($ESPTOOL --chip esp32 --port "$PORT" --baud 460800 \
@@ -249,18 +258,118 @@ else
     FLASH_SUCCESS=false
 fi
 
-# ─── Step 6: Summary ──────────────────────────────────────────────────────
+# ─── Step 6: Upload config via xmodem ────────────────────────────────────
+
+if [[ "$FLASH_SUCCESS" == true ]]; then
+    echo ""
+    echo -e "${BLUE}[2/2] Uploading ${TABLE_NAME} config...${NC}"
+    echo ""
+
+    # Ensure xmodem and pyserial are available
+    if [[ -n "$VENV_DIR" && -x "$VENV_DIR/bin/pip" ]]; then
+        "$VENV_DIR/bin/pip" install -q xmodem pyserial 2>/dev/null
+    elif [[ -d "/tmp/esptool-venv" ]]; then
+        /tmp/esptool-venv/bin/pip install -q xmodem pyserial 2>/dev/null
+    else
+        pip install -q xmodem pyserial 2>/dev/null || true
+    fi
+
+    # Wait for the board to boot after flash reset
+    echo -e "${YELLOW}Waiting for board to boot...${NC}"
+    sleep 4
+
+    # Upload config.yaml via xmodem using a Python helper
+    PYTHON_CMD="python3"
+    if [[ -n "$VENV_DIR" && -x "$VENV_DIR/bin/python3" ]]; then
+        PYTHON_CMD="$VENV_DIR/bin/python3"
+    elif [[ -x "/tmp/esptool-venv/bin/python3" ]]; then
+        PYTHON_CMD="/tmp/esptool-venv/bin/python3"
+    fi
+
+    UPLOAD_OUTPUT=$($PYTHON_CMD - "$PORT" "$CONFIG_FILE" <<'PYEOF'
+import sys
+import time
+import serial
+from xmodem import XMODEM
+
+port = sys.argv[1]
+config_path = sys.argv[2]
+dest_name = "config.yaml"
+
+try:
+    ser = serial.Serial(port, 115200, timeout=2)
+    time.sleep(1)
+
+    # Drain any boot messages
+    while ser.in_waiting:
+        ser.read(ser.in_waiting)
+        time.sleep(0.1)
+
+    # Send xmodem receive command
+    cmd = f"$Xmodem/Receive={dest_name}\n"
+    ser.write(cmd.encode())
+    time.sleep(1)
+
+    # Drain response to get into xmodem receive mode
+    while ser.in_waiting:
+        ser.read(ser.in_waiting)
+        time.sleep(0.1)
+
+    def getc(size, timeout=1):
+        ser.timeout = timeout
+        data = ser.read(size)
+        return data or None
+
+    def putc(data, timeout=1):
+        return ser.write(data) or None
+
+    modem = XMODEM(getc, putc, mode='xmodem')
+    with open(config_path, 'rb') as f:
+        success = modem.send(f)
+
+    if success:
+        print("CONFIG_UPLOAD_OK")
+    else:
+        print("CONFIG_UPLOAD_FAIL")
+
+    # Send restart command to apply new config
+    time.sleep(1)
+    ser.write(b"$Bye\n")
+    ser.close()
+
+except Exception as e:
+    print(f"CONFIG_UPLOAD_ERROR: {e}")
+PYEOF
+    ) 2>&1 || true
+
+    echo "$UPLOAD_OUTPUT"
+    echo ""
+
+    if echo "$UPLOAD_OUTPUT" | grep -q "CONFIG_UPLOAD_OK"; then
+        echo -e "${GREEN}Config uploaded successfully!${NC}"
+    else
+        echo -e "${RED}Config upload failed!${NC}"
+        echo ""
+        echo "You can upload the config manually:"
+        echo "  1. Connect to the 'FluidNC' WiFi network"
+        echo "  2. Open http://192.168.0.1 in a browser"
+        echo "  3. Upload: firmware/${CONFIG_DIR}/config.yaml"
+        FLASH_SUCCESS=false
+    fi
+fi
+
+# ─── Step 7: Summary ──────────────────────────────────────────────────────
 
 echo ""
 echo -e "${BOLD}${CYAN}══════════════════════════════════════════${NC}"
 if [[ "$FLASH_SUCCESS" == true ]]; then
-    echo -e "${GREEN}  FluidNC v${VERSION} flashed successfully!${NC}"
+    echo -e "${GREEN}  ${TABLE_NAME} setup complete!${NC}"
     echo -e "${BOLD}${CYAN}══════════════════════════════════════════${NC}"
     echo ""
-    echo "The board has been reset and should now be running FluidNC."
-    echo "Connect to the 'FluidNC' WiFi network to access the web UI."
+    echo "FluidNC v${VERSION} filesystem + ${TABLE_NAME} config flashed."
+    echo "The board is restarting with the new configuration."
 else
-    echo -e "${RED}  Flashing completed with errors!${NC}"
+    echo -e "${RED}  Setup completed with errors!${NC}"
     echo -e "${BOLD}${CYAN}══════════════════════════════════════════${NC}"
     echo ""
     echo "Review the output above for error details."
