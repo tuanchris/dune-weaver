@@ -137,7 +137,7 @@ fi
 if [[ ${#PORTS[@]} -eq 1 ]]; then
     PORT="${PORTS[0]}"
     echo -e "Found port: ${GREEN}${PORT}${NC}"
-    read -p "Use this port? [Y/n]: " confirm
+    read -p "Press Enter to use this port (or 'n' to cancel): " confirm
     if [[ "$confirm" =~ ^[Nn] ]]; then
         echo -e "${RED}Exiting.${NC}"
         exit 1
