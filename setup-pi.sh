@@ -209,14 +209,6 @@ apply_wifi_fix() {
     NEEDS_REBOOT=true
 }
 
-# Update system packages
-update_system() {
-    print_step "Updating system packages..."
-    sudo apt update
-    sudo DEBIAN_FRONTEND=noninteractive apt full-upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
-    print_success "System updated"
-}
-
 # Verify we're in the dune-weaver directory
 ensure_repo() {
     print_step "Setting up dune-weaver repository..."
@@ -514,7 +506,6 @@ main() {
     check_raspberry_pi
     install_system_deps
     ensure_repo
-    update_system
     disable_wlan_powersave
 
     if [[ "$FIX_WIFI" == "true" ]]; then
