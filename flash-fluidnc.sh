@@ -130,18 +130,34 @@ echo -e "Using port: ${GREEN}${PORT}${NC}"
 
 # ─── Step 3: Check for esptool ─────────────────────────────────────────────
 
-# Activate the Dune Weaver venv if available (avoids PEP 668 externally-managed errors)
+# Find a working pip/venv to install esptool (avoids PEP 668 externally-managed errors)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_DIR=""
 if [[ -f "$SCRIPT_DIR/.venv/bin/activate" ]]; then
-    source "$SCRIPT_DIR/.venv/bin/activate"
+    VENV_DIR="$SCRIPT_DIR/.venv"
 elif [[ -f "$HOME/dune-weaver/.venv/bin/activate" ]]; then
-    source "$HOME/dune-weaver/.venv/bin/activate"
+    VENV_DIR="$HOME/dune-weaver/.venv"
+fi
+
+if [[ -n "$VENV_DIR" ]]; then
+    source "$VENV_DIR/bin/activate"
 fi
 
 if ! command -v esptool.py &> /dev/null && ! command -v esptool &> /dev/null; then
     echo ""
     echo -e "${YELLOW}esptool not found. Installing...${NC}"
-    pip install esptool
+
+    # Try the venv pip directly first, then fall back to creating a temp venv
+    if [[ -n "$VENV_DIR" && -x "$VENV_DIR/bin/pip" ]]; then
+        "$VENV_DIR/bin/pip" install esptool
+    elif python3 -m venv /tmp/esptool-venv 2>/dev/null; then
+        echo -e "${YELLOW}Creating temporary venv for esptool...${NC}"
+        source /tmp/esptool-venv/bin/activate
+        pip install esptool
+    else
+        # Last resort: override PEP 668 restriction
+        pip install --break-system-packages esptool 2>/dev/null || pip install esptool
+    fi
 fi
 
 # Determine the esptool command name
