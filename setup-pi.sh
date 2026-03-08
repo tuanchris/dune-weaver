@@ -28,7 +28,7 @@ NC='\033[0m' # No Color
 # Default options
 FIX_WIFI=true  # Applied by default for stability
 SETUP_HOTSPOT=true  # Autohotspot for first-time WiFi setup
-INSTALL_DIR="$HOME/dune-weaver"
+INSTALL_DIR="$(eval echo ~"${SUDO_USER:-$USER}")/dune-weaver"
 REPO_URL="https://github.com/tuanchris/dune-weaver"
 
 # Parse arguments
