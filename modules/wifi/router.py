@@ -110,7 +110,7 @@ CAPTIVE_PORTAL_HTML = """<!DOCTYPE html>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Dune Weaver - WiFi Setup</title>
+    <title>Dune Weaver</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -121,16 +121,23 @@ CAPTIVE_PORTAL_HTML = """<!DOCTYPE html>
                 box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         h1 { font-size: 1.5rem; margin-bottom: 0.5rem; font-weight: 600; }
         p { color: #64748b; margin-bottom: 1.5rem; font-size: 0.9rem; }
-        a { display: inline-block; background: #2563eb; color: white; padding: 0.75rem 2rem;
-            border-radius: 8px; text-decoration: none; font-weight: 500; }
-        a:hover { background: #1d4ed8; }
+        .buttons { display: flex; flex-direction: column; gap: 0.75rem; }
+        a { display: block; padding: 0.75rem 2rem; border-radius: 8px;
+            text-decoration: none; font-weight: 500; text-align: center; }
+        .btn-primary { background: #2563eb; color: white; }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-secondary { background: #f1f5f9; color: #0f172a; border: 1px solid #e2e8f0; }
+        .btn-secondary:hover { background: #e2e8f0; }
     </style>
 </head>
 <body>
     <div class="card">
         <h1>Welcome to Dune Weaver</h1>
-        <p>Connect to your home WiFi to get started.</p>
-        <a href="/wifi-setup">Set Up WiFi</a>
+        <p>What would you like to do?</p>
+        <div class="buttons">
+            <a href="/wifi-setup" class="btn-primary">Connect to WiFi</a>
+            <a href="/" class="btn-secondary">Control Table</a>
+        </div>
     </div>
 </body>
 </html>"""

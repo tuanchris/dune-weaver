@@ -48,10 +48,15 @@ export function Layout() {
     window.scrollTo(0, 0)
   }, [location.pathname])
 
-  // Captive portal: redirect straight to WiFi setup
+  // Captive portal: redirect to captive landing page (unless user dismissed it or is on wifi-setup)
   useEffect(() => {
-    if (isCaptivePortal && location.pathname !== '/wifi-setup') {
-      navigate('/wifi-setup', { replace: true })
+    if (
+      isCaptivePortal &&
+      location.pathname !== '/wifi-setup' &&
+      location.pathname !== '/captive' &&
+      !sessionStorage.getItem('captive-dismissed')
+    ) {
+      navigate('/captive', { replace: true })
     }
   }, [location.pathname, navigate])
 
