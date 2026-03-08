@@ -232,12 +232,21 @@ ensure_repo() {
         cd "$INSTALL_DIR"
         echo "Pulling latest changes..."
         git pull
+        # Fix ownership after pull (new files may be created as root)
+        if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
+            chown -R "$SUDO_USER:$SUDO_USER" "$INSTALL_DIR"
+        fi
         return
     fi
 
     # Clone the repository
     print_step "Cloning dune-weaver repository..."
     git clone "$REPO_URL" --single-branch "$INSTALL_DIR"
+    # When running as sudo, git clone creates files as root.
+    # Fix ownership so the real user can write to the repo (e.g. create .venv).
+    if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
+        chown -R "$SUDO_USER:$SUDO_USER" "$INSTALL_DIR"
+    fi
     cd "$INSTALL_DIR"
     print_success "Cloned to $INSTALL_DIR"
 }
