@@ -175,14 +175,14 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            if (id.includes('react-dom') || id.includes('/react/') || id.includes('react-router')) {
+            // Radix UI has circular dependencies with React internals,
+            // so they must share a chunk to avoid TDZ errors.
+            if (id.includes('react-dom') || id.includes('/react/') || id.includes('react-router') ||
+                id.includes('@radix-ui') || id.includes('@floating-ui') || id.includes('react-remove-scroll')) {
               return 'vendor-react'
             }
             if (id.includes('motion') || id.includes('framer-motion')) {
               return 'vendor-motion'
-            }
-            if (id.includes('@radix-ui') || id.includes('@floating-ui') || id.includes('react-remove-scroll')) {
-              return 'vendor-radix'
             }
             if (id.includes('@dnd-kit')) {
               return 'vendor-dnd'
