@@ -107,7 +107,10 @@ cmd_update() {
     if [[ "$1" != "--continue" ]]; then
         echo "Pulling latest code..."
         git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
-        git pull
+        local branch
+        branch=$(git rev-parse --abbrev-ref HEAD)
+        git fetch origin "$branch"
+        git reset --hard "origin/$branch"
 
         # Update dw CLI
         echo "Updating dw command..."
@@ -330,7 +333,7 @@ cmd_checkout() {
     # Checkout: create local tracking branch if it doesn't exist
     if git show-ref --verify --quiet "refs/heads/$branch"; then
         git checkout "$branch"
-        git pull
+        git reset --hard "origin/$branch"
     else
         git checkout -b "$branch" "origin/$branch"
     fi
