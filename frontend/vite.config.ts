@@ -171,5 +171,28 @@ export default defineConfig({
   build: {
     outDir: '../static/dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react-dom') || id.includes('/react/') || id.includes('react-router')) {
+              return 'vendor-react'
+            }
+            if (id.includes('motion') || id.includes('framer-motion')) {
+              return 'vendor-motion'
+            }
+            if (id.includes('@radix-ui') || id.includes('@floating-ui') || id.includes('react-remove-scroll')) {
+              return 'vendor-radix'
+            }
+            if (id.includes('@dnd-kit')) {
+              return 'vendor-dnd'
+            }
+            if (id.includes('@tanstack') || id.includes('zustand')) {
+              return 'vendor-query'
+            }
+          }
+        },
+      },
+    },
   },
 })

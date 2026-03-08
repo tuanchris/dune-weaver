@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { SketchPicker } from 'react-color'
-import type { ColorResult } from 'react-color'
+import { HexColorPicker } from 'react-colorful'
 import {
   Popover,
   PopoverContent,
@@ -39,10 +38,6 @@ export function ColorPicker({
 }: ColorPickerProps) {
   const [open, setOpen] = useState(false)
 
-  const handleChange = (color: ColorResult) => {
-    onChange(color.hex)
-  }
-
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -57,13 +52,24 @@ export function ColorPicker({
           <span className="sr-only">Pick a color</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <SketchPicker
-          color={value}
-          onChange={handleChange}
-          presetColors={presets}
-          disableAlpha={true}
-        />
+      <PopoverContent className="w-auto p-3" align="start">
+        <HexColorPicker color={value} onChange={onChange} />
+        <div className="flex flex-wrap gap-1.5 mt-3 max-w-[200px]">
+          {presets.map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              className={cn(
+                'w-6 h-6 rounded-full border-2 cursor-pointer transition-transform hover:scale-110',
+                value.toLowerCase() === preset.toLowerCase()
+                  ? 'border-foreground scale-110'
+                  : 'border-transparent'
+              )}
+              style={{ backgroundColor: preset }}
+              onClick={() => onChange(preset)}
+            />
+          ))}
+        </div>
       </PopoverContent>
     </Popover>
   )
