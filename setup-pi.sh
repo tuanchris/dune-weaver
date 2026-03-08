@@ -28,7 +28,13 @@ NC='\033[0m' # No Color
 # Default options
 FIX_WIFI=true  # Applied by default for stability
 SETUP_HOTSPOT=true  # Autohotspot for first-time WiFi setup
-INSTALL_DIR="$(eval echo ~"${SUDO_USER:-$USER}")/dune-weaver"
+REAL_USER="${SUDO_USER:-$USER}"
+REAL_HOME="$(eval echo ~"$REAL_USER")"
+# Fallback: if tilde didn't expand, read from /etc/passwd
+if [[ "$REAL_HOME" == "~$REAL_USER" ]]; then
+    REAL_HOME="$(grep "^$REAL_USER:" /etc/passwd | cut -d: -f6)"
+fi
+INSTALL_DIR="$REAL_HOME/dune-weaver"
 REPO_URL="https://github.com/tuanchris/dune-weaver"
 
 # Parse arguments
