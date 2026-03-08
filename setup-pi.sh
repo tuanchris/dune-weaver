@@ -257,6 +257,11 @@ deploy_native() {
 
     cd "$INSTALL_DIR"
 
+    # Ensure repo is owned by real user before creating venv
+    if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
+        chown -R "$SUDO_USER:$SUDO_USER" "$INSTALL_DIR"
+    fi
+
     # Create venv — if running as root (sudo), create as the real user
     local real_user="${SUDO_USER:-$USER}"
     if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
