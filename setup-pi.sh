@@ -71,6 +71,29 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# ── Permission helpers ──────────────────────────────────────────────
+# Run a command as the real (non-root) user.
+# When the script is invoked with sudo, commands like git clone, pip install,
+# and venv creation should run as the real user so files are owned correctly
+# from the start — no chown needed afterward.
+run_as_user() {
+    if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
+        sudo -u "$SUDO_USER" -- "$@"
+    else
+        "$@"
+    fi
+}
+
+# Ensure the entire repo tree is owned by the real user.
+# Call this as a safety net after any operation that may have created
+# files as root (e.g. an older version of this script, or a plugin).
+fix_repo_ownership() {
+    if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
+        chown -R "$SUDO_USER:$SUDO_USER" "$INSTALL_DIR"
+    fi
+}
+# ────────────────────────────────────────────────────────────────────
+
 # Helper functions
 print_step() {
     echo -e "\n${BLUE}==>${NC} ${GREEN}$1${NC}"
@@ -223,6 +246,7 @@ ensure_repo() {
     if [[ -f "main.py" ]] && [[ -f "requirements.txt" ]]; then
         INSTALL_DIR="$(pwd)"
         print_success "Using existing repo at $INSTALL_DIR"
+        fix_repo_ownership
         return
     fi
 
@@ -231,22 +255,14 @@ ensure_repo() {
         print_success "Found existing repo at $INSTALL_DIR"
         cd "$INSTALL_DIR"
         echo "Pulling latest changes..."
-        git pull
-        # Fix ownership after pull (new files may be created as root)
-        if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
-            chown -R "$SUDO_USER:$SUDO_USER" "$INSTALL_DIR"
-        fi
+        run_as_user git pull
+        fix_repo_ownership
         return
     fi
 
-    # Clone the repository
+    # Clone the repository as the real user so files are owned correctly
     print_step "Cloning dune-weaver repository..."
-    git clone "$REPO_URL" --single-branch "$INSTALL_DIR"
-    # When running as sudo, git clone creates files as root.
-    # Fix ownership so the real user can write to the repo (e.g. create .venv).
-    if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
-        chown -R "$SUDO_USER:$SUDO_USER" "$INSTALL_DIR"
-    fi
+    run_as_user git clone "$REPO_URL" --single-branch "$INSTALL_DIR"
     cd "$INSTALL_DIR"
     print_success "Cloned to $INSTALL_DIR"
 }
@@ -257,29 +273,18 @@ deploy_native() {
 
     cd "$INSTALL_DIR"
 
-    # Ensure repo is owned by real user before creating venv
-    if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
-        chown -R "$SUDO_USER:$SUDO_USER" "$INSTALL_DIR"
-    fi
+    # Safety net: fix ownership in case repo was cloned/pulled as root
+    # by an older version of this script or manual sudo git operations
+    fix_repo_ownership
 
-    # Create venv — if running as root (sudo), create as the real user
-    local real_user="${SUDO_USER:-$USER}"
-    if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
-        sudo -u "$SUDO_USER" python3 -m venv .venv
-    else
-        python3 -m venv .venv
-    fi
+    # Create venv as real user
+    run_as_user python3 -m venv .venv
     source .venv/bin/activate
 
-    # Install dependencies
+    # Install dependencies as real user (pip writes to user-owned .venv)
     print_step "Installing Python packages..."
-    pip install --upgrade pip
-    pip install -r requirements.txt
-
-    # Ensure venv is owned by the real user (not root)
-    if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
-        chown -R "$SUDO_USER:$SUDO_USER" .venv
-    fi
+    run_as_user .venv/bin/pip install --upgrade pip
+    run_as_user .venv/bin/pip install -r requirements.txt
 
     # Ensure nginx (www-data) can traverse to static files
     # chmod o+x grants traversal only, not directory listing
@@ -302,7 +307,6 @@ deploy_native() {
     # Create systemd service
     print_step "Creating systemd service..."
     sudo cp "$INSTALL_DIR/dune-weaver.service" /etc/systemd/system/dune-weaver.service
-    sudo sed -i "s|USER_PLACEHOLDER|$USER|g" /etc/systemd/system/dune-weaver.service
     sudo sed -i "s|INSTALL_DIR_PLACEHOLDER|$INSTALL_DIR|g" /etc/systemd/system/dune-weaver.service
 
     # Enable and start service
@@ -311,13 +315,14 @@ deploy_native() {
     sudo systemctl start dune-weaver
 
     # Create sudoers entry for passwordless systemctl commands
+    # Use REAL_USER (not $USER which is root under sudo)
     print_step "Configuring sudo permissions..."
     sudo tee /etc/sudoers.d/dune-weaver > /dev/null << EOF
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart dune-weaver
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop dune-weaver
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start dune-weaver
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl poweroff
-$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx
+$REAL_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart dune-weaver
+$REAL_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop dune-weaver
+$REAL_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start dune-weaver
+$REAL_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl poweroff
+$REAL_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx
 EOF
     sudo chmod 0440 /etc/sudoers.d/dune-weaver
 
