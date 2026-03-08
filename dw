@@ -150,6 +150,12 @@ cmd_update() {
         fi
     fi
 
+    # Fix venv ownership if created by sudo (legacy installs)
+    if [[ -d ".venv" ]] && [[ "$(stat -c '%U' .venv 2>/dev/null)" == "root" ]]; then
+        echo "Fixing .venv ownership..."
+        sudo chown -R "$USER:$USER" .venv
+    fi
+
     echo "Updating Python dependencies..."
     source .venv/bin/activate
     pip install -r requirements.txt

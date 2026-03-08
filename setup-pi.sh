@@ -242,14 +242,24 @@ deploy_native() {
 
     cd "$INSTALL_DIR"
 
-    # Create venv
-    python3 -m venv .venv
+    # Create venv — if running as root (sudo), create as the real user
+    local real_user="${SUDO_USER:-$USER}"
+    if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
+        sudo -u "$SUDO_USER" python3 -m venv .venv
+    else
+        python3 -m venv .venv
+    fi
     source .venv/bin/activate
 
     # Install dependencies
     print_step "Installing Python packages..."
     pip install --upgrade pip
     pip install -r requirements.txt
+
+    # Ensure venv is owned by the real user (not root)
+    if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
+        chown -R "$SUDO_USER:$SUDO_USER" .venv
+    fi
 
     # Ensure nginx (www-data) can traverse to static files
     # chmod o+x grants traversal only, not directory listing
