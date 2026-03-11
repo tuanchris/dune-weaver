@@ -1,12 +1,18 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 export function CaptivePortalPage() {
   const navigate = useNavigate()
+  const [showUrlHint, setShowUrlHint] = useState(false)
 
   const handleControlTable = () => {
-    // Mark that user chose to use the app via hotspot, so Layout stops redirecting back here
-    sessionStorage.setItem('captive-dismissed', '1')
-    navigate('/')
+    // Try to open in real browser (outside captive portal webview)
+    const url = 'http://10.42.0.1'
+    const w = window.open(url, '_blank')
+    if (!w || w.closed) {
+      // window.open blocked — show URL for user to open manually
+      setShowUrlHint(true)
+    }
   }
 
   return (
@@ -30,6 +36,14 @@ export function CaptivePortalPage() {
             Control Table
           </button>
         </div>
+        {showUrlHint && (
+          <div className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">
+            Open your browser and go to:<br />
+            <code className="mt-1 inline-block rounded bg-background px-2 py-0.5 text-foreground select-all">
+              http://10.42.0.1
+            </code>
+          </div>
+        )}
       </div>
     </div>
   )

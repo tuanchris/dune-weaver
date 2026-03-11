@@ -389,6 +389,48 @@ export function WiFiSetupPage() {
         </>
       )}
 
+      {/* System Controls */}
+      <Card>
+        <CardContent className="pt-4 pb-3 px-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="material-icons-outlined text-base text-muted-foreground">settings_power</span>
+            <span className="font-semibold text-sm">System</span>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 h-8"
+              onClick={async () => {
+                if (!confirm('Restart Dune Weaver?')) return
+                try {
+                  await apiClient.post('/api/system/restart')
+                  toast.success('Restarting...')
+                } catch { toast.error('Failed to restart') }
+              }}
+            >
+              <span className="material-icons-outlined text-sm mr-1.5">restart_alt</span>
+              Restart
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 h-8 text-destructive hover:text-destructive"
+              onClick={async () => {
+                if (!confirm('Shutdown the system?')) return
+                try {
+                  await apiClient.post('/api/system/shutdown')
+                  toast.success('Shutting down...')
+                } catch { toast.error('Failed to shutdown') }
+              }}
+            >
+              <span className="material-icons-outlined text-sm mr-1.5">power_settings_new</span>
+              Shutdown
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Available Networks */}
       <Card>
         <CardContent className="pt-4 pb-2 px-4">

@@ -122,12 +122,17 @@ CAPTIVE_PORTAL_HTML = """<!DOCTYPE html>
         h1 { font-size: 1.5rem; margin-bottom: 0.5rem; font-weight: 600; }
         p { color: #64748b; margin-bottom: 1.5rem; font-size: 0.9rem; }
         .buttons { display: flex; flex-direction: column; gap: 0.75rem; }
-        a { display: block; padding: 0.75rem 2rem; border-radius: 8px;
-            text-decoration: none; font-weight: 500; text-align: center; }
+        a, button { display: block; padding: 0.75rem 2rem; border-radius: 8px;
+            text-decoration: none; font-weight: 500; text-align: center;
+            width: 100%; font-size: 1rem; cursor: pointer; border: none; }
         .btn-primary { background: #2563eb; color: white; }
         .btn-primary:hover { background: #1d4ed8; }
         .btn-secondary { background: #f1f5f9; color: #0f172a; border: 1px solid #e2e8f0; }
         .btn-secondary:hover { background: #e2e8f0; }
+        .url-hint { display: none; margin-top: 1rem; padding: 0.75rem; background: #f1f5f9;
+                    border-radius: 8px; font-size: 0.85rem; color: #475569; }
+        .url-hint code { background: #e2e8f0; padding: 0.15rem 0.4rem; border-radius: 4px;
+                         font-size: 0.9rem; user-select: all; }
     </style>
 </head>
 <body>
@@ -136,9 +141,24 @@ CAPTIVE_PORTAL_HTML = """<!DOCTYPE html>
         <p>What would you like to do?</p>
         <div class="buttons">
             <a href="/wifi-setup" class="btn-primary">Connect to WiFi</a>
-            <a href="/" class="btn-secondary">Control Table</a>
+            <button class="btn-secondary" onclick="openInBrowser()">Control Table</button>
+        </div>
+        <div class="url-hint" id="url-hint">
+            Open your browser and go to:<br>
+            <code>http://10.42.0.1</code>
         </div>
     </div>
+    <script>
+        function openInBrowser() {
+            // Try to open in real browser (outside captive portal webview)
+            var url = 'http://10.42.0.1';
+            var w = window.open(url, '_blank');
+            if (!w || w.closed) {
+                // window.open blocked — show URL for user to open manually
+                document.getElementById('url-hint').style.display = 'block';
+            }
+        }
+    </script>
 </body>
 </html>"""
 
