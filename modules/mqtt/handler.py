@@ -1,5 +1,6 @@
 """Real MQTT handler implementation."""
 import os
+import re
 import threading
 import time
 import json
@@ -18,6 +19,28 @@ logger = logging.getLogger(__name__)
 class MQTTHandler(BaseMQTTHandler):
     """Real implementation of MQTT handler."""
 
+    @staticmethod
+    def _sanitize_mqtt_client_id(value: str) -> str:
+        sanitized = re.sub(r'[^A-Za-z0-9_-]', '_', value or "")
+        return sanitized[:64].strip("_")
+
+    def _resolve_client_id(self) -> str:
+        configured_client_id = (state.mqtt_client_id or "").strip()
+        env_client_id = (os.getenv('MQTT_CLIENT_ID') or "").strip()
+
+        if configured_client_id:
+            return self._sanitize_mqtt_client_id(configured_client_id) or "dune_weaver"
+
+        if env_client_id:
+            return self._sanitize_mqtt_client_id(env_client_id) or "dune_weaver"
+
+        # No client_id configured: auto-generate from device_id/table_id
+        base_device_id = (state.mqtt_device_id or "").strip()
+        if not base_device_id or base_device_id == "dune_weaver":
+            base_device_id = (state.table_id or "").strip() or "dune_weaver"
+
+        return self._sanitize_mqtt_client_id(f"dune_weaver_{base_device_id}") or "dune_weaver"
+
     def __init__(self, callback_registry: Dict[str, Callable]):
         # MQTT Configuration - prioritize state config over environment variables
         # This allows UI configuration to override .env settings
@@ -25,7 +48,7 @@ class MQTTHandler(BaseMQTTHandler):
         self.port = state.mqtt_port if state.mqtt_port else int(os.getenv('MQTT_PORT', '1883'))
         self.username = state.mqtt_username if state.mqtt_username else os.getenv('MQTT_USERNAME')
         self.password = state.mqtt_password if state.mqtt_password else os.getenv('MQTT_PASSWORD')
-        self.client_id = state.mqtt_client_id if state.mqtt_client_id else os.getenv('MQTT_CLIENT_ID', 'dune_weaver')
+        self.client_id = self._resolve_client_id()
         self.status_topic = os.getenv('MQTT_STATUS_TOPIC', 'dune_weaver/status')
         self.command_topic = os.getenv('MQTT_COMMAND_TOPIC', 'dune_weaver/command')
         self.status_interval = int(os.getenv('MQTT_STATUS_INTERVAL', '30'))
