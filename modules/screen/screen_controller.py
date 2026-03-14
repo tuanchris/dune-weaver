@@ -6,10 +6,14 @@ machines without /sys/class/backlight the controller reports available=False
 and all commands no-op gracefully.
 """
 import logging
+import shutil
 import subprocess
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+SUDO = shutil.which("sudo") or "/usr/bin/sudo"
+SH = shutil.which("sh") or "/bin/sh"
 
 
 class ScreenController:
@@ -74,7 +78,7 @@ class ScreenController:
         value = max(0, min(value, self.max_brightness))
         try:
             subprocess.run(
-                ["sudo", "sh", "-c", f"echo {value} > {self.brightness_path}"],
+                [SUDO, SH, "-c", f"echo {value} > {self.brightness_path}"],
                 check=True, timeout=5
             )
             self._current_brightness = value
@@ -95,7 +99,7 @@ class ScreenController:
                 # Restore brightness + unblank framebuffer
                 restore = self._current_brightness if self._current_brightness > 0 else self.max_brightness
                 subprocess.run(
-                    ["sudo", "sh", "-c",
+                    [SUDO, SH, "-c",
                      f"echo 0 > /sys/class/graphics/fb0/blank && echo {restore} > {self.brightness_path}"],
                     check=True, timeout=5
                 )
@@ -104,7 +108,7 @@ class ScreenController:
             else:
                 # Zero brightness + blank framebuffer
                 subprocess.run(
-                    ["sudo", "sh", "-c",
+                    [SUDO, SH, "-c",
                      f"echo 0 > {self.brightness_path} && echo 1 > /sys/class/graphics/fb0/blank"],
                     check=True, timeout=5
                 )

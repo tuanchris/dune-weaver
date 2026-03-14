@@ -1,25 +1,30 @@
+import shutil
 import subprocess
 import logging
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
+GIT = shutil.which("git") or "/usr/bin/git"
+SUDO = shutil.which("sudo") or "/usr/bin/sudo"
+SYSTEMCTL = shutil.which("systemctl") or "/usr/bin/systemctl"
+
 def check_git_updates():
     """Check for available Git updates."""
     try:
         logger.debug("Checking for Git updates")
-        subprocess.run(["git", "fetch", "--tags", "--force"], check=True)
+        subprocess.run([GIT, "fetch", "--tags", "--force"], check=True)
         latest_remote_tag = subprocess.check_output(
-            ["git", "describe", "--tags", "--abbrev=0", "origin/main"]
+            [GIT, "describe", "--tags", "--abbrev=0", "origin/main"]
         ).strip().decode()
         latest_local_tag = subprocess.check_output(
-            ["git", "describe", "--tags", "--abbrev=0"]
+            [GIT, "describe", "--tags", "--abbrev=0"]
         ).strip().decode()
 
         tag_behind_count = 0
         if latest_local_tag != latest_remote_tag:
             tags = subprocess.check_output(
-                ["git", "tag", "--merged", "origin/main"], text=True
+                [GIT, "tag", "--merged", "origin/main"], text=True
             ).splitlines()
 
             found_local = False
@@ -73,7 +78,7 @@ def update_software():
     # Step 1: Pull latest code via git
     logger.info("Pulling latest code from git...")
     git_result = run_command(
-        ["git", "pull", "--ff-only"],
+        [GIT, "pull", "--ff-only"],
         "Failed to pull latest code from git"
     )
     if git_result:
@@ -89,7 +94,7 @@ def update_software():
     # Step 3: Restart the service
     logger.info("Restarting dune-weaver service...")
     restart_result = run_command(
-        ["sudo", "systemctl", "restart", "dune-weaver"],
+        [SUDO, SYSTEMCTL, "restart", "dune-weaver"],
         "Failed to restart dune-weaver service"
     )
 

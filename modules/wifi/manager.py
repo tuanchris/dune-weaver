@@ -5,6 +5,7 @@ Handles scanning, connecting, and managing WiFi connections.
 """
 
 import subprocess
+import shutil
 import os
 import logging
 import asyncio
@@ -12,11 +13,12 @@ import asyncio
 logger = logging.getLogger(__name__)
 
 HOTSPOT_CON_NAME = "DuneWeaver-Hotspot"
+NMCLI = shutil.which("nmcli") or "/usr/bin/nmcli"
 
 
 def run_nmcli(*args: str, timeout: int = 30) -> str:
     """Run nmcli and return stdout."""
-    cmd = ["nmcli"] + list(args)
+    cmd = [NMCLI] + list(args)
     logger.debug(f"Running nmcli: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
@@ -30,7 +32,7 @@ def run_nmcli(*args: str, timeout: int = 30) -> str:
 
 def run_nmcli_check(*args: str, timeout: int = 30) -> subprocess.CompletedProcess:
     """Run nmcli and return the full CompletedProcess (for checking returncode)."""
-    cmd = ["nmcli"] + list(args)
+    cmd = [NMCLI] + list(args)
     logger.debug(f"Running nmcli: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
@@ -229,7 +231,7 @@ async def connect_to_network(ssid: str, password: str) -> dict:
     try:
         # Delete any stale connection profile for this SSID (ignore if not found)
         subprocess.run(
-            ["nmcli", "con", "delete", ssid],
+            [NMCLI, "con", "delete", ssid],
             capture_output=True, text=True, timeout=10,
         )
 
@@ -292,7 +294,7 @@ def save_network(ssid: str, password: str) -> dict:
     try:
         # Delete any stale connection profile for this SSID (ignore if not found)
         subprocess.run(
-            ["nmcli", "con", "delete", ssid],
+            [NMCLI, "con", "delete", ssid],
             capture_output=True, text=True, timeout=10,
         )
 

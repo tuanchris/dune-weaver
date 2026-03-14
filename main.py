@@ -4039,10 +4039,10 @@ async def shutdown_system():
         def delayed_shutdown():
             time.sleep(2)  # Give time for response to be sent
             try:
-                subprocess.run(["sudo", "systemctl", "poweroff"], check=True)
+                subprocess.run(["/usr/bin/sudo", "/usr/bin/systemctl", "poweroff"], check=True)
                 logger.info("System shutdown command executed successfully")
             except FileNotFoundError:
-                logger.error("systemctl command not found")
+                logger.error("sudo or systemctl command not found - ensure systemd is available")
             except Exception as e:
                 logger.error(f"Error executing host shutdown command: {e}")
 
@@ -4068,10 +4068,10 @@ async def restart_system():
         def delayed_restart():
             time.sleep(2)  # Give time for response to be sent
             try:
-                subprocess.run(["sudo", "systemctl", "restart", "dune-weaver"], check=True)
+                subprocess.run(["/usr/bin/sudo", "/usr/bin/systemctl", "restart", "dune-weaver"], check=True)
                 logger.info("Service restart command executed successfully")
             except FileNotFoundError:
-                logger.error("systemctl command not found")
+                logger.error("sudo or systemctl command not found - ensure systemd is available")
             except Exception as e:
                 logger.error(f"Error executing service restart: {e}")
 
