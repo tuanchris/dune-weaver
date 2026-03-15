@@ -678,7 +678,10 @@ class MQTTHandler(BaseMQTTHandler):
                 if pattern_name in self.patterns:
                     # Schedule the coroutine to run in the main event loop
                     asyncio.run_coroutine_threadsafe(
-                        self.callback_registry['run_pattern'](file_path=f"{THETA_RHO_DIR}/{pattern_name}"),
+                        self.callback_registry['run_pattern'](
+                            file_path=f"{THETA_RHO_DIR}/{pattern_name}",
+                            clear_pattern=self.state.clear_pattern,
+                        ),
                         self.main_loop
                     ).add_done_callback(
                         lambda _: self._publish_pattern_state(None)  # Clear pattern after execution
