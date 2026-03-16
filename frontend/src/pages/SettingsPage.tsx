@@ -188,6 +188,16 @@ export function SettingsPage() {
   } | null>(null)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
 
+  const sanitizeMqttClientId = (value: string): string => {
+    const sanitized = (value || '').replace(/[^A-Za-z0-9_-]/g, '_').replace(/^_+|_+$/g, '')
+    return sanitized.slice(0, 64)
+  }
+
+  const getEffectiveAutoClientId = (): string => {
+    const baseDeviceId = (mqttConfig.device_id || '').trim() || 'dune_weaver'
+    return sanitizeMqttClientId(`dune_weaver_${baseDeviceId}`) || 'dune_weaver'
+  }
+
   // Helper to scroll to element with header offset
   const scrollToSection = (sectionId: string) => {
     const element = document.getElementById(`section-${sectionId}`)
@@ -1748,6 +1758,22 @@ export function SettingsPage() {
                         setMqttConfig({ ...mqttConfig, device_id: e.target.value })
                       }
                     />
+                  </div>
+                  <div className="space-y-3 md:col-span-2">
+                    <Label htmlFor="mqttClientId">Client ID (optional)</Label>
+                    <Input
+                      id="mqttClientId"
+                      value={mqttConfig.client_id || ''}
+                      onChange={(e) =>
+                        setMqttConfig({ ...mqttConfig, client_id: e.target.value })
+                      }
+                      placeholder="Auto (uses Device ID)"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {mqttConfig.client_id?.trim()
+                        ? 'Using custom Client ID override.'
+                        : `Auto Client ID: ${getEffectiveAutoClientId()}`}
+                    </p>
                   </div>
                 </div>
 

@@ -3291,7 +3291,7 @@ async def set_mqtt_config(request: dict):
         state.mqtt_port = int(request.get("port") or 1883)
         state.mqtt_username = (request.get("username") or "").strip()
         state.mqtt_password = (request.get("password") or "").strip()
-        state.mqtt_client_id = (request.get("client_id") or "dune_weaver").strip()
+        state.mqtt_client_id = (request.get("client_id") or "").strip()
         state.mqtt_discovery_prefix = (request.get("discovery_prefix") or "homeassistant").strip()
         state.mqtt_device_id = (request.get("device_id") or "dune_weaver").strip()
         state.mqtt_device_name = (request.get("device_name") or "Dune Weaver").strip()
