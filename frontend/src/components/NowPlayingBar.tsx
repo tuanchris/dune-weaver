@@ -711,8 +711,8 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
 
   const handleSpeedSubmit = async () => {
     const speed = parseInt(speedInput)
-    if (isNaN(speed) || speed < 100 || speed > 6000) {
-      toast.error('Speed must be between 100 and 6000 mm/s')
+    if (isNaN(speed) || speed < 10 || speed > 6000) {
+      toast.error('Speed must be between 10 and 6000 mm/s')
       return
     }
     try {
