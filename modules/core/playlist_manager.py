@@ -23,10 +23,19 @@ if not os.path.isfile(PLAYLISTS_FILE):
 
 def load_playlists():
     """Load the entire playlists dictionary from the JSON file."""
-    with open(PLAYLISTS_FILE, "r") as f:
-        playlists = json.load(f)
-        logger.debug(f"Loaded {len(playlists)} playlists")
-        return playlists
+    try:
+        with open(PLAYLISTS_FILE, "r") as f:
+            content = f.read().strip()
+            if not content:
+                logger.warning("Playlists file is empty, returning empty dict")
+                return {}
+            playlists = json.loads(content)
+            logger.debug(f"Loaded {len(playlists)} playlists")
+            return playlists
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.error(f"Playlists file is corrupted, resetting to empty: {e}")
+        save_playlists({})
+        return {}
 
 def save_playlists(playlists_dict):
     """Save the entire playlists dictionary back to the JSON file."""
