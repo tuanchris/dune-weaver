@@ -176,7 +176,7 @@ class AppState:
         self.mqtt_port = 1883  # MQTT broker port
         self.mqtt_username = ""  # MQTT authentication username
         self.mqtt_password = ""  # MQTT authentication password
-        self.mqtt_client_id = "dune_weaver"  # MQTT client ID
+        self.mqtt_client_id = None  # MQTT client ID (None = auto-generate random unique id in handler)
         self.mqtt_discovery_prefix = "homeassistant"  # Home Assistant discovery prefix
         self.mqtt_device_id = "dune_weaver"  # Device ID for Home Assistant
         self.mqtt_device_name = "Dune Weaver"  # Device display name
@@ -664,7 +664,11 @@ class AppState:
         self.mqtt_port = data.get("mqtt_port", 1883)
         self.mqtt_username = data.get("mqtt_username", "")
         self.mqtt_password = self._decode_mqtt_password(data.get("mqtt_password", ""))
-        self.mqtt_client_id = data.get("mqtt_client_id", "dune_weaver")
+        # Auto-migrate the legacy literal default — it was never user-configurable
+        # via the UI, so any stored "dune_weaver" is a stale default, not an
+        # explicit choice. Treat it as unset so the handler generates a unique id.
+        stored_client_id = data.get("mqtt_client_id")
+        self.mqtt_client_id = None if stored_client_id in (None, "", "dune_weaver") else stored_client_id
         self.mqtt_discovery_prefix = data.get("mqtt_discovery_prefix", "homeassistant")
         self.mqtt_device_id = data.get("mqtt_device_id", "dune_weaver")
         self.mqtt_device_name = data.get("mqtt_device_name", "Dune Weaver")
