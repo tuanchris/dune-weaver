@@ -3,6 +3,7 @@ import os
 import threading
 import time
 import json
+import uuid
 from typing import Dict, Callable
 import paho.mqtt.client as mqtt
 import logging
@@ -25,7 +26,6 @@ class MQTTHandler(BaseMQTTHandler):
         self.port = state.mqtt_port if state.mqtt_port else int(os.getenv('MQTT_PORT', '1883'))
         self.username = state.mqtt_username if state.mqtt_username else os.getenv('MQTT_USERNAME')
         self.password = state.mqtt_password if state.mqtt_password else os.getenv('MQTT_PASSWORD')
-        self.client_id = state.mqtt_client_id if state.mqtt_client_id else os.getenv('MQTT_CLIENT_ID', 'dune_weaver')
         self.status_topic = os.getenv('MQTT_STATUS_TOPIC', 'dune_weaver/status')
         self.command_topic = os.getenv('MQTT_COMMAND_TOPIC', 'dune_weaver/command')
         self.status_interval = int(os.getenv('MQTT_STATUS_INTERVAL', '30'))
@@ -41,7 +41,17 @@ class MQTTHandler(BaseMQTTHandler):
         self.discovery_prefix = state.mqtt_discovery_prefix if state.mqtt_discovery_prefix else os.getenv('MQTT_DISCOVERY_PREFIX', 'homeassistant')
         self.device_name = state.mqtt_device_name if state.mqtt_device_name else os.getenv('HA_DEVICE_NAME', 'Dune Weaver')
         self.device_id = state.mqtt_device_id if state.mqtt_device_id else os.getenv('HA_DEVICE_ID', 'dune_weaver')
-        
+
+        # MQTT broker-level client identity. If the user hasn't set one explicitly,
+        # generate a random suffix so two instances can never collide on the same
+        # client_id and kick each other off the broker in a reconnect loop. The
+        # device_id prefix keeps the random ID greppable in broker logs.
+        self.client_id = (
+            state.mqtt_client_id
+            or os.getenv('MQTT_CLIENT_ID')
+            or f"{self.device_id}-{uuid.uuid4().hex[:8]}"
+        )
+
         # Additional topics for state
         self.running_state_topic = f"{self.device_id}/state/running"
         self.serial_state_topic = f"{self.device_id}/state/serial"
