@@ -632,7 +632,7 @@ class MQTTHandler(BaseMQTTHandler):
         """Callback when connected to MQTT broker."""
         if rc == 0:
             self._connected = True
-            logger.info("MQTT Connection Accepted.")
+            logger.info(f"MQTT Connection Accepted. client_id={self.client_id}")
             # Subscribe to command topics
             client.subscribe([
                 (self.command_topic, 0),
@@ -676,7 +676,18 @@ class MQTTHandler(BaseMQTTHandler):
         if rc == 0:
             logger.info("MQTT disconnected cleanly")
         else:
-            logger.warning(f"MQTT disconnected unexpectedly with code: {rc}")
+            # paho-mqtt MQTT_ERR_* codes — NOT broker CONNACK codes
+            err_names = {
+                1: "NOMEM", 2: "PROTOCOL", 3: "INVAL", 4: "NO_CONN",
+                5: "CONN_REFUSED", 6: "NOT_FOUND", 7: "CONN_LOST",
+                8: "TLS", 9: "PAYLOAD_SIZE", 10: "NOT_SUPPORTED",
+                11: "AUTH", 12: "ACL_DENIED", 13: "UNKNOWN", 14: "ERRNO",
+            }
+            err_name = err_names.get(rc, f"rc={rc}")
+            logger.warning(
+                f"MQTT disconnected unexpectedly: {err_name} (rc={rc}) "
+                f"client_id={self.client_id}"
+            )
 
     def on_message(self, client, userdata, msg):
         """Callback when message is received."""
