@@ -144,7 +144,8 @@ async def lifespan(app: FastAPI):
                                 pause_time=state.auto_play_pause_time,
                                 clear_pattern=state.auto_play_clear_pattern,
                                 run_mode=state.auto_play_run_mode,
-                                shuffle=state.auto_play_shuffle
+                                shuffle=state.auto_play_shuffle,
+                                runs_per_day=state.auto_play_runs_per_day,
                             ))
                     except Exception as e:
                         logger.error(f"Failed to auto-play playlist: {str(e)}")
@@ -418,6 +419,7 @@ class PlaylistRequest(BaseModel):
     clear_pattern: Optional[str] = None
     run_mode: str = "single"
     shuffle: bool = False
+    runs_per_day: int = 1  # only used when run_mode == "scheduled"
 
 class PlaylistRunRequest(BaseModel):
     playlist_name: str
@@ -425,6 +427,7 @@ class PlaylistRunRequest(BaseModel):
     clear_pattern: Optional[str] = None
     run_mode: Optional[str] = "single"
     shuffle: Optional[bool] = False
+    runs_per_day: Optional[int] = 1
     start_time: Optional[str] = None
     end_time: Optional[str] = None
 
@@ -480,6 +483,7 @@ class AutoPlaySettingsUpdate(BaseModel):
     pause_time: Optional[float] = None
     clear_pattern: Optional[str] = None
     shuffle: Optional[bool] = None
+    runs_per_day: Optional[int] = None
 
 class ScheduledPauseSettingsUpdate(BaseModel):
     enabled: Optional[bool] = None
@@ -752,7 +756,8 @@ async def get_all_settings():
             "run_mode": state.auto_play_run_mode,
             "pause_time": state.auto_play_pause_time,
             "clear_pattern": state.auto_play_clear_pattern,
-            "shuffle": state.auto_play_shuffle
+            "shuffle": state.auto_play_shuffle,
+            "runs_per_day": state.auto_play_runs_per_day
         },
         "scheduled_pause": {
             "enabled": state.scheduled_pause_enabled,
@@ -934,6 +939,8 @@ async def update_settings(settings_update: SettingsUpdate):
             state.auto_play_clear_pattern = ap.clear_pattern
         if ap.shuffle is not None:
             state.auto_play_shuffle = ap.shuffle
+        if ap.runs_per_day is not None:
+            state.auto_play_runs_per_day = max(1, int(ap.runs_per_day))
         updated_categories.append("auto_play")
 
     # Scheduled pause (Still Sands) settings
@@ -2557,7 +2564,8 @@ async def run_playlist_endpoint(request: PlaylistRequest):
             pause_time=request.pause_time,
             clear_pattern=request.clear_pattern,
             run_mode=request.run_mode,
-            shuffle=request.shuffle
+            shuffle=request.shuffle,
+            runs_per_day=max(1, int(request.runs_per_day or 1)),
         )
         if not success:
             raise HTTPException(status_code=409, detail=message)

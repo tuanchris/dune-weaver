@@ -138,8 +138,13 @@ async def cancel_current_playlist():
             logger.warning(f"Error while cancelling playlist task: {e}")
         _current_playlist_task = None
 
-async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
-    """Run a playlist with the given options."""
+async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False, runs_per_day=1):
+    """Run a playlist with the given options.
+
+    runs_per_day applies only when run_mode == "scheduled": the playlist will be played
+    that many full cycles per 24 hours, evenly spread across the day's active hours
+    (Still Sands periods are excluded from the daily quota).
+    """
     global _current_playlist_task
 
     # Cancel any existing playlist task first
@@ -163,7 +168,8 @@ async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode
         return False, "Playlist is empty"
 
     try:
-        logger.info(f"Starting playlist '{playlist_name}' with mode={run_mode}, shuffle={shuffle}")
+        extra = f", runs_per_day={runs_per_day}" if run_mode == "scheduled" else ""
+        logger.info(f"Starting playlist '{playlist_name}' with mode={run_mode}, shuffle={shuffle}{extra}")
         # Set ALL playlist state variables BEFORE creating the async task.
         # This ensures state is correct even if the task doesn't start immediately
         # (important for TestClient which may cancel background tasks).
@@ -178,6 +184,7 @@ async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode
                 clear_pattern=clear_pattern,
                 run_mode=run_mode,
                 shuffle=shuffle,
+                runs_per_day=runs_per_day,
             )
         )
         return True, f"Playlist '{playlist_name}' is now running."

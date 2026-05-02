@@ -151,10 +151,11 @@ class AppState:
         # auto_play mode settings
         self.auto_play_enabled = False
         self.auto_play_playlist = None  # Playlist to auto-play in auto_play mode
-        self.auto_play_run_mode = "loop"  # "single" or "loop"
+        self.auto_play_run_mode = "loop"  # "single", "loop", or "scheduled"
         self.auto_play_pause_time = 5.0  # Pause between patterns in seconds
         self.auto_play_clear_pattern = "adaptive"  # Clear pattern option
         self.auto_play_shuffle = False  # Shuffle playlist
+        self.auto_play_runs_per_day = 1  # Number of full playlist cycles per day (for "scheduled" run mode)
 
         # Still Sands settings
         self.scheduled_pause_enabled = False
@@ -531,6 +532,7 @@ class AppState:
             "auto_play_pause_time": self.auto_play_pause_time,
             "auto_play_clear_pattern": self.auto_play_clear_pattern,
             "auto_play_shuffle": self.auto_play_shuffle,
+            "auto_play_runs_per_day": self.auto_play_runs_per_day,
             "scheduled_pause_enabled": self.scheduled_pause_enabled,
             "scheduled_pause_time_slots": self.scheduled_pause_time_slots,
             "scheduled_pause_control_wled": self.scheduled_pause_control_wled,
@@ -652,6 +654,7 @@ class AppState:
         self.auto_play_pause_time = data.get("auto_play_pause_time", 5.0)
         self.auto_play_clear_pattern = data.get("auto_play_clear_pattern", "adaptive")
         self.auto_play_shuffle = data.get("auto_play_shuffle", False)
+        self.auto_play_runs_per_day = data.get("auto_play_runs_per_day", 1)
         self.scheduled_pause_enabled = data.get("scheduled_pause_enabled", False)
         self.scheduled_pause_time_slots = data.get("scheduled_pause_time_slots", [])
         self.scheduled_pause_control_wled = data.get("scheduled_pause_control_wled", False)

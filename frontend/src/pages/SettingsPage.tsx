@@ -74,10 +74,11 @@ interface StillSandsSettings {
 interface AutoPlaySettings {
   enabled: boolean
   playlist: string
-  run_mode: 'single' | 'loop'
+  run_mode: 'single' | 'loop' | 'scheduled'
   pause_time: number
   clear_pattern: string
   shuffle: boolean
+  runs_per_day: number
 }
 
 interface LedConfig {
@@ -137,6 +138,7 @@ export function SettingsPage() {
     pause_time: 5,
     clear_pattern: 'adaptive',
     shuffle: false,
+    runs_per_day: 3,
   })
   const [autoPlayPauseUnit, setAutoPlayPauseUnit] = useState<'sec' | 'min' | 'hr'>('min')
   const [autoPlayPauseValue, setAutoPlayPauseValue] = useState(5)
@@ -385,6 +387,7 @@ export function SettingsPage() {
           pause_time: pauseSeconds,
           clear_pattern: data.auto_play.clear_pattern || 'adaptive',
           shuffle: data.auto_play.shuffle || false,
+          runs_per_day: Math.max(1, data.auto_play.runs_per_day || 3),
         })
       }
       // Set still sands settings
@@ -1863,7 +1866,7 @@ export function SettingsPage() {
                       onValueChange={(value) =>
                         setAutoPlaySettings({
                           ...autoPlaySettings,
-                          run_mode: value as 'single' | 'loop',
+                          run_mode: value as 'single' | 'loop' | 'scheduled',
                         })
                       }
                     >
@@ -1873,49 +1876,72 @@ export function SettingsPage() {
                       <SelectContent>
                         <SelectItem value="single">Single (play once)</SelectItem>
                         <SelectItem value="loop">Loop (repeat forever)</SelectItem>
+                        <SelectItem value="scheduled">Scheduled (X times per day)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-3">
-                    <Label>Pause Between Patterns</Label>
-                    <div className="flex gap-2">
+                  {autoPlaySettings.run_mode === 'scheduled' ? (
+                    <div className="space-y-3">
+                      <Label>Runs Per Day</Label>
                       <Input
-                        type="text"
-                        inputMode="numeric"
-                        value={autoPlayPauseInput}
+                        type="number"
+                        min={1}
+                        max={96}
+                        step={1}
+                        value={autoPlaySettings.runs_per_day}
                         onChange={(e) => {
-                          const val = e.target.value.replace(/[^0-9]/g, '')
-                          setAutoPlayPauseInput(val)
+                          const num = Math.max(1, Math.min(96, parseInt(e.target.value) || 1))
+                          setAutoPlaySettings({ ...autoPlaySettings, runs_per_day: num })
                         }}
-                        onBlur={() => {
-                          const num = Math.max(0, parseInt(autoPlayPauseInput) || 0)
-                          setAutoPlayPauseValue(num)
-                          setAutoPlayPauseInput(String(num))
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
+                        className="w-24"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Spread this many full playlist cycles evenly across the day's active hours.
+                        Still Sands periods don't count toward the daily quota.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <Label>Pause Between Patterns</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          value={autoPlayPauseInput}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9]/g, '')
+                            setAutoPlayPauseInput(val)
+                          }}
+                          onBlur={() => {
                             const num = Math.max(0, parseInt(autoPlayPauseInput) || 0)
                             setAutoPlayPauseValue(num)
                             setAutoPlayPauseInput(String(num))
-                          }
-                        }}
-                        className="w-20"
-                      />
-                      <Select
-                        value={autoPlayPauseUnit}
-                        onValueChange={(v) => setAutoPlayPauseUnit(v as 'sec' | 'min' | 'hr')}
-                      >
-                        <SelectTrigger className="w-20">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="sec">sec</SelectItem>
-                          <SelectItem value="min">min</SelectItem>
-                          <SelectItem value="hr">hr</SelectItem>
-                        </SelectContent>
-                      </Select>
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const num = Math.max(0, parseInt(autoPlayPauseInput) || 0)
+                              setAutoPlayPauseValue(num)
+                              setAutoPlayPauseInput(String(num))
+                            }
+                          }}
+                          className="w-20"
+                        />
+                        <Select
+                          value={autoPlayPauseUnit}
+                          onValueChange={(v) => setAutoPlayPauseUnit(v as 'sec' | 'min' | 'hr')}
+                        >
+                          <SelectTrigger className="w-20">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="sec">sec</SelectItem>
+                            <SelectItem value="min">min</SelectItem>
+                            <SelectItem value="hr">hr</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

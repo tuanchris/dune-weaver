@@ -93,7 +93,7 @@ export function PlaylistsPage() {
   // Playback settings - initialized from localStorage
   const [runMode, setRunMode] = useState<RunMode>(() => {
     const cached = localStorage.getItem('playlist-runMode')
-    return (cached === 'single' || cached === 'indefinite') ? cached : 'single'
+    return (cached === 'single' || cached === 'indefinite' || cached === 'scheduled') ? cached : 'single'
   })
   const [shuffle, setShuffle] = useState(() => {
     return localStorage.getItem('playlist-shuffle') === 'true'
@@ -105,6 +105,11 @@ export function PlaylistsPage() {
   const [pauseUnit, setPauseUnit] = useState<'sec' | 'min' | 'hr'>(() => {
     const cached = localStorage.getItem('playlist-pauseUnit')
     return (cached === 'sec' || cached === 'min' || cached === 'hr') ? cached : 'min'
+  })
+  const [runsPerDay, setRunsPerDay] = useState<number>(() => {
+    const cached = localStorage.getItem('playlist-runsPerDay')
+    const parsed = cached ? Number(cached) : 3
+    return Number.isFinite(parsed) && parsed >= 1 ? parsed : 3
   })
   const [clearPattern, setClearPattern] = useState<PreExecution>(() => {
     const cached = localStorage.getItem('preExecution')
@@ -124,6 +129,9 @@ export function PlaylistsPage() {
   useEffect(() => {
     localStorage.setItem('playlist-pauseUnit', pauseUnit)
   }, [pauseUnit])
+  useEffect(() => {
+    localStorage.setItem('playlist-runsPerDay', String(runsPerDay))
+  }, [runsPerDay])
   useEffect(() => {
     localStorage.setItem('preExecution', clearPattern)
   }, [clearPattern])
@@ -458,10 +466,11 @@ export function PlaylistsPage() {
     try {
       await apiClient.post('/run_playlist', {
         playlist_name: selectedPlaylist,
-        run_mode: runMode === 'indefinite' ? 'indefinite' : 'single',
+        run_mode: runMode,
         pause_time: getPauseTimeInSeconds(),
         clear_pattern: clearPattern,
         shuffle: shuffle,
+        runs_per_day: runMode === 'scheduled' ? Math.max(1, Math.floor(runsPerDay)) : 1,
       })
       toast.success(`Started playlist: ${selectedPlaylist}`)
       // Trigger Now Playing bar to open
@@ -778,58 +787,101 @@ export function PlaylistsPage() {
                       <span className="material-icons-outlined text-lg sm:text-xl">shuffle</span>
                     </button>
                     <button
-                      onClick={() => setRunMode(runMode === 'indefinite' ? 'single' : 'indefinite')}
+                      onClick={() => {
+                        const order: RunMode[] = ['single', 'indefinite', 'scheduled']
+                        const next = order[(order.indexOf(runMode) + 1) % order.length]
+                        setRunMode(next)
+                      }}
                       className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition ${
-                        runMode === 'indefinite'
+                        runMode !== 'single'
                           ? 'text-primary bg-primary/10'
                           : 'text-muted-foreground hover:bg-muted'
                       }`}
-                      title={runMode === 'indefinite' ? 'Loop mode' : 'Play once mode'}
+                      title={
+                        runMode === 'scheduled'
+                          ? 'Scheduled — X runs per day (respects Still Sands)'
+                          : runMode === 'indefinite'
+                          ? 'Loop mode — repeat forever'
+                          : 'Play once mode'
+                      }
                     >
-                      <span className="material-icons-outlined text-lg sm:text-xl">repeat</span>
+                      <span className="material-icons-outlined text-lg sm:text-xl">
+                        {runMode === 'scheduled' ? 'today' : 'repeat'}
+                      </span>
                     </button>
                   </div>
 
-                  {/* Pause Time */}
-                  <div className="flex items-center px-2 sm:px-3 gap-2 sm:gap-3 border-r border-border">
-                    <span className="text-[10px] sm:text-xs font-semibold text-muted-foreground tracking-wider hidden sm:block">Pause</span>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="secondary"
-                        size="icon"
-                        className="w-7 h-7 sm:w-8 sm:h-8"
-                        onClick={() => {
-                          const step = pauseUnit === 'hr' ? 0.5 : 1
-                          setPauseTime(Math.max(0, pauseTime - step))
-                        }}
-                      >
-                        <span className="material-icons-outlined text-sm">remove</span>
-                      </Button>
-                      <button
-                        onClick={() => {
-                          const units: ('sec' | 'min' | 'hr')[] = ['sec', 'min', 'hr']
-                          const currentIndex = units.indexOf(pauseUnit)
-                          setPauseUnit(units[(currentIndex + 1) % units.length])
-                        }}
-                        className="relative flex items-center justify-center min-w-14 sm:min-w-16 px-1 text-xs sm:text-sm font-bold hover:text-primary transition"
-                        title="Click to change unit"
-                      >
-                        {pauseTime}{pauseUnit === 'sec' ? 's' : pauseUnit === 'min' ? 'm' : 'h'}
-                        <span className="material-icons-outlined text-xs opacity-50 scale-75 ml-0.5">swap_vert</span>
-                      </button>
-                      <Button
-                        variant="secondary"
-                        size="icon"
-                        className="w-7 h-7 sm:w-8 sm:h-8"
-                        onClick={() => {
-                          const step = pauseUnit === 'hr' ? 0.5 : 1
-                          setPauseTime(pauseTime + step)
-                        }}
-                      >
-                        <span className="material-icons-outlined text-sm">add</span>
-                      </Button>
+                  {runMode === 'scheduled' ? (
+                    /* Runs per day */
+                    <div className="flex items-center px-2 sm:px-3 gap-2 sm:gap-3 border-r border-border">
+                      <span className="text-[10px] sm:text-xs font-semibold text-muted-foreground tracking-wider hidden sm:block">Runs/day</span>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="secondary"
+                          size="icon"
+                          className="w-7 h-7 sm:w-8 sm:h-8"
+                          onClick={() => setRunsPerDay(Math.max(1, runsPerDay - 1))}
+                        >
+                          <span className="material-icons-outlined text-sm">remove</span>
+                        </Button>
+                        <span
+                          className="relative flex items-center justify-center min-w-14 sm:min-w-16 px-1 text-xs sm:text-sm font-bold"
+                          title="Number of full playlist cycles per day. Still Sands periods are excluded from the daily quota."
+                        >
+                          {runsPerDay}/day
+                        </span>
+                        <Button
+                          variant="secondary"
+                          size="icon"
+                          className="w-7 h-7 sm:w-8 sm:h-8"
+                          onClick={() => setRunsPerDay(Math.min(96, runsPerDay + 1))}
+                        >
+                          <span className="material-icons-outlined text-sm">add</span>
+                        </Button>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    /* Pause Time */
+                    <div className="flex items-center px-2 sm:px-3 gap-2 sm:gap-3 border-r border-border">
+                      <span className="text-[10px] sm:text-xs font-semibold text-muted-foreground tracking-wider hidden sm:block">Pause</span>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="secondary"
+                          size="icon"
+                          className="w-7 h-7 sm:w-8 sm:h-8"
+                          onClick={() => {
+                            const step = pauseUnit === 'hr' ? 0.5 : 1
+                            setPauseTime(Math.max(0, pauseTime - step))
+                          }}
+                        >
+                          <span className="material-icons-outlined text-sm">remove</span>
+                        </Button>
+                        <button
+                          onClick={() => {
+                            const units: ('sec' | 'min' | 'hr')[] = ['sec', 'min', 'hr']
+                            const currentIndex = units.indexOf(pauseUnit)
+                            setPauseUnit(units[(currentIndex + 1) % units.length])
+                          }}
+                          className="relative flex items-center justify-center min-w-14 sm:min-w-16 px-1 text-xs sm:text-sm font-bold hover:text-primary transition"
+                          title="Click to change unit"
+                        >
+                          {pauseTime}{pauseUnit === 'sec' ? 's' : pauseUnit === 'min' ? 'm' : 'h'}
+                          <span className="material-icons-outlined text-xs opacity-50 scale-75 ml-0.5">swap_vert</span>
+                        </button>
+                        <Button
+                          variant="secondary"
+                          size="icon"
+                          className="w-7 h-7 sm:w-8 sm:h-8"
+                          onClick={() => {
+                            const step = pauseUnit === 'hr' ? 0.5 : 1
+                            setPauseTime(pauseTime + step)
+                          }}
+                        >
+                          <span className="material-icons-outlined text-sm">add</span>
+                        </Button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Clear Pattern Dropdown */}
                   <div className="flex items-center px-1 sm:px-2">

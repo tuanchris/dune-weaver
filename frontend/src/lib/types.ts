@@ -22,7 +22,7 @@ export interface Playlist {
 
 export type SortOption = 'name' | 'date' | 'size' | 'favorites' | 'plays' | 'last_played'
 export type PreExecution = 'none' | 'adaptive' | 'clear_from_in' | 'clear_from_out' | 'clear_sideway'
-export type RunMode = 'single' | 'indefinite'
+export type RunMode = 'single' | 'indefinite' | 'scheduled'
 
 export const preExecutionOptions: { value: PreExecution; label: string; description: string }[] = [
   { value: 'adaptive', label: 'Adaptive', description: 'Automatically picks the best clear direction based on where the ball is' },

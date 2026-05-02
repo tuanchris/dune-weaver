@@ -4,7 +4,7 @@ import threading
 import time
 import random
 import logging
-from datetime import datetime, time as datetime_time
+from datetime import datetime, time as datetime_time, timedelta
 from tqdm import tqdm
 from modules.connection import connection_manager
 from modules.core.state import state
@@ -318,6 +318,105 @@ def is_in_scheduled_pause_period():
                 return True
 
     return False
+
+
+def _scheduled_pause_seconds_in_window(start_dt: datetime, end_dt: datetime) -> float:
+    """Compute total still-sands seconds within [start_dt, end_dt) using configured slots.
+
+    Both datetimes are expected in the user-configured timezone (or naive local time).
+    Walks all configured slots and sums their overlap with the requested window,
+    handling slots that span midnight and weekday filters.
+    """
+    if not state.scheduled_pause_enabled or not state.scheduled_pause_time_slots:
+        return 0.0
+    if end_dt <= start_dt:
+        return 0.0
+
+    weekday_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+
+    def slot_applies_on(weekday_idx: int, slot: dict) -> bool:
+        days_setting = slot.get('days', 'daily')
+        if days_setting == 'daily':
+            return True
+        if days_setting == 'weekdays':
+            return weekday_idx < 5
+        if days_setting == 'weekends':
+            return weekday_idx >= 5
+        if days_setting == 'custom':
+            return weekday_names[weekday_idx] in slot.get('custom_days', [])
+        return False
+
+    # Build per-day intervals (as datetimes) for each calendar day touched by the window.
+    # Start one day earlier so that slots from the prior day that span midnight into our
+    # window (e.g. 22:00–06:00 starting yesterday) are included.
+    intervals = []
+    day_cursor = start_dt.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+    last_day = end_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    while day_cursor <= last_day:
+        weekday_idx = day_cursor.weekday()
+        for slot in state.scheduled_pause_time_slots:
+            try:
+                start_t = datetime_time.fromisoformat(slot['start_time'])
+                end_t = datetime_time.fromisoformat(slot['end_time'])
+            except (ValueError, KeyError):
+                continue
+            if not slot_applies_on(weekday_idx, slot):
+                continue
+            slot_start = day_cursor.replace(hour=start_t.hour, minute=start_t.minute, second=start_t.second)
+            if start_t <= end_t:
+                slot_end = day_cursor.replace(hour=end_t.hour, minute=end_t.minute, second=end_t.second)
+                intervals.append((slot_start, slot_end))
+            else:
+                # Spans midnight: split into two intervals
+                end_of_day = day_cursor + timedelta(days=1)
+                intervals.append((slot_start, end_of_day))
+                next_day = day_cursor + timedelta(days=1)
+                intervals.append((next_day, next_day.replace(hour=end_t.hour, minute=end_t.minute, second=end_t.second)))
+        day_cursor += timedelta(days=1)
+
+    # Sum overlap with [start_dt, end_dt), merging is unnecessary because we clip per-interval
+    # but we should merge to avoid double counting overlapping slots.
+    intervals = [(max(s, start_dt), min(e, end_dt)) for s, e in intervals]
+    intervals = [(s, e) for s, e in intervals if e > s]
+    intervals.sort()
+    merged = []
+    for s, e in intervals:
+        if merged and s <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+        else:
+            merged.append((s, e))
+    return sum((e - s).total_seconds() for s, e in merged)
+
+
+def _now_in_user_tz() -> datetime:
+    """Return current datetime in the user-configured timezone (Still Sands TZ), or system local time."""
+    tz_info = _get_timezone()
+    if tz_info:
+        return datetime.now(tz_info)
+    return datetime.now()
+
+
+# --- Scheduled run-mode tracker -------------------------------------------------
+# Tracks how many full playlist cycles have completed today (per user TZ).
+# Resets automatically when the calendar day rolls over.
+_scheduled_runs_completed_today: int = 0
+_scheduled_runs_day_token: Optional[str] = None
+
+
+def _refresh_scheduled_day_token() -> str:
+    """Reset the daily run counter if the calendar day has changed. Returns today's token."""
+    global _scheduled_runs_completed_today, _scheduled_runs_day_token
+    today_token = _now_in_user_tz().strftime("%Y-%m-%d")
+    if today_token != _scheduled_runs_day_token:
+        _scheduled_runs_day_token = today_token
+        _scheduled_runs_completed_today = 0
+    return today_token
+
+
+def get_scheduled_runs_completed_today() -> int:
+    """Number of full playlist cycles that have completed today (auto-resets at midnight)."""
+    _refresh_scheduled_day_token()
+    return _scheduled_runs_completed_today
 
 
 async def check_table_is_idle() -> bool:
@@ -1515,11 +1614,66 @@ async def run_theta_rho_file(file_path, is_playlist=False, clear_pattern=None, c
             logger.info("Pattern execution completed, maintaining state for playlist")
             
 
-async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
+async def _wait_with_still_sands_monitor(total_seconds: float, count_still_sands: bool = True):
+    """Sleep for `total_seconds` while updating LED state across Still Sands transitions.
+
+    If count_still_sands is False, time spent inside a Still Sands period does NOT count
+    toward the elapsed total — useful for the "scheduled" run mode, which targets X runs
+    per active day and excludes Still Sands from its quota.
+
+    Returns early on stop_requested or skip_requested.
+    """
+    if total_seconds <= 0:
+        return
+    state.original_pause_time = total_seconds
+    pause_start = time.time()
+    elapsed = 0.0
+    last_tick = pause_start
+    was_in_still_sands = is_in_scheduled_pause_period() and state.scheduled_pause_control_wled
+    while elapsed < total_seconds:
+        state.pause_time_remaining = max(0.0, total_seconds - elapsed)
+        if state.stop_requested or state.skip_requested:
+            if state.stop_requested:
+                logger.info("Pause interrupted by stop request")
+            else:
+                logger.info("Pause interrupted by skip request")
+            break
+
+        in_still_sands_full = is_in_scheduled_pause_period()
+        in_still_sands_wled = in_still_sands_full and state.scheduled_pause_control_wled
+        if in_still_sands_wled and not was_in_still_sands:
+            logger.info("Still Sands period started during pause, turning off LEDs")
+            if state.led_controller:
+                await state.led_controller.set_power_async(0)
+        elif not in_still_sands_wled and was_in_still_sands:
+            logger.info("Still Sands period ended during pause, restoring idle LED effect")
+            await start_idle_led_timeout(check_still_sands=False)
+        was_in_still_sands = in_still_sands_wled
+
+        await asyncio.sleep(1)
+        now = time.time()
+        delta = now - last_tick
+        last_tick = now
+        # Skip elapsed time accumulation while in Still Sands when caller asked us to.
+        if count_still_sands or not in_still_sands_full:
+            elapsed += delta
+
+    state.pause_time_remaining = 0
+    state.original_pause_time = None
+
+
+async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False, runs_per_day=1):
     """Run multiple .thr files in sequence with options.
 
     The playlist now stores only main patterns. Clear patterns are executed dynamically
     before each main pattern based on the clear_pattern option.
+
+    run_mode:
+        - "single": play the playlist once, then stop
+        - "loop"/"indefinite": play the playlist forever, with `pause_time` between cycles
+        - "scheduled": play the full playlist `runs_per_day` times within a 24-hour day,
+          spreading runs evenly across the day's *active* hours (Still Sands periods are
+          excluded from the quota — the gap between cycles pauses while inside Still Sands).
     """
     state.stop_requested = False
 
@@ -1636,34 +1790,7 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                     state.current_playing_file = None
                     # Trigger idle LED state during pause between patterns
                     await start_idle_led_timeout(check_still_sands=True)
-                    state.original_pause_time = pause_time
-                    pause_start = time.time()
-                    # Track Still Sands state for edge detection during long pauses
-                    was_in_still_sands = is_in_scheduled_pause_period() and state.scheduled_pause_control_wled
-                    while time.time() - pause_start < pause_time:
-                        state.pause_time_remaining = pause_start + pause_time - time.time()
-                        if state.skip_requested or state.stop_requested:
-                            if state.stop_requested:
-                                logger.info("Pause interrupted by stop request")
-                            else:
-                                logger.info("Pause interrupted by skip request")
-                            break
-                        # Monitor Still Sands transitions during pause
-                        in_still_sands = is_in_scheduled_pause_period() and state.scheduled_pause_control_wled
-                        if in_still_sands and not was_in_still_sands:
-                            # Entering Still Sands period — turn off LEDs
-                            logger.info("Still Sands period started during pause, turning off LEDs")
-                            if state.led_controller:
-                                await state.led_controller.set_power_async(0)
-                        elif not in_still_sands and was_in_still_sands:
-                            # Leaving Still Sands period — restore idle effect
-                            logger.info("Still Sands period ended during pause, restoring idle LED effect")
-                            await start_idle_led_timeout(check_still_sands=False)
-                        was_in_still_sands = in_still_sands
-                        await asyncio.sleep(1)
-                    # Clear both pause state vars immediately (so UI updates right away)
-                    state.pause_time_remaining = 0
-                    state.original_pause_time = None
+                    await _wait_with_still_sands_monitor(pause_time, count_still_sands=True)
 
                 # Auto-home after pause time, before next clear pattern starts
                 # Only home if there's a next pattern and we haven't been stopped
@@ -1685,41 +1812,60 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                 state.skip_requested = False
                 idx += 1
 
-            if run_mode == "indefinite":
-                logger.info("Playlist completed. Restarting as per 'indefinite' run mode")
-                if pause_time > 0:
-                    # Clear current_playing_file to report "idle" state to MQTT/HA during pause
+            if run_mode in ("indefinite", "loop"):
+                logger.info(f"Playlist completed. Restarting as per '{run_mode}' run mode")
+                if pause_time > 0 and not state.stop_requested:
                     state.current_playing_file = None
-                    # Trigger idle LED state during pause between playlist cycles
                     await start_idle_led_timeout(check_still_sands=True)
-                    state.original_pause_time = pause_time
-                    pause_start = time.time()
-                    # Track Still Sands state for edge detection during long pauses
-                    was_in_still_sands = is_in_scheduled_pause_period() and state.scheduled_pause_control_wled
-                    while time.time() - pause_start < pause_time:
-                        state.pause_time_remaining = pause_start + pause_time - time.time()
-                        if state.skip_requested or state.stop_requested:
-                            if state.stop_requested:
-                                logger.info("Pause interrupted by stop request")
-                            else:
-                                logger.info("Pause interrupted by skip request")
-                            break
-                        # Monitor Still Sands transitions during pause
-                        in_still_sands = is_in_scheduled_pause_period() and state.scheduled_pause_control_wled
-                        if in_still_sands and not was_in_still_sands:
-                            # Entering Still Sands period — turn off LEDs
-                            logger.info("Still Sands period started during pause, turning off LEDs")
-                            if state.led_controller:
-                                await state.led_controller.set_power_async(0)
-                        elif not in_still_sands and was_in_still_sands:
-                            # Leaving Still Sands period — restore idle effect
-                            logger.info("Still Sands period ended during pause, restoring idle LED effect")
-                            await start_idle_led_timeout(check_still_sands=False)
-                        was_in_still_sands = in_still_sands
-                        await asyncio.sleep(1)
-                    # Clear both pause state vars immediately (so UI updates right away)
-                    state.pause_time_remaining = 0
-                    state.original_pause_time = None
+                    await _wait_with_still_sands_monitor(pause_time, count_still_sands=True)
+                continue
+            elif run_mode == "scheduled":
+                # "Run X times per day" mode. Distribute runs evenly across the day's
+                # *active* hours (Still Sands time is excluded from the daily quota).
+                global _scheduled_runs_completed_today
+                _refresh_scheduled_day_token()
+                _scheduled_runs_completed_today += 1
+                target_runs = max(1, int(runs_per_day or 1))
+                logger.info(f"Scheduled mode: completed run {_scheduled_runs_completed_today}/{target_runs} for today")
+
+                if state.stop_requested:
+                    break
+
+                # Compute how long to wait before the next cycle.
+                now_user = _now_in_user_tz()
+                tomorrow_midnight = (now_user + timedelta(days=1)).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
+                seconds_until_midnight = max(0.0, (tomorrow_midnight - now_user).total_seconds())
+                still_sands_until_midnight = _scheduled_pause_seconds_in_window(now_user, tomorrow_midnight)
+                active_seconds_until_midnight = max(0.0, seconds_until_midnight - still_sands_until_midnight)
+
+                runs_remaining_today = target_runs - _scheduled_runs_completed_today
+
+                if runs_remaining_today <= 0:
+                    # All target runs done today: idle until tomorrow's midnight, then resume.
+                    logger.info(
+                        f"Scheduled mode: daily quota of {target_runs} runs reached. "
+                        f"Sleeping {seconds_until_midnight/3600:.2f}h until next day."
+                    )
+                    state.current_playing_file = None
+                    await start_idle_led_timeout(check_still_sands=True)
+                    # Count Still Sands toward this end-of-day wait — we just need to reach midnight.
+                    await _wait_with_still_sands_monitor(seconds_until_midnight, count_still_sands=True)
+                    # Day rolled over: refresh resets the counter on next loop iteration.
+                    _refresh_scheduled_day_token()
+                else:
+                    # Spread the remaining runs evenly across the remaining active time.
+                    # Wait this many *active* seconds before starting the next cycle.
+                    target_active_wait = active_seconds_until_midnight / runs_remaining_today
+                    logger.info(
+                        f"Scheduled mode: {runs_remaining_today} runs remaining, "
+                        f"{active_seconds_until_midnight/3600:.2f}h active time left. "
+                        f"Waiting ~{target_active_wait/60:.1f}m of active time before next run."
+                    )
+                    state.current_playing_file = None
+                    await start_idle_led_timeout(check_still_sands=True)
+                    await _wait_with_still_sands_monitor(target_active_wait, count_still_sands=False)
                 continue
             else:
                 logger.info("Playlist completed")
