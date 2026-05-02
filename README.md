@@ -98,6 +98,24 @@ Full setup instructions, hardware assembly, firmware flashing, and advanced conf
 
 We welcome contributions! See the [Contributing Guide](CONTRIBUTING.md) for how to get started.
 
+## License
+
+Dune Weaver is available under a **dual license**:
+
+### Open Source License (GPL-3.0)
+
+For open-source projects and personal use, Dune Weaver is licensed under the [GNU General Public License v3.0](LICENSE-GPL-3.0).
+
+You are free to use, modify, and distribute this software under GPL-3.0 terms, provided that derivative works are also licensed under GPL-3.0 and source code is made available.
+
+### Commercial License
+
+For commercial use, proprietary applications, OEM/embedded deployments, or if you cannot comply with GPL-3.0 requirements, a commercial license is available.
+
+Contact: hello@duneweaver.com
+
+See the [LICENSE](LICENSE) file for full details.
+
 ---
 
 **Happy sand drawing!**
