@@ -61,7 +61,8 @@ Free 3D-printable models on MakerWorld: [DW OG](https://makerworld.com/en/models
 The fastest way to get running on a Raspberry Pi:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tuanchris/dune-weaver/main/setup-pi.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tuanchris/dune-weaver/main/setup-pi.sh -o setup-pi.sh
+bash setup-pi.sh
 ```
 
 This installs Docker, clones the repo, and starts the application. Once it finishes, open **http://\<hostname\>.local** in your browser.
