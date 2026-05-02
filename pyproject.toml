@@ -2,6 +2,7 @@
 name = "dune-weaver"
 version = "1.0.0"
 description = "Web-controlled kinetic sand table system"
+license = "GPL-3.0-or-later"
 requires-python = ">=3.9"
 
 [tool.pytest.ini_options]

@@ -184,4 +184,12 @@ When you add a new backend endpoint, you **must** also register its path in the 
 5. Fill in a clear description of **what** changed and **why**.
 6. CI will run backend tests, frontend tests, E2E tests, and Ruff lint automatically.
 
+## Contributor License Agreement
+
+Because Dune Weaver is offered under a dual-license model (GPL-3.0 and a commercial license), all contributors must sign a Contributor License Agreement (CLA) before their pull requests can be merged. The CLA grants Dune Weaver Inc. the right to relicense your contribution under both licenses while you retain copyright of your work.
+
+We use [CLA Assistant](https://cla-assistant.io) to automate this. When you open your first pull request, the bot will prompt you to sign.
+
+For questions about the CLA, contact hello@duneweaver.com.
+
 Thanks for helping make Dune Weaver better!
