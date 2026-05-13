@@ -36,8 +36,10 @@ import {
 } from '@/components/ui/select'
 import { apiClient } from '@/lib/apiClient'
 import { useStatusStore } from '@/stores/useStatusStore'
+import { useLanguageStore } from '@/stores/useLanguageStore'
 
 export function TableControlPage() {
+  const { t } = useLanguageStore()
   const [speedInput, setSpeedInput] = useState('')
   const [currentSpeed, setCurrentSpeed] = useState<number | null>(null)
   const [currentTheta, setCurrentTheta] = useState(0)
@@ -342,9 +344,9 @@ export function TableControlPage() {
       <div className="flex flex-col w-full max-w-5xl mx-auto gap-6 py-3 sm:py-6 px-0 sm:px-4">
         {/* Page Header */}
         <div className="space-y-0.5 sm:space-y-1 pl-1">
-          <h1 className="text-xl font-semibold tracking-tight">Table Control</h1>
+          <h1 className="text-xl font-semibold tracking-tight">{t('control.title')}</h1>
           <p className="text-xs text-muted-foreground">
-            Manual controls for your sand table
+            {t('control.subtitle')}
           </p>
         </div>
 

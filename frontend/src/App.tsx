@@ -5,6 +5,7 @@ import { PlaylistsPage } from '@/pages/PlaylistsPage'
 import { TableControlPage } from '@/pages/TableControlPage'
 import { LEDPage } from '@/pages/LEDPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import DrawPage from '@/pages/DrawPage'
 import { WiFiSetupPage } from '@/pages/WiFiSetupPage'
 import { CaptivePortalPage } from '@/pages/CaptivePortalPage'
 import { SetupPage } from '@/pages/SetupPage'
@@ -18,6 +19,7 @@ function App() {
         <Route path="/" element={<Layout />}>
           <Route index element={<BrowsePage />} />
           <Route path="playlists" element={<PlaylistsPage />} />
+          <Route path="draw" element={<DrawPage />} />
           <Route path="table-control" element={<TableControlPage />} />
           <Route path="led" element={<LEDPage />} />
           <Route path="settings" element={<SettingsPage />} />

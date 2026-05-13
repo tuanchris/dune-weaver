@@ -52,7 +52,7 @@ while [[ $# -gt 0 ]]; do
             echo "Dune Weaver Raspberry Pi Setup Script"
             echo ""
             echo "One-command install:"
-            echo "  curl -fsSL https://raw.githubusercontent.com/tuanchris/dune-weaver/main/setup-pi.sh | bash"
+            echo "  curl -fsSL https://github.com/MKnayY/dune-weaver/blob/main/setup-pi.sh | bash"
             echo ""
             echo "Or from existing clone:"
             echo "  cd ~/dune-weaver && bash setup-pi.sh [OPTIONS]"

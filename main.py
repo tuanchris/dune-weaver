@@ -2,7 +2,10 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, W
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.templating import Jinja2Templates
+try:
+    from fastapi.templating import Jinja2Templates
+except ImportError:
+    Jinja2Templates = None
 from pydantic import BaseModel
 from typing import List, Optional
 import os
@@ -363,7 +366,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-templates = Jinja2Templates(directory="templates")
+try:
+    if Jinja2Templates:
+        templates = Jinja2Templates(directory="templates")
+    else:
+        templates = None
+except Exception:
+    logger.warning("Jinja2 not installed. HTML templates will be unavailable.")
+    templates = None
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Include WiFi management router
@@ -710,6 +720,8 @@ async def clear_logs():
 # FastAPI routes - Redirect old frontend routes to new React frontend on port 80
 def get_redirect_response(request: Request):
     """Return redirect page pointing users to the new frontend."""
+    if templates is None:
+        return JSONResponse({"message": "Please use the React frontend on port 80 or your development port."})
     host = request.headers.get("host", "localhost").split(":")[0]  # Remove port if present
     return templates.TemplateResponse("redirect.html", {"request": request, "host": host})
 
