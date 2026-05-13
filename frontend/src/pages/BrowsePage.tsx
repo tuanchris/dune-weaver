@@ -10,6 +10,7 @@ import {
 import { fuzzyMatch } from '@/lib/utils'
 import { apiClient } from '@/lib/apiClient'
 import { useOnBackendConnected } from '@/hooks/useBackendConnection'
+import { useLanguageStore } from '@/stores/useLanguageStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -61,6 +62,7 @@ const PreviewContext = createContext<PreviewContextType | null>(null)
 
 export function BrowsePage() {
   const { isPlayOnlyActive } = useOutletContext<{ isPlayOnlyActive?: boolean }>() || {}
+  const { t } = useLanguageStore()
 
   // Data state
   const [patterns, setPatterns] = useState<PatternMetadata[]>([])
@@ -893,9 +895,9 @@ export function BrowsePage() {
       {/* Page Header */}
       <div className="flex items-start justify-between gap-4 pl-1">
         <div className="space-y-0.5">
-          <h1 className="text-xl font-semibold tracking-tight">Browse Patterns</h1>
+          <h1 className="text-xl font-semibold tracking-tight">{t('browse.title')}</h1>
           <p className="text-xs text-muted-foreground">
-            {patterns.length} patterns available
+            {patterns.length} {t('browse.patterns_available') || 'patterns available'}
           </p>
         </div>
         {!isPlayOnlyActive && (
@@ -910,7 +912,7 @@ export function BrowsePage() {
             ) : (
               <span className="material-icons-outlined text-lg">add</span>
             )}
-            <span className="hidden sm:inline">Add Pattern</span>
+            <span className="hidden sm:inline">{t('browse.upload')}</span>
           </Button>
         )}
       </div>

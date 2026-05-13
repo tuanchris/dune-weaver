@@ -13,13 +13,15 @@ import { apiClient } from '@/lib/apiClient'
 import ShinyText from '@/components/ShinyText'
 import { useStatusStore } from '@/stores/useStatusStore'
 import { useCacheProgressStore } from '@/stores/useCacheProgressStore'
+import { useLanguageStore } from '@/stores/useLanguageStore'
 
 const navItems = [
-  { path: '/', label: 'Browse', icon: 'grid_view', title: 'Browse Patterns' },
-  { path: '/playlists', label: 'Playlists', icon: 'playlist_play', title: 'Playlists' },
-  { path: '/table-control', label: 'Control', icon: 'tune', title: 'Table Control' },
-  { path: '/led', label: 'LED', icon: 'lightbulb', title: 'LED Control' },
-  { path: '/settings', label: 'Settings', icon: 'settings', title: 'Settings' },
+  { path: '/', label: 'nav.browse', icon: 'grid_view', title: 'nav.browse' },
+  { path: '/playlists', label: 'nav.playlists', icon: 'playlist_play', title: 'nav.playlists' },
+  { path: '/draw', label: 'nav.draw', icon: 'edit', title: 'nav.draw' },
+  { path: '/table-control', label: 'nav.control', icon: 'tune', title: 'nav.control' },
+  { path: '/led', label: 'nav.led', icon: 'lightbulb', title: 'nav.led' },
+  { path: '/settings', label: 'nav.settings', icon: 'settings', title: 'nav.settings' },
 ]
 
 const DEFAULT_APP_NAME = 'Dune Weaver'
@@ -62,6 +64,7 @@ export function Layout() {
 
   // Multi-table context - must be called before any hooks that depend on activeTable
   const { activeTable, tables } = useTable()
+  const { t } = useLanguageStore()
 
   // Use table name as app name when multiple tables exist
   const hasMultipleTables = tables.length > 1
@@ -707,11 +710,11 @@ export function Layout() {
   useEffect(() => {
     const currentNav = navItems.find((item) => item.path === location.pathname)
     if (currentNav) {
-      document.title = `${currentNav.title} | ${displayName}`
+      document.title = `${t(currentNav.title)} | ${displayName}`
     } else {
       document.title = displayName
     }
-  }, [location.pathname, displayName])
+  }, [location.pathname, displayName, t])
 
   useEffect(() => {
     if (isDark) {
@@ -1971,7 +1974,7 @@ export function Layout() {
                 <span className={`text-xl ${isActive ? 'material-icons' : 'material-icons-outlined'}`}>
                   {item.icon}
                 </span>
-                <span className="text-xs font-medium">{item.label}</span>
+                <span className="text-xs font-medium">{t(item.label)}</span>
               </Link>
             )
           })}
@@ -1982,7 +1985,7 @@ export function Layout() {
               className="relative flex flex-col items-center justify-center gap-1 transition-all duration-200 text-muted-foreground hover:text-foreground active:scale-95"
             >
               <span className="material-icons-outlined text-xl">lock</span>
-              <span className="text-xs font-medium">Settings</span>
+              <span className="text-xs font-medium">{t('nav.settings')}</span>
             </button>
           )}
         </div>

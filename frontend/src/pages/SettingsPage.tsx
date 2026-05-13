@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'sonner'
+import { useTheme } from 'next-themes'
+import { useLanguageStore } from '@/stores/useLanguageStore'
 import { apiClient } from '@/lib/apiClient'
 import { useOnBackendConnected } from '@/hooks/useBackendConnection'
 import { Button } from '@/components/ui/button'
@@ -103,6 +105,8 @@ interface MqttConfig {
 export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
+  const { theme, setTheme } = useTheme()
+  const { language, setLanguage, t } = useLanguageStore()
   const sectionParam = searchParams.get('section')
 
   // Connection state
@@ -1248,6 +1252,37 @@ export function SettingsPage() {
             </div>
           </AccordionTrigger>
           <AccordionContent className="pt-4 pb-6 space-y-6">
+            {/* Language Selection */}
+            <div className="space-y-3">
+              <Label>{t('settings.language')}</Label>
+              <Select value={language} onValueChange={(val: any) => setLanguage(val)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Language" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="en">English</SelectItem>
+                  <SelectItem value="tr">Türkçe</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Theme Selection */}
+            <div className="space-y-3">
+              <Label>{t('settings.theme')}</Label>
+              <Select value={theme} onValueChange={(val) => setTheme(val)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Theme" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="light">{t('settings.light')}</SelectItem>
+                  <SelectItem value="dark">{t('settings.dark')}</SelectItem>
+                  <SelectItem value="system">{t('settings.system')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Separator />
+
             {/* Custom Logo */}
             <div className="space-y-3">
               <Label>Custom Logo</Label>
