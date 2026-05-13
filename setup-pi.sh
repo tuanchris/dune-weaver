@@ -3,7 +3,7 @@
 # Dune Weaver Raspberry Pi Setup Script
 #
 # ONE-COMMAND INSTALL (recommended):
-#   curl -fsSL https://raw.githubusercontent.com/tuanchris/dune-weaver/main/setup-pi.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/MKnayY/dune-weaver/main/setup-pi.sh | bash
 #
 # OR from existing clone:
 #   git clone https://github.com/tuanchris/dune-weaver --single-branch
