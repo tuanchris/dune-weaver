@@ -193,9 +193,9 @@ export function LEDPage() {
     setControlMode(mode)
     try {
       await apiClient.patch('/api/settings', { led: { control_mode: mode } })
-      toast.success(mode === 'manual' ? 'Manual / HA mode' : 'DW Automated mode')
+      toast.success(mode === 'manual' ? 'Manuel / HA modu' : 'DW Otomatik modu')
     } catch {
-      toast.error('Failed to update control mode')
+      toast.error('Kontrol modu güncellenemedi')
     }
   }
 
@@ -203,13 +203,13 @@ export function LEDPage() {
     try {
       const data = await apiClient.post<{ connected?: boolean; power_on?: boolean; error?: string }>('/api/dw_leds/power', { state: 2 })
       if (data.connected) {
-        toast.success(`Power ${data.power_on ? 'ON' : 'OFF'}`)
+        toast.success(`Güç ${data.power_on ? 'AÇIK' : 'KAPALI'}`)
         await fetchDWLedsStatus()
       } else {
-        toast.error(data.error || 'Failed to toggle power')
+        toast.error(data.error || 'Güç değiştirilemedi')
       }
     } catch {
-      toast.error('Failed to toggle power')
+      toast.error('Güç değiştirilemedi')
     }
   }
 
@@ -221,10 +221,10 @@ export function LEDPage() {
     try {
       const data = await apiClient.post<{ connected?: boolean }>('/api/dw_leds/brightness', { value: value[0] })
       if (data.connected) {
-        toast.success(`Brightness: ${value[0]}%`)
+        toast.success(`Parlaklık: ${value[0]}%`)
       }
     } catch {
-      toast.error('Failed to set brightness')
+      toast.error('Parlaklık ayarlanamadı')
     }
   }
 
@@ -236,9 +236,9 @@ export function LEDPage() {
   const handleSpeedCommit = async (value: number[]) => {
     try {
       await apiClient.post('/api/dw_leds/speed', { speed: value[0] })
-      toast.success(`Speed: ${value[0]}`)
+      toast.success(`Hız: ${value[0]}`)
     } catch {
-      toast.error('Failed to set speed')
+      toast.error('Hız ayarlanamadı')
     }
   }
 
@@ -250,9 +250,9 @@ export function LEDPage() {
   const handleIntensityCommit = async (value: number[]) => {
     try {
       await apiClient.post('/api/dw_leds/intensity', { intensity: value[0] })
-      toast.success(`Intensity: ${value[0]}`)
+      toast.success(`Yoğunluk: ${value[0]}`)
     } catch {
-      toast.error('Failed to set intensity')
+      toast.error('Yoğunluk ayarlanamadı')
     }
   }
 
@@ -261,14 +261,14 @@ export function LEDPage() {
     try {
       const data = await apiClient.post<{ connected?: boolean; power_on?: boolean }>('/api/dw_leds/effect', { effect_id: parseInt(value) })
       if (data.connected) {
-        toast.success('Effect changed')
+        toast.success('Efekt değiştirildi')
         if (data.power_on !== undefined) {
           const powerOn = data.power_on
           setDwStatus((prev) => prev ? { ...prev, power_on: powerOn } : null)
         }
       }
     } catch {
-      toast.error('Failed to set effect')
+      toast.error('Efekt ayarlanamadı')
     }
   }
 
@@ -277,10 +277,10 @@ export function LEDPage() {
     try {
       const data = await apiClient.post<{ connected?: boolean }>('/api/dw_leds/palette', { palette_id: parseInt(value) })
       if (data.connected) {
-        toast.success('Palette changed')
+        toast.success('Palet değiştirildi')
       }
     } catch {
-      toast.error('Failed to set palette')
+      toast.error('Palet ayarlanamadı')
     }
   }
 
@@ -332,7 +332,7 @@ export function LEDPage() {
       toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} effect saved`)
       await fetchEffectSettings()
     } catch {
-      toast.error(`Failed to save ${type} effect`)
+      toast.error(`${type} efekti kaydedilemedi`)
     }
   }
 
@@ -342,7 +342,7 @@ export function LEDPage() {
       toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} effect cleared`)
       await fetchEffectSettings()
     } catch {
-      toast.error(`Failed to clear ${type} effect`)
+      toast.error(`${type} efekti temizlenemedi`)
     }
   }
 
@@ -351,9 +351,9 @@ export function LEDPage() {
     const finalMinutes = minutes !== undefined ? minutes : idleTimeoutMinutes
     try {
       await apiClient.post('/api/dw_leds/idle_timeout', { enabled: finalEnabled, minutes: finalMinutes })
-      toast.success(`Idle timeout ${finalEnabled ? 'enabled' : 'disabled'}`)
+      toast.success(`Boşta kalma zaman aşımı ${finalEnabled ? 'etkin' : 'devre dışı'}`)
     } catch {
-      toast.error('Failed to save idle timeout')
+      toast.error('Boşta kalma zaman aşımı kaydedilemedi')
     }
   }
 
@@ -558,7 +558,7 @@ export function LEDPage() {
               {/* Effect & Palette Selects */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Effect</Label>
+                  <Label>Efekt</Label>
                   <Select value={selectedEffect} onValueChange={handleEffectChange}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select effect..." />
@@ -573,7 +573,7 @@ export function LEDPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Palette</Label>
+                  <Label>Palet</Label>
                   <Select value={selectedPalette} onValueChange={handlePaletteChange}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select palette..." />

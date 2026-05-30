@@ -196,7 +196,7 @@ export default function DrawPage() {
       return
     }
     if (!patternName.trim()) {
-      toast.error('Please enter a pattern name')
+      toast.error('Lütfen bir desen adı girin')
       return
     }
 
@@ -211,7 +211,7 @@ export default function DrawPage() {
       navigate('/')
     } catch (error) {
       console.error('Save error:', error)
-      toast.error('Failed to save pattern')
+      toast.error('Desen kaydedilemedi')
     } finally {
       setIsSaving(false)
     }

@@ -89,7 +89,7 @@ export function TableControlPage() {
   // Helper to check if pattern is running and show warning
   const checkPatternRunning = (actionName: string): boolean => {
     if (isPatternRunning) {
-      toast.error(`Cannot ${actionName} while a pattern is running. Stop the pattern first.`, {
+      toast.error(`Desen çalışırken ${actionName} yapılamaz. Önce deseni durdurun.`, {
         action: {
           label: 'Stop',
           onClick: () => handleStop(),
@@ -103,23 +103,23 @@ export function TableControlPage() {
   const handleHome = async () => {
     try {
       await handleAction('home', '/send_home')
-      toast.success('Moving to home position...')
+      toast.success('Başlangıç konumuna gidiliyor...')
     } catch {
-      toast.error('Failed to move to home position')
+      toast.error('Başlangıç konumuna gidilemedi')
     }
   }
 
   const handleStop = async () => {
     try {
       await handleAction('stop', '/stop_execution')
-      toast.success('Execution stopped')
+      toast.success('Yürütme durduruldu')
     } catch {
       // Normal stop failed, try force stop
       try {
         await handleAction('stop', '/force_stop')
-        toast.success('Force stopped')
+        toast.success('Zorla durduruldu')
       } catch {
-        toast.error('Failed to stop execution')
+        toast.error('Yürütme durdurulamadı')
       }
     }
   }
@@ -127,9 +127,9 @@ export function TableControlPage() {
   const handleReset = async () => {
     try {
       await handleAction('reset', '/soft_reset')
-      toast.success('Reset sent. Please home the table.')
+      toast.success('Sıfırlama gönderildi. Lütfen masayı eve alın.')
     } catch {
-      toast.error('Failed to send reset command')
+      toast.error('Sıfırlama komutu gönderilemedi')
     }
   }
 
@@ -137,9 +137,9 @@ export function TableControlPage() {
     if (checkPatternRunning('move to center')) return
     try {
       await handleAction('center', '/move_to_center')
-      toast.success('Moving to center...')
+      toast.success('Merkeze taşınıyor...')
     } catch {
-      toast.error('Failed to move to center')
+      toast.error('Merkeze taşınamadı')
     }
   }
 
@@ -147,16 +147,16 @@ export function TableControlPage() {
     if (checkPatternRunning('move to perimeter')) return
     try {
       await handleAction('perimeter', '/move_to_perimeter')
-      toast.success('Moving to perimeter...')
+      toast.success('Kenara taşınıyor...')
     } catch {
-      toast.error('Failed to move to perimeter')
+      toast.error('Kenara taşınamadı')
     }
   }
 
   const handleSetSpeed = async () => {
     const speed = parseFloat(speedInput)
     if (isNaN(speed) || speed <= 0) {
-      toast.error('Please enter a valid speed value')
+      toast.error('Lütfen geçerli bir hız değeri girin')
       return
     }
     try {
@@ -165,7 +165,7 @@ export function TableControlPage() {
       toast.success(`Speed set to ${speed} mm/s`)
       setSpeedInput('')
     } catch {
-      toast.error('Failed to set speed')
+      toast.error('Hız ayarlanamadı')
     }
   }
 
@@ -194,7 +194,7 @@ export function TableControlPage() {
       setCurrentTheta(newTheta)
       toast.info(`Rotated ${degrees}°`)
     } catch {
-      toast.error('Failed to rotate')
+      toast.error('Döndürme başarısız')
     }
   }
 
@@ -204,7 +204,7 @@ export function TableControlPage() {
       const data = await apiClient.get<string[]>('/list_serial_ports')
       setSerialPorts(Array.isArray(data) ? data : [])
     } catch {
-      toast.error('Failed to fetch serial ports')
+      toast.error('Seri portlar alınamadı')
     }
   }
 
@@ -244,7 +244,7 @@ export function TableControlPage() {
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error'
       addSerialHistory('error', `Failed to connect: ${errorMsg}`)
-      if (!silent) toast.error('Failed to connect to serial port')
+      if (!silent) toast.error('Seri porta bağlanılamadı')
     } finally {
       setSerialLoading(false)
     }
@@ -256,9 +256,9 @@ export function TableControlPage() {
       await apiClient.post('/api/debug-serial/close', { port: selectedSerialPort })
       setSerialConnected(false)
       addSerialHistory('resp', 'Disconnected')
-      toast.success('Disconnected from serial port')
+      toast.success('Seri port bağlantısı kesildi')
     } catch {
-      toast.error('Failed to disconnect')
+      toast.error('Bağlantı kesilemedi')
     } finally {
       setSerialLoading(false)
     }
@@ -288,7 +288,7 @@ export function TableControlPage() {
         if (data.responses.length > 0) {
           data.responses.forEach((line: string) => addSerialHistory('resp', line))
         } else {
-          addSerialHistory('resp', '(no response)')
+          addSerialHistory('resp', '(yanıt yok)')
         }
       } else if (data.detail) {
         addSerialHistory('error', data.detail || 'Command failed')
@@ -315,10 +315,10 @@ export function TableControlPage() {
       } else {
         addSerialHistory('resp', 'Reset sent')
       }
-      toast.success('Reset command sent')
+      toast.success('Sıfırlama komutu gönderildi')
     } catch (error) {
       addSerialHistory('error', `Reset failed: ${error}`)
-      toast.error('Failed to send reset')
+      toast.error('Sıfırlama gönderilemedi')
     } finally {
       setSerialLoading(false)
     }
@@ -357,8 +357,8 @@ export function TableControlPage() {
           {/* Primary Actions */}
           <Card className="transition-all duration-200 hover:shadow-md hover:border-primary/20">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Primary Actions</CardTitle>
-              <CardDescription>Calibrate or stop the table</CardDescription>
+              <CardTitle className="text-lg">Birincil İşlemler</CardTitle>
+              <CardDescription>Masayı kalibre et veya durdur</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-3">
@@ -375,10 +375,10 @@ export function TableControlPage() {
                       ) : (
                         <span className="material-icons-outlined text-2xl">home</span>
                       )}
-                      <span className="text-xs">Home</span>
+                      <span className="text-xs">Eve Dön</span>
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Return to home position</TooltipContent>
+                  <TooltipContent>Başlangıç konumuna dön</TooltipContent>
                 </Tooltip>
 
                 <Tooltip>
@@ -394,10 +394,10 @@ export function TableControlPage() {
                       ) : (
                         <span className="material-icons-outlined text-2xl">stop_circle</span>
                       )}
-                      <span className="text-xs">Stop</span>
+                      <span className="text-xs">Durdur</span>
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Gracefully stop</TooltipContent>
+                  <TooltipContent>Nazikçe durdur</TooltipContent>
                 </Tooltip>
 
                 <Dialog>
@@ -414,15 +414,15 @@ export function TableControlPage() {
                           ) : (
                             <span className="material-icons-outlined text-2xl">restart_alt</span>
                           )}
-                          <span className="text-xs">Reset</span>
+                          <span className="text-xs">Sıfırla</span>
                         </Button>
                       </DialogTrigger>
                     </TooltipTrigger>
-                    <TooltipContent>Send soft reset to controller</TooltipContent>
+                    <TooltipContent>Kontrolcüye yumuşak sıfırlama gönder</TooltipContent>
                   </Tooltip>
                   <DialogContent className="sm:max-w-md">
                     <DialogHeader>
-                      <DialogTitle>Reset Controller?</DialogTitle>
+                      <DialogTitle>Kontrolcü Sıfırlansın mı?</DialogTitle>
                       <DialogDescription>
                         This will send a soft reset to the controller.
                       </DialogDescription>
@@ -435,7 +435,7 @@ export function TableControlPage() {
                     </Alert>
                     <DialogFooter className="gap-2 sm:gap-0">
                       <DialogTrigger asChild>
-                        <Button variant="outline">Cancel</Button>
+                        <Button variant="outline">İptal</Button>
                       </DialogTrigger>
                       <DialogTrigger asChild>
                         <Button variant="destructive" onClick={handleReset}>
@@ -454,8 +454,8 @@ export function TableControlPage() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-lg">Speed</CardTitle>
-                  <CardDescription>Ball movement speed</CardDescription>
+                  <CardTitle className="text-lg">Hız</CardTitle>
+                  <CardDescription>Top hareket hızı</CardDescription>
                 </div>
                 <Badge variant="secondary" className="font-mono">
                   {currentSpeed !== null ? `${currentSpeed} mm/s` : '-- mm/s'}
@@ -493,8 +493,8 @@ export function TableControlPage() {
           {/* Position */}
           <Card className="transition-all duration-200 hover:shadow-md hover:border-primary/20">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Position</CardTitle>
-              <CardDescription>Move ball to a specific location</CardDescription>
+              <CardTitle className="text-lg">Konum</CardTitle>
+              <CardDescription>Topu belirli bir konuma taşı</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-3">
@@ -511,10 +511,10 @@ export function TableControlPage() {
                       ) : (
                         <span className="material-icons-outlined text-2xl">center_focus_strong</span>
                       )}
-                      <span className="text-xs">Center</span>
+                      <span className="text-xs">Merkez</span>
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Move ball to center</TooltipContent>
+                  <TooltipContent>Topu merkeze taşı</TooltipContent>
                 </Tooltip>
 
                 <Tooltip>
@@ -530,10 +530,10 @@ export function TableControlPage() {
                       ) : (
                         <span className="material-icons-outlined text-2xl">trip_origin</span>
                       )}
-                      <span className="text-xs">Perimeter</span>
+                      <span className="text-xs">Kenar</span>
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Move ball to edge</TooltipContent>
+                  <TooltipContent>Topu kenara taşı</TooltipContent>
                 </Tooltip>
 
                 <Dialog>
@@ -545,15 +545,15 @@ export function TableControlPage() {
                           className="h-16 gap-1 flex-col items-center justify-center"
                         >
                           <span className="material-icons-outlined text-2xl">screen_rotation</span>
-                          <span className="text-xs">Align</span>
+                          <span className="text-xs">Hizala</span>
                         </Button>
                       </DialogTrigger>
                     </TooltipTrigger>
-                    <TooltipContent>Align pattern orientation</TooltipContent>
+                    <TooltipContent>Desen yönünü hizala</TooltipContent>
                   </Tooltip>
                 <DialogContent className="sm:max-w-md">
                   <DialogHeader>
-                    <DialogTitle>Pattern Orientation Alignment</DialogTitle>
+                    <DialogTitle>Desen Yönü Hizalaması</DialogTitle>
                     <DialogDescription>
                       Follow these steps to align your patterns with their previews
                     </DialogDescription>
@@ -590,7 +590,7 @@ export function TableControlPage() {
                     </Alert>
 
                     <div className="space-y-3">
-                      <p className="text-sm font-medium text-center">Fine Adjustment</p>
+                      <p className="text-sm font-medium text-center">İnce Ayar</p>
                       <div className="flex justify-center gap-2">
                         <Button
                           variant="secondary"
@@ -616,7 +616,7 @@ export function TableControlPage() {
                   </div>
                   <DialogFooter>
                     <DialogTrigger asChild>
-                      <Button>Got it</Button>
+                      <Button>Anladım</Button>
                     </DialogTrigger>
                   </DialogFooter>
                 </DialogContent>
@@ -628,8 +628,8 @@ export function TableControlPage() {
           {/* Clear Patterns */}
           <Card className="transition-all duration-200 hover:shadow-md hover:border-primary/20">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Clear Sand</CardTitle>
-              <CardDescription>Erase current pattern from the table</CardDescription>
+              <CardTitle className="text-lg">Kumu Temizle</CardTitle>
+              <CardDescription>Mevcut deseni masadan sil</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-3">
@@ -646,10 +646,10 @@ export function TableControlPage() {
                       ) : (
                         <span className="material-icons-outlined text-2xl">center_focus_strong</span>
                       )}
-                      <span className="text-xs">Clear Center</span>
+                      <span className="text-xs">Merkezden Temizle</span>
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Spiral outward from center</TooltipContent>
+                  <TooltipContent>Merkezden dışa doğru spiral</TooltipContent>
                 </Tooltip>
 
                 <Tooltip>
@@ -665,10 +665,10 @@ export function TableControlPage() {
                       ) : (
                         <span className="material-icons-outlined text-2xl">all_out</span>
                       )}
-                      <span className="text-xs">Clear Edge</span>
+                      <span className="text-xs">Kenardan Temizle</span>
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Spiral inward from edge</TooltipContent>
+                  <TooltipContent>Kenardan içe doğru spiral</TooltipContent>
                 </Tooltip>
 
                 <Tooltip>
@@ -684,10 +684,10 @@ export function TableControlPage() {
                       ) : (
                         <span className="material-icons-outlined text-2xl">swap_horiz</span>
                       )}
-                      <span className="text-xs">Clear Sideways</span>
+                      <span className="text-xs">Yandan Temizle</span>
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Clear with side-to-side motion</TooltipContent>
+                  <TooltipContent>Sağdan sola hareketle temizle</TooltipContent>
                 </Tooltip>
               </div>
             </CardContent>
@@ -703,7 +703,7 @@ export function TableControlPage() {
                   <span className="material-icons-outlined text-xl">terminal</span>
                   Serial Terminal
                 </CardTitle>
-                <CardDescription className="hidden sm:block">Send raw commands to the table controller</CardDescription>
+                <CardDescription className="hidden sm:block">Masa kontrolcüsüne ham komutlar gönder</CardDescription>
                 {/* Warning about pattern interference */}
                 <Alert className="flex items-center border-amber-500/50 py-2">
                   <span className="material-icons-outlined text-amber-500 text-base mr-2 shrink-0">warning</span>
@@ -719,7 +719,7 @@ export function TableControlPage() {
                     variant="ghost"
                     size="icon"
                     onClick={() => setSerialHistory([])}
-                    title="Clear history"
+                    title="Geçmişi Temizle"
                   >
                     <span className="material-icons-outlined">delete_sweep</span>
                   </Button>
@@ -736,7 +736,7 @@ export function TableControlPage() {
                 disabled={serialConnected || serialLoading}
               >
                 <SelectTrigger className="h-9 flex-1 min-w-[180px] max-w-[280px]">
-                  <SelectValue placeholder="Select port..." />
+                  <SelectValue placeholder="Port seçin..." />
                 </SelectTrigger>
                 <SelectContent>
                   {serialPorts.map((port) => (
@@ -756,7 +756,7 @@ export function TableControlPage() {
                   ) : (
                     <span className="material-icons-outlined sm:mr-1">power</span>
                   )}
-                  <span className="hidden sm:inline">Connect</span>
+                  <span className="hidden sm:inline">Bağlan</span>
                 </Button>
               ) : (
                 <>
@@ -768,7 +768,7 @@ export function TableControlPage() {
                     title="Disconnect"
                   >
                     <span className="material-icons-outlined sm:mr-1">power_off</span>
-                    <span className="hidden sm:inline">Disconnect</span>
+                    <span className="hidden sm:inline">Bağlantıyı Kes</span>
                   </Button>
                   <Button
                     size="sm"
@@ -778,7 +778,7 @@ export function TableControlPage() {
                     title="Send soft reset to controller"
                   >
                     <span className="material-icons-outlined sm:mr-1">restart_alt</span>
-                    <span className="hidden sm:inline">Reset</span>
+                    <span className="hidden sm:inline">Sıfırla</span>
                   </Button>
                 </>
               )}
@@ -789,7 +789,7 @@ export function TableControlPage() {
                   size="icon"
                   className="sm:hidden"
                   onClick={() => setSerialHistory([])}
-                  title="Clear history"
+                  title="Geçmişi Temizle"
                 >
                   <span className="material-icons-outlined">delete</span>
                 </Button>
@@ -822,8 +822,8 @@ export function TableControlPage() {
               ) : (
                 <div className="text-gray-500 italic">
                   {serialConnected
-                    ? 'Ready. Enter a command below (e.g., $, $$, ?, $H)'
-                    : 'Connect to a serial port to send commands'}
+                    ? 'Hazır. Aşağıya komut girin (ör. $, $$, ?, $H)'
+                    : 'Komut göndermek için seri porta bağlanın'}
                 </div>
               )}
             </div>
@@ -837,7 +837,7 @@ export function TableControlPage() {
                 onKeyDown={handleSerialKeyDown}
                 disabled={!serialConnected}
                 readOnly={serialLoading}
-                placeholder={serialConnected ? 'Enter command (e.g., $, $$, ?, $H)' : 'Connect to send commands'}
+                placeholder={serialConnected ? 'Komut girin (ör. $, $$, ?, $H)' : 'Bağlanın ve komut gönderin'}
                 className="font-mono text-base h-11"
               />
               <Button

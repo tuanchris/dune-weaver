@@ -453,7 +453,7 @@ export function SettingsPage() {
 
   const handleConnect = async () => {
     if (!selectedPort) {
-      toast.error('Please select a port')
+      toast.error('Lütfen bir port seçin')
       return
     }
     setIsLoading('connect')
@@ -462,12 +462,12 @@ export function SettingsPage() {
       if (data.success) {
         setIsConnected(true)
         setConnectionStatus(`Connected to ${selectedPort}`)
-        toast.success('Connected successfully')
+        toast.success('Başarıyla bağlandı')
       } else {
         throw new Error(data.message || 'Connection failed')
       }
     } catch (error) {
-      toast.error('Failed to connect')
+      toast.error('Bağlantı kurulamadı')
     } finally {
       setIsLoading(null)
     }
@@ -480,10 +480,10 @@ export function SettingsPage() {
       if (data.success) {
         setIsConnected(false)
         setConnectionStatus('Disconnected')
-        toast.success('Disconnected')
+        toast.success('Bağlantı kesildi')
       }
     } catch (error) {
-      toast.error('Failed to disconnect')
+      toast.error('Bağlantı kesilemedi')
     } finally {
       setIsLoading(null)
     }
@@ -498,14 +498,14 @@ export function SettingsPage() {
         connection: { preferred_port: portValue },
       })
       if (!settings.preferred_port || settings.preferred_port === '__auto__') {
-        toast.success('Auto-connect: Auto (first available port)')
+        toast.success('Otomatik bağlantı: Otomatik (ilk mevcut port)')
       } else if (settings.preferred_port === '__none__') {
-        toast.success('Auto-connect: Disabled')
+        toast.success('Otomatik bağlantı: Devre Dışı')
       } else {
-        toast.success(`Auto-connect: ${settings.preferred_port}`)
+        toast.success(`Otomatik bağlantı: ${settings.preferred_port}`)
       }
     } catch (error) {
-      toast.error('Failed to save auto-connect setting')
+      toast.error('Otomatik bağlantı ayarı kaydedilemedi')
     } finally {
       setIsLoading(null)
     }
@@ -515,9 +515,9 @@ export function SettingsPage() {
     setIsLoading('appName')
     try {
       await apiClient.patch('/api/settings', { app: { name: settings.app_name } })
-      toast.success('App name saved. Refresh to see changes.')
+      toast.success('Uygulama adı kaydedildi. Değişiklikleri görmek için yenileyin.')
     } catch (error) {
-      toast.error('Failed to save app name')
+      toast.error('Uygulama adı kaydedilemedi')
     } finally {
       setIsLoading(null)
     }
@@ -552,9 +552,9 @@ export function SettingsPage() {
       const data = await apiClient.uploadFile('/api/upload-logo', file, 'file') as { filename: string }
       setSettings({ ...settings, custom_logo: data.filename })
       updateBranding(data.filename)
-      toast.success('Logo uploaded!')
+      toast.success('Logo yüklendi!')
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to upload logo')
+      toast.error(error instanceof Error ? error.message : 'Logo yüklenemedi')
     } finally {
       setIsLoading(null)
       // Reset the input
@@ -570,9 +570,9 @@ export function SettingsPage() {
       await apiClient.delete('/api/custom-logo')
       setSettings({ ...settings, custom_logo: undefined })
       updateBranding(null)
-      toast.success('Logo removed!')
+      toast.success('Logo kaldırıldı!')
     } catch (error) {
-      toast.error('Failed to remove logo')
+      toast.error('Logo kaldırılamadı')
     } finally {
       setIsLoading(null)
     }
@@ -589,9 +589,9 @@ export function SettingsPage() {
         gpio_pin: ledConfig.gpio_pin,
         pixel_order: ledConfig.pixel_order,
       })
-      toast.success('LED configuration saved')
+      toast.success('LED yapılandırması kaydedildi')
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to save LED config')
+      toast.error(error instanceof Error ? error.message : 'LED yapılandırması kaydedilemedi')
     } finally {
       setIsLoading(null)
     }
@@ -613,9 +613,9 @@ export function SettingsPage() {
           discovery_prefix: mqttConfig.discovery_prefix,
         },
       })
-      toast.success('MQTT configuration saved. Restart required.')
+      toast.success('MQTT yapılandırması kaydedildi. Yeniden başlatma gerekli.')
     } catch (error) {
-      toast.error('Failed to save MQTT config')
+      toast.error('MQTT yapılandırması kaydedilemedi')
     } finally {
       setIsLoading(null)
     }
@@ -623,7 +623,7 @@ export function SettingsPage() {
 
   const handleTestMqttConnection = async () => {
     if (!mqttConfig.broker) {
-      toast.error('Please enter a broker address')
+      toast.error('Lütfen bir broker adresi girin')
       return
     }
     setIsLoading('mqttTest')
@@ -635,12 +635,12 @@ export function SettingsPage() {
         password: mqttConfig.password || '',
       })
       if (data.success) {
-        toast.success('MQTT connection successful!')
+        toast.success('MQTT bağlantısı başarılı!')
       } else {
-        toast.error(data.error || 'Connection failed')
+        toast.error(data.error || 'Bağlantı başarısız')
       }
     } catch (error) {
-      toast.error('Failed to test MQTT connection')
+      toast.error('MQTT bağlantısı test edilemedi')
     } finally {
       setIsLoading(null)
     }
@@ -655,9 +655,9 @@ export function SettingsPage() {
           gear_ratio_override: settings.gear_ratio_override ?? 0,
         },
       })
-      toast.success('Machine settings saved')
+      toast.success('Makine ayarları kaydedildi')
     } catch (error) {
-      toast.error('Failed to save machine settings')
+      toast.error('Makine ayarları kaydedilemedi')
     } finally {
       setIsLoading(null)
     }
@@ -676,9 +676,9 @@ export function SettingsPage() {
           hard_reset_theta: settings.hard_reset_theta,
         },
       })
-      toast.success('Homing configuration saved')
+      toast.success('Eve dönüş yapılandırması kaydedildi')
     } catch (error) {
-      toast.error('Failed to save homing configuration')
+      toast.error('Eve dönüş yapılandırması kaydedilemedi')
     } finally {
       setIsLoading(null)
     }
@@ -695,9 +695,9 @@ export function SettingsPage() {
           custom_clear_from_out: settings.custom_clear_from_out || null,
         },
       })
-      toast.success('Clearing settings saved')
+      toast.success('Temizleme ayarları kaydedildi')
     } catch (error) {
-      toast.error('Failed to save clearing settings')
+      toast.error('Temizleme ayarları kaydedilemedi')
     } finally {
       setIsLoading(null)
     }
@@ -714,9 +714,9 @@ export function SettingsPage() {
           pause_time: pauseTimeSeconds,
         },
       })
-      toast.success('Auto-play settings saved')
+      toast.success('Otomatik oynatma ayarları kaydedildi')
     } catch (error) {
-      toast.error('Failed to save auto-play settings')
+      toast.error('Otomatik oynatma ayarları kaydedilemedi')
     } finally {
       setIsLoading(null)
     }
@@ -728,9 +728,9 @@ export function SettingsPage() {
       await apiClient.patch('/api/settings', {
         scheduled_pause: stillSandsSettings,
       })
-      toast.success('Still Sands settings saved')
+      toast.success('Still Sands ayarları kaydedildi')
     } catch (error) {
-      toast.error('Failed to save Still Sands settings')
+      toast.error('Still Sands ayarları kaydedilemedi')
     } finally {
       setIsLoading(null)
     }
@@ -785,7 +785,7 @@ export function SettingsPage() {
                 usb
               </span>
               <div className="text-left">
-                <div className="font-semibold">Device Connection</div>
+                <div className="font-semibold">Cihaz Bağlantısı</div>
                 <div className="text-sm text-muted-foreground font-normal">
                   Serial port configuration
                 </div>
@@ -822,7 +822,7 @@ export function SettingsPage() {
 
             {/* Port Selection */}
             <div className="space-y-3">
-              <Label>Available Serial Ports</Label>
+              <Label>Mevcut Seri Portlar</Label>
               <div className="flex gap-3">
                 <Select value={selectedPort} onValueChange={setSelectedPort}>
                   <SelectTrigger className="flex-1">
@@ -864,7 +864,7 @@ export function SettingsPage() {
 
             {/* Preferred Port for Auto-Connect */}
             <div className="space-y-3">
-              <Label>Auto-Connect</Label>
+              <Label>Otomatik Bağlantı</Label>
               <div className="flex gap-3">
                 <Select
                   value={settings.preferred_port || '__auto__'}
@@ -876,8 +876,8 @@ export function SettingsPage() {
                     <SelectValue placeholder="Select auto-connect option..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__auto__">Auto (pick first available)</SelectItem>
-                    <SelectItem value="__none__">Disabled (no auto-connect)</SelectItem>
+                    <SelectItem value="__auto__">Otomatik (ilk mevcut portu seç)</SelectItem>
+                    <SelectItem value="__none__">Devre Dışı (otomatik bağlantı yok)</SelectItem>
                     {ports.length > 0 && (
                       <>
                         <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Available Ports</div>
@@ -928,9 +928,9 @@ export function SettingsPage() {
                       await apiClient.patch('/api/settings', {
                         homing: { home_on_connect: checked },
                       })
-                      toast.success(checked ? 'Home on connect enabled' : 'Home on connect disabled')
+                      toast.success(checked ? 'Bağlantıda eve dönüş etkin' : 'Bağlantıda eve dönüş devre dışı')
                     } catch {
-                      toast.error('Failed to save setting')
+                      toast.error('Ayar kaydedilemedi')
                     }
                   }}
                 />
@@ -947,7 +947,7 @@ export function SettingsPage() {
                 precision_manufacturing
               </span>
               <div className="text-left">
-                <div className="font-semibold">Machine Settings</div>
+                <div className="font-semibold">Makine Ayarları</div>
                 <div className="text-sm text-muted-foreground font-normal">
                   Table type and hardware configuration
                 </div>
@@ -962,22 +962,22 @@ export function SettingsPage() {
                 <p className="font-medium text-sm">{settings.detected_table_type || 'Unknown'}</p>
               </div>
               <div className="p-3 rounded-lg bg-muted/50">
-                <p className="text-xs text-muted-foreground">Gear Ratio</p>
+                <p className="text-xs text-muted-foreground">Dişli Oranı</p>
                 <p className="font-medium text-sm">{settings.gear_ratio ?? '—'}</p>
               </div>
               <div className="p-3 rounded-lg bg-muted/50">
-                <p className="text-xs text-muted-foreground">X Steps/mm</p>
+                <p className="text-xs text-muted-foreground">X Adım/mm</p>
                 <p className="font-medium text-sm">{settings.x_steps_per_mm ?? '—'}</p>
               </div>
               <div className="p-3 rounded-lg bg-muted/50">
-                <p className="text-xs text-muted-foreground">Y Steps/mm</p>
+                <p className="text-xs text-muted-foreground">Y Adım/mm</p>
                 <p className="font-medium text-sm">{settings.y_steps_per_mm ?? '—'}</p>
               </div>
             </div>
 
             {/* Table Type Override */}
             <div className="space-y-3">
-              <Label>Table Type Override</Label>
+              <Label>Masa Tipi Geçersiz Kılma</Label>
               <div className="flex gap-3">
                 <Select
                   value={settings.table_type_override || 'auto'}
@@ -989,7 +989,7 @@ export function SettingsPage() {
                     <SelectValue placeholder="Auto-detect (use detected type)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="auto">Auto-detect (use detected type)</SelectItem>
+                    <SelectItem value="auto">Otomatik algıla (algılanan tipi kullan)</SelectItem>
                     {settings.available_table_types?.map((type) => (
                       <SelectItem key={type.value} value={type.value}>
                         {type.label}
@@ -1017,7 +1017,7 @@ export function SettingsPage() {
 
             {/* Gear Ratio Override */}
             <div className="space-y-3">
-              <Label>Gear Ratio Override</Label>
+              <Label>Dişli Oranı Geçersiz Kılma</Label>
               <div className="flex gap-3">
                 <Input
                   type="number"
@@ -1085,7 +1085,7 @@ export function SettingsPage() {
                 home
               </span>
               <div className="text-left">
-                <div className="font-semibold">Homing Configuration</div>
+                <div className="font-semibold">Eve Dönüş Yapılandırması</div>
                 <div className="text-sm text-muted-foreground font-normal">
                   Homing mode and auto-home settings
                 </div>
@@ -1095,7 +1095,7 @@ export function SettingsPage() {
           <AccordionContent className="pt-4 pb-6 space-y-6">
             {/* Homing Mode Selection */}
             <div className="space-y-3">
-              <Label>Homing Mode</Label>
+              <Label>Eve Dönüş Modu</Label>
               <RadioGroup
                 value={String(settings.homing_mode || 0)}
                 onValueChange={(value) =>
@@ -1131,7 +1131,7 @@ export function SettingsPage() {
             {/* Sensor Offset (only visible for sensor mode) */}
             {settings.homing_mode === 1 && (
               <div className="space-y-3">
-                <Label htmlFor="angular-offset">Sensor Offset (degrees)</Label>
+                <Label htmlFor="angular-offset">Sensör Ofseti (derece)</Label>
                 <Input
                   id="angular-offset"
                   type="number"
@@ -1175,7 +1175,7 @@ export function SettingsPage() {
 
               {settings.auto_home_enabled && (
                 <div className="space-y-3">
-                  <Label htmlFor="auto-home-patterns">Home after every X patterns</Label>
+                  <Label htmlFor="auto-home-patterns">Her X desenden sonra eve dön</Label>
                   <Input
                     id="auto-home-patterns"
                     type="number"
@@ -1244,7 +1244,7 @@ export function SettingsPage() {
                 tune
               </span>
               <div className="text-left">
-                <div className="font-semibold">Application Settings</div>
+                <div className="font-semibold">Uygulama Ayarları</div>
                 <div className="text-sm text-muted-foreground font-normal">
                   Customize app name and branding
                 </div>
@@ -1260,7 +1260,7 @@ export function SettingsPage() {
                   <SelectValue placeholder="Select Language" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="en">English</SelectItem>
+                  <SelectItem value="en">İngilizce</SelectItem>
                   <SelectItem value="tr">Türkçe</SelectItem>
                 </SelectContent>
               </Select>
@@ -1285,20 +1285,20 @@ export function SettingsPage() {
 
             {/* Custom Logo */}
             <div className="space-y-3">
-              <Label>Custom Logo</Label>
+              <Label>Özel Logo</Label>
               <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-lg border">
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 rounded-full overflow-hidden border bg-background flex items-center justify-center shrink-0">
                     {settings.custom_logo ? (
                       <img
                         src={apiClient.getAssetUrl(`/static/custom/${settings.custom_logo}`)}
-                        alt="Custom Logo"
+                        alt="Özel Logo"
                         className="w-full h-full object-cover"
                       />
                     ) : (
                       <img
                         src={apiClient.getAssetUrl('/static/android-chrome-192x192.png')}
-                        alt="Default Logo"
+                        alt="Varsayılan Logo"
                         className="w-full h-full object-cover"
                       />
                     )}
@@ -1356,7 +1356,7 @@ export function SettingsPage() {
 
             {/* App Name */}
             <div className="space-y-3">
-              <Label htmlFor="appName">Application Name</Label>
+              <Label htmlFor="appName">Uygulama Adı</Label>
               <div className="flex gap-3">
                 <div className="relative flex-1">
                   <Input
@@ -1423,7 +1423,7 @@ export function SettingsPage() {
                 Set a custom speed for clearing patterns. Leave empty to use the default pattern speed.
               </p>
               <div className="space-y-3">
-                <Label htmlFor="clear-speed">Speed (steps per minute)</Label>
+                <Label htmlFor="clear-speed">Hız (dakika başına adım)</Label>
                 <Input
                   id="clear-speed"
                   type="number"
@@ -1451,7 +1451,7 @@ export function SettingsPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-3">
-                  <Label htmlFor="clear-from-in">Clear From Center Pattern</Label>
+                  <Label htmlFor="clear-from-in">Merkezden Temizleme Deseni</Label>
                   <SearchableSelect
                     value={settings.custom_clear_from_in || '__default__'}
                     onValueChange={(value) =>
@@ -1463,7 +1463,7 @@ export function SettingsPage() {
                     ]}
                     placeholder="Default (built-in)"
                     searchPlaceholder="Search patterns..."
-                    emptyMessage="No patterns found"
+                    emptyMessage="Desen bulunamadı"
                   />
                   <p className="text-xs text-muted-foreground">
                     Pattern used when clearing from center outward.
@@ -1471,7 +1471,7 @@ export function SettingsPage() {
                 </div>
 
                 <div className="space-y-3">
-                  <Label htmlFor="clear-from-out">Clear From Perimeter Pattern</Label>
+                  <Label htmlFor="clear-from-out">Çevreden Temizleme Deseni</Label>
                   <SearchableSelect
                     value={settings.custom_clear_from_out || '__default__'}
                     onValueChange={(value) =>
@@ -1483,7 +1483,7 @@ export function SettingsPage() {
                     ]}
                     placeholder="Default (built-in)"
                     searchPlaceholder="Search patterns..."
-                    emptyMessage="No patterns found"
+                    emptyMessage="Desen bulunamadı"
                   />
                   <p className="text-xs text-muted-foreground">
                     Pattern used when clearing from perimeter inward.
@@ -1525,7 +1525,7 @@ export function SettingsPage() {
           <AccordionContent className="pt-4 pb-6 space-y-6">
             {/* LED Provider Selection */}
             <div className="space-y-3">
-              <Label>LED Provider</Label>
+              <Label>LED Sağlayıcı</Label>
               <RadioGroup
                 value={ledConfig.provider}
                 onValueChange={(value) =>
@@ -1551,7 +1551,7 @@ export function SettingsPage() {
             {/* WLED Config */}
             {ledConfig.provider === 'wled' && (
               <div className="space-y-3 p-4 rounded-lg border">
-                <Label htmlFor="wledIp">WLED IP Address</Label>
+                <Label htmlFor="wledIp">WLED IP Adresi</Label>
                 <Input
                   id="wledIp"
                   value={ledConfig.wled_ip || ''}
@@ -1578,7 +1578,7 @@ export function SettingsPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-3">
-                    <Label htmlFor="numLeds">Number of LEDs</Label>
+                    <Label htmlFor="numLeds">LED Sayısı</Label>
                     <Input
                       id="numLeds"
                       type="text"
@@ -1624,7 +1624,7 @@ export function SettingsPage() {
                 </div>
 
                 <div className="space-y-3">
-                  <Label htmlFor="pixelOrder">Pixel Color Order</Label>
+                  <Label htmlFor="pixelOrder">Piksel Renk Sırası</Label>
                   <Select
                     value={ledConfig.pixel_order || 'RGB'}
                     onValueChange={(value) =>
@@ -1689,7 +1689,7 @@ export function SettingsPage() {
             {/* Enable Toggle */}
             <div className="flex items-center justify-between p-4 rounded-lg border">
               <div>
-                <p className="font-medium">Enable MQTT</p>
+                <p className="font-medium">MQTT'yi Etkinleştir</p>
                 <p className="text-sm text-muted-foreground">
                   Connect to Home Assistant via MQTT
                 </p>
@@ -1736,7 +1736,7 @@ export function SettingsPage() {
                 {/* Authentication */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-3">
-                    <Label htmlFor="mqttUser">Username</Label>
+                    <Label htmlFor="mqttUser">Kullanıcı Adı</Label>
                     <Input
                       id="mqttUser"
                       value={mqttConfig.username || ''}
@@ -1747,7 +1747,7 @@ export function SettingsPage() {
                     />
                   </div>
                   <div className="space-y-3">
-                    <Label htmlFor="mqttPass">Password</Label>
+                    <Label htmlFor="mqttPass">Şifre</Label>
                     <Input
                       id="mqttPass"
                       type="password"
@@ -1765,7 +1765,7 @@ export function SettingsPage() {
                 {/* Device Settings */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-3">
-                    <Label htmlFor="mqttDeviceName">Device Name</Label>
+                    <Label htmlFor="mqttDeviceName">Cihaz Adı</Label>
                     <Input
                       id="mqttDeviceName"
                       value={mqttConfig.device_name || 'Dune Weaver'}
@@ -1775,7 +1775,7 @@ export function SettingsPage() {
                     />
                   </div>
                   <div className="space-y-3">
-                    <Label htmlFor="mqttDeviceId">Device ID</Label>
+                    <Label htmlFor="mqttDeviceId">Cihaz Kimliği</Label>
                     <Input
                       id="mqttDeviceId"
                       value={mqttConfig.device_id || 'dune_weaver'}
@@ -1861,7 +1861,7 @@ export function SettingsPage() {
             {autoPlaySettings.enabled && (
               <div className="space-y-3 p-4 rounded-lg border">
                 <div className="space-y-3">
-                  <Label>Startup Playlist</Label>
+                  <Label>Başlangıç Çalma Listesi</Label>
                   <Select
                     value={autoPlaySettings.playlist || undefined}
                     onValueChange={(value) =>
@@ -1892,7 +1892,7 @@ export function SettingsPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-3">
-                    <Label>Run Mode</Label>
+                    <Label>Çalışma Modu</Label>
                     <Select
                       value={autoPlaySettings.run_mode}
                       onValueChange={(value) =>
@@ -1906,13 +1906,13 @@ export function SettingsPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="single">Single (play once)</SelectItem>
-                        <SelectItem value="loop">Loop (repeat forever)</SelectItem>
+                        <SelectItem value="single">Tekil (bir kez oynat)</SelectItem>
+                        <SelectItem value="loop">Döngü (sürekli tekrarla)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-3">
-                    <Label>Pause Between Patterns</Label>
+                    <Label>Desenler Arası Bekleme</Label>
                     <div className="flex gap-2">
                       <Input
                         type="text"
@@ -1955,7 +1955,7 @@ export function SettingsPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-3">
-                    <Label>Clear Pattern</Label>
+                    <Label>Temizleme Deseni</Label>
                     <Select
                       value={autoPlaySettings.clear_pattern}
                       onValueChange={(value) =>
@@ -1966,12 +1966,12 @@ export function SettingsPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
-                        <SelectItem value="adaptive">Adaptive</SelectItem>
-                        <SelectItem value="clear_from_in">Clear From Center</SelectItem>
-                        <SelectItem value="clear_from_out">Clear From Perimeter</SelectItem>
-                        <SelectItem value="clear_sideway">Clear Sideways</SelectItem>
-                        <SelectItem value="random">Random</SelectItem>
+                        <SelectItem value="none">Yok</SelectItem>
+                        <SelectItem value="adaptive">Uyarlanabilir</SelectItem>
+                        <SelectItem value="clear_from_in">Merkezden Temizle</SelectItem>
+                        <SelectItem value="clear_from_out">Çevreden Temizle</SelectItem>
+                        <SelectItem value="clear_sideway">Yandan Temizle</SelectItem>
+                        <SelectItem value="random">Rastgele</SelectItem>
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
@@ -2030,7 +2030,7 @@ export function SettingsPage() {
           <AccordionContent className="pt-4 pb-6 space-y-6">
             <div className="flex items-center justify-between p-4 rounded-lg border">
               <div>
-                <p className="font-medium">Enable Still Sands</p>
+                <p className="font-medium">Still Sands'ı Etkinleştir</p>
                 <p className="text-sm text-muted-foreground">
                   Pause the table during specified time periods
                 </p>
@@ -2232,10 +2232,10 @@ export function SettingsPage() {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="daily">Daily</SelectItem>
-                                <SelectItem value="weekdays">Weekdays</SelectItem>
-                                <SelectItem value="weekends">Weekends</SelectItem>
-                                <SelectItem value="custom">Custom</SelectItem>
+                                <SelectItem value="daily">Her Gün</SelectItem>
+                                <SelectItem value="weekdays">Hafta İçi</SelectItem>
+                                <SelectItem value="weekends">Hafta Sonu</SelectItem>
+                                <SelectItem value="custom">Özel</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
@@ -2318,7 +2318,7 @@ export function SettingsPage() {
                 lock
               </span>
               <div className="text-left">
-                <div className="font-semibold">Security</div>
+                <div className="font-semibold">Güvenlik</div>
                 <div className="text-sm text-muted-foreground font-normal">
                   App lock and access control
                 </div>
@@ -2332,7 +2332,7 @@ export function SettingsPage() {
 
             {/* Security Mode */}
             <div className="space-y-3">
-              <Label className="text-sm font-medium">Security Mode</Label>
+              <Label className="text-sm font-medium">Güvenlik Modu</Label>
               <RadioGroup
                 value={securityMode}
                 onValueChange={(value) => {
@@ -2357,7 +2357,7 @@ export function SettingsPage() {
                 <div className="flex items-start gap-3 p-3 rounded-lg border">
                   <RadioGroupItem value="play_only" id="security-play-only" className="mt-0.5" />
                   <div>
-                    <Label htmlFor="security-play-only" className="font-medium cursor-pointer">Play Only</Label>
+                    <Label htmlFor="security-play-only" className="font-medium cursor-pointer">Yalnızca Oynat</Label>
                     <p className="text-sm text-muted-foreground">Anyone can browse and play patterns. Settings require a password.</p>
                   </div>
                 </div>
@@ -2393,7 +2393,7 @@ export function SettingsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="security-password-confirm">Confirm Password</Label>
+                  <Label htmlFor="security-password-confirm">Şifreyi Onayla</Label>
                   <Input
                     id="security-password-confirm"
                     type="password"
@@ -2414,11 +2414,11 @@ export function SettingsPage() {
                 // Validate
                 if (securityMode !== 'off') {
                   if (securityPassword && securityPassword !== securityPasswordConfirm) {
-                    toast.error('Passwords do not match')
+                    toast.error('Şifreler eşleşmiyor')
                     return
                   }
                   if (!hasExistingPassword && !securityPassword) {
-                    toast.error('Please set a password')
+                    toast.error('Lütfen bir şifre belirleyin')
                     return
                   }
                 }
@@ -2431,14 +2431,14 @@ export function SettingsPage() {
                     payload.security.password = securityPassword
                   }
                   await apiClient.patch('/api/settings', payload)
-                  toast.success('Security settings saved')
+                  toast.success('Güvenlik ayarları kaydedildi')
                   setSecurityPassword('')
                   setSecurityPasswordConfirm('')
                   setHasExistingPassword(securityMode !== 'off')
                   // Notify Layout to refetch security state
                   window.dispatchEvent(new CustomEvent('security-updated'))
                 } catch {
-                  toast.error('Failed to save security settings')
+                  toast.error('Güvenlik ayarları kaydedilemedi')
                 } finally {
                   setIsLoading(null)
                 }
@@ -2511,7 +2511,7 @@ export function SettingsPage() {
                 <span className="material-icons text-muted-foreground">terminal</span>
               </div>
               <div className="flex-1">
-                <p className="font-medium">Current Version</p>
+                <p className="font-medium">Mevcut Sürüm</p>
                 <p className="text-sm text-muted-foreground">
                   {versionInfo?.current ? `v${versionInfo.current}` : 'Loading...'}
                 </p>
@@ -2523,7 +2523,7 @@ export function SettingsPage() {
                 <span className="material-icons text-muted-foreground">system_update</span>
               </div>
               <div className="flex-1">
-                <p className="font-medium">Latest Version</p>
+                <p className="font-medium">Son Sürüm</p>
                 <p className={`text-sm ${versionInfo?.update_available ? 'text-green-600 dark:text-green-400 font-medium' : 'text-muted-foreground'}`}>
                   {versionInfo?.latest ? (
                     <a
