@@ -94,7 +94,7 @@ export function TableSelector({ children }: TableSelectorProps) {
     if (!renameTable || !renameValue.trim()) return
 
     await updateTableName(renameTable.id, renameValue.trim())
-    toast.success('Table renamed')
+    toast.success('Masa yeniden adlandırıldı')
     setShowRenameDialog(false)
     setRenameTable(null)
     setRenameValue('')
@@ -246,7 +246,7 @@ export function TableSelector({ children }: TableSelectorProps) {
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Table Manually</DialogTitle>
+            <DialogTitle>Masayı Manuel Ekle</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -286,11 +286,11 @@ export function TableSelector({ children }: TableSelectorProps) {
       <Dialog open={showRenameDialog} onOpenChange={setShowRenameDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Rename Table</DialogTitle>
+            <DialogTitle>Masayı Yeniden Adlandır</DialogTitle>
           </DialogHeader>
           <div className="py-4">
             <Input
-              placeholder="Table name"
+              placeholder="Masa adı"
               value={renameValue}
               onChange={e => setRenameValue(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleRename()}
@@ -301,7 +301,7 @@ export function TableSelector({ children }: TableSelectorProps) {
             <Button variant="secondary" onClick={() => setShowRenameDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleRename}>Save</Button>
+            <Button onClick={handleRename}>Kaydet</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

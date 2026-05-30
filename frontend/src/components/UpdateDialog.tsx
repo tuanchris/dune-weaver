@@ -110,7 +110,7 @@ export function UpdateDialog({ open, onOpenChange, currentVersion, latestVersion
         {state === 'confirming' && (
           <>
             <DialogHeader>
-              <DialogTitle>Update Software</DialogTitle>
+              <DialogTitle>Yazılımı Güncelle</DialogTitle>
               <DialogDescription>
                 Update from v{currentVersion} to v{latestVersion}
               </DialogDescription>
@@ -169,7 +169,7 @@ export function UpdateDialog({ open, onOpenChange, currentVersion, latestVersion
         {state === 'error' && (
           <>
             <DialogHeader>
-              <DialogTitle>Update Failed</DialogTitle>
+              <DialogTitle>Güncelleme Başarısız</DialogTitle>
               <DialogDescription>
                 Something went wrong while starting the update.
               </DialogDescription>

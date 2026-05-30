@@ -357,7 +357,7 @@ export function PlaylistsPage() {
     const name = newPlaylistName.trim()
     try {
       await apiClient.post('/create_playlist', { playlist_name: name, files: [] })
-      toast.success('Playlist created')
+      toast.success('Çalma listesi oluşturuldu')
       setIsCreateModalOpen(false)
       setNewPlaylistName('')
       await fetchPlaylists()
@@ -373,7 +373,7 @@ export function PlaylistsPage() {
 
     try {
       await apiClient.post('/rename_playlist', { old_name: playlistToRename, new_name: newPlaylistName.trim() })
-      toast.success('Playlist renamed')
+      toast.success('Çalma listesi yeniden adlandırıldı')
       setIsRenameModalOpen(false)
       setNewPlaylistName('')
       setPlaylistToRename(null)
@@ -382,7 +382,7 @@ export function PlaylistsPage() {
         setSelectedPlaylist(newPlaylistName.trim())
       }
     } catch (error) {
-      toast.error('Failed to rename playlist')
+      toast.error('Çalma listesi yeniden adlandırılamadı')
     }
   }
 
@@ -391,14 +391,14 @@ export function PlaylistsPage() {
 
     try {
       await apiClient.delete('/delete_playlist', { playlist_name: name })
-      toast.success('Playlist deleted')
+      toast.success('Çalma listesi silindi')
       fetchPlaylists()
       if (selectedPlaylist === name) {
         setSelectedPlaylist(null)
         setPlaylistPatterns([])
       }
     } catch (error) {
-      toast.error('Failed to delete playlist')
+      toast.error('Çalma listesi silinemedi')
     }
   }
 
@@ -411,7 +411,7 @@ export function PlaylistsPage() {
       setPlaylistPatterns(newPatterns)
       toast.success('Pattern removed')
     } catch (error) {
-      toast.error('Failed to remove pattern')
+      toast.error('Desen kaldırılamadı')
     }
   }
 
@@ -741,7 +741,7 @@ export function PlaylistsPage() {
                         <button
                           className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 w-5 h-5 rounded-full bg-destructive hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow-sm z-10"
                           onClick={() => handleRemovePattern(path)}
-                          title="Remove from playlist"
+                          title="Listeden kaldır"
                         >
                           <span className="material-icons" style={{ fontSize: '12px' }}>close</span>
                         </button>
@@ -773,7 +773,7 @@ export function PlaylistsPage() {
                           ? 'text-primary bg-primary/10'
                           : 'text-muted-foreground hover:bg-muted'
                       }`}
-                      title="Shuffle"
+                      title="Karıştır"
                     >
                       <span className="material-icons-outlined text-lg sm:text-xl">shuffle</span>
                     </button>
@@ -812,7 +812,7 @@ export function PlaylistsPage() {
                           setPauseUnit(units[(currentIndex + 1) % units.length])
                         }}
                         className="relative flex items-center justify-center min-w-14 sm:min-w-16 px-1 text-xs sm:text-sm font-bold hover:text-primary transition"
-                        title="Click to change unit"
+                        title="Birimi değiştirmek için tıklayın"
                       >
                         {pauseTime}{pauseUnit === 'sec' ? 's' : pauseUnit === 'min' ? 'm' : 'h'}
                         <span className="material-icons-outlined text-xs opacity-50 scale-75 ml-0.5">swap_vert</span>
@@ -860,7 +860,7 @@ export function PlaylistsPage() {
                   onClick={handleRunPlaylist}
                   disabled={isRunning || playlistPatterns.length === 0}
                   className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground text-primary-foreground shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:scale-105 disabled:shadow-none disabled:hover:scale-100 transition-all duration-200 flex items-center justify-center"
-                  title="Run Playlist"
+                  title="Çalma Listesini Çalıştır"
                 >
                   {isRunning ? (
                     <span className="material-icons-outlined text-xl sm:text-2xl animate-spin">sync</span>
@@ -885,7 +885,7 @@ export function PlaylistsPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="playlistName">Playlist Name</Label>
+              <Label htmlFor="playlistName">Çalma Listesi Adı</Label>
               <Input
                 id="playlistName"
                 value={newPlaylistName}
@@ -919,12 +919,12 @@ export function PlaylistsPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="renamePlaylist">New Name</Label>
+              <Label htmlFor="renamePlaylist">Yeni Ad</Label>
               <Input
                 id="renamePlaylist"
                 value={newPlaylistName}
                 onChange={(e) => setNewPlaylistName(e.target.value)}
-                placeholder="Enter new name"
+                placeholder="Yeni ad girin"
                 onKeyDown={(e) => e.key === 'Enter' && handleRenamePlaylist()}
                 autoFocus
               />
@@ -961,7 +961,7 @@ export function PlaylistsPage() {
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search patterns..."
+                placeholder="Desen ara..."
                 className="pl-10 pr-10 h-10"
               />
               {searchQuery && (

@@ -10,6 +10,7 @@ import {
 import { fuzzyMatch } from '@/lib/utils'
 import { apiClient } from '@/lib/apiClient'
 import { useOnBackendConnected } from '@/hooks/useBackendConnection'
+import { useLanguageStore } from '@/stores/useLanguageStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -61,6 +62,7 @@ const PreviewContext = createContext<PreviewContextType | null>(null)
 
 export function BrowsePage() {
   const { isPlayOnlyActive } = useOutletContext<{ isPlayOnlyActive?: boolean }>() || {}
+  const { t } = useLanguageStore()
 
   // Data state
   const [patterns, setPatterns] = useState<PatternMetadata[]>([])
@@ -214,7 +216,7 @@ export function BrowsePage() {
         newFavorites.delete(path)
         await apiClient.post('/modify_playlist', { playlist_name: 'Favorites', files: Array.from(newFavorites) })
         setFavorites(newFavorites)
-        toast.success('Removed from favorites')
+        toast.success('Favorilerden kaldırıldı')
       } else {
         // Add to favorites - first check if playlist exists
         newFavorites.add(path)
@@ -227,10 +229,10 @@ export function BrowsePage() {
           await apiClient.post('/create_playlist', { playlist_name: 'Favorites', files: [path] })
         }
         setFavorites(newFavorites)
-        toast.success('Added to favorites')
+        toast.success('Favorilere eklendi')
       }
     } catch {
-      toast.error('Failed to update favorites')
+      toast.error('Favoriler güncellenemedi')
     }
   }
 
@@ -277,7 +279,7 @@ export function BrowsePage() {
       }
     } catch (error) {
       console.error('Error fetching patterns:', error)
-      toast.error('Failed to load patterns')
+      toast.error('Desenler yüklenemedi')
     } finally {
       setIsLoading(false)
     }
@@ -350,7 +352,7 @@ export function BrowsePage() {
       setCoordinates(data.coordinates || [])
     } catch (error) {
       console.error('Error fetching coordinates:', error)
-      toast.error('Failed to load pattern coordinates')
+      toast.error('Desen koordinatları yüklenemedi')
     } finally {
       setIsLoadingCoordinates(false)
     }
@@ -724,14 +726,14 @@ export function BrowsePage() {
         file_name: selectedPattern.path,
         pre_execution: preExecution,
       })
-      toast.success(`Running ${selectedPattern.name}`)
+      toast.success(`${selectedPattern.name} çalıştırılıyor`)
       // Close the preview panel and trigger Now Playing bar to open
       setIsPanelOpen(false)
       window.dispatchEvent(new CustomEvent('playback-started'))
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to run pattern'
       if (message.includes('409') || message.includes('already running')) {
-        toast.error('Another pattern is already running')
+        toast.error('Zaten başka bir desen çalışıyor')
       } else {
         toast.error(message)
       }
@@ -744,22 +746,22 @@ export function BrowsePage() {
     if (!selectedPattern) return
 
     if (!selectedPattern.path.startsWith('custom_patterns/')) {
-      toast.error('Only custom patterns can be deleted')
+      toast.error('Yalnızca özel desenler silinebilir')
       return
     }
 
-    if (!confirm(`Delete "${selectedPattern.name}"? This cannot be undone.`)) {
+    if (!confirm(`"${selectedPattern.name}" silinsin mi? Bu işlem geri alınamaz.`)) {
       return
     }
 
     try {
       await apiClient.post('/delete_theta_rho_file', { file_name: selectedPattern.path })
-      toast.success(`Deleted ${selectedPattern.name}`)
+      toast.success(`${selectedPattern.name} silindi`)
       setIsPanelOpen(false)
       setSelectedPattern(null)
       fetchPatterns()
     } catch {
-      toast.error('Failed to delete pattern')
+      toast.error('Desen silinemedi')
     }
   }
 
@@ -771,11 +773,11 @@ export function BrowsePage() {
         pattern: selectedPattern.path,
         position,
       })
-      toast.success(position === 'next' ? 'Playing next' : 'Added to queue')
+      toast.success(position === 'next' ? 'Sırada oynatılacak' : 'Kuyruğa eklendi')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to add to queue'
       if (message.includes('400') || message.includes('No playlist')) {
-        toast.error('No playlist is currently running')
+        toast.error('Şu anda çalışan çalma listesi yok')
       } else {
         toast.error(message)
       }
@@ -811,12 +813,12 @@ export function BrowsePage() {
     if (result.success) {
       setAllCached(true)
       if (result.cached === 0) {
-        toast.success('All patterns are already cached!')
+        toast.success('Tüm desenler zaten önbellekte!')
       } else {
-        toast.success('All pattern previews have been cached!')
+        toast.success('Tüm desen önizlemeleri önbelleğe alındı!')
       }
     } else {
-      toast.error('Failed to cache previews')
+      toast.error('Önizlemeler önbelleğe alınamadı')
     }
 
     setIsCaching(false)
@@ -831,7 +833,7 @@ export function BrowsePage() {
     // Validate all files have .thr extension
     const invalidFiles = Array.from(files).filter(f => !f.name.endsWith('.thr'))
     if (invalidFiles.length > 0) {
-      toast.error(`Invalid file${invalidFiles.length > 1 ? 's' : ''}: ${invalidFiles.map(f => f.name).join(', ')}. Only .thr files are accepted.`)
+      toast.error(`Geçersiz dosya${invalidFiles.length > 1 ? 'lar' : ''}: ${invalidFiles.map(f => f.name).join(', ')}. Yalnızca .thr dosyaları kabul edilir.`)
       return
     }
 
@@ -846,15 +848,15 @@ export function BrowsePage() {
       } catch (error) {
         console.error(`Upload error for ${file.name}:`, error)
         failCount++
-        toast.error(`Failed to upload "${file.name}"`)
+        toast.error(`"${file.name}" yüklenemedi`)
       }
     }
 
     if (successCount > 0) {
       toast.success(
         successCount === 1
-          ? `Pattern "${files[0].name}" uploaded successfully`
-          : `${successCount} pattern${successCount > 1 ? 's' : ''} uploaded successfully`
+          ? `"${files[0].name}" deseni başarıyla yüklendi`
+          : `${successCount} desen başarıyla yüklendi`
       )
       await fetchPatterns()
     }
@@ -893,9 +895,9 @@ export function BrowsePage() {
       {/* Page Header */}
       <div className="flex items-start justify-between gap-4 pl-1">
         <div className="space-y-0.5">
-          <h1 className="text-xl font-semibold tracking-tight">Browse Patterns</h1>
+          <h1 className="text-xl font-semibold tracking-tight">{t('browse.title')}</h1>
           <p className="text-xs text-muted-foreground">
-            {patterns.length} patterns available
+            {patterns.length} {t('browse.patterns_available') || 'patterns available'}
           </p>
         </div>
         {!isPlayOnlyActive && (
@@ -910,7 +912,7 @@ export function BrowsePage() {
             ) : (
               <span className="material-icons-outlined text-lg">add</span>
             )}
-            <span className="hidden sm:inline">Add Pattern</span>
+            <span className="hidden sm:inline">{t('browse.upload')}</span>
           </Button>
         )}
       </div>
@@ -929,7 +931,7 @@ export function BrowsePage() {
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search..."
+              placeholder="Ara..."
               className="pl-9 sm:pl-11 pr-10 h-9 sm:h-11 rounded-full bg-card border-border shadow-sm text-xs sm:text-sm focus:ring-2 focus:ring-ring"
             />
             {searchQuery && (
@@ -953,7 +955,7 @@ export function BrowsePage() {
             <SelectContent>
               {categories.map((cat) => (
                 <SelectItem key={cat} value={cat}>
-                  {cat === 'all' ? 'All' : cat === 'root' ? 'Default' : cat}
+                  {cat === 'all' ? 'Tümü' : cat === 'root' ? 'Varsayılan' : cat}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -971,12 +973,12 @@ export function BrowsePage() {
               <SelectValue placeholder="Sort" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="favorites">Favorites</SelectItem>
-              <SelectItem value="name">Name</SelectItem>
-              <SelectItem value="date">Modified</SelectItem>
-              <SelectItem value="size">Size</SelectItem>
-              <SelectItem value="plays">Most Played</SelectItem>
-              <SelectItem value="last_played">Last Played</SelectItem>
+              <SelectItem value="favorites">Favoriler</SelectItem>
+              <SelectItem value="name">Ad</SelectItem>
+              <SelectItem value="date">Tarih</SelectItem>
+              <SelectItem value="size">Boyut</SelectItem>
+              <SelectItem value="plays">En Çok Oynatılan</SelectItem>
+              <SelectItem value="last_played">Son Oynatılan</SelectItem>
             </SelectContent>
           </Select>
 
@@ -986,7 +988,7 @@ export function BrowsePage() {
             size="icon"
             onClick={() => setSortAsc(!sortAsc)}
             className="shrink-0 h-9 w-9 sm:h-11 sm:w-11 rounded-full bg-card shadow-sm"
-            title={sortAsc ? 'Ascending' : 'Descending'}
+            title={sortAsc ? 'Artan' : 'Azalan'}
           >
             <span className="material-icons-outlined text-lg sm:text-xl">
               {sortAsc ? 'arrow_upward' : 'arrow_downward'}
@@ -1003,7 +1005,7 @@ export function BrowsePage() {
                   ? 'h-9 sm:h-11 w-auto px-3 sm:px-4'
                   : 'h-9 w-9 sm:h-11 sm:w-auto px-0 sm:px-4 justify-center sm:justify-start'
               }`}
-              title="Cache All Previews"
+              title="Tüm Önizlemeleri Önbelleğe Al"
             >
               {isCaching ? (
                 <>
@@ -1013,7 +1015,7 @@ export function BrowsePage() {
               ) : (
                 <>
                   <span className="material-icons-outlined text-lg">cached</span>
-                  <span className="hidden sm:inline text-sm">Cache</span>
+                  <span className="hidden sm:inline text-sm">Önbelleğe Al</span>
                 </>
               )}
             </Button>
@@ -1023,7 +1025,7 @@ export function BrowsePage() {
 
       {(searchQuery || selectedCategory !== 'all') && (
         <p className="text-sm text-muted-foreground">
-          Showing {filteredPatterns.length} of {patterns.length} patterns
+          {filteredPatterns.length} / {patterns.length} desen gösteriliyor
         </p>
       )}
 
@@ -1036,8 +1038,8 @@ export function BrowsePage() {
             </span>
           </div>
           <div className="space-y-1">
-            <h2 className="text-xl font-semibold">No patterns found</h2>
-            <p className="text-muted-foreground">Try adjusting your search or filters</p>
+            <h2 className="text-xl font-semibold">Desen bulunamadı</h2>
+            <p className="text-muted-foreground">Arama veya filtrelerinizi değiştirmeyi deneyin</p>
           </div>
           {(searchQuery || selectedCategory !== 'all') && (
             <Button
@@ -1095,7 +1097,7 @@ export function BrowsePage() {
                       toggleFavorite(selectedPattern.path, e as unknown as React.MouseEvent)
                     }
                   }}
-                  title={favorites.has(selectedPattern.path) ? 'Remove from favorites' : 'Add to favorites'}
+                  title={favorites.has(selectedPattern.path) ? 'Favorilerden kaldır' : 'Favorilere ekle'}
                 >
                   <span className="material-icons" style={{ fontSize: '20px' }}>
                     {favorites.has(selectedPattern.path) ? 'favorite' : 'favorite_border'}
@@ -1134,21 +1136,21 @@ export function BrowsePage() {
                   {/* Hover overlay */}
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/20 rounded-full" />
                 </div>
-                <p className="text-xs text-muted-foreground text-center mt-2">Tap to preview animation</p>
+                <p className="text-xs text-muted-foreground text-center mt-2">Animasyonu önizlemek için dokunun</p>
               </div>
 
               {/* Coordinates */}
               <div className="mb-4 flex justify-between text-sm">
                 <div className="flex items-center gap-2">
                   <span className="material-icons-outlined text-muted-foreground text-base">flag</span>
-                  <span className="text-muted-foreground">First:</span>
+                  <span className="text-muted-foreground">İlk:</span>
                   <span className="font-semibold">
                     {formatCoordinate(previews[selectedPattern.path]?.first_coordinate)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="material-icons-outlined text-muted-foreground text-base">check</span>
-                  <span className="text-muted-foreground">Last:</span>
+                  <span className="text-muted-foreground">Son:</span>
                   <span className="font-semibold">
                     {formatCoordinate(previews[selectedPattern.path]?.last_coordinate)}
                   </span>
@@ -1166,14 +1168,14 @@ export function BrowsePage() {
                         {patternHistory?.actual_time_formatted && (
                           <div className="flex items-center gap-2">
                             <span className="material-icons-outlined text-muted-foreground text-base">schedule</span>
-                            <span className="text-muted-foreground">Last run:</span>
+                            <span className="text-muted-foreground">Son çalıştırma:</span>
                             <span className="font-semibold">{patternHistory.actual_time_formatted}</span>
                           </div>
                         )}
                         {playCount > 0 && (
                           <div className="flex items-center gap-2">
                             <span className="material-icons-outlined text-muted-foreground text-base">play_circle</span>
-                            <span className="text-muted-foreground">Plays:</span>
+                            <span className="text-muted-foreground">Oynatma:</span>
                             <span className="font-semibold">{playCount}</span>
                           </div>
                         )}
@@ -1185,7 +1187,7 @@ export function BrowsePage() {
 
               {/* Clear Options */}
               <div className="mb-6">
-                <Label className="text-sm font-semibold mb-3 block">Clear</Label>
+                <Label className="text-sm font-semibold mb-3 block">Temizle</Label>
                 <div className="grid grid-cols-2 gap-2">
                   {preExecutionOptions.map((option) => (
                     <label
@@ -1331,7 +1333,7 @@ export function BrowsePage() {
               {/* Speed Control */}
               <div>
                 <div className="flex justify-between mb-2">
-                  <Label className="text-sm font-medium">Speed</Label>
+                  <Label className="text-sm font-medium">Hız</Label>
                   <span className="text-sm text-muted-foreground">{speed}x</span>
                 </div>
                 <Slider
@@ -1347,7 +1349,7 @@ export function BrowsePage() {
               {/* Progress Control */}
               <div>
                 <div className="flex justify-between mb-2">
-                  <Label className="text-sm font-medium">Progress</Label>
+                  <Label className="text-sm font-medium">İlerleme</Label>
                   <span className="text-sm text-muted-foreground">{progress.toFixed(0)}%</span>
                 </div>
                 <Slider
@@ -1465,13 +1467,13 @@ function PatternCard({ pattern, isSelected, isFavorite, playTime, playCount, onT
       {(playCount > 0 || playTime) && (
         <div className="flex items-center w-full px-0.5 -mb-1 justify-between">
           {playCount > 0 && (
-            <span className="flex items-center gap-0.5 text-xs text-muted-foreground" title={`Played ${playCount} time${playCount !== 1 ? 's' : ''}`}>
+            <span className="flex items-center gap-0.5 text-xs text-muted-foreground" title={`${playCount} kez oynatıldı`}>
               <span className="material-icons-outlined" style={{ fontSize: '13px' }}>play_circle</span>
               {playCount}x
             </span>
           )}
           {playTime && (
-            <span className="flex items-center gap-0.5 text-xs text-muted-foreground ml-auto" title={`Last run: ${playTime}`}>
+            <span className="flex items-center gap-0.5 text-xs text-muted-foreground ml-auto" title={`Son çalıştırma: ${playTime}`}>
               <span className="material-icons-outlined" style={{ fontSize: '13px' }}>schedule</span>
               {(() => {
                 const colonMatch = playTime.match(/^(?:(\d+):)?(\d+):(\d+)$/)
@@ -1518,7 +1520,7 @@ function PatternCard({ pattern, isSelected, isFavorite, playTime, playCount, onT
               onToggleFavorite(pattern.path, e as unknown as React.MouseEvent)
             }
           }}
-          title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+          title={isFavorite ? 'Favorilerden kaldır' : 'Favorilere ekle'}
         >
           <span className="material-icons" style={{ fontSize: '16px' }}>
             {isFavorite ? 'favorite' : 'favorite_border'}

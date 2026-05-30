@@ -1043,7 +1043,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
 
                       {/* Speed Control */}
                       <div className="flex items-center justify-center gap-2">
-                        <span className="text-sm text-muted-foreground">Speed:</span>
+                        <span className="text-sm text-muted-foreground">Hız:</span>
                         <Input
                           type="number"
                           placeholder={String(status.speed)}
@@ -1088,7 +1088,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                   </>
                 ) : (
                   <div className="flex-1 flex items-center">
-                    <p className="text-lg text-muted-foreground">Not playing</p>
+                    <p className="text-lg text-muted-foreground">Çalmıyor</p>
                   </div>
                 )}
               </div>
@@ -1235,7 +1235,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
 
                 {/* Speed Control */}
                 <div className="flex items-center justify-center gap-2">
-                  <span className="text-sm text-muted-foreground">Speed:</span>
+                  <span className="text-sm text-muted-foreground">Hız:</span>
                   <Input
                     type="number"
                     placeholder={String(status?.speed || 1000)}
@@ -1268,7 +1268,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs text-muted-foreground">Up Next</p>
+                      <p className="text-xs text-muted-foreground">Sıradaki</p>
                       <p className="text-sm font-medium truncate">
                         {formatPatternName(status.playlist.next_file)}
                       </p>
@@ -1321,7 +1321,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                   .filter(({ index }) => index > currentIndex)
 
                 if (upcomingFiles.length === 0) {
-                  return <p className="text-center text-muted-foreground py-8">No upcoming patterns</p>
+                  return <p className="text-center text-muted-foreground py-8">Sıradaki desen yok</p>
                 }
 
                 const firstUpcomingIndex = upcomingFiles[0].index
@@ -1358,7 +1358,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                 )
               })()
             ) : (
-              <p className="text-center text-muted-foreground py-8">No queue</p>
+              <p className="text-center text-muted-foreground py-8">Kuyruk boş</p>
             )}
           </div>
           {status?.playlist && (

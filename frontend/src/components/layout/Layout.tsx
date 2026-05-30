@@ -13,13 +13,15 @@ import { apiClient } from '@/lib/apiClient'
 import ShinyText from '@/components/ShinyText'
 import { useStatusStore } from '@/stores/useStatusStore'
 import { useCacheProgressStore } from '@/stores/useCacheProgressStore'
+import { useLanguageStore } from '@/stores/useLanguageStore'
 
 const navItems = [
-  { path: '/', label: 'Browse', icon: 'grid_view', title: 'Browse Patterns' },
-  { path: '/playlists', label: 'Playlists', icon: 'playlist_play', title: 'Playlists' },
-  { path: '/table-control', label: 'Control', icon: 'tune', title: 'Table Control' },
-  { path: '/led', label: 'LED', icon: 'lightbulb', title: 'LED Control' },
-  { path: '/settings', label: 'Settings', icon: 'settings', title: 'Settings' },
+  { path: '/', label: 'nav.browse', icon: 'grid_view', title: 'nav.browse' },
+  { path: '/playlists', label: 'nav.playlists', icon: 'playlist_play', title: 'nav.playlists' },
+  { path: '/draw', label: 'nav.draw', icon: 'edit', title: 'nav.draw' },
+  { path: '/table-control', label: 'nav.control', icon: 'tune', title: 'nav.control' },
+  { path: '/led', label: 'nav.led', icon: 'lightbulb', title: 'nav.led' },
+  { path: '/settings', label: 'nav.settings', icon: 'settings', title: 'nav.settings' },
 ]
 
 const DEFAULT_APP_NAME = 'Dune Weaver'
@@ -62,6 +64,7 @@ export function Layout() {
 
   // Multi-table context - must be called before any hooks that depend on activeTable
   const { activeTable, tables } = useTable()
+  const { t } = useLanguageStore()
 
   // Use table name as app name when multiple tables exist
   const hasMultipleTables = tables.length > 1
@@ -563,9 +566,9 @@ export function Layout() {
   const copyToClipboard = (text: string) => {
     if (navigator.clipboard && window.isSecureContext) {
       navigator.clipboard.writeText(text).then(() => {
-        toast.success('Logs copied to clipboard')
+        toast.success('Günlükler panoya kopyalandı')
       }).catch(() => {
-        toast.error('Failed to copy logs')
+        toast.error('Günlükler kopyalanamadı')
       })
     } else {
       // Fallback for non-secure contexts (http://)
@@ -577,9 +580,9 @@ export function Layout() {
       textArea.select()
       try {
         document.execCommand('copy')
-        toast.success('Logs copied to clipboard')
+        toast.success('Günlükler panoya kopyalandı')
       } catch {
-        toast.error('Failed to copy logs')
+        toast.error('Günlükler kopyalanamadı')
       }
       document.body.removeChild(textArea)
     }
@@ -600,24 +603,24 @@ export function Layout() {
   }
 
   const handleRestart = async () => {
-    if (!confirm('Are you sure you want to restart Dune Weaver?')) return
+    if (!confirm('Dune Weaver'ı yeniden başlatmak istediğinizden emin misiniz?')) return
 
     try {
       await apiClient.post('/api/system/restart')
-      toast.success('Dune Weaver is restarting...')
+      toast.success('Dune Weaver yeniden başlatılıyor...')
     } catch {
-      toast.error('Failed to restart Dune Weaver')
+      toast.error('Dune Weaver yeniden başlatılamadı')
     }
   }
 
   const handleShutdown = async () => {
-    if (!confirm('Are you sure you want to shutdown the system?')) return
+    if (!confirm('Sistemi kapatmak istediğinizden emin misiniz?')) return
 
     try {
       await apiClient.post('/api/system/shutdown')
-      toast.success('System is shutting down...')
+      toast.success('Sistem kapatılıyor...')
     } catch {
-      toast.error('Failed to shutdown system')
+      toast.error('Sistem kapatılamadı')
     }
   }
 
@@ -643,7 +646,7 @@ export function Layout() {
         toast.error(response.message || 'Recovery failed')
       }
     } catch {
-      toast.error('Failed to recover from sensor homing failure')
+      toast.error('Sensör eve dönüş hatasından kurtarılamadı')
     } finally {
       setIsRecoveringHoming(false)
     }
@@ -707,11 +710,11 @@ export function Layout() {
   useEffect(() => {
     const currentNav = navItems.find((item) => item.path === location.pathname)
     if (currentNav) {
-      document.title = `${currentNav.title} | ${displayName}`
+      document.title = `${t(currentNav.title)} | ${displayName}`
     } else {
       document.title = displayName
     }
-  }, [location.pathname, displayName])
+  }, [location.pathname, displayName, t])
 
   useEffect(() => {
     if (isDark) {
@@ -792,7 +795,7 @@ export function Layout() {
     // If homing, connect to logs WebSocket to stream real logs
     if (isHoming && isBackendConnected) {
       setConnectionLogs([])
-      addLog('INFO', 'Homing started...')
+      addLog('INFO', 'Eve dönüş başladı...')
 
       let shouldConnect = true
 
@@ -865,14 +868,14 @@ export function Layout() {
     // If backend disconnected, show connection retry logs
     if (!isBackendConnected) {
       setConnectionLogs([])
-      addLog('INFO', `Attempting to connect to backend at ${window.location.host}...`)
+      addLog('INFO', `${window.location.host} adresindeki arkuca bağlanılmaya çalışılıyor...`)
 
       const interval = setInterval(() => {
-        addLog('INFO', `Retrying connection to WebSocket /ws/status...`)
+        addLog('INFO', `WebSocket /ws/status bağlantısı yeniden deneniyor...`)
 
         apiClient.get('/api/settings')
           .then(() => {
-            addLog('INFO', 'HTTP endpoint responding, waiting for WebSocket...')
+            addLog('INFO', 'HTTP uç noktası yanıt veriyor, WebSocket bekleniyor...')
           })
           .catch(() => {
             // Still down
@@ -910,13 +913,13 @@ export function Layout() {
     if (!cacheProgress) return ''
     switch (cacheProgress.stage) {
       case 'starting':
-        return 'Initializing...'
+        return 'Başlatılıyor...'
       case 'metadata':
-        return 'Processing pattern metadata'
+        return 'Desen meta verileri işleniyor'
       case 'images':
-        return 'Generating pattern previews'
+        return 'Desen önizlemeleri oluşturuluyor'
       default:
-        return 'Processing...'
+        return 'İşleniyor...'
     }
   }
 
@@ -932,7 +935,7 @@ export function Layout() {
       if (result.cached === 0) {
         toast.success('All patterns are already cached!')
       } else {
-        toast.success(`Cached ${result.cached} pattern previews`)
+        toast.success(`${result.cached} desen önizlemesi önbelleğe alındı`)
       }
     } else {
       setCacheAllProgress(null)
@@ -1088,19 +1091,19 @@ export function Layout() {
               <span className="material-icons-outlined text-4xl text-primary">lock</span>
             </div>
             <h2 className="text-2xl font-bold">{displayName}</h2>
-            <p className="text-muted-foreground">This table is locked. Enter the password to continue.</p>
+            <p className="text-muted-foreground">Bu masa kilitli. Devam etmek için şifreyi girin.</p>
             <form onSubmit={handlePasswordSubmit} className="space-y-3">
               <Input
                 type="password"
-                placeholder="Password"
+                placeholder="Şifre"
                 value={passwordInput}
                 onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(false) }}
                 autoFocus
               />
               {passwordError && (
-                <p className="text-sm text-destructive">Incorrect password</p>
+                <p className="text-sm text-destructive">Hatalı şifre</p>
               )}
-              <Button type="submit" className="w-full">Unlock</Button>
+              <Button type="submit" className="w-full">Kilidi Aç</Button>
             </form>
           </div>
         </div>
@@ -1115,19 +1118,19 @@ export function Layout() {
                 <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-2">
                   <span className="material-icons-outlined text-2xl text-primary">lock</span>
                 </div>
-                <h3 className="text-lg font-semibold">Settings Locked</h3>
-                <p className="text-sm text-muted-foreground">Enter the password to access settings.</p>
+                <h3 className="text-lg font-semibold">Ayarlar Kilitli</h3>
+                <p className="text-sm text-muted-foreground">Ayarlara erişmek için şifreyi girin.</p>
               </div>
               <form onSubmit={handlePasswordSubmit} className="space-y-3">
                 <Input
                   type="password"
-                  placeholder="Password"
+                  placeholder="Şifre"
                   value={passwordInput}
                   onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(false) }}
                   autoFocus
                 />
                 {passwordError && (
-                  <p className="text-sm text-destructive">Incorrect password</p>
+                  <p className="text-sm text-destructive">Hatalı şifre</p>
                 )}
                 <div className="flex gap-2">
                   <Button
@@ -1138,7 +1141,7 @@ export function Layout() {
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" className="flex-1">Unlock</Button>
+                  <Button type="submit" className="flex-1">Kilidi Aç</Button>
                 </div>
               </form>
             </div>
@@ -1157,7 +1160,7 @@ export function Layout() {
                     error_outline
                   </span>
                 </div>
-                <h2 className="text-xl font-semibold">Sensor Homing Failed</h2>
+                <h2 className="text-xl font-semibold">Sensör Eve Dönüşü Başarısız</h2>
                 <p className="text-muted-foreground text-sm">
                   The sensor homing process could not complete. The limit sensors may not be positioned correctly or may be malfunctioning.
                 </p>
@@ -1167,10 +1170,10 @@ export function Layout() {
                     Troubleshooting steps:
                   </p>
                   <ul className="text-amber-600 dark:text-amber-400 space-y-1 list-disc list-inside">
-                    <li>Check that the limit sensors are properly connected</li>
-                    <li>Verify the sensor positions are correct</li>
-                    <li>Ensure nothing is blocking the sensor path</li>
-                    <li>Check for loose wiring connections</li>
+                    <li>Limit sensörlerin düzgün bağlandığını kontrol edin</li>
+                    <li>Sensör konumlarının doğru olduğunu doğrulayın</li>
+                    <li>Sensör yolunu hiçbir şeyin engellemediğinden emin olun</li>
+                    <li>Gevşek kablo bağlantılarını kontrol edin</li>
                   </ul>
                 </div>
 
@@ -1203,7 +1206,7 @@ export function Layout() {
                 ) : (
                   <div className="flex items-center justify-center gap-2 py-4">
                     <span className="material-icons-outlined text-primary animate-spin">sync</span>
-                    <span className="text-muted-foreground">Attempting recovery...</span>
+                    <span className="text-muted-foreground">Kurtarma deneniyor...</span>
                   </div>
                 )}
               </div>
@@ -1222,7 +1225,7 @@ export function Layout() {
                   cached
                 </span>
               </div>
-              <h2 className="text-2xl font-bold">Initializing Pattern Cache</h2>
+              <h2 className="text-2xl font-bold">Desen Önbelleği Başlatılıyor</h2>
               <p className="text-muted-foreground">
                 Preparing your pattern previews...
               </p>
@@ -1273,7 +1276,7 @@ export function Layout() {
                     download_for_offline
                   </span>
                 </div>
-                <h2 className="text-xl font-semibold">Cache All Pattern Previews?</h2>
+                <h2 className="text-xl font-semibold">Tüm Desen Önizlemeleri Önbelleğe Alınsın mı?</h2>
                 <p className="text-muted-foreground text-sm">
                   Would you like to cache all pattern previews for faster browsing? This will download and store preview images in your browser for instant loading.
                 </p>
@@ -1320,7 +1323,7 @@ export function Layout() {
                   <div className="space-y-4">
                     <p className="text-green-600 dark:text-green-400 flex items-center justify-center gap-2">
                       <span className="material-icons text-base">check_circle</span>
-                      All {cacheAllProgress.total} previews cached successfully!
+                      {cacheAllProgress.total} önizlemenin tümü başarıyla önbelleğe alındı!
                     </p>
                     <Button onClick={handleCloseCacheAllDone} className="w-full">
                       Done
@@ -1368,12 +1371,12 @@ export function Layout() {
               </h2>
               <p className="text-muted-foreground">
                 {homingJustCompleted
-                  ? 'Table is ready to use'
+                  ? 'Masa kullanıma hazır'
                   : isHoming
-                    ? 'Moving to home position... This may take up to 90 seconds.'
+                    ? 'Başlangıç konumuna taşınıyor... Bu 90 saniyeye kadar sürebilir.'
                     : connectionAttempts === 0
-                      ? 'Establishing connection...'
-                      : `Reconnecting... (attempt ${connectionAttempts})`
+                      ? 'Bağlantı kuruluyor...'
+                      : `Yeniden bağlanıyor... (deneme ${connectionAttempts})`
                 }
               </p>
               <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -1387,11 +1390,11 @@ export function Layout() {
                 <span>
                   {homingJustCompleted
                     ? keepHomingLogsOpen
-                      ? 'Viewing logs'
-                      : `Closing in ${homingCountdown}s...`
+                      ? 'Günlükler görüntüleniyor'
+                      : `${homingCountdown}s sonra kapanıyor...`
                     : isHoming
-                      ? 'Do not interrupt the homing process'
-                      : `Waiting for server at ${window.location.host}`
+                      ? 'Eve dönüş işlemini kesmeyin'
+                      : `${window.location.host} adresindeki sunucu bekleniyor`
                   }
                 </span>
               </div>
@@ -1403,7 +1406,7 @@ export function Layout() {
                 <div className="flex items-center gap-2">
                   <span className="material-icons-outlined text-base">terminal</span>
                   <span className="text-sm font-medium">
-                    {isHoming || homingJustCompleted ? 'Homing Log' : 'Connection Log'}
+                    {isHoming || homingJustCompleted ? 'Eve Dönüş Günlüğü' : 'Bağlantı Günlüğü'}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1415,13 +1418,13 @@ export function Layout() {
                       copyToClipboard(logText)
                     }}
                     className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
-                    title="Copy logs to clipboard"
+                    title="Günlükleri panoya kopyala"
                   >
                     <span className="material-icons text-sm">content_copy</span>
                     Copy
                   </button>
                   <span className="text-xs text-muted-foreground">
-                    {connectionLogs.length} entries
+                    {connectionLogs.length} kayıt
                   </span>
                 </div>
               </div>
@@ -1505,8 +1508,8 @@ export function Layout() {
             {!homingJustCompleted && (
               <p className="text-center text-xs text-muted-foreground">
                 {isHoming
-                  ? 'Homing will continue in the background'
-                  : 'Make sure the backend server is running on port 8080'
+                  ? 'Eve dönüş arka planda devam edecek'
+                  : 'Arkauç sunucusunun 8080 portunda çalıştığından emin olun'
                 }
               </p>
             )}
@@ -1600,7 +1603,7 @@ export function Layout() {
                   variant="ghost"
                   size="icon"
                   className="rounded-full"
-                  aria-label="Open menu"
+                  aria-label="Menüyü aç"
                 >
                   <span className="material-icons-outlined">menu</span>
                 </Button>
@@ -1614,7 +1617,7 @@ export function Layout() {
                     <span className="material-icons-outlined text-xl">
                       {isDark ? 'light_mode' : 'dark_mode'}
                     </span>
-                    {isDark ? 'Light Mode' : 'Dark Mode'}
+                    {isDark ? 'Açık Mod' : 'Koyu Mod'}
                   </button>
                   <button
                     onClick={handleToggleLogs}
@@ -1680,7 +1683,7 @@ export function Layout() {
                   variant="ghost"
                   size="icon"
                   className="rounded-full"
-                  aria-label="Open menu"
+                  aria-label="Menüyü aç"
                 >
                   <span className="material-icons-outlined">
                     {isMobileMenuOpen ? 'close' : 'menu'}
@@ -1699,7 +1702,7 @@ export function Layout() {
                     <span className="material-icons-outlined text-xl">
                       {isDark ? 'light_mode' : 'dark_mode'}
                     </span>
-                    {isDark ? 'Light Mode' : 'Dark Mode'}
+                    {isDark ? 'Açık Mod' : 'Koyu Mod'}
                   </button>
                   <button
                     onClick={() => {
@@ -1802,33 +1805,33 @@ export function Layout() {
             {/* Logs Header */}
             <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/50 gap-2">
               <div className="flex items-center gap-2 sm:gap-3 flex-wrap min-w-0">
-                <span className="text-sm font-medium whitespace-nowrap">Application Logs</span>
+                <span className="text-sm font-medium whitespace-nowrap">Uygulama Günlükleri</span>
                 <select
                   value={logLevelFilter}
                   onChange={(e) => setLogLevelFilter(e.target.value)}
                   className="text-xs bg-background border rounded px-2 py-1"
                 >
-                  <option value="ALL">All Levels</option>
-                  <option value="DEBUG">Debug</option>
-                  <option value="INFO">Info</option>
-                  <option value="WARNING">Warning</option>
-                  <option value="ERROR">Error</option>
+                  <option value="ALL">Tüm Seviyeler</option>
+                  <option value="DEBUG">Hata Ayıklama</option>
+                  <option value="INFO">Bilgi</option>
+                  <option value="WARNING">Uyarı</option>
+                  <option value="ERROR">Hata</option>
                 </select>
                 <input
                   type="text"
                   value={logSearchQuery}
                   onChange={(e) => setLogSearchQuery(e.target.value)}
-                  placeholder="Search logs..."
+                  placeholder="Günlüklerde ara..."
                   className="text-xs bg-background border rounded px-2 py-1 w-28 sm:w-40"
                 />
                 {logSearchQuery && (
-                  <Button variant="ghost" size="icon-sm" onClick={() => setLogSearchQuery('')} className="rounded-full" title="Clear search">
+                  <Button variant="ghost" size="icon-sm" onClick={() => setLogSearchQuery('')} className="rounded-full" title="Aramayı temizle">
                     <span className="material-icons-outlined text-sm">close</span>
                   </Button>
                 )}
                 <span className="text-xs text-muted-foreground">
                   {filteredLogs.length}{logsTotal > 0 ? ` of ${logsTotal}` : ''} entries
-                  {logsHasMore && <span className="text-primary ml-1">↑ scroll for more</span>}
+                  {logsHasMore && <span className="text-primary ml-1">↑ daha fazlası için kaydır</span>}
                 </span>
               </div>
 
@@ -1838,7 +1841,7 @@ export function Layout() {
                   size="icon-sm"
                   onClick={handleCopyLogs}
                   className="rounded-full"
-                  title="Copy logs"
+                  title="Günlükleri kopyala"
                 >
                   <span className="material-icons-outlined text-base">content_copy</span>
                 </Button>
@@ -1847,7 +1850,7 @@ export function Layout() {
                   size="icon-sm"
                   onClick={handleDownloadLogs}
                   className="rounded-full"
-                  title="Download logs"
+                  title="Günlükleri indir"
                 >
                   <span className="material-icons-outlined text-base">download</span>
                 </Button>
@@ -1856,7 +1859,7 @@ export function Layout() {
                   size="icon-sm"
                   onClick={() => setIsLogsOpen(false)}
                   className="rounded-full"
-                  title="Close"
+                  title="Kapat"
                 >
                   <span className="material-icons-outlined text-base">close</span>
                 </Button>
@@ -1872,7 +1875,7 @@ export function Layout() {
               {isLoadingMoreLogs && (
                 <div className="flex items-center justify-center gap-2 py-2 text-muted-foreground">
                   <span className="material-icons-outlined text-sm animate-spin">sync</span>
-                  <span>Loading older logs...</span>
+                  <span>Eski günlükler yükleniyor...</span>
                 </div>
               )}
               {/* Load more hint */}
@@ -1899,7 +1902,7 @@ export function Layout() {
                   </div>
                 ))
               ) : (
-                <p className="text-muted-foreground text-center py-4">No logs available</p>
+                <p className="text-muted-foreground text-center py-4">Günlük kaydı yok</p>
               )}
             </div>
           </>
@@ -1938,13 +1941,13 @@ export function Layout() {
               : 'cursor-grab transition-all duration-300 hover:shadow-xl hover:scale-105 active:scale-95'
           }`}
           style={getButtonPositionStyle()}
-          aria-label={isCurrentlyPlaying ? 'Now Playing' : 'Not Playing'}
+          aria-label={isCurrentlyPlaying ? 'Şu An Çalıyor' : 'Çalmıyor'}
         >
           <span className={`material-icons-outlined text-xl ${isCurrentlyPlaying ? 'text-primary' : 'text-muted-foreground'}`}>
             {isCurrentlyPlaying ? 'play_circle' : 'stop_circle'}
           </span>
           <span className="text-sm font-medium">
-            {isCurrentlyPlaying ? 'Now Playing' : 'Not Playing'}
+            {isCurrentlyPlaying ? 'Şu An Çalıyor' : 'Çalmıyor'}
           </span>
         </button>
       )}
@@ -1971,7 +1974,7 @@ export function Layout() {
                 <span className={`text-xl ${isActive ? 'material-icons' : 'material-icons-outlined'}`}>
                   {item.icon}
                 </span>
-                <span className="text-xs font-medium">{item.label}</span>
+                <span className="text-xs font-medium">{t(item.label)}</span>
               </Link>
             )
           })}
@@ -1982,7 +1985,7 @@ export function Layout() {
               className="relative flex flex-col items-center justify-center gap-1 transition-all duration-200 text-muted-foreground hover:text-foreground active:scale-95"
             >
               <span className="material-icons-outlined text-xl">lock</span>
-              <span className="text-xs font-medium">Settings</span>
+              <span className="text-xs font-medium">{t('nav.settings')}</span>
             </button>
           )}
         </div>
