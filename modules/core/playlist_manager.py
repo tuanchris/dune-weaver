@@ -138,7 +138,7 @@ async def cancel_current_playlist():
             logger.warning(f"Error while cancelling playlist task: {e}")
         _current_playlist_task = None
 
-async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
+async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False, pause_from_start=False):
     """Run a playlist with the given options."""
     global _current_playlist_task
 
@@ -178,6 +178,7 @@ async def run_playlist(playlist_name, pause_time=0, clear_pattern=None, run_mode
                 clear_pattern=clear_pattern,
                 run_mode=run_mode,
                 shuffle=shuffle,
+                pause_from_start=pause_from_start,
             )
         )
         return True, f"Playlist '{playlist_name}' is now running."

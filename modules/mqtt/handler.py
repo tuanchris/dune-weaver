@@ -399,18 +399,20 @@ class MQTTHandler(BaseMQTTHandler):
             }
             self._publish_discovery("number", "led_intensity", led_intensity_config)
 
-            # LED RGB Color Control
+            # LED RGB Color Control (HA MQTT Light, JSON schema).
+            # Color support must be declared via supported_color_modes;
+            # the legacy "rgb" flag and the basic-schema rgb_*_topic keys
+            # are ignored by the JSON schema and HA would register a plain
+            # on/off light without a color picker.
             led_color_config = {
                 "name": f"{self.device_name} LED Color",
                 "unique_id": f"{self.device_id}_led_color",
                 "command_topic": self.led_color_topic,
                 "state_topic": f"{self.device_id}/led/color/state",
-                "rgb_command_topic": self.led_color_topic,
-                "rgb_state_topic": f"{self.device_id}/led/color/state",
                 "device": base_device,
                 "icon": "mdi:palette-swatch",
                 "schema": "json",
-                "rgb": True
+                "supported_color_modes": ["rgb"]
             }
             self._publish_discovery("light", "led_color", led_color_config)
 
@@ -582,7 +584,7 @@ class MQTTHandler(BaseMQTTHandler):
             if "intensity" in status:
                 self.client.publish(f"{self.device_id}/led/intensity/state", status["intensity"], retain=True)
 
-            # Publish color (RGB)
+            # Publish color light state (HA JSON light schema)
             if "colors" in status and len(status["colors"]) > 0:
                 # colors is array of hex strings like ["#ff0000", "#00ff00", "#0000ff"]
                 # Convert first color to RGB dict
@@ -591,8 +593,13 @@ class MQTTHandler(BaseMQTTHandler):
                     r = int(color_hex[1:3], 16)
                     g = int(color_hex[3:5], 16)
                     b = int(color_hex[5:7], 16)
+                    light_state = {
+                        "state": "ON" if is_powered else "OFF",
+                        "color_mode": "rgb",
+                        "color": {"r": r, "g": g, "b": b}
+                    }
                     self.client.publish(f"{self.device_id}/led/color/state",
-                                      json.dumps({"r": r, "g": g, "b": b}), retain=True)
+                                      json.dumps(light_state), retain=True)
 
         except Exception as e:
             logger.error(f"Error publishing LED state: {e}")
@@ -843,16 +850,30 @@ class MQTTHandler(BaseMQTTHandler):
                         controller.set_intensity(intensity)
                         self.client.publish(f"{self.device_id}/led/intensity/state", intensity, retain=True)
             elif msg.topic == self.led_color_topic:
-                # Handle LED color command (RGB) (DW LEDs only)
+                # Handle LED color light command (HA JSON light schema) (DW LEDs only)
+                # HA sends e.g. {"state": "ON", "color": {"r": 255, "g": 0, "b": 0}}
                 try:
                     color_data = json.loads(msg.payload.decode())
-                    if state.led_controller and state.led_provider == "dw_leds" and 'r' in color_data and 'g' in color_data and 'b' in color_data:
-                        controller = state.led_controller.get_controller()
-                        if controller and hasattr(controller, 'set_color'):
-                            r, g, b = color_data['r'], color_data['g'], color_data['b']
-                            controller.set_color(r, g, b)
-                            self.client.publish(f"{self.device_id}/led/color/state",
-                                              json.dumps({"r": r, "g": g, "b": b}), retain=True)
+                    if state.led_controller and state.led_provider == "dw_leds":
+                        light_on = color_data.get('state', 'ON') == 'ON'
+                        state.led_controller.set_power(1 if light_on else 0)
+                        if light_on and state.dw_led_idle_timeout_enabled:
+                            state.dw_led_last_activity_time = time.time()
+                        # Accept nested JSON-schema color; fall back to legacy
+                        # top-level {"r","g","b"} for existing automations
+                        color = color_data.get('color')
+                        if color is None and all(k in color_data for k in ('r', 'g', 'b')):
+                            color = color_data
+                        light_state = {"state": "ON" if light_on else "OFF"}
+                        if light_on and color and all(k in color for k in ('r', 'g', 'b')):
+                            controller = state.led_controller.get_controller()
+                            if controller and hasattr(controller, 'set_color'):
+                                r, g, b = color['r'], color['g'], color['b']
+                                controller.set_color(r, g, b)
+                                light_state["color_mode"] = "rgb"
+                                light_state["color"] = {"r": r, "g": g, "b": b}
+                        self.client.publish(f"{self.device_id}/led/color/state",
+                                          json.dumps(light_state), retain=True)
                 except json.JSONDecodeError:
                     logger.error(f"Invalid JSON for color command: {msg.payload}")
             elif msg.topic == self.screen_power_topic:

@@ -20,6 +20,7 @@ aiofiles>=23.1.0
 python-multipart>=0.0.6
 websockets>=11.0.3  # Required for FastAPI WebSocket support
 requests>=2.31.0
+pyyaml>=6.0  # Required for FluidNC config parsing
 Pillow
 aiohttp
 zeroconf>=0.131.0  

@@ -163,6 +163,10 @@ class AppState:
         self.scheduled_pause_finish_pattern = False  # Finish current pattern before pausing
         self.scheduled_pause_timezone = None  # User-selected timezone (None = use system timezone)
 
+        # Scheduled reboot settings (reboots the host board, e.g. Raspberry Pi)
+        self.scheduled_reboot_enabled = False
+        self.scheduled_reboot_time = "03:00"  # HH:MM, uses Still Sands timezone setting
+
         # Server port setting (requires restart to take effect)
         self.server_port = 8080  # Default server port
 
@@ -536,6 +540,8 @@ class AppState:
             "scheduled_pause_control_wled": self.scheduled_pause_control_wled,
             "scheduled_pause_finish_pattern": self.scheduled_pause_finish_pattern,
             "scheduled_pause_timezone": self.scheduled_pause_timezone,
+            "scheduled_reboot_enabled": self.scheduled_reboot_enabled,
+            "scheduled_reboot_time": self.scheduled_reboot_time,
             "server_port": self.server_port,
             "timezone": self.timezone,
             "mqtt_enabled": self.mqtt_enabled,
@@ -657,6 +663,8 @@ class AppState:
         self.scheduled_pause_control_wled = data.get("scheduled_pause_control_wled", False)
         self.scheduled_pause_finish_pattern = data.get("scheduled_pause_finish_pattern", False)
         self.scheduled_pause_timezone = data.get("scheduled_pause_timezone", None)
+        self.scheduled_reboot_enabled = data.get("scheduled_reboot_enabled", False)
+        self.scheduled_reboot_time = data.get("scheduled_reboot_time", "03:00")
         self.server_port = data.get("server_port", 8080)
         self.timezone = data.get("timezone", "UTC")
         self.mqtt_enabled = data.get("mqtt_enabled", False)

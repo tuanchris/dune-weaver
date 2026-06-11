@@ -345,6 +345,54 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(still_sands_led_monitor())
 
+    # Start scheduled reboot monitor
+    async def scheduled_reboot_monitor():
+        """Reboot the host board daily at the configured time.
+
+        Uses the Still Sands timezone setting so all schedules share one clock.
+        Triggers at most once per day. If a pattern is drawing at the scheduled
+        time, the reboot is deferred until the table is idle (e.g. the gap
+        between playlist patterns) rather than interrupting it mid-move.
+        """
+        import shutil
+        from modules.core.pattern_manager import _get_timezone
+
+        last_trigger_date = None
+        reboot_pending = False
+        while True:
+            try:
+                await asyncio.sleep(30)
+
+                if not state.scheduled_reboot_enabled:
+                    reboot_pending = False
+                    continue
+
+                tz_info = _get_timezone()
+                now = datetime.now(tz_info) if tz_info else datetime.now()
+
+                if not reboot_pending:
+                    if now.strftime("%H:%M") != state.scheduled_reboot_time:
+                        continue
+                    if last_trigger_date == now.date():
+                        continue
+                    last_trigger_date = now.date()
+                    reboot_pending = True
+
+                if state.current_playing_file:
+                    logger.info("Scheduled reboot due, waiting for current pattern to finish")
+                    continue
+
+                reboot_pending = False
+                logger.warning("Scheduled reboot time reached, rebooting host board")
+                state.save()
+                sudo = shutil.which("sudo") or "/usr/bin/sudo"
+                subprocess.Popen([sudo, "reboot"])
+            except Exception as e:
+                logger.error(f"Error in scheduled reboot monitor: {e}")
+                await asyncio.sleep(60)
+
+    asyncio.create_task(scheduled_reboot_monitor())
+
     yield  # This separates startup from shutdown code
 
     # Shutdown
@@ -418,6 +466,10 @@ class PlaylistRequest(BaseModel):
     clear_pattern: Optional[str] = None
     run_mode: str = "single"
     shuffle: bool = False
+    # When True, pause_time is measured from the START of each pattern
+    # rather than waited after it ends. Used by the "N times per day"
+    # cadence option in the UI.
+    pause_from_start: bool = False
 
 class PlaylistRunRequest(BaseModel):
     playlist_name: str
@@ -488,6 +540,10 @@ class ScheduledPauseSettingsUpdate(BaseModel):
     timezone: Optional[str] = None  # IANA timezone (e.g., "America/New_York") or None for system default
     time_slots: Optional[List[TimeSlot]] = None
 
+class ScheduledRebootSettingsUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    time: Optional[str] = None  # HH:MM, interpreted in the Still Sands timezone
+
 class HomingSettingsUpdate(BaseModel):
     mode: Optional[int] = None
     angular_offset_degrees: Optional[float] = None
@@ -544,6 +600,7 @@ class SettingsUpdate(BaseModel):
     patterns: Optional[PatternSettingsUpdate] = None
     auto_play: Optional[AutoPlaySettingsUpdate] = None
     scheduled_pause: Optional[ScheduledPauseSettingsUpdate] = None
+    scheduled_reboot: Optional[ScheduledRebootSettingsUpdate] = None
     homing: Optional[HomingSettingsUpdate] = None
     led: Optional[LedSettingsUpdate] = None
     mqtt: Optional[MqttSettingsUpdate] = None
@@ -761,6 +818,10 @@ async def get_all_settings():
             "timezone": state.scheduled_pause_timezone,
             "time_slots": state.scheduled_pause_time_slots
         },
+        "scheduled_reboot": {
+            "enabled": state.scheduled_reboot_enabled,
+            "time": state.scheduled_reboot_time
+        },
         "homing": {
             "mode": state.homing,
             "user_override": state.homing_user_override,  # True if user explicitly set, False if auto-detected
@@ -955,6 +1016,22 @@ async def update_settings(settings_update: SettingsUpdate):
         if sp.time_slots is not None:
             state.scheduled_pause_time_slots = [slot.model_dump() for slot in sp.time_slots]
         updated_categories.append("scheduled_pause")
+
+    # Scheduled reboot settings
+    if settings_update.scheduled_reboot:
+        sr = settings_update.scheduled_reboot
+        if sr.enabled is not None:
+            state.scheduled_reboot_enabled = sr.enabled
+        if sr.time is not None:
+            try:
+                datetime.strptime(sr.time, "%H:%M")
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid scheduled reboot time. Use HH:MM format."
+                )
+            state.scheduled_reboot_time = sr.time
+        updated_categories.append("scheduled_reboot")
 
     # Homing settings
     if settings_update.homing:
@@ -2557,7 +2634,8 @@ async def run_playlist_endpoint(request: PlaylistRequest):
             pause_time=request.pause_time,
             clear_pattern=request.clear_pattern,
             run_mode=request.run_mode,
-            shuffle=request.shuffle
+            shuffle=request.shuffle,
+            pause_from_start=request.pause_from_start,
         )
         if not success:
             raise HTTPException(status_code=409, detail=message)
@@ -2855,7 +2933,10 @@ async def add_to_queue(request: dict):
         # Add to end
         insert_index = len(playlist)
 
-    playlist.insert(insert_index, pattern)
+    # Insert the joined path — current_playlist entries are THETA_RHO_DIR-joined
+    # paths (see playlist_manager.run_playlist); a bare filename would fail the
+    # existence check at execution time and silently skip the pattern
+    playlist.insert(insert_index, pattern_path)
     state.current_playlist = playlist
 
     return {"success": True, "position": insert_index}

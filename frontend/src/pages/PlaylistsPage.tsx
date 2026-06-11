@@ -102,9 +102,9 @@ export function PlaylistsPage() {
     const cached = localStorage.getItem('playlist-pauseTime')
     return cached ? Number(cached) : 5
   })
-  const [pauseUnit, setPauseUnit] = useState<'sec' | 'min' | 'hr'>(() => {
+  const [pauseUnit, setPauseUnit] = useState<'sec' | 'min' | 'hr' | 'per_day'>(() => {
     const cached = localStorage.getItem('playlist-pauseUnit')
-    return (cached === 'sec' || cached === 'min' || cached === 'hr') ? cached : 'min'
+    return (cached === 'sec' || cached === 'min' || cached === 'hr' || cached === 'per_day') ? cached : 'min'
   })
   const [clearPattern, setClearPattern] = useState<PreExecution>(() => {
     const cached = localStorage.getItem('preExecution')
@@ -168,9 +168,13 @@ export function PlaylistsPage() {
   }, [])
   const [isRunning, setIsRunning] = useState(false)
 
-  // Convert pause time to seconds based on unit
+  // Convert pause time to seconds based on unit.
+  // For 'per_day', value is "plays per day" so the interval between starts
+  // is 86400 / N seconds.
   const getPauseTimeInSeconds = () => {
     switch (pauseUnit) {
+      case 'per_day':
+        return Math.floor(86400 / Math.max(1, pauseTime))
       case 'hr':
         return pauseTime * 3600
       case 'min':
@@ -462,6 +466,7 @@ export function PlaylistsPage() {
         pause_time: getPauseTimeInSeconds(),
         clear_pattern: clearPattern,
         shuffle: shuffle,
+        pause_from_start: pauseUnit === 'per_day',
       })
       toast.success(`Started playlist: ${selectedPlaylist}`)
       // Trigger Now Playing bar to open
@@ -800,21 +805,30 @@ export function PlaylistsPage() {
                         className="w-7 h-7 sm:w-8 sm:h-8"
                         onClick={() => {
                           const step = pauseUnit === 'hr' ? 0.5 : 1
-                          setPauseTime(Math.max(0, pauseTime - step))
+                          // 'per_day' is plays-per-day, so it must stay >= 1.
+                          const min = pauseUnit === 'per_day' ? 1 : 0
+                          setPauseTime(Math.max(min, pauseTime - step))
                         }}
                       >
                         <span className="material-icons-outlined text-sm">remove</span>
                       </Button>
                       <button
                         onClick={() => {
-                          const units: ('sec' | 'min' | 'hr')[] = ['sec', 'min', 'hr']
+                          const units: ('sec' | 'min' | 'hr' | 'per_day')[] = ['sec', 'min', 'hr', 'per_day']
                           const currentIndex = units.indexOf(pauseUnit)
-                          setPauseUnit(units[(currentIndex + 1) % units.length])
+                          const nextUnit = units[(currentIndex + 1) % units.length]
+                          // Switching into per_day with a 0 value would mean "0 plays/day" — bump to 1.
+                          if (nextUnit === 'per_day' && pauseTime < 1) {
+                            setPauseTime(1)
+                          }
+                          setPauseUnit(nextUnit)
                         }}
                         className="relative flex items-center justify-center min-w-14 sm:min-w-16 px-1 text-xs sm:text-sm font-bold hover:text-primary transition"
-                        title="Click to change unit"
+                        title={pauseUnit === 'per_day' ? 'Plays per day (timed from pattern start). Click to change unit.' : 'Click to change unit'}
                       >
-                        {pauseTime}{pauseUnit === 'sec' ? 's' : pauseUnit === 'min' ? 'm' : 'h'}
+                        {pauseUnit === 'per_day'
+                          ? `${pauseTime}/day`
+                          : `${pauseTime}${pauseUnit === 'sec' ? 's' : pauseUnit === 'min' ? 'm' : 'h'}`}
                         <span className="material-icons-outlined text-xs opacity-50 scale-75 ml-0.5">swap_vert</span>
                       </button>
                       <Button
@@ -823,7 +837,10 @@ export function PlaylistsPage() {
                         className="w-7 h-7 sm:w-8 sm:h-8"
                         onClick={() => {
                           const step = pauseUnit === 'hr' ? 0.5 : 1
-                          setPauseTime(pauseTime + step)
+                          // Cap per_day at 24 (one start every hour) — beyond that the cadence
+                          // collides with typical pattern run durations.
+                          const max = pauseUnit === 'per_day' ? 24 : Number.POSITIVE_INFINITY
+                          setPauseTime(Math.min(max, pauseTime + step))
                         }}
                       >
                         <span className="material-icons-outlined text-sm">add</span>

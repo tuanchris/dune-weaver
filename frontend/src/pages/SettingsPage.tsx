@@ -171,6 +171,12 @@ export function SettingsPage() {
     time_slots: [],
   })
 
+  // Scheduled reboot state
+  const [rebootSettings, setRebootSettings] = useState<{ enabled: boolean; time: string }>({
+    enabled: false,
+    time: '03:00',
+  })
+
   // Pattern search state for clearing patterns
   const [patternFiles, setPatternFiles] = useState<string[]>([])
 
@@ -395,6 +401,13 @@ export function SettingsPage() {
           control_wled: data.scheduled_pause.control_wled || false,
           timezone: data.scheduled_pause.timezone || '',
           time_slots: data.scheduled_pause.time_slots || [],
+        })
+      }
+      // Set scheduled reboot settings
+      if (data.scheduled_reboot) {
+        setRebootSettings({
+          enabled: data.scheduled_reboot.enabled || false,
+          time: data.scheduled_reboot.time || '03:00',
         })
       }
       // Set security settings
@@ -727,6 +740,20 @@ export function SettingsPage() {
       toast.success('Still Sands settings saved')
     } catch (error) {
       toast.error('Failed to save Still Sands settings')
+    } finally {
+      setIsLoading(null)
+    }
+  }
+
+  const handleSaveRebootSettings = async () => {
+    setIsLoading('reboot')
+    try {
+      await apiClient.patch('/api/settings', {
+        scheduled_reboot: rebootSettings,
+      })
+      toast.success('Scheduled reboot settings saved')
+    } catch (error) {
+      toast.error('Failed to save scheduled reboot settings')
     } finally {
       setIsLoading(null)
     }
@@ -2271,6 +2298,88 @@ export function SettingsPage() {
                 <span className="material-icons-outlined">save</span>
               )}
               Save Still Sands Settings
+            </Button>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Scheduled Reboot */}
+        <AccordionItem value="reboot" id="section-reboot" className="border rounded-lg px-4 overflow-visible bg-card">
+          <AccordionTrigger className="hover:no-underline">
+            <div className="flex items-center gap-3">
+              <span className="material-icons-outlined text-muted-foreground">
+                restart_alt
+              </span>
+              <div className="text-left">
+                <div className="font-semibold">Scheduled Reboot</div>
+                <div className="text-sm text-muted-foreground font-normal">
+                  Reboot the controller board daily at a set time
+                </div>
+              </div>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="pt-4 pb-6 space-y-6">
+            <div className="flex items-center justify-between p-4 rounded-lg border">
+              <div>
+                <p className="font-medium">Enable Scheduled Reboot</p>
+                <p className="text-sm text-muted-foreground">
+                  Reboot the board (e.g. Raspberry Pi) once a day
+                </p>
+              </div>
+              <Switch
+                checked={rebootSettings.enabled}
+                onCheckedChange={(checked) =>
+                  setRebootSettings({ ...rebootSettings, enabled: checked })
+                }
+              />
+            </div>
+
+            {rebootSettings.enabled && (
+              <div className="space-y-3">
+                <div className="p-4 rounded-lg border">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <span className="material-icons-outlined text-muted-foreground">
+                        schedule
+                      </span>
+                      <div>
+                        <p className="text-sm font-medium">Reboot Time</p>
+                        <p className="text-xs text-muted-foreground">
+                          Uses the timezone selected in Still Sands (or system default)
+                        </p>
+                      </div>
+                    </div>
+                    <Input
+                      type="time"
+                      value={rebootSettings.time}
+                      onChange={(e) =>
+                        setRebootSettings({ ...rebootSettings, time: e.target.value })
+                      }
+                      className="w-full sm:w-[140px]"
+                    />
+                  </div>
+                </div>
+
+                <Alert className="flex items-start">
+                  <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
+                  <AlertDescription>
+                    If a pattern is drawing at the scheduled time, the reboot waits until the
+                    table is idle. The table reconnects and homes automatically after rebooting.
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )}
+
+            <Button
+              onClick={handleSaveRebootSettings}
+              disabled={isLoading === 'reboot'}
+              className="gap-2"
+            >
+              {isLoading === 'reboot' ? (
+                <span className="material-icons-outlined animate-spin">sync</span>
+              ) : (
+                <span className="material-icons-outlined">save</span>
+              )}
+              Save Reboot Settings
             </Button>
           </AccordionContent>
         </AccordionItem>
