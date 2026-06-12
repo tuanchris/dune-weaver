@@ -292,6 +292,11 @@ def write_setting(path: str, value: str) -> bool:
         responses = send_command(f"$/{path}={value}")
     except ConnectionError:
         return False
+    # FluidNC rejects runtime changes to Pin objects with a message but
+    # still replies "ok" — treat that as failure, not success
+    if any("not supported" in r.lower() for r in responses):
+        logger.warning(f"FluidNC rejected write to {path}: {responses}")
+        return False
     return any("ok" in r.lower() for r in responses)
 
 
@@ -318,20 +323,251 @@ def save_config() -> bool:
     return any("ok" in r.lower() for r in responses)
 
 
-def toggle_direction_pin(axis: str) -> tuple[bool, bool]:
-    """Toggle :low on the direction pin for the given axis.
+###############################################################################
+# Direction pin toggling via config file rewrite
+#
+# FluidNC (v3.7+) rejects runtime changes to Pin objects — it prints
+# "Runtime setting of Pin objects is not supported" but still replies "ok",
+# so $/path=value writes silently do nothing. The only way to change a pin
+# is to edit the YAML config file on the controller's flash and reboot.
+# We read the file with $LocalFS/Show, toggle the :low flag host-side, and
+# upload the edited file back over XModem ($Xmodem/Receive).
+###############################################################################
 
-    Returns (success, new_inverted_state).
+# XModem protocol bytes
+_SOH, _EOT, _ACK, _NAK, _CAN, _CTRLZ = 0x01, 0x04, 0x06, 0x15, 0x18, 0x1A
+
+
+def _get_serial():
+    """Return the underlying pyserial object, or raise for non-serial connections."""
+    conn = state.conn
+    if not conn or not conn.is_connected():
+        raise ConnectionError("Not connected to controller")
+    ser = getattr(conn, "ser", None)
+    if ser is None:
+        raise ConnectionError(
+            "Direction pin changes require a serial connection "
+            "(file upload over WebSocket is not supported)"
+        )
+    return conn, ser
+
+
+def _read_raw(ser, timeout: float = 10.0, silence: float = 1.0) -> str:
+    """Read raw bytes until 'ok'/'error', a silence gap, or timeout.
+
+    Unlike send_command(), preserves leading whitespace — required when
+    reading YAML file content where indentation is structure.
     """
-    path = f"axes/{axis}/motor0/stepstick/direction_pin"
-    current = read_setting(path)
-    if current is None:
-        return (False, False)
+    buf = bytearray()
+    start = time.time()
+    last_data = start
+    while time.time() - start < timeout:
+        n = ser.in_waiting
+        if n:
+            buf += ser.read(n)
+            last_data = time.time()
+            tail = bytes(buf[-16:])
+            if tail.rstrip().endswith(b"ok") or b"error:" in tail:
+                break
+        else:
+            if buf and time.time() - last_data > silence:
+                break
+            time.sleep(0.02)
+    return buf.decode("utf-8", errors="replace")
 
-    if ":low" in current:
-        new_val = current.replace(":low", "")
-    else:
-        new_val = current + ":low"
 
-    success = write_setting(path, new_val)
-    return (success, ":low" in new_val)
+def read_config_file() -> str | None:
+    """Read the active config file's raw text from the controller's flash."""
+    conn, ser = _get_serial()
+    filename = get_config_filename()
+    with conn.lock:
+        ser.reset_input_buffer()
+        ser.write(f"$LocalFS/Show=/littlefs/{filename}\n".encode())
+        ser.flush()
+        text = _read_raw(ser, timeout=15.0, silence=1.0)
+
+    lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        # Drop protocol/status noise; keep file content (incl. indentation)
+        if stripped.lower() == "ok" or stripped.startswith(("[", "<")) or stripped.startswith("error:"):
+            continue
+        lines.append(line.rstrip("\r"))
+    content = "\n".join(lines).strip("\n")
+    if not content:
+        return None
+    return content + "\n"
+
+
+def _toggle_direction_in_text(text: str, axes: list[str]) -> tuple[str, dict[str, bool]]:
+    """Toggle :low on direction_pin lines for the given axes in YAML text.
+
+    Walks the YAML line by line with an indentation-based path stack so the
+    edit is targeted (axes/<axis>/motor0/*/direction_pin) while preserving
+    comments and formatting everywhere else.
+
+    Returns (new_text, {axis: new_inverted_state}).
+    """
+    lines = text.split("\n")
+    stack: list[tuple[int, str]] = []
+    toggled: dict[str, bool] = {}
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or ":" not in stripped:
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        key = stripped.split(":", 1)[0].strip()
+        while stack and stack[-1][0] >= indent:
+            stack.pop()
+        stack.append((indent, key))
+
+        parts = [k for _, k in stack]
+        # Match axes/<axis>/motor0/<driver>/direction_pin for any driver type
+        if (
+            len(parts) == 5
+            and parts[0] == "axes"
+            and parts[1] in axes
+            and parts[2] == "motor0"
+            and parts[4] == "direction_pin"
+        ):
+            value = stripped.split(":", 1)[1].split("#", 1)[0].strip().strip("'\"")
+            if not value:
+                continue
+            new_val = value.replace(":low", "") if ":low" in value else value + ":low"
+            # Quote values containing ':' so the YAML stays valid
+            rendered = f"'{new_val}'" if ":" in new_val else new_val
+            lines[i] = " " * indent + f"direction_pin: {rendered}"
+            toggled[parts[1]] = ":low" in new_val
+
+    return "\n".join(lines), toggled
+
+
+def _crc16_xmodem(data: bytes) -> int:
+    crc = 0
+    for byte in data:
+        crc ^= byte << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1021) & 0xFFFF if crc & 0x8000 else (crc << 1) & 0xFFFF
+    return crc
+
+
+def upload_config_file(text: str) -> bool:
+    """Upload config file text to the controller's flash via XModem."""
+    conn, ser = _get_serial()
+    filename = get_config_filename()
+    data = text.encode()
+
+    with conn.lock:
+        ser.reset_input_buffer()
+        ser.write(f"$Xmodem/Receive=/littlefs/{filename}\n".encode())
+        ser.flush()
+
+        # Wait for receiver handshake: 'C' = CRC mode, NAK = checksum mode
+        crc_mode = None
+        start = time.time()
+        while time.time() - start < 15:
+            b = ser.read(1)
+            if not b:
+                continue
+            if b == b"C":
+                crc_mode = True
+                break
+            if b[0] == _NAK:
+                crc_mode = False
+                break
+        if crc_mode is None:
+            logger.error("XModem: no handshake from controller")
+            return False
+
+        seq = 1
+        for offset in range(0, len(data), 128):
+            block = data[offset : offset + 128].ljust(128, bytes([_CTRLZ]))
+            packet = bytes([_SOH, seq & 0xFF, 0xFF - (seq & 0xFF)]) + block
+            if crc_mode:
+                crc = _crc16_xmodem(block)
+                packet += bytes([crc >> 8, crc & 0xFF])
+            else:
+                packet += bytes([sum(block) & 0xFF])
+
+            for _attempt in range(10):
+                ser.write(packet)
+                ser.flush()
+                resp = ser.read(1)
+                # Ignore leftover handshake chars from before the first packet
+                while resp == b"C":
+                    resp = ser.read(1)
+                if resp and resp[0] == _ACK:
+                    break
+                if resp and resp[0] == _CAN:
+                    logger.error("XModem: transfer cancelled by controller")
+                    return False
+            else:
+                logger.error(f"XModem: packet {seq} never acknowledged")
+                ser.write(bytes([_CAN, _CAN]))
+                ser.flush()
+                return False
+            seq += 1
+
+        for _attempt in range(10):
+            ser.write(bytes([_EOT]))
+            ser.flush()
+            resp = ser.read(1)
+            if resp and resp[0] == _ACK:
+                break
+        else:
+            logger.error("XModem: EOT not acknowledged")
+            return False
+
+        # Drain trailing log lines ("[MSG:INFO: Received N bytes...]")
+        tail = _read_raw(ser, timeout=3.0, silence=0.5)
+
+    logger.info(f"XModem upload complete ({len(data)} bytes): {tail.strip()}")
+    return True
+
+
+def toggle_direction_pins(axes: list[str]) -> dict[str, bool]:
+    """Toggle :low on the direction pins by rewriting the config file.
+
+    Reads the active config from flash, flips the :low flag on each axis's
+    direction_pin line, uploads the edited file back, and verifies the
+    write by re-reading. Changes take effect after a controller restart.
+
+    Returns {axis: new_inverted_state} for axes successfully toggled.
+    Raises ConnectionError if no serial connection is available.
+    """
+    conn, _ser = _get_serial()
+    # Hold the connection lock across the whole read→edit→upload→verify
+    # sequence so status polls or pattern traffic can't interleave and
+    # corrupt the file transfer (the lock is reentrant, so the nested
+    # send_command/raw IO calls below are fine)
+    with conn.lock:
+        text = read_config_file()
+        if not text:
+            logger.error("Could not read config file from controller")
+            return {}
+
+        new_text, toggled = _toggle_direction_in_text(text, axes)
+        if not toggled:
+            logger.error(
+                f"No direction_pin lines found for axes {axes} in config file "
+                f"({len(text)} bytes read)"
+            )
+            return {}
+
+        if not upload_config_file(new_text):
+            return {}
+
+        # Verify: re-read and confirm the toggled lines are on flash
+        verify_text = read_config_file()
+        if verify_text:
+            _, would_toggle = _toggle_direction_in_text(verify_text, list(toggled.keys()))
+            # Toggling the verified file should produce the OLD state — i.e. the
+            # file currently holds the NEW state for every axis we changed
+            for axis, new_state in toggled.items():
+                if would_toggle.get(axis) == new_state:
+                    logger.error(f"Verification failed: {axis} direction pin not updated on flash")
+                    return {}
+
+    logger.info(f"Direction pins toggled via config file: {toggled}")
+    return toggled

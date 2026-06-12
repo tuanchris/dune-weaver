@@ -4254,6 +4254,7 @@ async def fluidnc_config_write(update: FluidNCConfigUpdate):
 
     def apply_changes():
         nonlocal restart_required
+        direction_axes: list[str] = []
         # Apply axis settings
         if update.axes:
             for axis in ("x", "y"):
@@ -4266,11 +4267,10 @@ async def fluidnc_config_write(update: FluidNCConfigUpdate):
                         continue
 
                     if key == "direction_inverted":
-                        # Toggle :low on direction pin
-                        success, new_state = fluidnc_config.toggle_direction_pin(axis)
-                        if success:
-                            changes_applied.append(f"{axis}/direction_pin")
-                            restart_required = True
+                        # Pin changes can't be made at runtime — handled below
+                        # via a config file rewrite, after the $CD save so the
+                        # RAM dump doesn't overwrite the edited file
+                        direction_axes.append(axis)
                         continue
 
                     path_template = _AXIS_KEY_TO_PATH.get(key)
@@ -4299,8 +4299,23 @@ async def fluidnc_config_write(update: FluidNCConfigUpdate):
             if x_steps is not None or y_steps is not None:
                 state.save()
 
-        # Persist to flash
+        # Persist runtime-writable settings to flash via $CD dump
         saved = fluidnc_config.save_config() if changes_applied else False
+
+        # Direction pin toggles rewrite the config file directly (must come
+        # after save_config so the RAM dump doesn't clobber the file edit)
+        if direction_axes:
+            toggled = fluidnc_config.toggle_direction_pins(direction_axes)
+            failed = [a for a in direction_axes if a not in toggled]
+            if failed:
+                raise RuntimeError(
+                    f"Failed to update direction pin for axes: {', '.join(failed)}"
+                )
+            for axis in toggled:
+                changes_applied.append(f"{axis}/direction_pin")
+            restart_required = True
+            saved = True
+
         return saved
 
     try:
