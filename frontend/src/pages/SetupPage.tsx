@@ -107,37 +107,29 @@ function CalibrationWizard() {
     }
   }, [])
 
-  const fixDirection = useCallback(
-    async (axis: 'x' | 'y') => {
-      setWizard((w) => ({ ...w, fixing: true }))
-      try {
-        // The backend treats direction_inverted as a toggle command — the
-        // value is ignored and the pin's :low modifier is flipped each call
-        await apiClient.patch('/api/fluidnc/config', {
-          axes: { [axis]: { direction_inverted: true } },
-        })
-        toast.success(`${axis.toUpperCase()} direction toggled and saved`)
-      } catch (err) {
-        toast.error(`Fix failed: ${err instanceof Error ? err.message : 'Unknown'}`)
-      } finally {
-        setWizard((w) => ({ ...w, fixing: false }))
-      }
-    },
-    []
-  )
-
-  const restartController = useCallback(async () => {
+  const fixDirections = useCallback(async () => {
     setWizard((w) => ({ ...w, fixing: true }))
     try {
-      await apiClient.post('/api/fluidnc/command', { command: '$Bye', timeout: 2.0 })
-      toast.success('Restart command sent. Reconnect when ready.')
-    } catch {
-      // $Bye causes disconnect, so errors are expected
-      toast.info('Restart command sent. The controller will reboot.')
+      // The backend treats direction_inverted as a toggle command — the
+      // value is ignored and the pin's :low modifier is flipped each call.
+      // Patch every wrong axis in one request so a single restart suffices.
+      const axes: Record<string, { direction_inverted: boolean }> = {}
+      if (wizard.yCorrect === false) axes.y = { direction_inverted: true }
+      if (wizard.xCorrect === false) axes.x = { direction_inverted: true }
+      await apiClient.patch('/api/fluidnc/config', { axes })
+      try {
+        // Direction pin changes only take effect after a reboot
+        await apiClient.post('/api/fluidnc/command', { command: '$Bye', timeout: 2.0 })
+      } catch {
+        // $Bye drops the connection, so an error here is expected
+      }
+      toast.success('Direction toggled and saved. Controller is restarting — wait for it to reconnect.')
+    } catch (err) {
+      toast.error(`Fix failed: ${err instanceof Error ? err.message : 'Unknown'}`)
     } finally {
       setWizard((w) => ({ ...w, fixing: false }))
     }
-  }, [])
+  }, [wizard.yCorrect, wizard.xCorrect])
 
   const waitForIdle = useCallback(async (timeoutMs = 30000) => {
     const start = Date.now()
@@ -350,52 +342,38 @@ function CalibrationWizard() {
         <div className="space-y-4">
           <h3 className="font-semibold">Fix Motor Directions</h3>
           <p className="text-sm text-muted-foreground">
-            The following axes need their direction inverted. Click to auto-fix by toggling the <code>:low</code> flag on the direction pin.
+            The following axes need their direction inverted. Auto-fix toggles the <code>:low</code> flag on the direction pin.
           </p>
           <div className="space-y-3">
             {wizard.yCorrect === false && (
-              <div className="flex items-center justify-between p-3 rounded-lg border">
-                <div>
-                  <p className="font-medium text-sm">Y Axis (Radial)</p>
-                  <p className="text-xs text-muted-foreground">Direction is inverted</p>
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => fixDirection('y')}
-                  disabled={wizard.fixing}
-                >
-                  {wizard.fixing ? 'Fixing...' : 'Fix Automatically'}
-                </Button>
+              <div className="p-3 rounded-lg border">
+                <p className="font-medium text-sm">Y Axis (Radial)</p>
+                <p className="text-xs text-muted-foreground">Direction is inverted</p>
               </div>
             )}
             {wizard.xCorrect === false && (
-              <div className="flex items-center justify-between p-3 rounded-lg border">
-                <div>
-                  <p className="font-medium text-sm">X Axis (Angular)</p>
-                  <p className="text-xs text-muted-foreground">Direction is inverted</p>
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => fixDirection('x')}
-                  disabled={wizard.fixing}
-                >
-                  {wizard.fixing ? 'Fixing...' : 'Fix Automatically'}
-                </Button>
+              <div className="p-3 rounded-lg border">
+                <p className="font-medium text-sm">X Axis (Angular)</p>
+                <p className="text-xs text-muted-foreground">Direction is inverted</p>
               </div>
             )}
           </div>
           <Alert>
             <span className="material-icons-outlined text-base mr-2 shrink-0">warning</span>
             <AlertDescription>
-              Direction pin changes require a controller restart to take effect. After fixing, restart the controller below, then re-run the wizard to verify.
+              Direction pin changes require a controller restart to take effect. Fixing automatically restarts the controller — wait for it to reconnect before continuing.
             </AlertDescription>
           </Alert>
           <div className="flex gap-3">
-            <Button variant="outline" onClick={restartController} disabled={wizard.fixing}>
-              <span className="material-icons-outlined mr-2 text-base">restart_alt</span>
-              Restart Controller
+            <Button onClick={fixDirections} disabled={wizard.fixing}>
+              <span className="material-icons-outlined mr-2 text-base">build</span>
+              {wizard.fixing ? 'Fixing...' : 'Fix Automatically'}
             </Button>
-            <Button onClick={() => setWizard((w) => ({ ...w, step: 'sanity-y' }))}>
+            <Button
+              variant="outline"
+              onClick={() => setWizard((w) => ({ ...w, step: 'sanity-y' }))}
+              disabled={wizard.fixing || !isConnected}
+            >
               Continue to Verification
             </Button>
           </div>
