@@ -38,7 +38,7 @@ describe('BrowsePage', () => {
       renderWithProviders(<BrowsePage />)
 
       await waitFor(() => {
-        expect(screen.getByText(/no patterns found/i)).toBeInTheDocument()
+        expect(screen.getByText(/no patterns yet/i)).toBeInTheDocument()
       })
     })
 

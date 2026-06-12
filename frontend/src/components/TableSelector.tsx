@@ -147,11 +147,15 @@ export function TableSelector({ children }: TableSelectorProps) {
               {tables.map(table => (
                 <div
                   key={table.id}
-                  className={`flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer hover:bg-accent group ${
+                  className={`flex items-center gap-2 px-2 py-2 rounded-md hover:bg-accent group ${
                     activeTable?.id === table.id ? 'bg-accent' : ''
                   }`}
-                  onClick={() => handleSelectTable(table)}
                 >
+                  <button
+                    type="button"
+                    className="flex-1 flex items-center gap-2 min-w-0 text-left cursor-pointer"
+                    onClick={() => handleSelectTable(table)}
+                  >
                   {/* Table icon with status indicator */}
                   <div className="relative flex-shrink-0">
                     <img
@@ -189,33 +193,30 @@ export function TableSelector({ children }: TableSelectorProps) {
                       {table.host || new URL(table.url).hostname}
                     </span>
                   </div>
+                  </button>
 
-                  {/* Actions - always visible on mobile, hover on desktop */}
-                  <div className="flex md:opacity-0 md:group-hover:opacity-100 items-center gap-1 transition-opacity">
+                  {/* Actions - always visible on touch, hover-revealed with a fine pointer */}
+                  <div className="flex pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-within:opacity-100 items-center gap-1 transition-opacity">
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 w-7 p-0"
-                      onClick={e => {
-                        e.stopPropagation()
-                        openRenameDialog(table)
-                      }}
+                      className="h-9 w-9 p-0"
+                      onClick={() => openRenameDialog(table)}
                       title="Rename"
+                      aria-label={`Rename table ${table.name}`}
                     >
-                      <Pencil className="h-3.5 w-3.5" />
+                      <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                     </Button>
                     {!table.isCurrent && (
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-                        onClick={e => {
-                          e.stopPropagation()
-                          handleRemove(table)
-                        }}
+                        className="h-9 w-9 p-0 text-destructive hover:text-destructive"
+                        onClick={() => handleRemove(table)}
                         title="Remove"
+                        aria-label={`Remove table ${table.name}`}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                       </Button>
                     )}
                   </div>

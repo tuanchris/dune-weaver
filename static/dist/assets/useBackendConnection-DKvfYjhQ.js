@@ -1,0 +1,1 @@
+import{r as n}from"./react-DnK_pEU5.js";function o(e){const t=n.useRef(e);n.useEffect(()=>{t.current=e},[e]),n.useEffect(()=>{const c=()=>{t.current()};return window.addEventListener("backend-connected",c),()=>{window.removeEventListener("backend-connected",c)}},[])}export{o as u};

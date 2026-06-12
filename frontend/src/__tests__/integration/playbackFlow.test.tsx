@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderWithProviders, screen, waitFor, userEvent } from '../../test/utils'
+import { renderWithProviders, screen, waitFor, userEvent, seedConnectedStatus } from '../../test/utils'
 import { mockData, apiCallLog, resetApiCallLog } from '../../test/mocks/handlers'
 import { BrowsePage } from '../../pages/BrowsePage'
 import { PlaylistsPage } from '../../pages/PlaylistsPage'
@@ -9,6 +9,8 @@ describe('Playback Flow Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     resetApiCallLog()
+    // Pages gate Play on table connection, which only arrives via /ws/status
+    seedConnectedStatus()
     localStorage.clear()
   })
 

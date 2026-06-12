@@ -2,6 +2,7 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { toast } from 'sonner'
 import { NowPlayingBar } from '@/components/NowPlayingBar'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -99,6 +100,7 @@ export function Layout() {
   const statusIsRunning = useStatusStore((s) => s.status?.is_running ?? false)
   const statusIsPaused = useStatusStore((s) => s.status?.is_paused ?? false)
   const statusPauseTimeRemaining = useStatusStore((s) => s.status?.pause_time_remaining ?? 0)
+  const statusHasPlaylist = useStatusStore((s) => Boolean(s.status?.playlist))
 
   // Homing overlay state (local UI state)
   const [homingDismissed, setHomingDismissed] = useState(false)
@@ -109,6 +111,24 @@ export function Layout() {
 
   // Sensor homing recovery (local UI state)
   const [isRecoveringHoming, setIsRecoveringHoming] = useState(false)
+
+  // Backend-disconnected overlay dismissal (lets multi-table users reach the header underneath)
+  const [backendOverlayDismissed, setBackendOverlayDismissed] = useState(false)
+
+  // Restart/shutdown confirmation and restart-in-progress overlay
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false)
+  const [showShutdownConfirm, setShowShutdownConfirm] = useState(false)
+  const [isRestarting, setIsRestarting] = useState(false)
+
+  // Reset disconnect-overlay dismissal and clear the restarting overlay when the backend reconnects
+  const wasBackendConnectedRef = useRef(isBackendConnected)
+  useEffect(() => {
+    if (!wasBackendConnectedRef.current && isBackendConnected) {
+      setBackendOverlayDismissed(false)
+      setIsRestarting(false)
+    }
+    wasBackendConnectedRef.current = isBackendConnected
+  }, [isBackendConnected])
 
   // Update availability
   const [updateAvailable, setUpdateAvailable] = useState(false)
@@ -287,6 +307,10 @@ export function Layout() {
   })
   const [isDraggingButton, setIsDraggingButton] = useState(false)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  // Live mirror of dragOffset for the drag-end handler — reading the state
+  // there would capture a stale closure (always the offset at drag start),
+  // making the button snap back instead of to where it was dropped
+  const dragOffsetRef = useRef(0)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const dragStartRef = useRef<{ x: number; y: number; buttonX: number } | null>(null)
   const wasDraggingRef = useRef(false) // Track if a meaningful drag occurred
@@ -296,7 +320,15 @@ export function Layout() {
 
   // Auto-close NowPlayingBar when playback stops (watches store values)
   const wasNpPlayingRef = useRef<boolean | null>(null)
-  const npIsPlaying = Boolean(currentPlayingFile) || statusIsRunning || statusIsPaused || statusPauseTimeRemaining > 0
+  // is_paused alone doesn't mean playback: the backend also reports
+  // is_paused=true during a Still Sands quiet period with nothing queued,
+  // which made the floating pill show "Not Playing" on an idle table.
+  // Count paused state only when there's an actual file or playlist.
+  const npIsPlaying =
+    Boolean(currentPlayingFile) ||
+    statusIsRunning ||
+    (statusIsPaused && (Boolean(currentPlayingFile) || statusHasPlaylist)) ||
+    statusPauseTimeRemaining > 0
   useEffect(() => {
     // Skip first render
     if (wasNpPlayingRef.current !== null) {
@@ -326,7 +358,7 @@ export function Layout() {
   const [isLoadingMoreLogs, setIsLoadingMoreLogs] = useState(false)
   const logsWsRef = useRef<WebSocket | null>(null)
   const logsContainerRef = useRef<HTMLDivElement>(null)
-  const logsLoadedCountRef = useRef(0) // Track how many logs we've loaded (for offset)
+  const logsLoadedCountRef = useRef(0) // Raw API records fetched (backend offset unit), NOT filtered/displayed count
 
   // Connect to logs WebSocket when drawer opens
   useEffect(() => {
@@ -347,15 +379,17 @@ export function Layout() {
         type LogEntry = { timestamp: string; level: string; logger: string; message: string }
         type LogsResponse = { logs: LogEntry[]; total: number; has_more: boolean }
         const data = await apiClient.get<LogsResponse>('/api/logs?limit=200')
+        const rawLogs = data.logs || []
         // Filter out empty/invalid log entries
-        const validLogs = (data.logs || []).filter(
+        const validLogs = rawLogs.filter(
           (log) => log && log.message && log.message.trim() !== ''
         )
         // API returns newest first, reverse to show oldest first (newest at bottom)
         setLogs(validLogs.reverse())
         setLogsTotal(data.total || 0)
         setLogsHasMore(data.has_more || false)
-        logsLoadedCountRef.current = validLogs.length
+        // Backend offset is in RAW records, so track the raw count (before filtering)
+        logsLoadedCountRef.current = rawLogs.length
         // Scroll to bottom after initial load
         setTimeout(() => {
           if (logsContainerRef.current) {
@@ -475,14 +509,18 @@ export function Layout() {
       const offset = logsLoadedCountRef.current
       const data = await apiClient.get<LogsResponse>(`/api/logs?limit=100&offset=${offset}`)
 
-      const validLogs = (data.logs || []).filter(
+      const rawLogs = data.logs || []
+      const validLogs = rawLogs.filter(
         (log) => log && log.message && log.message.trim() !== ''
       )
+
+      // Backend offset is in RAW records - advance by raw count (before filtering)
+      // so subsequent requests don't overlap and return duplicates
+      logsLoadedCountRef.current += rawLogs.length
 
       if (validLogs.length > 0) {
         // Prepend older logs (they come newest-first, so reverse them)
         setLogs((prev) => [...validLogs.reverse(), ...prev])
-        logsLoadedCountRef.current += validLogs.length
         setLogsHasMore(data.has_more || false)
         setLogsTotal(data.total || 0)
 
@@ -495,7 +533,9 @@ export function Layout() {
           }
         }, 10)
       } else {
-        setLogsHasMore(false)
+        // No displayable entries in this page - keep paginating if the backend
+        // says there are more raw records, otherwise stop
+        setLogsHasMore(rawLogs.length > 0 ? (data.has_more || false) : false)
       }
     } catch {
       // Ignore errors
@@ -596,23 +636,32 @@ export function Layout() {
     a.href = url
     a.download = `dune-weaver-logs-${new Date().toISOString().split('T')[0]}.txt`
     a.click()
-    URL.revokeObjectURL(url)
+    // Revoke after the browser has started the download — revoking
+    // synchronously breaks the download on Firefox
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
-  const handleRestart = async () => {
-    if (!confirm('Are you sure you want to restart Dune Weaver?')) return
+  const handleRestart = () => {
+    setShowRestartConfirm(true)
+  }
 
+  const confirmRestart = async () => {
+    setShowRestartConfirm(false)
     try {
       await apiClient.post('/api/system/restart')
       toast.success('Dune Weaver is restarting...')
+      setIsRestarting(true)
     } catch {
       toast.error('Failed to restart Dune Weaver')
     }
   }
 
-  const handleShutdown = async () => {
-    if (!confirm('Are you sure you want to shutdown the system?')) return
+  const handleShutdown = () => {
+    setShowShutdownConfirm(true)
+  }
 
+  const confirmShutdown = async () => {
+    setShowShutdownConfirm(false)
     try {
       await apiClient.post('/api/system/shutdown')
       toast.success('System is shutting down...')
@@ -721,6 +770,7 @@ export function Layout() {
       document.documentElement.classList.remove('dark')
       localStorage.setItem('theme', 'light')
     }
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', isDark ? '#0a0a0a' : '#f8f9fb')
   }, [isDark])
 
   // Blocking overlay logs state - shows connection attempts
@@ -729,6 +779,17 @@ export function Layout() {
 
   // Cache progress from shared store
   const cacheProgress = useCacheProgressStore((s) => s.cacheProgress)
+  const [cacheOverlayDismissed, setCacheOverlayDismissed] = useState(false)
+
+  // Reset cache-overlay dismissal when a new cache run starts (false→true transition)
+  const wasCacheRunningRef = useRef(false)
+  useEffect(() => {
+    const isRunning = cacheProgress?.is_running ?? false
+    if (!wasCacheRunningRef.current && isRunning) {
+      setCacheOverlayDismissed(false)
+    }
+    wasCacheRunningRef.current = isRunning
+  }, [cacheProgress?.is_running])
 
   // Connect/disconnect cache progress WebSocket based on backend connectivity
   useEffect(() => {
@@ -952,6 +1013,20 @@ export function Layout() {
     setCacheAllProgress(null)
   }
 
+  // Escape dismisses the Cache All prompt (same as Skip / Done), but not mid-caching
+  useEffect(() => {
+    if (!showCacheAllPrompt) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (cacheAllProgress && !cacheAllProgress.done) return // caching in progress, no dismiss action
+      localStorage.setItem('cacheAllPromptShown', 'true')
+      setShowCacheAllPrompt(false)
+      setCacheAllProgress(null)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [showCacheAllPrompt, cacheAllProgress])
+
   // Now Playing button drag handlers
   const getSnapPositions = useCallback(() => {
     const padding = 16
@@ -970,6 +1045,7 @@ export function Layout() {
     dragStartRef.current = { x: clientX, y: clientY, buttonX: buttonCenterX }
     wasDraggingRef.current = false // Reset drag flag
     setIsDraggingButton(true)
+    dragOffsetRef.current = 0
     setDragOffset({ x: 0, y: 0 })
   }, [])
 
@@ -980,6 +1056,7 @@ export function Layout() {
     if (Math.abs(deltaX) > 8) {
       wasDraggingRef.current = true
     }
+    dragOffsetRef.current = deltaX
     setDragOffset({ x: deltaX, y: 0 })
   }, [isDraggingButton])
 
@@ -991,7 +1068,7 @@ export function Layout() {
     }
 
     // Calculate current position
-    const currentX = dragStartRef.current.buttonX + dragOffset.x
+    const currentX = dragStartRef.current.buttonX + dragOffsetRef.current
     const snapPositions = getSnapPositions()
 
     // Find nearest snap position
@@ -1017,9 +1094,10 @@ export function Layout() {
 
     // Reset drag state
     setIsDraggingButton(false)
+    dragOffsetRef.current = 0
     setDragOffset({ x: 0, y: 0 })
     dragStartRef.current = null
-  }, [dragOffset.x, getSnapPositions])
+  }, [getSnapPositions])
 
   // Mouse drag handlers
   useEffect(() => {
@@ -1082,10 +1160,10 @@ export function Layout() {
     <div className="min-h-dvh bg-background flex flex-col">
       {/* Security Lockdown Overlay */}
       {isLockdownActive && (
-        <div className="fixed inset-0 z-[60] bg-background flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] bg-background flex items-center justify-center p-4">
           <div className="w-full max-w-sm space-y-6 text-center">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-2">
-              <span className="material-icons-outlined text-4xl text-primary">lock</span>
+              <span aria-hidden="true" className="material-icons-outlined text-4xl text-primary">lock</span>
             </div>
             <h2 className="text-2xl font-bold">{displayName}</h2>
             <p className="text-muted-foreground">This table is locked. Enter the password to continue.</p>
@@ -1108,12 +1186,12 @@ export function Layout() {
 
       {/* Security Password Dialog (for play-only mode) */}
       {showPasswordDialog && (
-        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-background rounded-lg shadow-xl w-full max-w-sm">
             <div className="p-6 space-y-4">
               <div className="text-center space-y-2">
                 <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-2">
-                  <span className="material-icons-outlined text-2xl text-primary">lock</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-2xl text-primary">lock</span>
                 </div>
                 <h3 className="text-lg font-semibold">Settings Locked</h3>
                 <p className="text-sm text-muted-foreground">Enter the password to access settings.</p>
@@ -1148,16 +1226,21 @@ export function Layout() {
 
       {/* Sensor Homing Failure Popup */}
       {sensorHomingFailed && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="sensor-homing-failed-title"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+        >
           <div className="bg-background rounded-lg shadow-xl w-full max-w-md border border-destructive/30">
             <div className="p-6">
               <div className="text-center space-y-4">
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-destructive/10 mb-2">
-                  <span className="material-icons-outlined text-4xl text-destructive">
+                  <span aria-hidden="true" className="material-icons-outlined text-4xl text-destructive">
                     error_outline
                   </span>
                 </div>
-                <h2 className="text-xl font-semibold">Sensor Homing Failed</h2>
+                <h2 id="sensor-homing-failed-title" className="text-xl font-semibold">Sensor Homing Failed</h2>
                 <p className="text-muted-foreground text-sm">
                   The sensor homing process could not complete. The limit sensors may not be positioned correctly or may be malfunctioning.
                 </p>
@@ -1185,7 +1268,7 @@ export function Layout() {
                       onClick={() => handleSensorHomingRecovery(false)}
                       className="w-full gap-2"
                     >
-                      <span className="material-icons text-base">refresh</span>
+                      <span aria-hidden="true" className="material-icons text-base">refresh</span>
                       Retry Sensor Homing
                     </Button>
                     <Button
@@ -1193,7 +1276,7 @@ export function Layout() {
                       onClick={() => handleSensorHomingRecovery(true)}
                       className="w-full gap-2"
                     >
-                      <span className="material-icons text-base">sync_alt</span>
+                      <span aria-hidden="true" className="material-icons text-base">sync_alt</span>
                       Switch to Crash Homing
                     </Button>
                     <p className="text-xs text-muted-foreground">
@@ -1202,7 +1285,7 @@ export function Layout() {
                   </div>
                 ) : (
                   <div className="flex items-center justify-center gap-2 py-4">
-                    <span className="material-icons-outlined text-primary animate-spin">sync</span>
+                    <span aria-hidden="true" className="material-icons-outlined text-primary animate-spin">sync</span>
                     <span className="text-muted-foreground">Attempting recovery...</span>
                   </div>
                 )}
@@ -1213,12 +1296,12 @@ export function Layout() {
       )}
 
       {/* Cache Progress Blocking Overlay */}
-      {cacheProgress?.is_running && (
+      {cacheProgress?.is_running && !cacheOverlayDismissed && (
         <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center p-4">
           <div className="w-full max-w-md space-y-6">
             <div className="text-center space-y-4">
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-2">
-                <span className="material-icons-outlined text-4xl text-primary animate-pulse">
+                <span aria-hidden="true" className="material-icons-outlined text-4xl text-primary animate-pulse">
                   cached
                 </span>
               </div>
@@ -1258,22 +1341,34 @@ export function Layout() {
             <p className="text-center text-xs text-muted-foreground">
               This only happens once after updates or when new patterns are added
             </p>
+
+            {/* Escape hatch - caching keeps running server-side */}
+            <div className="flex justify-center">
+              <Button variant="outline" onClick={() => setCacheOverlayDismissed(true)}>
+                Continue in background
+              </Button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Cache All Previews Prompt Modal */}
       {showCacheAllPrompt && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cache-all-prompt-title"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+        >
           <div className="bg-background rounded-lg shadow-xl w-full max-w-md">
             <div className="p-6">
               <div className="text-center space-y-4">
                 <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-2">
-                  <span className="material-icons-outlined text-2xl text-primary">
+                  <span aria-hidden="true" className="material-icons-outlined text-2xl text-primary">
                     download_for_offline
                   </span>
                 </div>
-                <h2 className="text-xl font-semibold">Cache All Pattern Previews?</h2>
+                <h2 id="cache-all-prompt-title" className="text-xl font-semibold">Cache All Pattern Previews?</h2>
                 <p className="text-muted-foreground text-sm">
                   Would you like to cache all pattern previews for faster browsing? This will download and store preview images in your browser for instant loading.
                 </p>
@@ -1291,7 +1386,7 @@ export function Layout() {
                       Skip for now
                     </Button>
                     <Button variant="secondary" onClick={handleCacheAllPreviews} className="gap-2">
-                      <span className="material-icons-outlined text-lg">cached</span>
+                      <span aria-hidden="true" className="material-icons-outlined text-lg">cached</span>
                       Cache All
                     </Button>
                   </div>
@@ -1319,7 +1414,7 @@ export function Layout() {
                 {cacheAllProgress?.done && (
                   <div className="space-y-4">
                     <p className="text-green-600 dark:text-green-400 flex items-center justify-center gap-2">
-                      <span className="material-icons text-base">check_circle</span>
+                      <span aria-hidden="true" className="material-icons text-base">check_circle</span>
                       All {cacheAllProgress.total} previews cached successfully!
                     </p>
                     <Button onClick={handleCloseCacheAllDone} className="w-full">
@@ -1336,7 +1431,7 @@ export function Layout() {
       {/* Backend Connection / Homing Blocking Overlay */}
       {/* Skip in captive portal mode (WebSocket won't connect in sandboxed webview) */}
       {/* Don't show this overlay when sensor homing failed - that has its own dialog */}
-      {!isCaptivePortal && !sensorHomingFailed && (!isBackendConnected || (isHoming && !homingDismissed) || homingJustCompleted) && (
+      {!isCaptivePortal && !sensorHomingFailed && ((!isBackendConnected && !backendOverlayDismissed) || (isHoming && !homingDismissed) || homingJustCompleted) && (
         <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center p-4">
           <div className="w-full max-w-2xl space-y-6">
             {/* Status Header */}
@@ -1348,7 +1443,7 @@ export function Layout() {
                     ? 'bg-primary/10'
                     : 'bg-amber-500/10'
               }`}>
-                <span className={`material-icons-outlined text-4xl ${
+                <span aria-hidden="true" className={`material-icons-outlined text-4xl ${
                   homingJustCompleted
                     ? 'text-green-500'
                     : isHoming
@@ -1401,7 +1496,7 @@ export function Layout() {
             <div className="bg-muted/50 rounded-lg border overflow-hidden">
               <div className="flex items-center justify-between px-4 py-2 border-b bg-muted">
                 <div className="flex items-center gap-2">
-                  <span className="material-icons-outlined text-base">terminal</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-base">terminal</span>
                   <span className="text-sm font-medium">
                     {isHoming || homingJustCompleted ? 'Homing Log' : 'Connection Log'}
                   </span>
@@ -1417,7 +1512,7 @@ export function Layout() {
                     className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
                     title="Copy logs to clipboard"
                   >
-                    <span className="material-icons text-sm">content_copy</span>
+                    <span aria-hidden="true" className="material-icons text-sm">content_copy</span>
                     Copy
                   </button>
                   <span className="text-xs text-muted-foreground">
@@ -1458,7 +1553,7 @@ export function Layout() {
                       onClick={() => setKeepHomingLogsOpen(true)}
                       className="gap-2"
                     >
-                      <span className="material-icons text-base">visibility</span>
+                      <span aria-hidden="true" className="material-icons text-base">visibility</span>
                       Keep Open
                     </Button>
                     <Button
@@ -1468,7 +1563,7 @@ export function Layout() {
                       }}
                       className="gap-2"
                     >
-                      <span className="material-icons text-base">close</span>
+                      <span aria-hidden="true" className="material-icons text-base">close</span>
                       Dismiss
                     </Button>
                   </>
@@ -1480,10 +1575,24 @@ export function Layout() {
                     }}
                     className="gap-2"
                   >
-                    <span className="material-icons text-base">close</span>
+                    <span aria-hidden="true" className="material-icons text-base">close</span>
                     Close Logs
                   </Button>
                 )}
+              </div>
+            )}
+
+            {/* Dismiss button while backend is disconnected (e.g. to reach the table selector) */}
+            {!isBackendConnected && !isHoming && !homingJustCompleted && (
+              <div className="flex justify-center">
+                <Button
+                  variant="outline"
+                  onClick={() => setBackendOverlayDismissed(true)}
+                  className="gap-2 text-muted-foreground"
+                >
+                  <span aria-hidden="true" className="material-icons text-base">visibility_off</span>
+                  Dismiss
+                </Button>
               </div>
             )}
 
@@ -1495,7 +1604,7 @@ export function Layout() {
                   onClick={() => setHomingDismissed(true)}
                   className="gap-2 text-muted-foreground"
                 >
-                  <span className="material-icons text-base">visibility_off</span>
+                  <span aria-hidden="true" className="material-icons text-base">visibility_off</span>
                   Dismiss
                 </Button>
               </div>
@@ -1514,6 +1623,36 @@ export function Layout() {
         </div>
       )}
 
+      {/* Restart / Shutdown confirmations */}
+      <ConfirmDialog
+        open={showRestartConfirm}
+        onOpenChange={setShowRestartConfirm}
+        title="Restart Dune Weaver?"
+        description="The table will be unavailable for about a minute while the service restarts."
+        confirmLabel="Restart"
+        destructive
+        onConfirm={confirmRestart}
+      />
+      <ConfirmDialog
+        open={showShutdownConfirm}
+        onOpenChange={setShowShutdownConfirm}
+        title="Shut down the system?"
+        description="The table will power off and must be powered back on manually."
+        confirmLabel="Shut Down"
+        destructive
+        onConfirm={confirmShutdown}
+      />
+
+      {/* Restart-in-progress overlay - clears automatically when the backend reconnects */}
+      {isRestarting && (
+        <div className="fixed inset-0 z-[60] bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center p-4">
+          <div className="text-center space-y-4">
+            <span aria-hidden="true" className="material-icons-outlined text-4xl text-primary animate-spin">sync</span>
+            <p className="text-lg font-medium">Restarting — waiting for reconnection…</p>
+          </div>
+        </div>
+      )}
+
       {/* Header - Floating Pill */}
       <header className="fixed top-0 left-0 right-0 z-40 pt-safe">
         {/* Blurry backdrop behind header - only on Browse page where content scrolls under */}
@@ -1523,8 +1662,8 @@ export function Layout() {
         <div className="relative w-full max-w-5xl mx-auto px-3 sm:px-4 pt-3 pointer-events-none">
           <div className="rounded-full bg-card shadow-lg border border-border pointer-events-auto">
           <div className="flex h-12 items-center justify-between px-4">
-          <div className="flex items-center gap-2">
-            <Link to="/">
+          <div className="flex items-center gap-2 min-w-0">
+            <Link to="/" className="shrink-0">
               <img
                 src={customLogo ? apiClient.getAssetUrl(`/static/custom/${customLogo}`) : apiClient.getAssetUrl('/static/android-chrome-192x192.png')}
                 alt={displayName}
@@ -1532,20 +1671,20 @@ export function Layout() {
               />
             </Link>
             <TableSelector>
-              <button className="flex items-center gap-1.5 hover:opacity-80 transition-opacity group">
+              <button className="flex items-center gap-1.5 min-w-0 hover:opacity-80 transition-opacity group">
                 <ShinyText
                   text={displayName}
-                  className="font-semibold text-lg"
+                  className="font-semibold text-lg min-w-0 max-w-full truncate"
                   speed={4}
                   color={isDark ? '#a8a8a8' : '#555555'}
                   shineColor={isDark ? '#ffffff' : '#999999'}
                   spread={75}
                 />
-                <span className="material-icons-outlined text-muted-foreground text-sm group-hover:text-foreground transition-colors">
+                <span aria-hidden="true" className="material-icons-outlined text-muted-foreground text-sm shrink-0 group-hover:text-foreground transition-colors">
                   expand_more
                 </span>
                 <span
-                  className={`w-2 h-2 rounded-full ${
+                  className={`w-2 h-2 rounded-full shrink-0 ${
                     !isBackendConnected
                       ? 'bg-gray-400'
                       : isConnected
@@ -1565,9 +1704,13 @@ export function Layout() {
           </div>
 
           {showFirmwareWarning && (
-            <div className="flex items-center gap-1.5 min-w-0 mx-2 text-amber-500">
-              <span className="material-icons-outlined text-base shrink-0">warning</span>
-              <span className="text-xs truncate">
+            <div
+              className="flex items-center gap-1.5 min-w-0 shrink-0 sm:shrink mx-2 text-amber-500"
+              title={`FluidNC ${firmwareVersion} — change to ${expectedFirmwareVersion}`}
+              aria-label={`FluidNC ${firmwareVersion} — change to ${expectedFirmwareVersion}`}
+            >
+              <span aria-hidden="true" className="material-icons-outlined text-base shrink-0">warning</span>
+              <span className="hidden sm:inline text-xs truncate">
                 FluidNC {firmwareVersion} — change to {expectedFirmwareVersion}
               </span>
             </div>
@@ -1582,14 +1725,15 @@ export function Layout() {
                 className="rounded-full"
                 onClick={handleLock}
                 title="Lock"
+                aria-label="Lock"
               >
-                <span className="material-icons-outlined">lock_open</span>
+                <span aria-hidden="true" className="material-icons-outlined">lock_open</span>
               </Button>
             )}
-            {updateAvailable && (
-              <Link to="/settings?section=version" title="Software update available">
+            {updateAvailable && !isPlayOnlyActive && (
+              <Link to="/settings?section=version" title="Software update available" aria-label="Software update available">
                 <span className="relative flex items-center justify-center w-8 h-8 rounded-full hover:bg-accent transition-colors">
-                  <span className="material-icons-outlined text-xl">download</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-xl">download</span>
                   <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
                 </span>
               </Link>
@@ -1602,7 +1746,7 @@ export function Layout() {
                   className="rounded-full"
                   aria-label="Open menu"
                 >
-                  <span className="material-icons-outlined">menu</span>
+                  <span aria-hidden="true" className="material-icons-outlined">menu</span>
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-56 p-2">
@@ -1611,7 +1755,7 @@ export function Layout() {
                     onClick={() => setIsDark(!isDark)}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
                   >
-                    <span className="material-icons-outlined text-xl">
+                    <span aria-hidden="true" className="material-icons-outlined text-xl">
                       {isDark ? 'light_mode' : 'dark_mode'}
                     </span>
                     {isDark ? 'Light Mode' : 'Dark Mode'}
@@ -1620,7 +1764,7 @@ export function Layout() {
                     onClick={handleToggleLogs}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
                   >
-                    <span className="material-icons-outlined text-xl">article</span>
+                    <span aria-hidden="true" className="material-icons-outlined text-xl">article</span>
                     View Logs
                   </button>
                   <button
@@ -1630,7 +1774,7 @@ export function Layout() {
                     }}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
                   >
-                    <span className="material-icons-outlined text-xl">wifi</span>
+                    <span aria-hidden="true" className="material-icons-outlined text-xl">wifi</span>
                     WiFi Setup
                   </button>
                   <Separator className="my-1" />
@@ -1638,14 +1782,14 @@ export function Layout() {
                     onClick={handleRestart}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-amber-500"
                   >
-                    <span className="material-icons-outlined text-xl">restart_alt</span>
+                    <span aria-hidden="true" className="material-icons-outlined text-xl">restart_alt</span>
                     Restart
                   </button>
                   <button
                     onClick={handleShutdown}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-red-500"
                   >
-                    <span className="material-icons-outlined text-xl">power_settings_new</span>
+                    <span aria-hidden="true" className="material-icons-outlined text-xl">power_settings_new</span>
                     Shutdown
                   </button>
                 </div>
@@ -1662,14 +1806,15 @@ export function Layout() {
                 className="rounded-full"
                 onClick={handleLock}
                 title="Lock"
+                aria-label="Lock"
               >
-                <span className="material-icons-outlined">lock_open</span>
+                <span aria-hidden="true" className="material-icons-outlined">lock_open</span>
               </Button>
             )}
-            {updateAvailable && (
-              <Link to="/settings?section=version" title="Software update available">
+            {updateAvailable && !isPlayOnlyActive && (
+              <Link to="/settings?section=version" title="Software update available" aria-label="Software update available">
                 <span className="relative flex items-center justify-center w-8 h-8 rounded-full hover:bg-accent transition-colors">
-                  <span className="material-icons-outlined text-xl">download</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-xl">download</span>
                   <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
                 </span>
               </Link>
@@ -1682,7 +1827,7 @@ export function Layout() {
                   className="rounded-full"
                   aria-label="Open menu"
                 >
-                  <span className="material-icons-outlined">
+                  <span aria-hidden="true" className="material-icons-outlined">
                     {isMobileMenuOpen ? 'close' : 'menu'}
                   </span>
                 </Button>
@@ -1696,7 +1841,7 @@ export function Layout() {
                     }}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
                   >
-                    <span className="material-icons-outlined text-xl">
+                    <span aria-hidden="true" className="material-icons-outlined text-xl">
                       {isDark ? 'light_mode' : 'dark_mode'}
                     </span>
                     {isDark ? 'Light Mode' : 'Dark Mode'}
@@ -1708,7 +1853,7 @@ export function Layout() {
                     }}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
                   >
-                    <span className="material-icons-outlined text-xl">article</span>
+                    <span aria-hidden="true" className="material-icons-outlined text-xl">article</span>
                     View Logs
                   </button>
                   <button
@@ -1718,7 +1863,7 @@ export function Layout() {
                     }}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
                   >
-                    <span className="material-icons-outlined text-xl">wifi</span>
+                    <span aria-hidden="true" className="material-icons-outlined text-xl">wifi</span>
                     WiFi Setup
                   </button>
                   <Separator className="my-1" />
@@ -1729,7 +1874,7 @@ export function Layout() {
                     }}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-amber-500"
                   >
-                    <span className="material-icons-outlined text-xl">restart_alt</span>
+                    <span aria-hidden="true" className="material-icons-outlined text-xl">restart_alt</span>
                     Restart
                   </button>
                   <button
@@ -1739,7 +1884,7 @@ export function Layout() {
                     }}
                     className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-red-500"
                   >
-                    <span className="material-icons-outlined text-xl">power_settings_new</span>
+                    <span aria-hidden="true" className="material-icons-outlined text-xl">power_settings_new</span>
                     Shutdown
                   </button>
                 </div>
@@ -1792,7 +1937,7 @@ export function Layout() {
           <>
             {/* Resize Handle */}
             <div
-              className="absolute top-0 left-0 right-0 h-2 cursor-ns-resize flex items-center justify-center group hover:bg-primary/10 -translate-y-1/2 z-10"
+              className="absolute top-0 left-0 right-0 h-6 cursor-ns-resize flex items-center justify-center group hover:bg-primary/10 -translate-y-1/2 z-10"
               onMouseDown={handleResizeStart}
               onTouchStart={handleResizeStart}
             >
@@ -1822,8 +1967,8 @@ export function Layout() {
                   className="text-xs bg-background border rounded px-2 py-1 w-28 sm:w-40"
                 />
                 {logSearchQuery && (
-                  <Button variant="ghost" size="icon-sm" onClick={() => setLogSearchQuery('')} className="rounded-full" title="Clear search">
-                    <span className="material-icons-outlined text-sm">close</span>
+                  <Button variant="ghost" size="icon-sm" onClick={() => setLogSearchQuery('')} className="rounded-full" title="Clear search" aria-label="Clear search">
+                    <span aria-hidden="true" className="material-icons-outlined text-sm">close</span>
                   </Button>
                 )}
                 <span className="text-xs text-muted-foreground">
@@ -1839,8 +1984,9 @@ export function Layout() {
                   onClick={handleCopyLogs}
                   className="rounded-full"
                   title="Copy logs"
+                  aria-label="Copy logs"
                 >
-                  <span className="material-icons-outlined text-base">content_copy</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-base">content_copy</span>
                 </Button>
                 <Button
                   variant="ghost"
@@ -1848,8 +1994,9 @@ export function Layout() {
                   onClick={handleDownloadLogs}
                   className="rounded-full"
                   title="Download logs"
+                  aria-label="Download logs"
                 >
-                  <span className="material-icons-outlined text-base">download</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-base">download</span>
                 </Button>
                 <Button
                   variant="ghost"
@@ -1857,8 +2004,9 @@ export function Layout() {
                   onClick={() => setIsLogsOpen(false)}
                   className="rounded-full"
                   title="Close"
+                  aria-label="Close logs"
                 >
-                  <span className="material-icons-outlined text-base">close</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-base">close</span>
                 </Button>
               </div>
             </div>
@@ -1871,7 +2019,7 @@ export function Layout() {
               {/* Loading indicator for older logs */}
               {isLoadingMoreLogs && (
                 <div className="flex items-center justify-center gap-2 py-2 text-muted-foreground">
-                  <span className="material-icons-outlined text-sm animate-spin">sync</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-sm animate-spin">sync</span>
                   <span>Loading older logs...</span>
                 </div>
               )}
@@ -1907,7 +2055,8 @@ export function Layout() {
       </div>
 
       {/* Floating Now Playing Button - draggable, snaps to left/center/right */}
-      {!isNowPlayingOpen && (
+      {/* Only rendered while something is playing or paused - when idle it would just overlap page content */}
+      {!isNowPlayingOpen && npIsPlaying && (
         <button
           ref={buttonRef}
           onClick={() => {
@@ -1940,7 +2089,7 @@ export function Layout() {
           style={getButtonPositionStyle()}
           aria-label={isCurrentlyPlaying ? 'Now Playing' : 'Not Playing'}
         >
-          <span className={`material-icons-outlined text-xl ${isCurrentlyPlaying ? 'text-primary' : 'text-muted-foreground'}`}>
+          <span aria-hidden="true" className={`material-icons-outlined text-xl ${isCurrentlyPlaying ? 'text-primary' : 'text-muted-foreground'}`}>
             {isCurrentlyPlaying ? 'play_circle' : 'stop_circle'}
           </span>
           <span className="text-sm font-medium">
@@ -1953,7 +2102,10 @@ export function Layout() {
       <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card pb-safe">
         <div className={`max-w-5xl mx-auto grid h-16`} style={{ gridTemplateColumns: `repeat(${visibleNavItems.length + (isPlayOnlyActive ? 1 : 0)}, minmax(0, 1fr))` }}>
           {visibleNavItems.map((item) => {
-            const isActive = location.pathname === item.path
+            // Settings tab also covers pages reached from it that have no nav entry of their own
+            const isActive = item.path === '/settings'
+              ? ['/settings', '/setup', '/wifi-setup'].includes(location.pathname)
+              : location.pathname === item.path
             return (
               <Link
                 key={item.path}
@@ -1968,7 +2120,7 @@ export function Layout() {
                 {isActive && (
                   <span className="absolute -top-0.5 w-8 h-1 rounded-full bg-primary" />
                 )}
-                <span className={`text-xl ${isActive ? 'material-icons' : 'material-icons-outlined'}`}>
+                <span aria-hidden="true" className={`text-xl ${isActive ? 'material-icons' : 'material-icons-outlined'}`}>
                   {item.icon}
                 </span>
                 <span className="text-xs font-medium">{item.label}</span>
@@ -1981,7 +2133,7 @@ export function Layout() {
               onClick={() => { setShowPasswordDialog(true); setPasswordInput(''); setPasswordError(false) }}
               className="relative flex flex-col items-center justify-center gap-1 transition-all duration-200 text-muted-foreground hover:text-foreground active:scale-95"
             >
-              <span className="material-icons-outlined text-xl">lock</span>
+              <span aria-hidden="true" className="material-icons-outlined text-xl">lock</span>
               <span className="text-xs font-medium">Settings</span>
             </button>
           )}

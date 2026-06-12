@@ -123,7 +123,7 @@ function SortableQueueItem({
         {...listeners}
         className="w-6 flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing touch-none"
       >
-        <span className="material-icons-outlined text-muted-foreground text-sm">drag_indicator</span>
+        <span aria-hidden="true" className="material-icons-outlined text-muted-foreground text-sm">drag_indicator</span>
       </div>
 
       {/* Preview thumbnail */}
@@ -137,7 +137,7 @@ function SortableQueueItem({
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <span className="material-icons-outlined text-muted-foreground text-4xl">image</span>
+            <span aria-hidden="true" className="material-icons-outlined text-muted-foreground text-4xl">image</span>
           </div>
         )}
       </div>
@@ -148,23 +148,25 @@ function SortableQueueItem({
         <p className="text-xs text-muted-foreground">#{index + 1}</p>
       </div>
 
-      {/* Move to top/bottom buttons - always visible on mobile, hover on desktop */}
-      <div className="flex flex-col gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0">
+      {/* Move to top/bottom buttons - always visible on touch devices, hover-revealed on fine pointers */}
+      <div className="flex flex-col gap-1 opacity-100 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 transition-opacity shrink-0">
         <button
           onClick={onMoveToTop}
           disabled={isFirst}
-          className="p-1 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+          className="p-2 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
           title="Move to top"
+          aria-label="Move to top"
         >
-          <span className="material-icons-outlined text-sm">vertical_align_top</span>
+          <span aria-hidden="true" className="material-icons-outlined text-sm">vertical_align_top</span>
         </button>
         <button
           onClick={onMoveToBottom}
           disabled={isLast}
-          className="p-1 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+          className="p-2 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
           title="Move to bottom"
+          aria-label="Move to bottom"
         >
-          <span className="material-icons-outlined text-sm">vertical_align_bottom</span>
+          <span aria-hidden="true" className="material-icons-outlined text-sm">vertical_align_bottom</span>
         </button>
       </div>
     </div>
@@ -182,6 +184,34 @@ interface NowPlayingBarProps {
 export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVisible, openExpanded = false, onClose }: NowPlayingBarProps) {
   const status: StatusData | null = useStatusStore((s) => s.status)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+
+  // Screen-reader announcement for playback state transitions only
+  // (routine progress updates must not trigger announcements)
+  const [announcement, setAnnouncement] = useState('')
+  const prevPlaybackRef = useRef<{ running: boolean; paused: boolean; file: string | null }>({
+    running: false,
+    paused: false,
+    file: null,
+  })
+  useEffect(() => {
+    const running = status?.is_running ?? false
+    const paused = status?.is_paused ?? false
+    const file = status?.current_file ?? null
+    const prev = prevPlaybackRef.current
+    prevPlaybackRef.current = { running, paused, file }
+
+    if (running && !paused && (!prev.running || prev.paused || file !== prev.file)) {
+      if (!prev.running || file !== prev.file) {
+        setAnnouncement(`Now playing ${formatPatternName(file)}`)
+      } else {
+        setAnnouncement('Playing')
+      }
+    } else if (running && paused && !prev.paused) {
+      setAnnouncement('Paused')
+    } else if (!running && prev.running) {
+      setAnnouncement('Playback stopped')
+    }
+  }, [status?.is_running, status?.is_paused, status?.current_file])
 
   // Expanded state for slide-up view
   const [isExpanded, setIsExpanded] = useState(false)
@@ -212,16 +242,17 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
     touchStartY.current = null
   }
 
-  // Prevent background scroll when Now Playing bar is visible
+  // Prevent background scroll when Now Playing bar is expanded (mobile only —
+  // the collapsed bar only occupies the bottom of the screen, so the page
+  // stays scrollable to allow browsing patterns while one plays)
   useEffect(() => {
-    if (isVisible) {
-      // Lock body scroll when bar is visible on mobile
+    if (isVisible && isExpanded && window.matchMedia('(max-width: 767px)').matches) {
       document.body.style.overflow = 'hidden'
       return () => {
         document.body.style.overflow = ''
       }
     }
-  }, [isVisible])
+  }, [isVisible, isExpanded])
 
   // Use native event listener for touchmove to prevent background scroll on the bar itself
   useEffect(() => {
@@ -483,30 +514,34 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
     }
   }, [getThemeColors, initOffscreenCanvas, polarToCartesian])
 
-  // Fetch coordinates when file changes or fullscreen opens
+  // Fetch coordinates when the playing file changes
   useEffect(() => {
     const currentFile = status?.current_file
     if (!currentFile) return
-
-    // Only fetch if file changed or we don't have coordinates yet
-    const needsFetch = currentFile !== lastFileRef.current || coordinates.length === 0
-
-    if (!needsFetch) return
+    if (currentFile === lastFileRef.current) return
 
     lastFileRef.current = currentFile
     lastDrawnIndexRef.current = -1
+    let cancelled = false
 
     apiClient.post<{ coordinates?: Coordinate[] }>('/get_theta_rho_coordinates', { file_name: currentFile })
       .then((data) => {
-        if (data.coordinates && Array.isArray(data.coordinates)) {
-          setCoordinates(data.coordinates)
-        }
+        if (cancelled) return
+        setCoordinates(Array.isArray(data.coordinates) ? data.coordinates : [])
       })
       .catch((err) => {
+        if (cancelled) return
         console.error('Failed to fetch coordinates:', err)
+        // Clear the marker so the next file change retries, but don't
+        // refetch the same failing file on every effect re-run
+        lastFileRef.current = null
         setCoordinates([])
       })
-  }, [status?.current_file, coordinates.length])
+
+    // Ignore responses that land after the file has already changed —
+    // otherwise a slow fetch for the previous pattern overwrites the new one
+    return () => { cancelled = true }
+  }, [status?.current_file])
 
   // Get target index from progress percentage
   const getTargetIndex = useCallback((coords: Coordinate[]): number => {
@@ -880,6 +915,9 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
+        {/* Screen-reader playback announcements */}
+        <div aria-live="polite" role="status" className="sr-only">{announcement}</div>
+
         {/* Max-width container to match page layout */}
         <div className="h-full max-w-5xl mx-auto relative">
           {/* Swipe indicator - only on mobile */}
@@ -894,22 +932,24 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden h-8 w-8"
+              className="md:hidden h-10 w-10"
               onClick={() => setShowQueue(true)}
               title="View queue"
+              aria-label="View queue"
             >
-              <span className="material-icons-outlined text-lg">queue_music</span>
+              <span aria-hidden="true" className="material-icons-outlined text-lg">queue_music</span>
             </Button>
           )}
           {isPlaying && (
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-10 w-10"
               onClick={() => setIsExpanded(!isExpanded)}
               title={isExpanded ? 'Collapse' : 'Expand'}
+              aria-label={isExpanded ? 'Collapse' : 'Expand'}
             >
-              <span className="material-icons-outlined text-lg">
+              <span aria-hidden="true" className="material-icons-outlined text-lg">
                 {isExpanded ? 'expand_more' : 'expand_less'}
               </span>
             </Button>
@@ -917,11 +957,12 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
+            className="h-10 w-10"
             onClick={onClose}
             title="Close"
+            aria-label="Close"
           >
-            <span className="material-icons-outlined text-lg">close</span>
+            <span aria-hidden="true" className="material-icons-outlined text-lg">close</span>
           </Button>
         </div>
 
@@ -946,7 +987,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <span className="material-icons-outlined text-muted-foreground text-4xl">
+                      <span aria-hidden="true" className="material-icons-outlined text-muted-foreground text-4xl">
                         {isPlaying ? 'image' : 'hourglass_empty'}
                       </span>
                     </div>
@@ -989,19 +1030,19 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                       {/* Progress Bar - Desktop only (inline, above controls) */}
                       {isWaiting ? (
                         <div className="hidden md:flex items-center gap-3">
-                          <span className="material-icons-outlined text-muted-foreground text-lg">hourglass_top</span>
-                          <Progress value={waitProgress} className="h-2 flex-1" />
+                          <span aria-hidden="true" className="material-icons-outlined text-muted-foreground text-lg">hourglass_top</span>
+                          <Progress value={waitProgress} aria-label="Pattern progress" className="h-2 flex-1" />
                           <span className="text-sm text-muted-foreground font-mono">{formatTime(waitTimeRemaining)}</span>
                         </div>
                       ) : (
                         <div className="hidden md:flex items-center gap-3">
                           <span className="text-sm text-muted-foreground w-12 font-mono">{formatTime(elapsedTime)}</span>
-                          <Progress value={progressPercent} className="h-2 flex-1" />
+                          <Progress value={progressPercent} aria-label="Pattern progress" className="h-2 flex-1" />
                           <span
                             className={`text-sm text-muted-foreground text-right font-mono flex items-center justify-end gap-1.5 shrink-0 ${usingHistoricalEta ? 'w-24' : 'w-14'}`}
                             title={usingHistoricalEta ? 'ETA based on last completed run' : 'Estimated time remaining'}
                           >
-                            {usingHistoricalEta && <span className="material-icons-outlined text-sm">history</span>}
+                            {usingHistoricalEta && <span aria-hidden="true" className="material-icons-outlined text-sm">history</span>}
                             -{formatTime(remainingTime)}
                           </span>
                         </div>
@@ -1015,16 +1056,18 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                           className="h-10 w-10 rounded-full"
                           onClick={handleStop}
                           title="Stop"
+                          aria-label="Stop pattern"
                         >
-                          <span className="material-icons">stop</span>
+                          <span aria-hidden="true" className="material-icons">stop</span>
                         </Button>
                         <Button
                           variant="default"
                           size="icon"
                           className="h-12 w-12 rounded-full"
                           onClick={handlePause}
+                          aria-label={status.is_paused ? 'Resume pattern' : 'Pause pattern'}
                         >
-                          <span className="material-icons text-xl">
+                          <span aria-hidden="true" className="material-icons text-xl">
                             {status.is_paused ? 'play_arrow' : 'pause'}
                           </span>
                         </Button>
@@ -1035,8 +1078,9 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                             className="h-10 w-10 rounded-full"
                             onClick={handleSkip}
                             title="Skip to next"
+                            aria-label="Skip to next pattern"
                           >
-                            <span className="material-icons">skip_next</span>
+                            <span aria-hidden="true" className="material-icons">skip_next</span>
                           </Button>
                         )}
                       </div>
@@ -1050,7 +1094,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                           value={speedInput}
                           onChange={(e) => setSpeedInput(e.target.value)}
                           onKeyDown={(e) => e.key === 'Enter' && handleSpeedSubmit()}
-                          className="h-7 w-20 text-sm px-2"
+                          className="h-9 w-20 text-sm px-2"
                         />
                         <span className="text-sm text-muted-foreground">mm/s</span>
                       </div>
@@ -1065,18 +1109,18 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                       >
                         <p className="text-xs text-muted-foreground font-medium flex items-center gap-1">
                           Up Next
-                          <span className="material-icons-outlined text-xs">queue_music</span>
+                          <span aria-hidden="true" className="material-icons-outlined text-xs">queue_music</span>
                         </p>
                         <div className="w-24 h-24 rounded-full overflow-hidden bg-muted border-2">
                           {nextPreviewUrl ? (
                             <img
                               src={nextPreviewUrl}
-                              alt="Next pattern"
+                              alt={`Next pattern: ${formatPatternName(status.playlist.next_file)}`}
                               className="w-full h-full object-cover pattern-preview"
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
-                              <span className="material-icons-outlined text-muted-foreground text-2xl">image</span>
+                              <span aria-hidden="true" className="material-icons-outlined text-muted-foreground text-2xl">image</span>
                             </div>
                           )}
                         </div>
@@ -1097,16 +1141,16 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
               {isPlaying && status && (
                 isWaiting ? (
                   <div className="flex md:hidden items-center gap-3 px-6 pb-16">
-                    <span className="material-icons-outlined text-muted-foreground text-lg">hourglass_top</span>
-                    <Progress value={waitProgress} className="h-2 flex-1" />
+                    <span aria-hidden="true" className="material-icons-outlined text-muted-foreground text-lg">hourglass_top</span>
+                    <Progress value={waitProgress} aria-label="Pattern progress" className="h-2 flex-1" />
                     <span className="text-sm text-muted-foreground font-mono">{formatTime(waitTimeRemaining)}</span>
                   </div>
                 ) : (
                   <div className="flex md:hidden items-center gap-3 px-6 pb-16">
                     <span className="text-sm text-muted-foreground w-12 font-mono">{formatTime(elapsedTime)}</span>
-                    <Progress value={progressPercent} className="h-2 flex-1" />
+                    <Progress value={progressPercent} aria-label="Pattern progress" className="h-2 flex-1" />
                     <span className={`text-sm text-muted-foreground text-right font-mono flex items-center justify-end gap-1.5 shrink-0 ${usingHistoricalEta ? 'w-24' : 'w-14'}`}>
-                      {usingHistoricalEta && <span className="material-icons-outlined text-sm">history</span>}
+                      {usingHistoricalEta && <span aria-hidden="true" className="material-icons-outlined text-sm">history</span>}
                       -{formatTime(remainingTime)}
                     </span>
                   </div>
@@ -1129,6 +1173,8 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                     ref={canvasRef}
                     width={600}
                     height={600}
+                    role="img"
+                    aria-label={`Live preview of ${patternName}`}
                     className="rounded-full border-2 hover:border-primary transition-colors w-[40vh] h-[40vh] max-w-[300px] max-h-[300px] md:w-[42vh] md:h-[42vh] md:max-w-[500px] md:max-h-[500px]"
                   />
                 </div>
@@ -1147,7 +1193,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
-                        <span className="material-icons-outlined text-muted-foreground text-sm">image</span>
+                        <span aria-hidden="true" className="material-icons-outlined text-muted-foreground text-sm">image</span>
                       </div>
                     )}
                   </div>
@@ -1179,20 +1225,20 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                 {/* Progress */}
                 {isWaiting ? (
                   <div className="space-y-1 md:space-y-2">
-                    <Progress value={waitProgress} className="h-1.5 md:h-2" />
+                    <Progress value={waitProgress} aria-label="Pattern progress" className="h-1.5 md:h-2" />
                     <div className="flex justify-center items-center gap-2 text-xs md:text-sm text-muted-foreground font-mono">
-                      <span className="material-icons-outlined text-base">hourglass_top</span>
+                      <span aria-hidden="true" className="material-icons-outlined text-base">hourglass_top</span>
                       <span>{formatTime(waitTimeRemaining)} remaining</span>
                     </div>
                   </div>
                 ) : (
                   <div className="space-y-1 md:space-y-2">
-                    <Progress value={progressPercent} className="h-1.5 md:h-2" />
+                    <Progress value={progressPercent} aria-label="Pattern progress" className="h-1.5 md:h-2" />
                     <div className="flex justify-between text-xs md:text-sm text-muted-foreground font-mono">
                       <span className="w-16">{formatTime(elapsedTime)}</span>
                       <span>{progressPercent.toFixed(0)}%</span>
                       <span className="w-16 flex items-center justify-end gap-1">
-                        {usingHistoricalEta && <span className="material-icons-outlined text-xs">history</span>}
+                        {usingHistoricalEta && <span aria-hidden="true" className="material-icons-outlined text-xs">history</span>}
                         -{formatTime(remainingTime)}
                       </span>
                     </div>
@@ -1207,16 +1253,18 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                     className="h-10 w-10 md:h-12 md:w-12 rounded-full"
                     onClick={handleStop}
                     title="Stop"
+                    aria-label="Stop pattern"
                   >
-                    <span className="material-icons text-lg md:text-2xl">stop</span>
+                    <span aria-hidden="true" className="material-icons text-lg md:text-2xl">stop</span>
                   </Button>
                   <Button
                     variant="default"
                     size="icon"
                     className="h-12 w-12 md:h-14 md:w-14 rounded-full"
                     onClick={handlePause}
+                    aria-label={status?.is_paused ? 'Resume pattern' : 'Pause pattern'}
                   >
-                    <span className="material-icons text-xl md:text-2xl">
+                    <span aria-hidden="true" className="material-icons text-xl md:text-2xl">
                       {status?.is_paused ? 'play_arrow' : 'pause'}
                     </span>
                   </Button>
@@ -1227,8 +1275,9 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                       className="h-10 w-10 md:h-12 md:w-12 rounded-full"
                       onClick={handleSkip}
                       title="Skip to next"
+                      aria-label="Skip to next pattern"
                     >
-                      <span className="material-icons text-lg md:text-2xl">skip_next</span>
+                      <span aria-hidden="true" className="material-icons text-lg md:text-2xl">skip_next</span>
                     </Button>
                   )}
                 </div>
@@ -1258,12 +1307,12 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                       {nextPreviewUrl ? (
                         <img
                           src={nextPreviewUrl}
-                          alt="Next pattern"
+                          alt={`Next pattern: ${formatPatternName(status.playlist.next_file)}`}
                           className="w-full h-full object-cover pattern-preview"
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                          <span className="material-icons-outlined text-muted-foreground text-sm">image</span>
+                          <span aria-hidden="true" className="material-icons-outlined text-muted-foreground text-sm">image</span>
                         </div>
                       )}
                     </div>
@@ -1273,7 +1322,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                         {formatPatternName(status.playlist.next_file)}
                       </p>
                     </div>
-                    <span className="material-icons-outlined text-muted-foreground text-lg">queue_music</span>
+                    <span aria-hidden="true" className="material-icons-outlined text-muted-foreground text-lg">queue_music</span>
                   </div>
                 )}
               </div>
@@ -1298,7 +1347,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
           </div>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="material-icons-outlined">queue_music</span>
+              <span aria-hidden="true" className="material-icons-outlined">queue_music</span>
               Queue
               {status?.playlist?.name && (
                 <span className="text-sm font-normal text-muted-foreground">

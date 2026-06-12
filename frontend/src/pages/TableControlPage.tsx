@@ -36,15 +36,20 @@ import {
 } from '@/components/ui/select'
 import { apiClient } from '@/lib/apiClient'
 import { useStatusStore } from '@/stores/useStatusStore'
+import { ConnectionBanner, useTableConnected } from '@/components/ConnectionBanner'
 
 export function TableControlPage() {
   const [speedInput, setSpeedInput] = useState('')
   const [currentSpeed, setCurrentSpeed] = useState<number | null>(null)
   const [currentTheta, setCurrentTheta] = useState(0)
   const [isLoading, setIsLoading] = useState<string | null>(null)
+  const tableConnected = useTableConnected()
+  // Tooltip for hardware-action buttons disabled due to no table connection
+  const disconnectedTitle = tableConnected ? undefined : 'Table not connected'
 
   // Subscribe to shared status WebSocket via store
   const speed = useStatusStore((s) => s.status?.speed ?? null)
+  const hardwareTheta = useStatusStore((s) => s.status?.current_theta ?? null)
   const isPatternRunning = useStatusStore((s) =>
     (s.status?.is_running || s.status?.is_paused) ?? false
   )
@@ -53,6 +58,13 @@ export function TableControlPage() {
   useEffect(() => {
     if (speed !== null) setCurrentSpeed(speed)
   }, [speed])
+
+  // Keep the rotation baseline anchored to the actual machine position —
+  // rotate commands send absolute theta, so accumulating from a local 0
+  // would diverge from where the table really is
+  useEffect(() => {
+    if (hardwareTheta !== null) setCurrentTheta(hardwareTheta)
+  }, [hardwareTheta])
 
   // Serial terminal state
   const [serialPorts, setSerialPorts] = useState<string[]>([])
@@ -153,8 +165,12 @@ export function TableControlPage() {
 
   const handleSetSpeed = async () => {
     const speed = parseFloat(speedInput)
-    if (isNaN(speed) || speed <= 0) {
+    if (isNaN(speed)) {
       toast.error('Please enter a valid speed value')
+      return
+    }
+    if (speed < 10) {
+      toast.error('Speed must be at least 10 mm/s')
       return
     }
     try {
@@ -348,6 +364,8 @@ export function TableControlPage() {
           </p>
         </div>
 
+        <ConnectionBanner />
+
         <Separator />
 
         {/* Main Controls Grid - 2x2 */}
@@ -364,14 +382,15 @@ export function TableControlPage() {
                   <TooltipTrigger asChild>
                     <Button
                       onClick={handleHome}
-                      disabled={isLoading === 'home'}
+                      disabled={isLoading === 'home' || !tableConnected}
+                      title={disconnectedTitle}
                       variant="primary"
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'home' ? (
-                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                        <span aria-hidden="true" className="material-icons-outlined animate-spin text-2xl">sync</span>
                       ) : (
-                        <span className="material-icons-outlined text-2xl">home</span>
+                        <span aria-hidden="true" className="material-icons-outlined text-2xl">home</span>
                       )}
                       <span className="text-xs">Home</span>
                     </Button>
@@ -388,9 +407,9 @@ export function TableControlPage() {
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'stop' ? (
-                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                        <span aria-hidden="true" className="material-icons-outlined animate-spin text-2xl">sync</span>
                       ) : (
-                        <span className="material-icons-outlined text-2xl">stop_circle</span>
+                        <span aria-hidden="true" className="material-icons-outlined text-2xl">stop_circle</span>
                       )}
                       <span className="text-xs">Stop</span>
                     </Button>
@@ -403,14 +422,15 @@ export function TableControlPage() {
                     <TooltipTrigger asChild>
                       <DialogTrigger asChild>
                         <Button
-                          disabled={isLoading === 'reset'}
+                          disabled={isLoading === 'reset' || !tableConnected}
+                          title={disconnectedTitle}
                           variant="secondary"
                           className="h-16 gap-1 flex-col items-center justify-center"
                         >
                           {isLoading === 'reset' ? (
-                            <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                            <span aria-hidden="true" className="material-icons-outlined animate-spin text-2xl">sync</span>
                           ) : (
-                            <span className="material-icons-outlined text-2xl">restart_alt</span>
+                            <span aria-hidden="true" className="material-icons-outlined text-2xl">restart_alt</span>
                           )}
                           <span className="text-xs">Reset</span>
                         </Button>
@@ -426,7 +446,7 @@ export function TableControlPage() {
                       </DialogDescription>
                     </DialogHeader>
                     <Alert className="flex items-center border-amber-500/50">
-                      <span className="material-icons-outlined text-amber-500 text-base mr-2 shrink-0">warning</span>
+                      <span aria-hidden="true" className="material-icons-outlined text-amber-500 text-base mr-2 shrink-0">warning</span>
                       <AlertDescription className="text-amber-600 dark:text-amber-400">
                         Homing is required after resetting. The table will lose its position reference.
                       </AlertDescription>
@@ -467,24 +487,27 @@ export function TableControlPage() {
                   value={speedInput}
                   onChange={(e) => setSpeedInput(e.target.value)}
                   placeholder="mm/s"
-                  min="1"
+                  min="10"
+                  max="2000"
                   step="1"
                   className="flex-1"
                   onKeyDown={(e) => e.key === 'Enter' && handleSetSpeed()}
                 />
                 <Button
                   onClick={handleSetSpeed}
-                  disabled={isLoading === 'speed' || !speedInput}
+                  disabled={isLoading === 'speed' || !speedInput || !tableConnected}
+                  title={disconnectedTitle}
                   className="gap-2"
                 >
                   {isLoading === 'speed' ? (
-                    <span className="material-icons-outlined animate-spin">sync</span>
+                    <span aria-hidden="true" className="material-icons-outlined animate-spin">sync</span>
                   ) : (
-                    <span className="material-icons-outlined">check</span>
+                    <span aria-hidden="true" className="material-icons-outlined">check</span>
                   )}
                   Set
                 </Button>
               </div>
+              <p className="mt-2 text-xs text-muted-foreground">10–2000 mm/s</p>
             </CardContent>
           </Card>
 
@@ -500,14 +523,15 @@ export function TableControlPage() {
                   <TooltipTrigger asChild>
                     <Button
                       onClick={handleMoveToCenter}
-                      disabled={isLoading === 'center'}
+                      disabled={isLoading === 'center' || !tableConnected}
+                      title={disconnectedTitle}
                       variant="secondary"
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'center' ? (
-                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                        <span aria-hidden="true" className="material-icons-outlined animate-spin text-2xl">sync</span>
                       ) : (
-                        <span className="material-icons-outlined text-2xl">center_focus_strong</span>
+                        <span aria-hidden="true" className="material-icons-outlined text-2xl">center_focus_strong</span>
                       )}
                       <span className="text-xs">Center</span>
                     </Button>
@@ -519,14 +543,15 @@ export function TableControlPage() {
                   <TooltipTrigger asChild>
                     <Button
                       onClick={handleMoveToPerimeter}
-                      disabled={isLoading === 'perimeter'}
+                      disabled={isLoading === 'perimeter' || !tableConnected}
+                      title={disconnectedTitle}
                       variant="secondary"
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'perimeter' ? (
-                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                        <span aria-hidden="true" className="material-icons-outlined animate-spin text-2xl">sync</span>
                       ) : (
-                        <span className="material-icons-outlined text-2xl">trip_origin</span>
+                        <span aria-hidden="true" className="material-icons-outlined text-2xl">trip_origin</span>
                       )}
                       <span className="text-xs">Perimeter</span>
                     </Button>
@@ -540,9 +565,11 @@ export function TableControlPage() {
                       <DialogTrigger asChild>
                         <Button
                           variant="secondary"
+                          disabled={!tableConnected}
+                          title={disconnectedTitle}
                           className="h-16 gap-1 flex-col items-center justify-center"
                         >
-                          <span className="material-icons-outlined text-2xl">screen_rotation</span>
+                          <span aria-hidden="true" className="material-icons-outlined text-2xl">screen_rotation</span>
                           <span className="text-xs">Align</span>
                         </Button>
                       </DialogTrigger>
@@ -579,7 +606,7 @@ export function TableControlPage() {
                     <Separator />
 
                     <Alert className="flex items-start border-amber-500/50">
-                      <span className="material-icons-outlined text-amber-500 text-base mr-2 shrink-0">
+                      <span aria-hidden="true" className="material-icons-outlined text-amber-500 text-base mr-2 shrink-0">
                         warning
                       </span>
                       <AlertDescription className="text-amber-600 dark:text-amber-400">
@@ -593,18 +620,20 @@ export function TableControlPage() {
                         <Button
                           variant="secondary"
                           onClick={() => handleRotate(-10)}
-                          disabled={isLoading === 'rotate'}
+                          disabled={isLoading === 'rotate' || !tableConnected}
+                          title={disconnectedTitle}
                         >
-                          <span className="material-icons text-lg mr-1">rotate_left</span>
+                          <span aria-hidden="true" className="material-icons text-lg mr-1">rotate_left</span>
                           CCW 10°
                         </Button>
                         <Button
                           variant="secondary"
                           onClick={() => handleRotate(10)}
-                          disabled={isLoading === 'rotate'}
+                          disabled={isLoading === 'rotate' || !tableConnected}
+                          title={disconnectedTitle}
                         >
                           CW 10°
-                          <span className="material-icons text-lg ml-1">rotate_right</span>
+                          <span aria-hidden="true" className="material-icons text-lg ml-1">rotate_right</span>
                         </Button>
                       </div>
                       <p className="text-xs text-muted-foreground text-center">
@@ -635,14 +664,15 @@ export function TableControlPage() {
                   <TooltipTrigger asChild>
                     <Button
                       onClick={() => handleClearPattern('clear_from_in.thr', 'clear from center')}
-                      disabled={isLoading === 'clear_from_in.thr'}
+                      disabled={isLoading === 'clear_from_in.thr' || !tableConnected}
+                      title={disconnectedTitle}
                       variant="secondary"
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'clear_from_in.thr' ? (
-                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                        <span aria-hidden="true" className="material-icons-outlined animate-spin text-2xl">sync</span>
                       ) : (
-                        <span className="material-icons-outlined text-2xl">center_focus_strong</span>
+                        <span aria-hidden="true" className="material-icons-outlined text-2xl">center_focus_strong</span>
                       )}
                       <span className="text-xs">Clear Center</span>
                     </Button>
@@ -654,14 +684,15 @@ export function TableControlPage() {
                   <TooltipTrigger asChild>
                     <Button
                       onClick={() => handleClearPattern('clear_from_out.thr', 'clear from perimeter')}
-                      disabled={isLoading === 'clear_from_out.thr'}
+                      disabled={isLoading === 'clear_from_out.thr' || !tableConnected}
+                      title={disconnectedTitle}
                       variant="secondary"
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'clear_from_out.thr' ? (
-                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                        <span aria-hidden="true" className="material-icons-outlined animate-spin text-2xl">sync</span>
                       ) : (
-                        <span className="material-icons-outlined text-2xl">all_out</span>
+                        <span aria-hidden="true" className="material-icons-outlined text-2xl">all_out</span>
                       )}
                       <span className="text-xs">Clear Edge</span>
                     </Button>
@@ -673,14 +704,15 @@ export function TableControlPage() {
                   <TooltipTrigger asChild>
                     <Button
                       onClick={() => handleClearPattern('clear_sideway.thr', 'clear sideways')}
-                      disabled={isLoading === 'clear_sideway.thr'}
+                      disabled={isLoading === 'clear_sideway.thr' || !tableConnected}
+                      title={disconnectedTitle}
                       variant="secondary"
                       className="h-16 gap-1 flex-col items-center justify-center"
                     >
                       {isLoading === 'clear_sideway.thr' ? (
-                        <span className="material-icons-outlined animate-spin text-2xl">sync</span>
+                        <span aria-hidden="true" className="material-icons-outlined animate-spin text-2xl">sync</span>
                       ) : (
-                        <span className="material-icons-outlined text-2xl">swap_horiz</span>
+                        <span aria-hidden="true" className="material-icons-outlined text-2xl">swap_horiz</span>
                       )}
                       <span className="text-xs">Clear Sideways</span>
                     </Button>
@@ -698,13 +730,13 @@ export function TableControlPage() {
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 space-y-2">
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <span className="material-icons-outlined text-xl">terminal</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-xl">terminal</span>
                   Serial Terminal
                 </CardTitle>
                 <CardDescription className="hidden sm:block">Send raw commands to the table controller</CardDescription>
                 {/* Warning about pattern interference */}
                 <Alert className="flex items-center border-amber-500/50 py-2">
-                  <span className="material-icons-outlined text-amber-500 text-base mr-2 shrink-0">warning</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-amber-500 text-base mr-2 shrink-0">warning</span>
                   <AlertDescription className="text-xs text-amber-600 dark:text-amber-400">
                     Do not use while a pattern is running. This will interfere with the main connection.
                   </AlertDescription>
@@ -718,8 +750,9 @@ export function TableControlPage() {
                     size="icon"
                     onClick={() => setSerialHistory([])}
                     title="Clear history"
+                    aria-label="Clear history"
                   >
-                    <span className="material-icons-outlined">delete_sweep</span>
+                    <span aria-hidden="true" className="material-icons-outlined">delete_sweep</span>
                   </Button>
                 )}
               </div>
@@ -750,9 +783,9 @@ export function TableControlPage() {
                   title="Connect"
                 >
                   {serialLoading ? (
-                    <span className="material-icons-outlined animate-spin sm:mr-1">sync</span>
+                    <span aria-hidden="true" className="material-icons-outlined animate-spin sm:mr-1">sync</span>
                   ) : (
-                    <span className="material-icons-outlined sm:mr-1">power</span>
+                    <span aria-hidden="true" className="material-icons-outlined sm:mr-1">power</span>
                   )}
                   <span className="hidden sm:inline">Connect</span>
                 </Button>
@@ -765,7 +798,7 @@ export function TableControlPage() {
                     disabled={serialLoading}
                     title="Disconnect"
                   >
-                    <span className="material-icons-outlined sm:mr-1">power_off</span>
+                    <span aria-hidden="true" className="material-icons-outlined sm:mr-1">power_off</span>
                     <span className="hidden sm:inline">Disconnect</span>
                   </Button>
                   <Button
@@ -775,7 +808,7 @@ export function TableControlPage() {
                     disabled={serialLoading}
                     title="Send soft reset to controller"
                   >
-                    <span className="material-icons-outlined sm:mr-1">restart_alt</span>
+                    <span aria-hidden="true" className="material-icons-outlined sm:mr-1">restart_alt</span>
                     <span className="hidden sm:inline">Reset</span>
                   </Button>
                 </>
@@ -788,8 +821,9 @@ export function TableControlPage() {
                   className="sm:hidden"
                   onClick={() => setSerialHistory([])}
                   title="Clear history"
+                  aria-label="Clear history"
                 >
-                  <span className="material-icons-outlined">delete</span>
+                  <span aria-hidden="true" className="material-icons-outlined">delete</span>
                 </Button>
               )}
             </div>
@@ -841,12 +875,13 @@ export function TableControlPage() {
               <Button
                 onClick={handleSerialSend}
                 disabled={!serialConnected || !serialCommand.trim() || serialLoading}
+                aria-label="Send command"
                 className="h-11 px-6"
               >
                 {serialLoading ? (
-                  <span className="material-icons-outlined animate-spin">sync</span>
+                  <span aria-hidden="true" className="material-icons-outlined animate-spin">sync</span>
                 ) : (
-                  <span className="material-icons-outlined">send</span>
+                  <span aria-hidden="true" className="material-icons-outlined">send</span>
                 )}
               </Button>
             </div>

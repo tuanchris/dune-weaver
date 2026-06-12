@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderWithProviders, screen, waitFor, userEvent } from '../../test/utils'
+import { renderWithProviders, screen, waitFor, userEvent, seedConnectedStatus } from '../../test/utils'
 import { server } from '../../test/mocks/server'
 import { http, HttpResponse } from 'msw'
 import { TableControlPage } from '../../pages/TableControlPage'
@@ -10,6 +10,9 @@ describe('TableControlPage', () => {
     vi.clearAllMocks()
     // Reset Zustand store to prevent real WebSocket data from leaking into tests
     useStatusStore.setState({ status: null, isBackendConnected: false, connectionAttempts: 0 })
+    // Hardware-action buttons (Home, Reset, Center, etc.) are disabled when the
+    // table is disconnected, so seed a connected idle table for these tests
+    seedConnectedStatus()
   })
 
   describe('Rendering', () => {
@@ -264,8 +267,8 @@ describe('TableControlPage', () => {
       renderWithProviders(<TableControlPage />)
 
       await waitFor(() => {
-        // The speed badge shows "-- mm/s" when no speed is set
-        expect(screen.getByText(/mm\/s/)).toBeInTheDocument()
+        // The seeded status reports speed 100, which the badge displays
+        expect(screen.getByText('100 mm/s')).toBeInTheDocument()
       })
     })
   })

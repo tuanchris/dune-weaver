@@ -71,8 +71,11 @@ function connectWebSocket() {
   const socket = new WebSocket(apiClient.getWebSocketUrl('/ws/status'))
   ws = socket
 
+  // Every handler checks `ws === socket` so a socket orphaned by a table
+  // switch (including one still CONNECTING when the switch happened) can
+  // never update the store on behalf of the new connection
   socket.onopen = () => {
-    if (isStopped) {
+    if (isStopped || ws !== socket) {
       socket.close()
       return
     }
@@ -81,7 +84,7 @@ function connectWebSocket() {
   }
 
   socket.onmessage = (event) => {
-    if (isStopped) return
+    if (isStopped || ws !== socket) return
     try {
       const data = JSON.parse(event.data)
       if (data.type === 'status_update' && data.data) {
@@ -93,17 +96,22 @@ function connectWebSocket() {
   }
 
   socket.onclose = () => {
-    if (isStopped) return
+    if (isStopped || ws !== socket) return
     ws = null
-    useStatusStore.setState((prev) => ({
+    const attempts = useStatusStore.getState().connectionAttempts + 1
+    useStatusStore.setState({
       isBackendConnected: false,
-      connectionAttempts: prev.connectionAttempts + 1,
-    }))
-    reconnectTimeout = setTimeout(connectWebSocket, 3000)
+      connectionAttempts: attempts,
+    })
+    // Exponential backoff with jitter, capped at 30s — a flat interval makes
+    // every open tab hammer the backend in lockstep while it's down
+    const delay =
+      Math.min(30_000, 3_000 * 2 ** Math.min(attempts - 1, 4)) + Math.random() * 1_000
+    reconnectTimeout = setTimeout(connectWebSocket, delay)
   }
 
   socket.onerror = () => {
-    if (isStopped) return
+    if (isStopped || ws !== socket) return
     useStatusStore.setState({ isBackendConnected: false })
   }
 }
@@ -115,10 +123,13 @@ apiClient.onBaseUrlChange(() => {
     clearTimeout(reconnectTimeout)
     reconnectTimeout = null
   }
-  // Close existing and reconnect
+  // Close existing and reconnect. Null the ref first so the old socket's
+  // handlers see ws !== socket and stand down; close() is valid (and
+  // necessary) even on a socket still in CONNECTING state.
   if (ws) {
-    if (ws.readyState === WebSocket.OPEN) ws.close()
+    const oldSocket = ws
     ws = null
+    oldSocket.close()
   }
   connectWebSocket()
 })
@@ -158,6 +169,7 @@ apiClient.onBaseUrlChange(() => {
 export function _stopStatusWebSocket() {
   isStopped = true
   if (reconnectTimeout) clearTimeout(reconnectTimeout)
-  if (ws && ws.readyState === WebSocket.OPEN) ws.close()
+  // close() is safe in any readyState, including CONNECTING
+  ws?.close()
   ws = null
 }

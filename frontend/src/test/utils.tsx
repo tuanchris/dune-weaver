@@ -1,8 +1,13 @@
 import { render } from '@testing-library/react'
 import type { RenderOptions } from '@testing-library/react'
-import { BrowserRouter, MemoryRouter, Routes, Route } from 'react-router'
+// Import from 'react-router-dom' (same as app code) — under vitest the two
+// packages load as separate module instances, so a Router from 'react-router'
+// provides context that app <Link>s from 'react-router-dom' cannot see
+import { BrowserRouter, MemoryRouter, Routes, Route } from 'react-router-dom'
 import type { ReactElement, ReactNode } from 'react'
 import type { PatternMetadata, PreviewData } from '@/lib/types'
+import { useStatusStore } from '@/stores/useStatusStore'
+import type { StatusData } from '@/stores/useStatusStore'
 import { TableProvider } from '@/contexts/TableContext'
 import { Layout } from '@/components/layout/Layout'
 import { BrowsePage } from '@/pages/BrowsePage'
@@ -85,6 +90,35 @@ export function createMockStatus(overrides: Partial<{
 
 export function createMockPlaylists(): string[] {
   return ['default', 'favorites', 'geometric', 'relaxing']
+}
+
+// Seed the status store as a connected, idle table. Pages gate actions
+// (e.g. BrowsePage's Play button) on status.connection_status, which in
+// the app only arrives over the /ws/status WebSocket.
+export function seedConnectedStatus(overrides: Partial<StatusData> = {}) {
+  useStatusStore.setState({
+    status: {
+      current_file: null,
+      is_paused: false,
+      manual_pause: false,
+      scheduled_pause: false,
+      is_running: false,
+      is_homing: false,
+      is_clearing: false,
+      sensor_homing_failed: false,
+      progress: null,
+      playlist: null,
+      speed: 100,
+      pause_time_remaining: 0,
+      original_pause_time: null,
+      connection_status: true,
+      current_theta: 0,
+      current_rho: 0,
+      firmware_version: null,
+      table_type: null,
+      ...overrides,
+    },
+  })
 }
 
 // Render full app for integration tests

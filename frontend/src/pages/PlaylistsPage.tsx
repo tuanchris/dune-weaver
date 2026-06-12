@@ -13,6 +13,7 @@ import { useOnBackendConnected } from '@/hooks/useBackendConnection'
 import type { PatternMetadata, PreviewData, SortOption, PreExecution, RunMode } from '@/lib/types'
 import { preExecutionOptions } from '@/lib/types'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
@@ -30,6 +31,23 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import type { DragEndEvent } from '@dnd-kit/core'
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 export function PlaylistsPage() {
   const { isPlayOnlyActive } = useOutletContext<{ isPlayOnlyActive?: boolean }>() || {}
@@ -53,6 +71,9 @@ export function PlaylistsPage() {
   // Pattern picker modal state
   const [isPickerOpen, setIsPickerOpen] = useState(false)
   const [selectedPatternPaths, setSelectedPatternPaths] = useState<Set<string>>(new Set())
+  // Selection snapshot taken when the picker opens — used to detect unsaved changes
+  const initialPickerSelectionRef = useRef<Set<string>>(new Set())
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [sortBy, setSortBy] = useState<SortOption>('name')
@@ -66,6 +87,12 @@ export function PlaylistsPage() {
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false)
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [playlistToRename, setPlaylistToRename] = useState<string | null>(null)
+
+  // Guards create/rename/save-patterns confirm buttons against double-submit
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Delete confirmation dialog
+  const [playlistToDelete, setPlaylistToDelete] = useState<string | null>(null)
 
   // Mobile view state - show content panel when a playlist is selected
   const [mobileShowContent, setMobileShowContent] = useState(false)
@@ -187,6 +214,12 @@ export function PlaylistsPage() {
   // Preview loading
   const pendingPreviewsRef = useRef<Set<string>>(new Set())
   const batchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Mirror of `previews` so requestPreview stays identity-stable — see
+  // BrowsePage: depending on the state would churn every observer per load
+  const previewsRef = useRef(previews)
+  useEffect(() => {
+    previewsRef.current = previews
+  }, [previews])
   const abortControllerRef = useRef<AbortController | null>(null)
 
   // Initialize and fetch data
@@ -323,7 +356,7 @@ export function PlaylistsPage() {
   }
 
   const requestPreview = useCallback((path: string) => {
-    if (previews[path] || pendingPreviewsRef.current.has(path)) return
+    if (previewsRef.current[path] || pendingPreviewsRef.current.has(path)) return
 
     pendingPreviewsRef.current.add(path)
 
@@ -338,7 +371,7 @@ export function PlaylistsPage() {
         loadPreviewsForPaths(pathsToFetch)
       }
     }, 100)
-  }, [previews])
+  }, [])
 
   // Playlist CRUD operations
   const handleSelectPlaylist = (name: string) => {
@@ -353,12 +386,14 @@ export function PlaylistsPage() {
   }
 
   const handleCreatePlaylist = async () => {
+    if (isSubmitting) return
     if (!newPlaylistName.trim()) {
       toast.error('Please enter a playlist name')
       return
     }
 
     const name = newPlaylistName.trim()
+    setIsSubmitting(true)
     try {
       await apiClient.post('/create_playlist', { playlist_name: name, files: [] })
       toast.success('Playlist created')
@@ -369,12 +404,16 @@ export function PlaylistsPage() {
     } catch (error) {
       console.error('Create playlist error:', error)
       toast.error(error instanceof Error ? error.message : 'Failed to create playlist')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   const handleRenamePlaylist = async () => {
+    if (isSubmitting) return
     if (!playlistToRename || !newPlaylistName.trim()) return
 
+    setIsSubmitting(true)
     try {
       await apiClient.post('/rename_playlist', { old_name: playlistToRename, new_name: newPlaylistName.trim() })
       toast.success('Playlist renamed')
@@ -387,12 +426,12 @@ export function PlaylistsPage() {
       }
     } catch (error) {
       toast.error('Failed to rename playlist')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   const handleDeletePlaylist = async (name: string) => {
-    if (!confirm(`Delete playlist "${name}"?`)) return
-
     try {
       await apiClient.delete('/delete_playlist', { playlist_name: name })
       toast.success('Playlist deleted')
@@ -419,18 +458,78 @@ export function PlaylistsPage() {
     }
   }
 
+  // Drag-and-drop sensors for reordering playlist patterns
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Require 8px movement before starting drag
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
+
+  // Reorder patterns within the selected playlist and persist immediately
+  const handlePatternDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!selectedPlaylist || !over || active.id === over.id) return
+
+    // Sortable ids are `${path}-${index}` (paths may repeat in a playlist)
+    const ids = playlistPatterns.map((p, i) => `${p}-${i}`)
+    const oldIndex = ids.indexOf(active.id.toString())
+    const newIndex = ids.indexOf(over.id.toString())
+    if (oldIndex === -1 || newIndex === -1) return
+
+    const previousPatterns = playlistPatterns
+    const newPatterns = arrayMove(playlistPatterns, oldIndex, newIndex)
+    setPlaylistPatterns(newPatterns)
+    try {
+      await apiClient.post('/modify_playlist', { playlist_name: selectedPlaylist, files: newPatterns })
+    } catch (error) {
+      // Roll back the optimistic reorder on failure
+      setPlaylistPatterns(previousPatterns)
+      toast.error('Failed to reorder playlist')
+    }
+  }
+
   // Pattern picker modal
   const openPatternPicker = () => {
     setSelectedPatternPaths(new Set(playlistPatterns))
+    initialPickerSelectionRef.current = new Set(playlistPatterns)
     setSearchQuery('')
     setIsPickerOpen(true)
     // Previews are lazy-loaded via IntersectionObserver in LazyPatternPreview
   }
 
+  // Closing the picker (cancel, escape, overlay click) with unsaved selection
+  // changes prompts for confirmation instead of silently discarding them
+  const handlePickerOpenChange = (open: boolean) => {
+    if (!open) {
+      const initial = initialPickerSelectionRef.current
+      const hasChanges =
+        selectedPatternPaths.size !== initial.size ||
+        Array.from(selectedPatternPaths).some((p) => !initial.has(p))
+      if (hasChanges) {
+        setShowDiscardConfirm(true)
+        return
+      }
+    }
+    setIsPickerOpen(open)
+  }
+
   const handleSavePatterns = async () => {
+    if (isSubmitting) return
     if (!selectedPlaylist) return
 
-    const newPatterns = Array.from(selectedPatternPaths)
+    // Preserve the existing playlist order — Set insertion order would move a
+    // deselected-then-reselected pattern to the end. Keep surviving patterns
+    // in place and append only genuinely new selections.
+    const newPatterns = [
+      ...playlistPatterns.filter((p) => selectedPatternPaths.has(p)),
+      ...Array.from(selectedPatternPaths).filter((p) => !playlistPatterns.includes(p)),
+    ]
+    setIsSubmitting(true)
     try {
       await apiClient.post('/modify_playlist', { playlist_name: selectedPlaylist, files: newPatterns })
       setPlaylistPatterns(newPatterns)
@@ -439,6 +538,8 @@ export function PlaylistsPage() {
       // Previews are lazy-loaded via IntersectionObserver
     } catch (error) {
       toast.error('Failed to update playlist')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -557,6 +658,26 @@ export function PlaylistsPage() {
     return preview?.image_data || null
   }
 
+  // Copy for the delete-confirmation dialog. Pattern count is only known for
+  // the selected playlist (and Favorites, which is loaded separately) — omit
+  // it gracefully otherwise.
+  const deletePatternCount =
+    playlistToDelete !== null && playlistToDelete === selectedPlaylist
+      ? playlistPatterns.length
+      : playlistToDelete === 'Favorites'
+        ? favorites.size
+        : null
+  const deleteDescription = [
+    deletePatternCount !== null
+      ? `This playlist contains ${deletePatternCount} pattern${deletePatternCount === 1 ? '' : 's'}. This cannot be undone.`
+      : 'This cannot be undone.',
+    playlistToDelete === 'Favorites'
+      ? 'This is your Favorites list — deleting it also clears all hearted patterns.'
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   return (
     <div className="flex flex-col w-full max-w-5xl mx-auto gap-4 sm:gap-6 py-3 sm:py-6 px-0 sm:px-4 overflow-hidden" style={{ height: 'calc(100dvh - 14rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))' }}>
       {/* Page Header */}
@@ -585,12 +706,13 @@ export function PlaylistsPage() {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
+                aria-label="Create playlist"
                 onClick={() => {
                   setNewPlaylistName('')
                   setIsCreateModalOpen(true)
                 }}
               >
-                <span className="material-icons-outlined text-xl">add</span>
+                <span aria-hidden="true" className="material-icons-outlined text-xl">add</span>
               </Button>
             )}
           </div>
@@ -602,30 +724,34 @@ export function PlaylistsPage() {
             </div>
           ) : playlists.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-muted-foreground gap-2">
-              <span className="material-icons-outlined text-3xl">playlist_add</span>
+              <span aria-hidden="true" className="material-icons-outlined text-3xl">playlist_add</span>
               <span className="text-sm">No playlists yet</span>
             </div>
           ) : (
             playlists.map(name => (
               <div
                 key={name}
-                className={`group flex items-center justify-between rounded-lg px-3 py-2 cursor-pointer transition-colors ${
+                className={`group flex items-center justify-between rounded-lg transition-colors ${
                   selectedPlaylist === name
                     ? 'bg-accent text-accent-foreground'
                     : 'hover:bg-muted text-muted-foreground'
                 }`}
-                onClick={() => handleSelectPlaylist(name)}
               >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="material-icons-outlined text-lg">playlist_play</span>
+                <button
+                  type="button"
+                  className="flex items-center gap-2 min-w-0 flex-1 w-full text-left px-3 py-2 cursor-pointer rounded-lg"
+                  onClick={() => handleSelectPlaylist(name)}
+                >
+                  <span aria-hidden="true" className="material-icons-outlined text-lg">playlist_play</span>
                   <span className="truncate text-sm font-medium">{name}</span>
-                </div>
+                </button>
                 {!isPlayOnlyActive && (
-                  <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-1 pr-2 opacity-100 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-within:opacity-100 transition-opacity">
                     <Button
                       variant="ghost"
                       size="icon-sm"
                       className="h-7 w-7"
+                      aria-label={`Rename playlist ${name}`}
                       onClick={(e) => {
                         e.stopPropagation()
                         setPlaylistToRename(name)
@@ -633,15 +759,16 @@ export function PlaylistsPage() {
                         setIsRenameModalOpen(true)
                       }}
                     >
-                      <span className="material-icons-outlined text-base">edit</span>
+                      <span aria-hidden="true" className="material-icons-outlined text-base">edit</span>
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon-sm"
                       className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/20"
+                      aria-label={`Delete playlist ${name}`}
                       onClick={(e) => {
                         e.stopPropagation()
-                        handleDeletePlaylist(name)
+                        setPlaylistToDelete(name)
                       }}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -670,9 +797,10 @@ export function PlaylistsPage() {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 lg:hidden shrink-0"
+                aria-label="Back to playlists"
                 onClick={handleMobileBack}
               >
-                <span className="material-icons-outlined">arrow_back</span>
+                <span aria-hidden="true" className="material-icons-outlined">arrow_back</span>
               </Button>
               <div className="min-w-0">
                 <h2 className="text-lg font-semibold truncate">
@@ -692,7 +820,7 @@ export function PlaylistsPage() {
                 size="sm"
                 className="gap-2"
               >
-                <span className="material-icons-outlined text-base">add</span>
+                <span aria-hidden="true" className="material-icons-outlined text-base">add</span>
                 <span className="hidden sm:inline">Add Patterns</span>
               </Button>
             )}
@@ -703,7 +831,7 @@ export function PlaylistsPage() {
             {!selectedPlaylist ? (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
                 <div className="p-4 rounded-full bg-muted">
-                  <span className="material-icons-outlined text-5xl">touch_app</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-5xl">touch_app</span>
                 </div>
                 <div className="text-center">
                   <p className="font-medium">No playlist selected</p>
@@ -713,7 +841,7 @@ export function PlaylistsPage() {
             ) : playlistPatterns.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
                 <div className="p-4 rounded-full bg-muted">
-                  <span className="material-icons-outlined text-5xl">library_music</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-5xl">library_music</span>
                 </div>
                 <div className="text-center">
                   <p className="font-medium">Empty playlist</p>
@@ -721,41 +849,37 @@ export function PlaylistsPage() {
                 </div>
                 {!isPlayOnlyActive && (
                   <Button variant="secondary" className="mt-2 gap-2" onClick={openPatternPicker}>
-                    <span className="material-icons-outlined text-base">add</span>
+                    <span aria-hidden="true" className="material-icons-outlined text-base">add</span>
                     Add Patterns
                   </Button>
                 )}
               </div>
             ) : (
-              <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4">
-                {playlistPatterns.map((path, index) => (
-                  <div
-                    key={`${path}-${index}`}
-                    className="flex flex-col items-center gap-1.5 sm:gap-2 group"
-                  >
-                    <div className="relative w-full aspect-square">
-                      <div className="w-full h-full rounded-full overflow-hidden border bg-muted hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:ring-offset-background transition-all cursor-pointer">
-                        <LazyPatternPreview
-                          path={path}
-                          previewUrl={getPreviewUrl(path)}
-                          requestPreview={requestPreview}
-                          alt={getPatternName(path)}
-                        />
-                      </div>
-                      {!isPlayOnlyActive && (
-                        <button
-                          className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 w-5 h-5 rounded-full bg-destructive hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow-sm z-10"
-                          onClick={() => handleRemovePattern(path)}
-                          title="Remove from playlist"
-                        >
-                          <span className="material-icons" style={{ fontSize: '12px' }}>close</span>
-                        </button>
-                      )}
-                    </div>
-                    <p className="text-[10px] sm:text-xs truncate font-medium w-full text-center">{getPatternName(path)}</p>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handlePatternDragEnd}
+              >
+                <SortableContext
+                  items={playlistPatterns.map((path, index) => `${path}-${index}`)}
+                  strategy={rectSortingStrategy}
+                >
+                  <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4">
+                    {playlistPatterns.map((path, index) => (
+                      <SortablePlaylistPattern
+                        key={`${path}-${index}`}
+                        id={`${path}-${index}`}
+                        path={path}
+                        name={getPatternName(path)}
+                        previewUrl={getPreviewUrl(path)}
+                        requestPreview={requestPreview}
+                        canEdit={!isPlayOnlyActive}
+                        onRemove={() => handleRemovePattern(path)}
+                      />
+                    ))}
                   </div>
-                ))}
-              </div>
+                </SortableContext>
+              </DndContext>
             )}
           </div>
 
@@ -779,8 +903,10 @@ export function PlaylistsPage() {
                           : 'text-muted-foreground hover:bg-muted'
                       }`}
                       title="Shuffle"
+                      aria-label="Shuffle"
+                      aria-pressed={shuffle}
                     >
-                      <span className="material-icons-outlined text-lg sm:text-xl">shuffle</span>
+                      <span aria-hidden="true" className="material-icons-outlined text-lg sm:text-xl">shuffle</span>
                     </button>
                     <button
                       onClick={() => setRunMode(runMode === 'indefinite' ? 'single' : 'indefinite')}
@@ -790,8 +916,10 @@ export function PlaylistsPage() {
                           : 'text-muted-foreground hover:bg-muted'
                       }`}
                       title={runMode === 'indefinite' ? 'Loop mode' : 'Play once mode'}
+                      aria-label="Loop playlist"
+                      aria-pressed={runMode === 'indefinite'}
                     >
-                      <span className="material-icons-outlined text-lg sm:text-xl">repeat</span>
+                      <span aria-hidden="true" className="material-icons-outlined text-lg sm:text-xl">repeat</span>
                     </button>
                   </div>
 
@@ -803,6 +931,7 @@ export function PlaylistsPage() {
                         variant="secondary"
                         size="icon"
                         className="w-7 h-7 sm:w-8 sm:h-8"
+                        aria-label="Decrease pause time"
                         onClick={() => {
                           const step = pauseUnit === 'hr' ? 0.5 : 1
                           // 'per_day' is plays-per-day, so it must stay >= 1.
@@ -810,7 +939,7 @@ export function PlaylistsPage() {
                           setPauseTime(Math.max(min, pauseTime - step))
                         }}
                       >
-                        <span className="material-icons-outlined text-sm">remove</span>
+                        <span aria-hidden="true" className="material-icons-outlined text-sm">remove</span>
                       </Button>
                       <button
                         onClick={() => {
@@ -825,16 +954,18 @@ export function PlaylistsPage() {
                         }}
                         className="relative flex items-center justify-center min-w-14 sm:min-w-16 px-1 text-xs sm:text-sm font-bold hover:text-primary transition"
                         title={pauseUnit === 'per_day' ? 'Plays per day (timed from pattern start). Click to change unit.' : 'Click to change unit'}
+                        aria-label={`Pause unit: ${pauseUnit}. Activate to change unit`}
                       >
                         {pauseUnit === 'per_day'
                           ? `${pauseTime}/day`
                           : `${pauseTime}${pauseUnit === 'sec' ? 's' : pauseUnit === 'min' ? 'm' : 'h'}`}
-                        <span className="material-icons-outlined text-xs opacity-50 scale-75 ml-0.5">swap_vert</span>
+                        <span aria-hidden="true" className="material-icons-outlined text-xs opacity-50 scale-75 ml-0.5">swap_vert</span>
                       </button>
                       <Button
                         variant="secondary"
                         size="icon"
                         className="w-7 h-7 sm:w-8 sm:h-8"
+                        aria-label="Increase pause time"
                         onClick={() => {
                           const step = pauseUnit === 'hr' ? 0.5 : 1
                           // Cap per_day at 24 (one start every hour) — beyond that the cadence
@@ -843,7 +974,7 @@ export function PlaylistsPage() {
                           setPauseTime(Math.min(max, pauseTime + step))
                         }}
                       >
-                        <span className="material-icons-outlined text-sm">add</span>
+                        <span aria-hidden="true" className="material-icons-outlined text-sm">add</span>
                       </Button>
                     </div>
                   </div>
@@ -851,19 +982,22 @@ export function PlaylistsPage() {
                   {/* Clear Pattern Dropdown */}
                   <div className="flex items-center px-1 sm:px-2">
                     <Select value={clearPattern} onValueChange={(v) => setClearPattern(v as PreExecution)}>
-                      <SelectTrigger className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-0 p-0 shadow-none focus:ring-0 justify-center [&>svg]:hidden transition ${
+                      <SelectTrigger aria-label="Clear pattern option" className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-0 p-0 shadow-none focus:ring-0 justify-center [&>svg]:hidden transition ${
                         clearPattern !== 'none' ? '!bg-primary/10' : '!bg-transparent hover:!bg-muted'
                       }`}>
-                        <span className={`material-icons-outlined text-lg sm:text-xl ${
+                        <span aria-hidden="true" className={`material-icons-outlined text-lg sm:text-xl ${
                           clearPattern !== 'none' ? 'text-primary' : 'text-muted-foreground'
                         }`}>cleaning_services</span>
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="max-w-[min(22rem,calc(100vw-2.5rem))]">
                         {preExecutionOptions.map(opt => (
                           <SelectItem key={opt.value} value={opt.value}>
                             <div>
                               <div>{opt.label}</div>
-                              <div className="text-xs text-muted-foreground font-normal">{opt.description}</div>
+                              {/* Descriptions overwhelm small screens — labels only there */}
+                              <div className="hidden sm:block text-xs text-muted-foreground font-normal">
+                                {opt.description}
+                              </div>
                             </div>
                           </SelectItem>
                         ))}
@@ -878,11 +1012,12 @@ export function PlaylistsPage() {
                   disabled={isRunning || playlistPatterns.length === 0}
                   className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground text-primary-foreground shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:scale-105 disabled:shadow-none disabled:hover:scale-100 transition-all duration-200 flex items-center justify-center"
                   title="Run Playlist"
+                  aria-label="Run playlist"
                 >
                   {isRunning ? (
-                    <span className="material-icons-outlined text-xl sm:text-2xl animate-spin">sync</span>
+                    <span aria-hidden="true" className="material-icons-outlined text-xl sm:text-2xl animate-spin">sync</span>
                   ) : (
-                    <span className="material-icons text-xl sm:text-2xl ml-0.5">play_arrow</span>
+                    <span aria-hidden="true" className="material-icons text-xl sm:text-2xl ml-0.5">play_arrow</span>
                   )}
                 </button>
               </div>
@@ -896,7 +1031,7 @@ export function PlaylistsPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="material-icons-outlined text-primary">playlist_add</span>
+              <span aria-hidden="true" className="material-icons-outlined text-primary">playlist_add</span>
               Create New Playlist
             </DialogTitle>
           </DialogHeader>
@@ -917,8 +1052,8 @@ export function PlaylistsPage() {
             <Button variant="secondary" onClick={() => setIsCreateModalOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreatePlaylist} className="gap-2">
-              <span className="material-icons-outlined text-base">add</span>
+            <Button onClick={handleCreatePlaylist} disabled={isSubmitting} className="gap-2">
+              <span aria-hidden="true" className="material-icons-outlined text-base">add</span>
               Create Playlist
             </Button>
           </DialogFooter>
@@ -930,7 +1065,7 @@ export function PlaylistsPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="material-icons-outlined text-primary">edit</span>
+              <span aria-hidden="true" className="material-icons-outlined text-primary">edit</span>
               Rename Playlist
             </DialogTitle>
           </DialogHeader>
@@ -951,8 +1086,8 @@ export function PlaylistsPage() {
             <Button variant="secondary" onClick={() => setIsRenameModalOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleRenamePlaylist} className="gap-2">
-              <span className="material-icons-outlined text-base">save</span>
+            <Button onClick={handleRenamePlaylist} disabled={isSubmitting} className="gap-2">
+              <span aria-hidden="true" className="material-icons-outlined text-base">save</span>
               Save Name
             </Button>
           </DialogFooter>
@@ -960,11 +1095,11 @@ export function PlaylistsPage() {
       </Dialog>
 
       {/* Pattern Picker Modal */}
-      <Dialog open={isPickerOpen} onOpenChange={setIsPickerOpen}>
+      <Dialog open={isPickerOpen} onOpenChange={handlePickerOpenChange}>
         <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="material-icons-outlined text-primary">playlist_add</span>
+              <span aria-hidden="true" className="material-icons-outlined text-primary">playlist_add</span>
               Add Patterns to {selectedPlaylist}
             </DialogTitle>
           </DialogHeader>
@@ -972,7 +1107,7 @@ export function PlaylistsPage() {
           {/* Search and Filters */}
           <div className="space-y-3 py-2">
             <div className="relative">
-              <span className="material-icons-outlined absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-lg">
+              <span aria-hidden="true" className="material-icons-outlined absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-lg">
                 search
               </span>
               <Input
@@ -984,9 +1119,10 @@ export function PlaylistsPage() {
               {searchQuery && (
                 <button
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label="Clear search"
                   onClick={() => setSearchQuery('')}
                 >
-                  <span className="material-icons-outlined text-lg">close</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-lg">close</span>
                 </button>
               )}
             </div>
@@ -995,7 +1131,7 @@ export function PlaylistsPage() {
               {/* Folder dropdown - icon only on mobile, with text on sm+ */}
               <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                 <SelectTrigger className="h-9 w-9 sm:w-auto rounded-full bg-card border-border shadow-sm text-sm px-0 sm:px-3 justify-center sm:justify-between [&>svg]:hidden sm:[&>svg]:block [&>span:last-of-type]:hidden sm:[&>span:last-of-type]:inline gap-2">
-                  <span className="material-icons-outlined text-lg shrink-0">folder</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-lg shrink-0">folder</span>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1010,7 +1146,7 @@ export function PlaylistsPage() {
               {/* Sort dropdown - icon only on mobile, with text on sm+ */}
               <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
                 <SelectTrigger className="h-9 w-9 sm:w-auto rounded-full bg-card border-border shadow-sm text-sm px-0 sm:px-3 justify-center sm:justify-between [&>svg]:hidden sm:[&>svg]:block [&>span:last-of-type]:hidden sm:[&>span:last-of-type]:inline gap-2">
-                  <span className="material-icons-outlined text-lg shrink-0">sort</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-lg shrink-0">sort</span>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1031,7 +1167,7 @@ export function PlaylistsPage() {
                 onClick={() => setSortAsc(!sortAsc)}
                 title={sortAsc ? 'Ascending' : 'Descending'}
               >
-                <span className="material-icons-outlined text-lg">
+                <span aria-hidden="true" className="material-icons-outlined text-lg">
                   {sortAsc ? 'arrow_upward' : 'arrow_downward'}
                 </span>
               </Button>
@@ -1057,7 +1193,7 @@ export function PlaylistsPage() {
                   })
                 }}
               >
-                <span className="material-icons-outlined text-base">
+                <span aria-hidden="true" className="material-icons-outlined text-base">
                   {filteredPatterns.length > 0 && filteredPatterns.every(p => selectedPatternPaths.has(p.path)) ? 'deselect' : 'select_all'}
                 </span>
                 <span className="hidden sm:inline">
@@ -1067,7 +1203,7 @@ export function PlaylistsPage() {
 
               {/* Selection count - compact on mobile */}
               <div className="flex items-center gap-1 sm:gap-2 text-sm bg-card rounded-full px-2 sm:px-3 py-2 shadow-sm border">
-                <span className="material-icons-outlined text-base text-primary">check_circle</span>
+                <span aria-hidden="true" className="material-icons-outlined text-base text-primary">check_circle</span>
                 <span className="font-medium">{selectedPatternPaths.size}</span>
                 <span className="hidden sm:inline text-muted-foreground">selected</span>
               </div>
@@ -1079,7 +1215,7 @@ export function PlaylistsPage() {
             {filteredPatterns.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
                 <div className="p-4 rounded-full bg-muted">
-                  <span className="material-icons-outlined text-5xl">search_off</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-5xl">search_off</span>
                 </div>
                 <span className="text-sm">No patterns found</span>
               </div>
@@ -1090,8 +1226,17 @@ export function PlaylistsPage() {
                   return (
                     <div
                       key={pattern.path}
+                      role="checkbox"
+                      aria-checked={isSelected}
+                      tabIndex={0}
                       className="flex flex-col items-center gap-2 cursor-pointer"
                       onClick={() => togglePatternSelection(pattern.path)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          togglePatternSelection(pattern.path)
+                        }
+                      }}
                     >
                       <div
                         className={`relative w-full aspect-square rounded-full overflow-hidden border-2 bg-muted transition-all ${
@@ -1108,7 +1253,7 @@ export function PlaylistsPage() {
                         />
                         {isSelected && (
                           <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-primary flex items-center justify-center shadow-md">
-                            <span className="material-icons text-primary-foreground" style={{ fontSize: '14px' }}>
+                            <span aria-hidden="true" className="material-icons text-primary-foreground" style={{ fontSize: '14px' }}>
                               check
                             </span>
                           </div>
@@ -1125,16 +1270,122 @@ export function PlaylistsPage() {
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="secondary" onClick={() => setIsPickerOpen(false)}>
+            <Button variant="secondary" onClick={() => handlePickerOpenChange(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSavePatterns} className="gap-2">
-              <span className="material-icons-outlined text-base">save</span>
+            <Button onClick={handleSavePatterns} disabled={isSubmitting} className="gap-2">
+              <span aria-hidden="true" className="material-icons-outlined text-base">save</span>
               Save Selection
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Playlist Confirmation */}
+      <ConfirmDialog
+        open={playlistToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPlaylistToDelete(null)
+        }}
+        title={`Delete "${playlistToDelete ?? ''}"?`}
+        description={deleteDescription}
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => {
+          if (playlistToDelete) handleDeletePlaylist(playlistToDelete)
+        }}
+      />
+
+      {/* Discard Picker Selection Confirmation */}
+      <ConfirmDialog
+        open={showDiscardConfirm}
+        onOpenChange={setShowDiscardConfirm}
+        title="Discard selection changes?"
+        description="Your unsaved pattern selection changes will be lost."
+        confirmLabel="Discard"
+        destructive
+        onConfirm={() => {
+          setShowDiscardConfirm(false)
+          setIsPickerOpen(false)
+        }}
+      />
+    </div>
+  )
+}
+
+// Sortable pattern card for drag-to-reorder within the selected playlist
+interface SortablePlaylistPatternProps {
+  id: string
+  path: string
+  name: string
+  previewUrl: string | null
+  requestPreview: (path: string) => void
+  canEdit: boolean
+  onRemove: () => void
+}
+
+function SortablePlaylistPattern({
+  id,
+  path,
+  name,
+  previewUrl,
+  requestPreview,
+  canEdit,
+  onRemove,
+}: SortablePlaylistPatternProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 1000 : 'auto',
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex flex-col items-center gap-1.5 sm:gap-2 group"
+    >
+      <div className="relative w-full aspect-square">
+        <div className="w-full h-full rounded-full overflow-hidden border bg-muted hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:ring-offset-background transition-all cursor-pointer">
+          <LazyPatternPreview
+            path={path}
+            previewUrl={previewUrl}
+            requestPreview={requestPreview}
+            alt={name}
+          />
+        </div>
+        {canEdit && (
+          <>
+            {/* Drag handle */}
+            <div
+              {...attributes}
+              {...listeners}
+              className="absolute -top-0.5 -left-0.5 sm:-top-1 sm:-left-1 w-5 h-5 rounded-full bg-card border flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow-sm z-10 cursor-grab active:cursor-grabbing touch-none"
+              aria-label={`Reorder ${name}`}
+            >
+              <span aria-hidden="true" className="material-icons-outlined text-muted-foreground" style={{ fontSize: '12px' }}>drag_indicator</span>
+            </div>
+            <button
+              className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 w-5 h-5 rounded-full bg-destructive hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow-sm z-10"
+              onClick={onRemove}
+              title="Remove from playlist"
+            >
+              <span aria-hidden="true" className="material-icons" style={{ fontSize: '12px' }}>close</span>
+            </button>
+          </>
+        )}
+      </div>
+      <p className="text-[10px] sm:text-xs truncate font-medium w-full text-center">{name}</p>
     </div>
   )
 }
@@ -1183,7 +1434,7 @@ function LazyPatternPreview({ path, previewUrl, requestPreview, alt, className =
           className="w-full h-full object-cover pattern-preview"
         />
       ) : (
-        <span className="material-icons-outlined text-muted-foreground text-sm sm:text-base">
+        <span aria-hidden="true" className="material-icons-outlined text-muted-foreground text-sm sm:text-base">
           image
         </span>
       )}

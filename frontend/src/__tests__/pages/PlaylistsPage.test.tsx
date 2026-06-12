@@ -208,7 +208,7 @@ describe('PlaylistsPage', () => {
 
       // Wait for content to load and find run/play button
       await waitFor(async () => {
-        const runButton = screen.getByRole('button', { name: /play|run|start/i })
+        const runButton = screen.getByRole('button', { name: /^run playlist$/i })
         expect(runButton).toBeInTheDocument()
         await user.click(runButton)
       })

@@ -10,6 +10,9 @@ import {
 import { fuzzyMatch } from '@/lib/utils'
 import { apiClient } from '@/lib/apiClient'
 import { useOnBackendConnected } from '@/hooks/useBackendConnection'
+import { useStatusStore } from '@/stores/useStatusStore'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { ConnectionBanner, useTableConnected } from '@/components/ConnectionBanner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -59,6 +62,9 @@ interface PreviewContextType {
 
 const PreviewContext = createContext<PreviewContextType | null>(null)
 
+// Incremental rendering: number of pattern cards mounted initially and added per scroll step
+const PATTERNS_PAGE_SIZE = 60
+
 export function BrowsePage() {
   const { isPlayOnlyActive } = useOutletContext<{ isPlayOnlyActive?: boolean }>() || {}
 
@@ -73,6 +79,10 @@ export function BrowsePage() {
   const [sortBy, setSortBy] = useState<SortOption>('name')
   const [sortAsc, setSortAsc] = useState(true)
 
+  // Incremental rendering: only mount a slice of the grid, growing as the user scrolls
+  const [visibleCount, setVisibleCount] = useState(PATTERNS_PAGE_SIZE)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+
   // Selection and panel state
   const [selectedPattern, setSelectedPattern] = useState<PatternMetadata | null>(null)
   const [isPanelOpen, setIsPanelOpen] = useState(false)
@@ -81,6 +91,11 @@ export function BrowsePage() {
     return (cached as PreExecution) || 'adaptive'
   })
   const [isRunning, setIsRunning] = useState(false)
+  const [patternToDelete, setPatternToDelete] = useState<PatternMetadata | null>(null)
+
+  // Connection/playlist awareness for honest button states
+  const tableConnected = useTableConnected()
+  const playlistActive = useStatusStore((s) => Boolean(s.status?.playlist))
 
   // Animated preview modal state
   const [isAnimatedPreviewOpen, setIsAnimatedPreviewOpen] = useState(false)
@@ -113,6 +128,13 @@ export function BrowsePage() {
   const pendingPreviewsRef = useRef<Set<string>>(new Set())
   const batchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  // Mirror of `previews` so requestPreview can stay identity-stable —
+  // depending on the state directly would recreate every card's
+  // IntersectionObserver each time any preview loads
+  const previewsRef = useRef(previews)
+  useEffect(() => {
+    previewsRef.current = previews
+  }, [previews])
 
   // Cache all previews state
   const [isCaching, setIsCaching] = useState(false)
@@ -430,10 +452,52 @@ export function BrowsePage() {
     return result
   }, [patterns, selectedCategory, searchQuery, sortBy, sortAsc, favorites, allPatternHistories])
 
+  // Reset the visible window whenever filter inputs change
+  useEffect(() => {
+    setVisibleCount(PATTERNS_PAGE_SIZE)
+  }, [searchQuery, selectedCategory, sortBy, sortAsc])
+
+  const visiblePatterns = useMemo(
+    () => filteredPatterns.slice(0, visibleCount),
+    [filteredPatterns, visibleCount]
+  )
+
+  // Grow the visible window when the sentinel approaches the viewport.
+  // Re-created on each visibleCount change so a still-visible sentinel fires again.
+  useEffect(() => {
+    // isLoading must be a dep: patterns arrive in an earlier commit than
+    // isLoading=false, so the sentinel isn't in the DOM yet when the
+    // length-change run fires — without re-running on isLoading the
+    // observer would never attach and pagination would stick at one page
+    if (isLoading) return
+    if (visibleCount >= filteredPatterns.length) return
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            // Guard: only grow while there are more patterns to show
+            setVisibleCount((prev) =>
+              prev < filteredPatterns.length
+                ? Math.min(prev + PATTERNS_PAGE_SIZE, filteredPatterns.length)
+                : prev
+            )
+          }
+        })
+      },
+      { rootMargin: '600px' }
+    )
+
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [visibleCount, filteredPatterns.length, isLoading])
+
   // Batched preview loading - collects requests and fetches in batches
   const requestPreview = useCallback((path: string) => {
     // Skip if already loaded or pending
-    if (previews[path] || pendingPreviewsRef.current.has(path)) return
+    if (previewsRef.current[path] || pendingPreviewsRef.current.has(path)) return
 
     pendingPreviewsRef.current.add(path)
 
@@ -449,7 +513,7 @@ export function BrowsePage() {
         fetchPreviewsBatch(pathsToFetch)
       }
     }, 50) // Batch requests within 50ms window
-  }, [previews])
+  }, [])
 
   // Canvas drawing functions
   const polarToCartesian = useCallback((theta: number, rho: number, size: number) => {
@@ -642,7 +706,6 @@ export function BrowsePage() {
   const handlePatternClick = async (pattern: PatternMetadata) => {
     setSelectedPattern(pattern)
     setIsPanelOpen(true)
-    setPreExecution('adaptive')
     setPatternHistory(null) // Reset while loading
 
     // Fetch pattern execution history
@@ -740,7 +803,7 @@ export function BrowsePage() {
     }
   }
 
-  const handleDeletePattern = async () => {
+  const handleDeletePattern = () => {
     if (!selectedPattern) return
 
     if (!selectedPattern.path.startsWith('custom_patterns/')) {
@@ -748,18 +811,22 @@ export function BrowsePage() {
       return
     }
 
-    if (!confirm(`Delete "${selectedPattern.name}"? This cannot be undone.`)) {
-      return
-    }
+    setPatternToDelete(selectedPattern)
+  }
+
+  const confirmDeletePattern = async () => {
+    if (!patternToDelete) return
 
     try {
-      await apiClient.post('/delete_theta_rho_file', { file_name: selectedPattern.path })
-      toast.success(`Deleted ${selectedPattern.name}`)
+      await apiClient.post('/delete_theta_rho_file', { file_name: patternToDelete.path })
+      toast.success(`Deleted ${patternToDelete.name}`)
       setIsPanelOpen(false)
       setSelectedPattern(null)
       fetchPatterns()
     } catch {
       toast.error('Failed to delete pattern')
+    } finally {
+      setPatternToDelete(null)
     }
   }
 
@@ -787,9 +854,12 @@ export function BrowsePage() {
     return preview?.image_data || null
   }
 
-  const formatCoordinate = (coord: { x: number; y: number } | null) => {
-    if (!coord) return '(-, -)'
-    return `(${coord.x.toFixed(1)}, ${coord.y.toFixed(1)})`
+  const describePosition = (coord: { x: number; y: number } | null | undefined) => {
+    if (!coord) return null
+    const rho = Math.hypot(coord.x, coord.y)
+    if (rho < 0.1) return 'center'
+    if (rho >= 0.9) return 'edge'
+    return 'mid-table'
   }
 
   const canDelete = selectedPattern?.path.startsWith('custom_patterns/')
@@ -846,16 +916,18 @@ export function BrowsePage() {
       } catch (error) {
         console.error(`Upload error for ${file.name}:`, error)
         failCount++
-        toast.error(`Failed to upload "${file.name}"`)
       }
     }
 
+    if (failCount === 0) {
+      toast.success(`${successCount} pattern${successCount > 1 ? 's' : ''} uploaded`)
+    } else if (successCount > 0) {
+      toast.warning(`${successCount} uploaded, ${failCount} failed`)
+    } else {
+      toast.error(`${failCount} upload${failCount > 1 ? 's' : ''} failed`)
+    }
+
     if (successCount > 0) {
-      toast.success(
-        successCount === 1
-          ? `Pattern "${files[0].name}" uploaded successfully`
-          : `${successCount} pattern${successCount > 1 ? 's' : ''} uploaded successfully`
-      )
       await fetchPatterns()
     }
 
@@ -869,7 +941,7 @@ export function BrowsePage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <span className="material-icons-outlined animate-spin text-4xl text-muted-foreground">
+        <span aria-hidden="true" className="material-icons-outlined animate-spin text-4xl text-muted-foreground">
           sync
         </span>
       </div>
@@ -906,14 +978,16 @@ export function BrowsePage() {
             className="gap-2 shrink-0 h-9 w-9 sm:h-11 sm:w-auto rounded-full px-0 sm:px-4 justify-center bg-card border border-border shadow-sm hover:bg-accent"
           >
             {isUploading ? (
-              <span className="material-icons-outlined animate-spin text-lg">sync</span>
+              <span aria-hidden="true" className="material-icons-outlined animate-spin text-lg">sync</span>
             ) : (
-              <span className="material-icons-outlined text-lg">add</span>
+              <span aria-hidden="true" className="material-icons-outlined text-lg">add</span>
             )}
             <span className="hidden sm:inline">Add Pattern</span>
           </Button>
         )}
       </div>
+
+      <ConnectionBanner />
 
       {/* Filter Bar */}
       <div
@@ -923,7 +997,7 @@ export function BrowsePage() {
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Search - Pill shaped, white background */}
           <div className="relative flex-1 min-w-0">
-            <span className="material-icons-outlined absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-lg sm:text-xl">
+            <span aria-hidden="true" className="material-icons-outlined absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-lg sm:text-xl">
               search
             </span>
             <Input
@@ -937,9 +1011,10 @@ export function BrowsePage() {
                 variant="ghost"
                 size="icon"
                 onClick={() => setSearchQuery('')}
+                aria-label="Clear search"
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground h-7 w-7 rounded-full"
               >
-                <span className="material-icons-outlined text-lg">close</span>
+                <span aria-hidden="true" className="material-icons-outlined text-lg">close</span>
               </Button>
             )}
           </div>
@@ -947,7 +1022,7 @@ export function BrowsePage() {
           {/* Category - Icon on mobile, text on desktop */}
           <Select value={selectedCategory} onValueChange={setSelectedCategory}>
             <SelectTrigger className="h-9 w-9 sm:h-11 sm:w-auto rounded-full bg-card border-border shadow-sm text-xs sm:text-sm shrink-0 [&>svg]:hidden sm:[&>svg]:block px-0 sm:px-3 justify-center sm:justify-between [&>span:last-of-type]:hidden sm:[&>span:last-of-type]:inline gap-2">
-              <span className="material-icons-outlined text-lg shrink-0 sm:hidden">folder</span>
+              <span aria-hidden="true" className="material-icons-outlined text-lg shrink-0 sm:hidden">folder</span>
               <SelectValue placeholder="All" />
             </SelectTrigger>
             <SelectContent>
@@ -967,7 +1042,7 @@ export function BrowsePage() {
             setSortAsc(option !== 'plays' && option !== 'last_played')
           }}>
             <SelectTrigger className="h-9 w-9 sm:h-11 sm:w-auto rounded-full bg-card border-border shadow-sm text-xs sm:text-sm shrink-0 [&>svg]:hidden sm:[&>svg]:block px-0 sm:px-3 justify-center sm:justify-between [&>span:last-of-type]:hidden sm:[&>span:last-of-type]:inline gap-2">
-              <span className="material-icons-outlined text-lg shrink-0 sm:hidden">sort</span>
+              <span aria-hidden="true" className="material-icons-outlined text-lg shrink-0 sm:hidden">sort</span>
               <SelectValue placeholder="Sort" />
             </SelectTrigger>
             <SelectContent>
@@ -988,7 +1063,7 @@ export function BrowsePage() {
             className="shrink-0 h-9 w-9 sm:h-11 sm:w-11 rounded-full bg-card shadow-sm"
             title={sortAsc ? 'Ascending' : 'Descending'}
           >
-            <span className="material-icons-outlined text-lg sm:text-xl">
+            <span aria-hidden="true" className="material-icons-outlined text-lg sm:text-xl">
               {sortAsc ? 'arrow_upward' : 'arrow_downward'}
             </span>
           </Button>
@@ -1007,12 +1082,12 @@ export function BrowsePage() {
             >
               {isCaching ? (
                 <>
-                  <span className="material-icons-outlined animate-spin text-lg">sync</span>
+                  <span aria-hidden="true" className="material-icons-outlined animate-spin text-lg">sync</span>
                   <span className="text-sm">{cacheProgress}%</span>
                 </>
               ) : (
                 <>
-                  <span className="material-icons-outlined text-lg">cached</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-lg">cached</span>
                   <span className="hidden sm:inline text-sm">Cache</span>
                 </>
               )}
@@ -1028,10 +1103,32 @@ export function BrowsePage() {
       )}
 
       {/* Pattern Grid */}
-      {filteredPatterns.length === 0 ? (
+      {patterns.length === 0 ? (
         <div className="flex flex-col items-center justify-center min-h-[40vh] gap-4 text-center">
           <div className="p-4 rounded-full bg-muted">
-            <span className="material-icons-outlined text-5xl text-muted-foreground">
+            <span aria-hidden="true" className="material-icons-outlined text-5xl text-muted-foreground">
+              gesture
+            </span>
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-xl font-semibold">No patterns yet</h2>
+            <p className="text-muted-foreground">Upload a .thr pattern file to get started</p>
+          </div>
+          {!isPlayOnlyActive && (
+            <Button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="gap-2"
+            >
+              <span aria-hidden="true" className="material-icons-outlined text-lg">add</span>
+              Add Pattern
+            </Button>
+          )}
+        </div>
+      ) : filteredPatterns.length === 0 ? (
+        <div className="flex flex-col items-center justify-center min-h-[40vh] gap-4 text-center">
+          <div className="p-4 rounded-full bg-muted">
+            <span aria-hidden="true" className="material-icons-outlined text-5xl text-muted-foreground">
               search_off
             </span>
           </div>
@@ -1054,7 +1151,7 @@ export function BrowsePage() {
       ) : (
         <PreviewContext.Provider value={{ requestPreview, previews }}>
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 sm:gap-4">
-            {filteredPatterns.map((pattern) => (
+            {visiblePatterns.map((pattern) => (
               <PatternCard
                 key={pattern.path}
                 pattern={pattern}
@@ -1067,6 +1164,15 @@ export function BrowsePage() {
               />
             ))}
           </div>
+          {visibleCount < filteredPatterns.length && (
+            <>
+              {/* Sentinel: triggers loading more cards as the user scrolls */}
+              <div ref={sentinelRef} className="h-1" aria-hidden="true" />
+              <p className="text-xs text-muted-foreground text-center">
+                Showing {visiblePatterns.length} of {filteredPatterns.length} patterns
+              </p>
+            </>
+          )}
         </PreviewContext.Provider>
       )}
 
@@ -1097,7 +1203,7 @@ export function BrowsePage() {
                   }}
                   title={favorites.has(selectedPattern.path) ? 'Remove from favorites' : 'Add to favorites'}
                 >
-                  <span className="material-icons" style={{ fontSize: '20px' }}>
+                  <span aria-hidden="true" className="material-icons" style={{ fontSize: '20px' }}>
                     {favorites.has(selectedPattern.path) ? 'favorite' : 'favorite_border'}
                   </span>
                 </span>
@@ -1110,8 +1216,9 @@ export function BrowsePage() {
             <div className="p-6 overflow-y-auto flex-1">
               {/* Clickable Round Preview Image */}
               <div className="mb-6">
-                <div
-                  className="aspect-square w-full max-w-[280px] mx-auto overflow-hidden rounded-full border bg-muted relative group cursor-pointer"
+                <button
+                  type="button"
+                  className="block aspect-square w-full max-w-[280px] mx-auto overflow-hidden rounded-full border bg-muted relative group cursor-pointer"
                   onClick={handleOpenAnimatedPreview}
                 >
                   {getPreviewUrl(selectedPattern.path) ? (
@@ -1122,57 +1229,62 @@ export function BrowsePage() {
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <span className="material-icons-outlined text-4xl text-muted-foreground">
+                      <span aria-hidden="true" className="material-icons-outlined text-4xl text-muted-foreground">
                         image
                       </span>
                     </div>
                   )}
                   {/* Play badge - always visible */}
                   <div className="absolute bottom-2 right-2 bg-background/90 backdrop-blur-sm rounded-full w-10 h-10 flex items-center justify-center shadow-md border group-hover:scale-110 transition-transform">
-                    <span className="material-icons text-xl">play_arrow</span>
+                    <span aria-hidden="true" className="material-icons text-xl">play_arrow</span>
                   </div>
                   {/* Hover overlay */}
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/20 rounded-full" />
-                </div>
+                </button>
                 <p className="text-xs text-muted-foreground text-center mt-2">Tap to preview animation</p>
               </div>
 
-              {/* Coordinates */}
-              <div className="mb-4 flex justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="material-icons-outlined text-muted-foreground text-base">flag</span>
-                  <span className="text-muted-foreground">First:</span>
-                  <span className="font-semibold">
-                    {formatCoordinate(previews[selectedPattern.path]?.first_coordinate)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="material-icons-outlined text-muted-foreground text-base">check</span>
-                  <span className="text-muted-foreground">Last:</span>
-                  <span className="font-semibold">
-                    {formatCoordinate(previews[selectedPattern.path]?.last_coordinate)}
-                  </span>
-                </div>
-              </div>
+              {/* Start/end position */}
+              {(() => {
+                const starts = describePosition(previews[selectedPattern.path]?.first_coordinate)
+                const ends = describePosition(previews[selectedPattern.path]?.last_coordinate)
+                if (!starts && !ends) return null
+                return (
+                  <p className="mb-4 text-sm text-muted-foreground">
+                    {starts && `Starts: ${starts}`}
+                    {starts && ends && ' · '}
+                    {ends && `Ends: ${ends}`}
+                  </p>
+                )
+              })()}
 
               {/* Play History Info */}
               {(() => {
                 const historyKey = selectedPattern.path.split('/').pop() || ''
                 const playCount = allPatternHistories[historyKey]?.play_count ?? 0
+                const estMinutes =
+                  !patternHistory?.actual_time_formatted && selectedPattern.coordinates_count > 0
+                    ? Math.max(1, Math.round(selectedPattern.coordinates_count / 18 / 60))
+                    : null
                 return (
                   <>
-                    {(patternHistory?.actual_time_formatted || playCount > 0) && (
+                    {(patternHistory?.actual_time_formatted || estMinutes !== null || playCount > 0) && (
                       <div className="mb-4 flex justify-between text-sm">
-                        {patternHistory?.actual_time_formatted && (
+                        {patternHistory?.actual_time_formatted ? (
                           <div className="flex items-center gap-2">
-                            <span className="material-icons-outlined text-muted-foreground text-base">schedule</span>
+                            <span aria-hidden="true" className="material-icons-outlined text-muted-foreground text-base">schedule</span>
                             <span className="text-muted-foreground">Last run:</span>
                             <span className="font-semibold">{patternHistory.actual_time_formatted}</span>
+                          </div>
+                        ) : estMinutes !== null && (
+                          <div className="flex items-center gap-2">
+                            <span aria-hidden="true" className="material-icons-outlined text-muted-foreground text-base">schedule</span>
+                            <span className="text-muted-foreground">Est. ~{estMinutes} min</span>
                           </div>
                         )}
                         {playCount > 0 && (
                           <div className="flex items-center gap-2">
-                            <span className="material-icons-outlined text-muted-foreground text-base">play_circle</span>
+                            <span aria-hidden="true" className="material-icons-outlined text-muted-foreground text-base">play_circle</span>
                             <span className="text-muted-foreground">Plays:</span>
                             <span className="font-semibold">{playCount}</span>
                           </div>
@@ -1219,14 +1331,15 @@ export function BrowsePage() {
                 <div className="flex gap-2">
                   <Button
                     onClick={handleRunPattern}
-                    disabled={isRunning}
+                    disabled={isRunning || !tableConnected}
+                    title={!tableConnected ? 'Table not connected' : undefined}
                     className="flex-1 gap-2"
                     size="lg"
                   >
                     {isRunning ? (
-                      <span className="material-icons-outlined animate-spin text-lg">sync</span>
+                      <span aria-hidden="true" className="material-icons-outlined animate-spin text-lg">sync</span>
                     ) : (
-                      <span className="material-icons text-lg">play_arrow</span>
+                      <span aria-hidden="true" className="material-icons text-lg">play_arrow</span>
                     )}
                     Play
                   </Button>
@@ -1235,10 +1348,11 @@ export function BrowsePage() {
                     <Button
                       variant="outline"
                       onClick={handleDeletePattern}
+                      aria-label="Delete pattern"
                       className="text-destructive hover:bg-destructive/10 hover:border-destructive px-3"
                       size="lg"
                     >
-                      <span className="material-icons text-lg">delete</span>
+                      <span aria-hidden="true" className="material-icons text-lg">delete</span>
                     </Button>
                   )}
                 </div>
@@ -1250,8 +1364,10 @@ export function BrowsePage() {
                     size="sm"
                     className="flex-1 gap-1.5"
                     onClick={() => handleAddToQueue('next')}
+                    disabled={!playlistActive}
+                    title={!playlistActive ? 'Available while a playlist is playing' : undefined}
                   >
-                    <span className="material-icons-outlined text-base">playlist_play</span>
+                    <span aria-hidden="true" className="material-icons-outlined text-base">playlist_play</span>
                     Play Next
                   </Button>
                   <Button
@@ -1259,8 +1375,10 @@ export function BrowsePage() {
                     size="sm"
                     className="flex-1 gap-1.5"
                     onClick={() => handleAddToQueue('end')}
+                    disabled={!playlistActive}
+                    title={!playlistActive ? 'Available while a playlist is playing' : undefined}
                   >
-                    <span className="material-icons-outlined text-base">playlist_add</span>
+                    <span aria-hidden="true" className="material-icons-outlined text-base">playlist_add</span>
                     Add to Queue
                   </Button>
                 </div>
@@ -1269,6 +1387,19 @@ export function BrowsePage() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        open={patternToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPatternToDelete(null)
+        }}
+        title={`Delete "${patternToDelete?.name}"?`}
+        description="This cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={confirmDeletePattern}
+      />
 
       {/* Animated Preview Modal */}
       {isAnimatedPreviewOpen && (
@@ -1289,9 +1420,10 @@ export function BrowsePage() {
                 variant="ghost"
                 size="icon"
                 onClick={handleCloseAnimatedPreview}
+                aria-label="Close preview"
                 className="rounded-full"
               >
-                <span className="material-icons text-2xl">close</span>
+                <span aria-hidden="true" className="material-icons text-2xl">close</span>
               </Button>
             </div>
 
@@ -1299,7 +1431,7 @@ export function BrowsePage() {
             <div className="p-6 overflow-y-auto flex-1 flex justify-center items-center">
               {isLoadingCoordinates ? (
                 <div className="w-full max-w-[400px] aspect-square flex items-center justify-center rounded-full bg-muted">
-                  <span className="material-icons-outlined animate-spin text-4xl text-muted-foreground">
+                  <span aria-hidden="true" className="material-icons-outlined animate-spin text-4xl text-muted-foreground">
                     sync
                   </span>
                 </div>
@@ -1309,6 +1441,8 @@ export function BrowsePage() {
                     ref={canvasRef}
                     width={400}
                     height={400}
+                    role="img"
+                    aria-label={`Animated preview of ${selectedPattern?.name || 'pattern'}`}
                     className="rounded-full w-full h-full"
                   />
                   {/* Play/Pause overlay */}
@@ -1317,7 +1451,7 @@ export function BrowsePage() {
                     onClick={handlePlayPause}
                   >
                     <div className="bg-background rounded-full w-16 h-16 flex items-center justify-center shadow-lg">
-                      <span className="material-icons text-3xl">
+                      <span aria-hidden="true" className="material-icons text-3xl">
                         {isPlaying ? 'pause' : 'play_arrow'}
                       </span>
                     </div>
@@ -1363,13 +1497,13 @@ export function BrowsePage() {
               {/* Control Buttons */}
               <div className="flex items-center justify-center gap-4">
                 <Button onClick={handlePlayPause} className="gap-2">
-                  <span className="material-icons">
+                  <span aria-hidden="true" className="material-icons">
                     {isPlaying ? 'pause' : 'play_arrow'}
                   </span>
                   {isPlaying ? 'Pause' : 'Play'}
                 </Button>
                 <Button variant="secondary" onClick={handleReset} className="gap-2">
-                  <span className="material-icons">replay</span>
+                  <span aria-hidden="true" className="material-icons">replay</span>
                   Reset
                 </Button>
               </div>
@@ -1435,7 +1569,7 @@ function PatternCard({ pattern, isSelected, isFavorite, playTime, playCount, onT
             <>
               {!imageLoaded && (
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="material-icons-outlined animate-spin text-xl text-muted-foreground">
+                  <span aria-hidden="true" className="material-icons-outlined animate-spin text-xl text-muted-foreground">
                     sync
                   </span>
                 </div>
@@ -1453,7 +1587,7 @@ function PatternCard({ pattern, isSelected, isFavorite, playTime, playCount, onT
             </>
           ) : (
             <div className="w-full h-full flex items-center justify-center">
-              <span className="material-icons-outlined text-2xl text-muted-foreground">
+              <span aria-hidden="true" className="material-icons-outlined text-2xl text-muted-foreground">
                 {imageError ? 'broken_image' : 'image'}
               </span>
             </div>
@@ -1466,13 +1600,13 @@ function PatternCard({ pattern, isSelected, isFavorite, playTime, playCount, onT
         <div className="flex items-center w-full px-0.5 -mb-1 justify-between">
           {playCount > 0 && (
             <span className="flex items-center gap-0.5 text-xs text-muted-foreground" title={`Played ${playCount} time${playCount !== 1 ? 's' : ''}`}>
-              <span className="material-icons-outlined" style={{ fontSize: '13px' }}>play_circle</span>
+              <span aria-hidden="true" className="material-icons-outlined" style={{ fontSize: '13px' }}>play_circle</span>
               {playCount}x
             </span>
           )}
           {playTime && (
             <span className="flex items-center gap-0.5 text-xs text-muted-foreground ml-auto" title={`Last run: ${playTime}`}>
-              <span className="material-icons-outlined" style={{ fontSize: '13px' }}>schedule</span>
+              <span aria-hidden="true" className="material-icons-outlined" style={{ fontSize: '13px' }}>schedule</span>
               {(() => {
                 const colonMatch = playTime.match(/^(?:(\d+):)?(\d+):(\d+)$/)
                 if (colonMatch) {
@@ -1520,7 +1654,7 @@ function PatternCard({ pattern, isSelected, isFavorite, playTime, playCount, onT
           }}
           title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
         >
-          <span className="material-icons" style={{ fontSize: '16px' }}>
+          <span aria-hidden="true" className="material-icons" style={{ fontSize: '16px' }}>
             {isFavorite ? 'favorite' : 'favorite_border'}
           </span>
         </span>

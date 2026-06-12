@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -43,7 +44,7 @@ function SignalIcon({ signal }: { signal: number }) {
                signal >= 25 ? 'network_wifi_2_bar' :
                'network_wifi_1_bar'
   const color = signal >= 50 ? 'text-green-500' : signal >= 25 ? 'text-yellow-500' : 'text-red-500'
-  return <span className={`material-icons text-lg ${color}`}>{bars}</span>
+  return <span className={`material-icons text-lg ${color}`} aria-hidden="true">{bars}</span>
 }
 
 export function WiFiSetupPage() {
@@ -63,6 +64,8 @@ export function WiFiSetupPage() {
   const [apPasswordInput, setApPasswordInput] = useState('')
   const [showApPassword, setShowApPassword] = useState(false)
   const [isSavingApPassword, setIsSavingApPassword] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<'restart' | 'shutdown' | null>(null)
+  const [systemState, setSystemState] = useState<'idle' | 'restarting' | 'shutdown'>('idle')
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -111,9 +114,36 @@ export function WiFiSetupPage() {
     fetchApPassword()
   }, [fetchStatus, scanNetworks, fetchSaved, fetchApPassword])
 
+  // While restarting, poll the backend until it responds again, then reload
+  useEffect(() => {
+    if (systemState !== 'restarting') return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout>
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/wifi/status')
+        if (res.ok && !cancelled) {
+          window.location.reload()
+          return
+        }
+      } catch {
+        // Backend still down, keep polling
+      }
+      if (!cancelled) timer = setTimeout(poll, 3000)
+    }
+    // Grace period so we don't catch the server before it goes down
+    timer = setTimeout(poll, 5000)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [systemState])
+
   const needsPassword = isManualEntry || (selectedNetwork &&
     selectedNetwork.security !== 'Open' &&
     !selectedNetwork.saved)
+
+  const isHotspotMode = status?.mode === 'hotspot'
 
   const handleConnect = async () => {
     const ssid = isManualEntry ? manualSsid.trim() : selectedNetwork?.ssid
@@ -132,10 +162,19 @@ export function WiFiSetupPage() {
         fetchStatus()
         fetchSaved()
         scanNetworks()
+      } else {
+        toast.error(result.message || 'Failed to connect to network')
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Connection failed'
-      toast.error(message)
+      // In hotspot mode, a network error/timeout is expected: connecting to
+      // WiFi tears down the hotspot, dropping this page's connection.
+      const isNetworkError = !(err instanceof Error) || !err.message.startsWith('HTTP')
+      if (isHotspotMode && isNetworkError) {
+        toast.info('If the hotspot dropped, the table is connecting to your WiFi — rejoin your network and reload.')
+      } else {
+        const message = err instanceof Error ? err.message : 'Connection failed'
+        toast.error(message)
+      }
     } finally {
       setIsConnecting(false)
     }
@@ -155,6 +194,8 @@ export function WiFiSetupPage() {
         toast.success(result.message)
         closeDialog()
         fetchSaved()
+      } else {
+        toast.error(result.message || 'Failed to save network')
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to save network'
@@ -191,6 +232,8 @@ export function WiFiSetupPage() {
       if (result.success) {
         setApPassword(apPasswordInput)
         toast.success(result.message)
+      } else {
+        toast.error(result.message || 'Failed to update password')
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update password'
@@ -224,14 +267,32 @@ export function WiFiSetupPage() {
     setSelectedNetwork({ ssid: '', signal: 0, security: 'Manual', saved: false, active: false })
   }
 
-  const isHotspotMode = status?.mode === 'hotspot'
+  const handleRestart = async () => {
+    setConfirmAction(null)
+    try {
+      await apiClient.post('/api/system/restart')
+      setSystemState('restarting')
+    } catch {
+      toast.error('Failed to restart')
+    }
+  }
+
+  const handleShutdown = async () => {
+    setConfirmAction(null)
+    try {
+      await apiClient.post('/api/system/shutdown')
+      setSystemState('shutdown')
+    } catch {
+      toast.error('Failed to shutdown')
+    }
+  }
 
   return (
     <div className="container max-w-lg mx-auto px-3 py-4 space-y-3">
       {/* Hotspot Welcome Banner */}
       {isHotspotMode && (
         <Alert className="border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-800">
-          <span className="material-icons text-blue-500 mr-2">wifi_tethering</span>
+          <span className="material-icons text-blue-500 mr-2" aria-hidden="true">wifi_tethering</span>
           <AlertDescription>
             <strong>Welcome to Dune Weaver!</strong>
             <br />
@@ -244,7 +305,7 @@ export function WiFiSetupPage() {
       <Card>
         <CardContent className="pt-4 pb-3 px-4">
           <div className="flex items-center gap-2 mb-2">
-            <span className="material-icons-outlined text-base text-muted-foreground">info</span>
+            <span className="material-icons-outlined text-base text-muted-foreground" aria-hidden="true">info</span>
             <span className="font-semibold text-sm">WiFi Status</span>
           </div>
           {status ? (
@@ -292,7 +353,7 @@ export function WiFiSetupPage() {
         <Card>
           <CardContent className="pt-4 pb-2 px-4">
             <div className="flex items-center gap-2 mb-2">
-              <span className="material-icons-outlined text-base text-muted-foreground">bookmark</span>
+              <span className="material-icons-outlined text-base text-muted-foreground" aria-hidden="true">bookmark</span>
               <span className="font-semibold text-sm">Saved Networks</span>
             </div>
             <div className="space-y-0.5">
@@ -302,7 +363,7 @@ export function WiFiSetupPage() {
                   className="flex items-center justify-between px-2.5 py-2 rounded-lg hover:bg-muted/50"
                 >
                   <div className="flex items-center gap-2.5">
-                    <span className="material-icons text-muted-foreground text-lg">wifi</span>
+                    <span className="material-icons text-muted-foreground text-lg" aria-hidden="true">wifi</span>
                     <span className="font-medium text-sm">{con.ssid}</span>
                   </div>
                   <Button
@@ -310,8 +371,9 @@ export function WiFiSetupPage() {
                     size="sm"
                     className="h-7 w-7 p-0"
                     onClick={() => setForgetSsid(con.ssid)}
+                    aria-label={`Forget network ${con.ssid}`}
                   >
-                    <span className="material-icons text-sm text-destructive">delete</span>
+                    <span className="material-icons text-sm text-destructive" aria-hidden="true">delete</span>
                   </Button>
                 </div>
               ))}
@@ -324,7 +386,7 @@ export function WiFiSetupPage() {
       <Card>
         <CardContent className="pt-4 pb-3 px-4">
           <div className="flex items-center gap-2 mb-2">
-            <span className="material-icons-outlined text-base text-muted-foreground">wifi_tethering</span>
+            <span className="material-icons-outlined text-base text-muted-foreground" aria-hidden="true">wifi_tethering</span>
             <span className="font-semibold text-sm">Hotspot Password</span>
             {!apPassword && (
               <Badge variant="secondary" className="text-xs px-1.5 py-0">Open</Badge>
@@ -340,6 +402,7 @@ export function WiFiSetupPage() {
                 value={apPasswordInput}
                 onChange={(e) => setApPasswordInput(e.target.value)}
                 placeholder="No password (open)"
+                aria-label="Hotspot password"
                 className="pr-8 h-8 text-sm"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && apPasswordInput !== apPassword) handleSaveApPassword()
@@ -349,8 +412,9 @@ export function WiFiSetupPage() {
                 type="button"
                 onClick={() => setShowApPassword(!showApPassword)}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                aria-label={showApPassword ? 'Hide password' : 'Show password'}
               >
-                <span className="material-icons text-sm">
+                <span className="material-icons text-sm" aria-hidden="true">
                   {showApPassword ? 'visibility_off' : 'visibility'}
                 </span>
               </button>
@@ -362,7 +426,7 @@ export function WiFiSetupPage() {
               disabled={isSavingApPassword || apPasswordInput === apPassword || (apPasswordInput.length > 0 && apPasswordInput.length < 8)}
             >
               {isSavingApPassword ? (
-                <span className="material-icons text-sm animate-spin">refresh</span>
+                <span className="material-icons text-sm animate-spin" aria-hidden="true">refresh</span>
               ) : (
                 'Save'
               )}
@@ -393,7 +457,7 @@ export function WiFiSetupPage() {
       <Card>
         <CardContent className="pt-4 pb-3 px-4">
           <div className="flex items-center gap-2 mb-2">
-            <span className="material-icons-outlined text-base text-muted-foreground">settings_power</span>
+            <span className="material-icons-outlined text-base text-muted-foreground" aria-hidden="true">settings_power</span>
             <span className="font-semibold text-sm">System</span>
           </div>
           <div className="flex gap-2">
@@ -401,30 +465,18 @@ export function WiFiSetupPage() {
               variant="outline"
               size="sm"
               className="flex-1 h-8"
-              onClick={async () => {
-                if (!confirm('Restart Dune Weaver?')) return
-                try {
-                  await apiClient.post('/api/system/restart')
-                  toast.success('Restarting...')
-                } catch { toast.error('Failed to restart') }
-              }}
+              onClick={() => setConfirmAction('restart')}
             >
-              <span className="material-icons-outlined text-sm mr-1.5">restart_alt</span>
+              <span className="material-icons-outlined text-sm mr-1.5" aria-hidden="true">restart_alt</span>
               Restart
             </Button>
             <Button
               variant="outline"
               size="sm"
               className="flex-1 h-8 text-destructive hover:text-destructive"
-              onClick={async () => {
-                if (!confirm('Shutdown the system?')) return
-                try {
-                  await apiClient.post('/api/system/shutdown')
-                  toast.success('Shutting down...')
-                } catch { toast.error('Failed to shutdown') }
-              }}
+              onClick={() => setConfirmAction('shutdown')}
             >
-              <span className="material-icons-outlined text-sm mr-1.5">power_settings_new</span>
+              <span className="material-icons-outlined text-sm mr-1.5" aria-hidden="true">power_settings_new</span>
               Shutdown
             </Button>
           </div>
@@ -436,7 +488,7 @@ export function WiFiSetupPage() {
         <CardContent className="pt-4 pb-2 px-4">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <span className="material-icons-outlined text-base text-muted-foreground">wifi_find</span>
+              <span className="material-icons-outlined text-base text-muted-foreground" aria-hidden="true">wifi_find</span>
               <span className="font-semibold text-sm">Networks</span>
               <span className="text-xs text-muted-foreground">
                 {networks.length > 0
@@ -451,8 +503,9 @@ export function WiFiSetupPage() {
                 className="h-7 w-7 p-0"
                 onClick={openManualEntry}
                 title="Add network manually"
+                aria-label="Add network manually"
               >
-                <span className="material-icons text-base">add</span>
+                <span className="material-icons text-base" aria-hidden="true">add</span>
               </Button>
               <Button
                 variant="ghost"
@@ -460,8 +513,9 @@ export function WiFiSetupPage() {
                 className="h-7 w-7 p-0"
                 onClick={scanNetworks}
                 disabled={isScanning}
+                aria-label="Scan for networks"
               >
-                <span className={`material-icons text-base ${isScanning ? 'animate-spin' : ''}`}>
+                <span className={`material-icons text-base ${isScanning ? 'animate-spin' : ''}`} aria-hidden="true">
                   refresh
                 </span>
               </Button>
@@ -480,7 +534,7 @@ export function WiFiSetupPage() {
             )}
             {networks.map((network) => (
               <button
-                key={network.ssid}
+                key={`${network.ssid}-${network.security}-${network.signal}`}
                 onClick={() => openConnectDialog(network)}
                 className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors hover:bg-muted/50
                   ${network.active ? 'bg-green-50 dark:bg-green-950/20' : ''}`}
@@ -496,7 +550,7 @@ export function WiFiSetupPage() {
                 </div>
                 <span className="text-xs text-muted-foreground">{network.signal}%</span>
                 {network.security !== 'Open' && (
-                  <span className="material-icons text-sm text-muted-foreground">lock</span>
+                  <span className="material-icons text-sm text-muted-foreground" aria-hidden="true">lock</span>
                 )}
               </button>
             ))}
@@ -543,7 +597,7 @@ export function WiFiSetupPage() {
             <DialogTitle className="flex items-center gap-2">
               {isManualEntry ? (
                 <>
-                  <span className="material-icons text-lg text-muted-foreground">add_circle_outline</span>
+                  <span className="material-icons text-lg text-muted-foreground" aria-hidden="true">add_circle_outline</span>
                   Add Network
                 </>
               ) : (
@@ -565,6 +619,16 @@ export function WiFiSetupPage() {
           </DialogHeader>
 
           <div className="space-y-4">
+            {isHotspotMode && (
+              <Alert>
+                <span className="material-icons text-base" aria-hidden="true">wifi_off</span>
+                <AlertDescription>
+                  Connecting will turn off the table's hotspot. Rejoin your home WiFi, then open{' '}
+                  http://{status?.hostname || '<hostname>'}.local
+                </AlertDescription>
+              </Alert>
+            )}
+
             {isManualEntry && (
               <div className="space-y-2">
                 <Label htmlFor="wifi-ssid">Network Name (SSID)</Label>
@@ -598,8 +662,9 @@ export function WiFiSetupPage() {
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
-                    <span className="material-icons text-sm">
+                    <span className="material-icons text-sm" aria-hidden="true">
                       {showPassword ? 'visibility_off' : 'visibility'}
                     </span>
                   </button>
@@ -617,12 +682,12 @@ export function WiFiSetupPage() {
                 >
                   {isSaving ? (
                     <>
-                      <span className="material-icons text-sm animate-spin mr-2">refresh</span>
+                      <span className="material-icons text-sm animate-spin mr-2" aria-hidden="true">refresh</span>
                       Saving...
                     </>
                   ) : (
                     <>
-                      <span className="material-icons text-sm mr-2">bookmark_add</span>
+                      <span className="material-icons text-sm mr-2" aria-hidden="true">bookmark_add</span>
                       Save
                     </>
                   )}
@@ -634,12 +699,12 @@ export function WiFiSetupPage() {
                 >
                   {isConnecting ? (
                     <>
-                      <span className="material-icons text-sm animate-spin mr-2">refresh</span>
+                      <span className="material-icons text-sm animate-spin mr-2" aria-hidden="true">refresh</span>
                       Connecting...
                     </>
                   ) : (
                     <>
-                      <span className="material-icons text-sm mr-2">wifi</span>
+                      <span className="material-icons text-sm mr-2" aria-hidden="true">wifi</span>
                       Connect
                     </>
                   )}
@@ -653,12 +718,12 @@ export function WiFiSetupPage() {
               >
                 {isConnecting ? (
                   <>
-                    <span className="material-icons text-sm animate-spin mr-2">refresh</span>
+                    <span className="material-icons text-sm animate-spin mr-2" aria-hidden="true">refresh</span>
                     Connecting...
                   </>
                 ) : (
                   <>
-                    <span className="material-icons text-sm mr-2">wifi</span>
+                    <span className="material-icons text-sm mr-2" aria-hidden="true">wifi</span>
                     Connect
                   </>
                 )}
@@ -667,6 +732,56 @@ export function WiFiSetupPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Restart Confirmation */}
+      <ConfirmDialog
+        open={confirmAction === 'restart'}
+        onOpenChange={(open) => { if (!open) setConfirmAction(null) }}
+        title="Restart the system?"
+        description="The table will be unavailable for a minute or two while it reboots."
+        confirmLabel="Restart"
+        destructive
+        onConfirm={handleRestart}
+      />
+
+      {/* Shutdown Confirmation */}
+      <ConfirmDialog
+        open={confirmAction === 'shutdown'}
+        onOpenChange={(open) => { if (!open) setConfirmAction(null) }}
+        title="Shut down the system?"
+        description="The table will power off. You'll need to physically unplug and replug it (or use its power switch) to turn it back on."
+        confirmLabel="Shut down"
+        destructive
+        onConfirm={handleShutdown}
+      />
+
+      {/* Restart / Shutdown Overlay */}
+      {systemState !== 'idle' && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-background/95 px-6 text-center"
+          role="status"
+        >
+          {systemState === 'restarting' ? (
+            <>
+              <span className="material-icons text-3xl text-muted-foreground animate-spin" aria-hidden="true">
+                refresh
+              </span>
+              <p className="text-sm font-medium">
+                Restarting — waiting for the table to come back…
+              </p>
+            </>
+          ) : (
+            <>
+              <span className="material-icons-outlined text-3xl text-muted-foreground" aria-hidden="true">
+                power_settings_new
+              </span>
+              <p className="text-sm font-medium">
+                The system is shutting down. You can close this page.
+              </p>
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }

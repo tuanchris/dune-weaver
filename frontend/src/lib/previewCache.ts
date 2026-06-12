@@ -32,6 +32,12 @@ const MAX_MEMORY_CACHE_SIZE = 100
 export async function initPreviewCacheDB(): Promise<IDBDatabase> {
   if (previewCacheDB) return previewCacheDB
 
+  // Not available in test (jsdom) or SSR environments — callers already
+  // handle rejection and fall back to uncached fetches
+  if (typeof indexedDB === 'undefined') {
+    return Promise.reject(new Error('IndexedDB not available in this environment'))
+  }
+
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(PREVIEW_CACHE_DB_NAME, PREVIEW_CACHE_DB_VERSION)
 
@@ -212,7 +218,11 @@ async function managePreviewCacheSize(newItemSize: number): Promise<void> {
     entries.sort((a, b) => a.lastAccessed - b.lastAccessed)
 
     let freedSpace = 0
-    const targetSpace = newItemSize + MAX_CACHE_SIZE_BYTES * 0.1 // Free 10% extra buffer
+    // Free the actual overage plus a 10% buffer so eviction doesn't re-run
+    // on every save — not newItemSize-based, which would wipe ~10% of the
+    // cache even when only a few bytes over the limit
+    const targetSpace =
+      currentSize + newItemSize - MAX_CACHE_SIZE_BYTES + MAX_CACHE_SIZE_BYTES * 0.1
 
     for (const entry of entries) {
       if (freedSpace >= targetSpace) break

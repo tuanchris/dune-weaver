@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { ColorPicker } from '@/components/ui/color-picker'
+import { ConnectionBanner } from '@/components/ConnectionBanner'
 
 // Types
 interface LedConfig {
@@ -77,6 +78,8 @@ export function LEDPage() {
 
   // Ref for debouncing color picker API calls
   const colorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Rate-limit color error toasts (color changes fire rapidly while dragging)
+  const colorErrorToastAtRef = useRef(0)
 
   // LED control mode
   const [controlMode, setControlMode] = useState<'manual' | 'automated'>('automated')
@@ -87,6 +90,27 @@ export function LEDPage() {
   const [idleTimeoutEnabled, setIdleTimeoutEnabled] = useState(false)
   const [idleTimeoutMinutes, setIdleTimeoutMinutes] = useState(30)
   const [idleTimeoutInput, setIdleTimeoutInput] = useState('30')
+
+  // WLED reachability: null = checking, true = reachable, false = unreachable
+  const [wledReachable, setWledReachable] = useState<boolean | null>(null)
+
+  const probeWled = useCallback(async (ip: string) => {
+    setWledReachable(null)
+    try {
+      // no-cors: body is opaque, but a resolved fetch means the host answered
+      await fetch(`http://${ip}/json/info`, { signal: AbortSignal.timeout(4000), mode: 'no-cors' })
+      setWledReachable(true)
+    } catch {
+      setWledReachable(false)
+    }
+  }, [])
+
+  // Probe WLED reachability on mount / when the configured IP changes
+  useEffect(() => {
+    if (ledConfig?.provider === 'wled' && ledConfig.wled_ip) {
+      probeWled(ledConfig.wled_ip)
+    }
+  }, [ledConfig?.provider, ledConfig?.wled_ip, probeWled])
 
   // Fetch LED configuration
   useEffect(() => {
@@ -190,11 +214,13 @@ export function LEDPage() {
   }
 
   const handleControlModeChange = async (mode: 'manual' | 'automated') => {
+    const previousMode = controlMode
     setControlMode(mode)
     try {
       await apiClient.patch('/api/settings', { led: { control_mode: mode } })
-      toast.success(mode === 'manual' ? 'Manual / HA mode' : 'DW Automated mode')
     } catch {
+      // Roll back the optimistic update so the UI doesn't desync from the server
+      setControlMode(previousMode)
       toast.error('Failed to update control mode')
     }
   }
@@ -203,7 +229,6 @@ export function LEDPage() {
     try {
       const data = await apiClient.post<{ connected?: boolean; power_on?: boolean; error?: string }>('/api/dw_leds/power', { state: 2 })
       if (data.connected) {
-        toast.success(`Power ${data.power_on ? 'ON' : 'OFF'}`)
         await fetchDWLedsStatus()
       } else {
         toast.error(data.error || 'Failed to toggle power')
@@ -219,10 +244,7 @@ export function LEDPage() {
 
   const handleBrightnessCommit = async (value: number[]) => {
     try {
-      const data = await apiClient.post<{ connected?: boolean }>('/api/dw_leds/brightness', { value: value[0] })
-      if (data.connected) {
-        toast.success(`Brightness: ${value[0]}%`)
-      }
+      await apiClient.post('/api/dw_leds/brightness', { value: value[0] })
     } catch {
       toast.error('Failed to set brightness')
     }
@@ -236,7 +258,6 @@ export function LEDPage() {
   const handleSpeedCommit = async (value: number[]) => {
     try {
       await apiClient.post('/api/dw_leds/speed', { speed: value[0] })
-      toast.success(`Speed: ${value[0]}`)
     } catch {
       toast.error('Failed to set speed')
     }
@@ -250,7 +271,6 @@ export function LEDPage() {
   const handleIntensityCommit = async (value: number[]) => {
     try {
       await apiClient.post('/api/dw_leds/intensity', { intensity: value[0] })
-      toast.success(`Intensity: ${value[0]}`)
     } catch {
       toast.error('Failed to set intensity')
     }
@@ -261,7 +281,6 @@ export function LEDPage() {
     try {
       const data = await apiClient.post<{ connected?: boolean; power_on?: boolean }>('/api/dw_leds/effect', { effect_id: parseInt(value) })
       if (data.connected) {
-        toast.success('Effect changed')
         if (data.power_on !== undefined) {
           const powerOn = data.power_on
           setDwStatus((prev) => prev ? { ...prev, power_on: powerOn } : null)
@@ -275,10 +294,7 @@ export function LEDPage() {
   const handlePaletteChange = async (value: string) => {
     setSelectedPalette(value)
     try {
-      const data = await apiClient.post<{ connected?: boolean }>('/api/dw_leds/palette', { palette_id: parseInt(value) })
-      if (data.connected) {
-        toast.success('Palette changed')
-      }
+      await apiClient.post('/api/dw_leds/palette', { palette_id: parseInt(value) })
     } catch {
       toast.error('Failed to set palette')
     }
@@ -311,6 +327,12 @@ export function LEDPage() {
         await apiClient.post('/api/dw_leds/colors', payload)
       } catch (error) {
         console.error('Failed to set color:', error)
+        // Rate-limit the toast: color changes fire rapidly, one error every 3s is enough
+        const now = Date.now()
+        if (now - colorErrorToastAtRef.current > 3000) {
+          colorErrorToastAtRef.current = now
+          toast.error('Failed to set LED color')
+        }
       }
     }, 300)
   }
@@ -373,7 +395,7 @@ export function LEDPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <span className="material-icons-outlined animate-spin text-4xl text-muted-foreground">
+        <span className="material-icons-outlined animate-spin text-4xl text-muted-foreground" aria-hidden="true">
           sync
         </span>
       </div>
@@ -385,7 +407,7 @@ export function LEDPage() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center px-4">
         <div className="p-4 rounded-full bg-muted">
-          <span className="material-icons-outlined text-5xl text-muted-foreground">
+          <span className="material-icons-outlined text-5xl text-muted-foreground" aria-hidden="true">
             lightbulb
           </span>
         </div>
@@ -397,7 +419,7 @@ export function LEDPage() {
         </div>
         <Button asChild className="gap-2">
           <Link to="/settings?section=led">
-            <span className="material-icons-outlined">settings</span>
+            <span className="material-icons-outlined" aria-hidden="true">settings</span>
             Go to Settings
           </Link>
         </Button>
@@ -410,7 +432,7 @@ export function LEDPage() {
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
-          <span className="material-icons-outlined text-muted-foreground">tune</span>
+          <span className="material-icons-outlined text-muted-foreground" aria-hidden="true">tune</span>
           LED Control Mode
         </CardTitle>
         <CardDescription>
@@ -428,11 +450,11 @@ export function LEDPage() {
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <span className="material-icons-outlined text-base">front_hand</span>
+              <span className="material-icons-outlined text-base" aria-hidden="true">front_hand</span>
               <span className="font-medium text-sm">Manual / Home Assistant</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Effects persist until changed. Still Sands turns off only.
+              Effects persist until changed. During scheduled quiet hours (Still Sands), lights turn off only.
             </p>
           </button>
           <button
@@ -444,11 +466,11 @@ export function LEDPage() {
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <span className="material-icons-outlined text-base">smart_toy</span>
+              <span className="material-icons-outlined text-base" aria-hidden="true">smart_toy</span>
               <span className="font-medium text-sm">DW Automated</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Auto-switch effects on play/idle. Still Sands turns off and on.
+              Auto-switch effects on play/idle. During quiet hours, lights turn off and back on.
             </p>
           </button>
         </div>
@@ -458,16 +480,41 @@ export function LEDPage() {
 
   // WLED iframe view
   if (ledConfig.provider === 'wled' && ledConfig.wled_ip) {
+    const wledIp = ledConfig.wled_ip
     return (
       <div className="flex flex-col w-full max-w-5xl mx-auto gap-4 py-3 sm:py-6 px-0 sm:px-4">
         {modeSelector}
-        <div style={{ height: 'calc(100vh - 380px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))' }}>
-          <iframe
-            src={`http://${ledConfig.wled_ip}`}
-            className="w-full h-full rounded-lg border border-border"
-            title="WLED Control"
-          />
-        </div>
+        {wledReachable === null ? (
+          <div className="flex items-center justify-center py-12">
+            <span className="material-icons-outlined animate-spin text-3xl text-muted-foreground" aria-hidden="true">
+              sync
+            </span>
+          </div>
+        ) : wledReachable === false ? (
+          <Card>
+            <CardContent className="pt-6 flex flex-col items-center gap-3 text-center">
+              <span className="material-icons-outlined text-4xl text-muted-foreground" aria-hidden="true">
+                wifi_off
+              </span>
+              <p className="font-medium">Can't reach WLED at {wledIp}</p>
+              <p className="text-sm text-muted-foreground max-w-md">
+                Check that the WLED controller is powered on and the IP is correct in Settings → LED
+              </p>
+              <Button onClick={() => probeWled(wledIp)} className="gap-2">
+                <span className="material-icons-outlined text-base" aria-hidden="true">refresh</span>
+                Retry
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <div style={{ height: 'calc(100vh - 380px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))' }}>
+            <iframe
+              src={`http://${wledIp}`}
+              className="w-full h-full rounded-lg border border-border"
+              title="WLED Control"
+            />
+          </div>
+        )}
       </div>
     )
   }
@@ -480,6 +527,8 @@ export function LEDPage() {
         <h1 className="text-xl font-semibold tracking-tight">LED Control</h1>
         <p className="text-xs text-muted-foreground">DW LEDs - GPIO controlled LED strip</p>
       </div>
+
+      <ConnectionBanner />
 
       <Separator />
 
@@ -503,7 +552,7 @@ export function LEDPage() {
                         : 'bg-muted hover:bg-muted/80'
                     }`}
                   >
-                    <span className={`material-icons text-4xl ${dwStatus?.power_on ? 'text-white' : 'text-muted-foreground'}`}>
+                    <span className={`material-icons text-4xl ${dwStatus?.power_on ? 'text-white' : 'text-muted-foreground'}`} aria-hidden="true">
                       power_settings_new
                     </span>
                   </button>
@@ -516,7 +565,7 @@ export function LEDPage() {
                 <div className="flex-1 w-full space-y-4">
                   {/* Connection Status */}
                   <div className={`flex items-center gap-2 text-sm ${dwStatus?.connected ? 'text-green-600' : 'text-destructive'}`}>
-                    <span className="material-icons-outlined text-base">
+                    <span className="material-icons-outlined text-base" aria-hidden="true">
                       {dwStatus?.connected ? 'check_circle' : 'error'}
                     </span>
                     {dwStatus?.connected
@@ -528,12 +577,13 @@ export function LEDPage() {
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
                       <Label>
-                        <span className="material-icons-outlined text-sm mr-2 align-[-6px] text-muted-foreground">brightness_6</span>
+                        <span className="material-icons-outlined text-sm mr-2 align-[-6px] text-muted-foreground" aria-hidden="true">brightness_6</span>
                         Brightness
                       </Label>
                       <span className="text-sm font-medium">{brightness}%</span>
                     </div>
                     <Slider
+                      aria-label="Brightness"
                       value={[brightness]}
                       onValueChange={handleBrightnessChange}
                       onValueCommit={handleBrightnessCommit}
@@ -550,7 +600,7 @@ export function LEDPage() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
-                <span className="material-icons-outlined text-muted-foreground">auto_awesome</span>
+                <span className="material-icons-outlined text-muted-foreground" aria-hidden="true">auto_awesome</span>
                 Effects & Palettes
               </CardTitle>
             </CardHeader>
@@ -558,9 +608,9 @@ export function LEDPage() {
               {/* Effect & Palette Selects */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Effect</Label>
+                  <Label htmlFor="led-effect-select">Effect</Label>
                   <Select value={selectedEffect} onValueChange={handleEffectChange}>
-                    <SelectTrigger>
+                    <SelectTrigger id="led-effect-select">
                       <SelectValue placeholder="Select effect..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -573,9 +623,9 @@ export function LEDPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Palette</Label>
+                  <Label htmlFor="led-palette-select">Palette</Label>
                   <Select value={selectedPalette} onValueChange={handlePaletteChange}>
-                    <SelectTrigger>
+                    <SelectTrigger id="led-palette-select">
                       <SelectValue placeholder="Select palette..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -593,11 +643,12 @@ export function LEDPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-4 rounded-lg border space-y-3">
                   <div className="flex justify-between items-center">
-                    <Label>
-                      <span className="material-icons-outlined text-sm mr-2 align-[-6px] text-muted-foreground">speed</span>
+                    <Label htmlFor="led-speed-input">
+                      <span className="material-icons-outlined text-sm mr-2 align-[-6px] text-muted-foreground" aria-hidden="true">speed</span>
                       Speed
                     </Label>
                     <Input
+                      id="led-speed-input"
                       type="text"
                       inputMode="numeric"
                       value={speedInput}
@@ -623,6 +674,7 @@ export function LEDPage() {
                     />
                   </div>
                   <Slider
+                    aria-label="Speed"
                     value={[speed]}
                     onValueChange={handleSpeedChange}
                     onValueCommit={handleSpeedCommit}
@@ -632,11 +684,12 @@ export function LEDPage() {
                 </div>
                 <div className="p-4 rounded-lg border space-y-3">
                   <div className="flex justify-between items-center">
-                    <Label>
-                      <span className="material-icons-outlined text-sm mr-2 align-[-6px] text-muted-foreground">tungsten</span>
+                    <Label htmlFor="led-intensity-input">
+                      <span className="material-icons-outlined text-sm mr-2 align-[-6px] text-muted-foreground" aria-hidden="true">tungsten</span>
                       Intensity
                     </Label>
                     <Input
+                      id="led-intensity-input"
                       type="text"
                       inputMode="numeric"
                       value={intensityInput}
@@ -662,6 +715,7 @@ export function LEDPage() {
                     />
                   </div>
                   <Slider
+                    aria-label="Intensity"
                     value={[intensity]}
                     onValueChange={handleIntensityChange}
                     onValueCommit={handleIntensityCommit}
@@ -680,7 +734,7 @@ export function LEDPage() {
           <Card className="flex-1 flex flex-col">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
-                <span className="material-icons-outlined text-muted-foreground">palette</span>
+                <span className="material-icons-outlined text-muted-foreground" aria-hidden="true">palette</span>
                 Colors
               </CardTitle>
             </CardHeader>
@@ -716,7 +770,7 @@ export function LEDPage() {
           <Card className="flex-1 flex flex-col">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
-                <span className="material-icons-outlined text-muted-foreground">schedule</span>
+                <span className="material-icons-outlined text-muted-foreground" aria-hidden="true">schedule</span>
                 Auto Turn Off
               </CardTitle>
             </CardHeader>
@@ -724,6 +778,7 @@ export function LEDPage() {
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Enable timeout</span>
                 <Switch
+                  aria-label="Enable idle timeout"
                   checked={idleTimeoutEnabled}
                   onCheckedChange={handleIdleTimeoutToggle}
                 />
@@ -731,6 +786,7 @@ export function LEDPage() {
               {idleTimeoutEnabled && (
                 <div className="flex items-center gap-2">
                   <Input
+                    aria-label="Idle timeout in minutes"
                     type="text"
                     inputMode="numeric"
                     value={idleTimeoutInput}
@@ -742,6 +798,9 @@ export function LEDPage() {
                       const num = Math.min(1440, Math.max(1, parseInt(idleTimeoutInput) || 30))
                       setIdleTimeoutMinutes(num)
                       setIdleTimeoutInput(String(num))
+                      if (num !== idleTimeoutMinutes) {
+                        saveIdleTimeout(idleTimeoutEnabled, num)
+                      }
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
@@ -770,7 +829,7 @@ export function LEDPage() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
-            <span className="material-icons-outlined text-muted-foreground">smart_toy</span>
+            <span className="material-icons-outlined text-muted-foreground" aria-hidden="true">smart_toy</span>
             Effect Automation
           </CardTitle>
           <CardDescription>
@@ -783,7 +842,7 @@ export function LEDPage() {
             <div className="p-4 rounded-lg border space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="material-icons text-green-600">play_circle</span>
+                  <span className="material-icons text-green-600" aria-hidden="true">play_circle</span>
                   <span className="font-medium">While Playing</span>
                 </div>
               </div>
@@ -796,7 +855,7 @@ export function LEDPage() {
                   onClick={() => saveCurrentEffectSettings('playing')}
                   className="flex-1 gap-1"
                 >
-                  <span className="material-icons text-sm">save</span>
+                  <span className="material-icons text-sm" aria-hidden="true">save</span>
                   Save Current
                 </Button>
                 <Button
@@ -813,7 +872,7 @@ export function LEDPage() {
             <div className="p-4 rounded-lg border space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="material-icons text-blue-600">bedtime</span>
+                  <span className="material-icons text-blue-600" aria-hidden="true">bedtime</span>
                   <span className="font-medium">When Idle</span>
                 </div>
               </div>
@@ -826,7 +885,7 @@ export function LEDPage() {
                   onClick={() => saveCurrentEffectSettings('idle')}
                   className="flex-1 gap-1"
                 >
-                  <span className="material-icons text-sm">save</span>
+                  <span className="material-icons text-sm" aria-hidden="true">save</span>
                   Save Current
                 </Button>
                 <Button

@@ -73,6 +73,9 @@ class ApiClient {
         'Content-Type': 'application/json',
         ...headers,
       },
+      // No default timeout: some endpoints legitimately block for minutes
+      // (/connect can run homing with a 120s internal timeout). Callers
+      // that need cancellation pass their own AbortSignal.
       signal,
     }
 

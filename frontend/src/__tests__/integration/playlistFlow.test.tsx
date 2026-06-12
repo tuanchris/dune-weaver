@@ -200,13 +200,14 @@ describe('Playlist Flow Integration', () => {
 
       expect(deleteButton).toBeTruthy()
 
-      // Mock window.confirm
-      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-
       await user.click(deleteButton!)
 
-      // Verify confirm was called
-      expect(confirmSpy).toHaveBeenCalled()
+      // Styled confirmation dialog appears instead of window.confirm
+      const dialog = await screen.findByRole('alertdialog')
+      expect(dialog).toHaveTextContent('Delete "to-delete"?')
+
+      // Confirm deletion
+      await user.click(screen.getByRole('button', { name: 'Delete' }))
 
       // Verify API call
       await waitFor(() => {
@@ -216,8 +217,6 @@ describe('Playlist Flow Integration', () => {
 
       // Verify mockData was updated
       expect(mockData.playlists['to-delete']).toBeUndefined()
-
-      confirmSpy.mockRestore()
     })
   })
 

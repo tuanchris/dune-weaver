@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'android-chrome-192x192.png', 'android-chrome-512x512.png'],
       manifest: false, // We use our own manifest at /static/site.webmanifest
       workbox: {
@@ -171,5 +171,22 @@ export default defineConfig({
   build: {
     outDir: '../static/dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (!id.includes('node_modules')) return undefined
+          if (/node_modules\/(react|react-dom|react-router|react-router-dom|scheduler)\//.test(id)) {
+            return 'react'
+          }
+          if (/node_modules\/(motion|framer-motion|motion-dom|motion-utils)\//.test(id)) {
+            return 'motion'
+          }
+          if (id.includes('node_modules/@dnd-kit/')) {
+            return 'dnd'
+          }
+          return undefined
+        },
+      },
+    },
   },
 })

@@ -27,6 +27,7 @@ import {
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import { UpdateDialog } from '@/components/UpdateDialog'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 // Types
 
@@ -182,9 +183,14 @@ export function SettingsPage() {
 
   // Security state
   const [securityMode, setSecurityMode] = useState<'off' | 'lockdown' | 'play_only'>('off')
+  const [savedSecurityMode, setSavedSecurityMode] = useState<'off' | 'lockdown' | 'play_only'>('off')
   const [securityPassword, setSecurityPassword] = useState('')
   const [securityPasswordConfirm, setSecurityPasswordConfirm] = useState('')
   const [hasExistingPassword, setHasExistingPassword] = useState(false)
+  const [securityOffConfirmOpen, setSecurityOffConfirmOpen] = useState(false)
+
+  // Logo removal confirmation
+  const [logoConfirmOpen, setLogoConfirmOpen] = useState(false)
 
   // Version state
   const [versionInfo, setVersionInfo] = useState<{
@@ -192,6 +198,7 @@ export function SettingsPage() {
     latest: string
     update_available: boolean
   } | null>(null)
+  const [versionError, setVersionError] = useState(false)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
 
   // Helper to scroll to element with header offset
@@ -273,11 +280,13 @@ export function SettingsPage() {
   }
 
   const fetchVersionInfo = async () => {
+    setVersionError(false)
     try {
       const data = await apiClient.get<{ current: string; latest: string; update_available: boolean }>('/api/version')
       setVersionInfo(data)
     } catch (error) {
       console.error('Failed to fetch version info:', error)
+      setVersionError(true)
     }
   }
 
@@ -336,11 +345,6 @@ export function SettingsPage() {
       console.error('Error fetching ports:', error)
     }
   }
-
-  // Always fetch ports on mount since connection is the default section
-  useEffect(() => {
-    fetchPorts()
-  }, [])
 
   // Refetch when backend reconnects
   useOnBackendConnected(() => {
@@ -413,6 +417,7 @@ export function SettingsPage() {
       // Set security settings
       if (data.security) {
         setSecurityMode(data.security.mode || 'off')
+        setSavedSecurityMode(data.security.mode || 'off')
         setHasExistingPassword(data.security.has_password || false)
       }
       // Set MQTT config from the same response
@@ -572,8 +577,6 @@ export function SettingsPage() {
   }
 
   const handleDeleteLogo = async () => {
-    if (!confirm('Remove custom logo and revert to default?')) return
-
     setIsLoading('logo')
     try {
       await apiClient.delete('/api/custom-logo')
@@ -732,6 +735,20 @@ export function SettingsPage() {
   }
 
   const handleSaveStillSandsSettings = async () => {
+    // Validate time slots before saving (only when enabled and slots exist)
+    if (stillSandsSettings.enabled && stillSandsSettings.time_slots.length > 0) {
+      for (let i = 0; i < stillSandsSettings.time_slots.length; i++) {
+        const slot = stillSandsSettings.time_slots[i]
+        if (slot.days === 'custom' && (!slot.custom_days || slot.custom_days.length === 0)) {
+          toast.error(`Period ${i + 1}: select at least one day`)
+          return
+        }
+        if (slot.start_time === slot.end_time) {
+          toast.error(`Period ${i + 1}: start and end time are the same`)
+          return
+        }
+      }
+    }
     setIsLoading('stillsands')
     try {
       await apiClient.patch('/api/settings', {
@@ -745,18 +762,47 @@ export function SettingsPage() {
     }
   }
 
-  const handleSaveRebootSettings = async () => {
-    setIsLoading('reboot')
+  const doSaveSecuritySettings = async () => {
+    setIsLoading('security')
     try {
-      await apiClient.patch('/api/settings', {
-        scheduled_reboot: rebootSettings,
-      })
-      toast.success('Scheduled reboot settings saved')
-    } catch (error) {
-      toast.error('Failed to save scheduled reboot settings')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload: any = { security: { mode: securityMode } }
+      if (securityPassword) {
+        payload.security.password = securityPassword
+      }
+      await apiClient.patch('/api/settings', payload)
+      toast.success('Security settings saved')
+      setSecurityPassword('')
+      setSecurityPasswordConfirm('')
+      setHasExistingPassword(securityMode !== 'off')
+      setSavedSecurityMode(securityMode)
+      // Notify Layout to refetch security state
+      window.dispatchEvent(new CustomEvent('security-updated'))
+    } catch {
+      toast.error('Failed to save security settings')
     } finally {
       setIsLoading(null)
     }
+  }
+
+  const handleSaveSecuritySettings = () => {
+    // Validate
+    if (securityMode !== 'off') {
+      if (securityPassword && securityPassword !== securityPasswordConfirm) {
+        toast.error('Passwords do not match')
+        return
+      }
+      if (!hasExistingPassword && !securityPassword) {
+        toast.error('Please set a password')
+        return
+      }
+    }
+    // Turning security off actually removes the password — confirm at save time
+    if (securityMode === 'off' && savedSecurityMode !== 'off') {
+      setSecurityOffConfirmOpen(true)
+      return
+    }
+    doSaveSecuritySettings()
   }
 
   const addTimeSlot = () => {
@@ -794,6 +840,23 @@ export function SettingsPage() {
 
       <Separator />
 
+      {/* Hardware Setup Wizard — kept above the accordion so first-run users can find it */}
+      <Link
+        to="/setup"
+        className="flex items-center justify-between w-full p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <span aria-hidden="true" className="material-icons-outlined text-muted-foreground">build</span>
+          <div className="text-left">
+            <p className="font-semibold">Hardware Setup Wizard</p>
+            <p className="text-sm text-muted-foreground">
+              Calibrate motor directions and controller settings
+            </p>
+          </div>
+        </div>
+        <span aria-hidden="true" className="material-icons-outlined text-muted-foreground">chevron_right</span>
+      </Link>
+
       <Accordion
         type="multiple"
         value={openSections}
@@ -804,7 +867,7 @@ export function SettingsPage() {
         <AccordionItem value="connection" id="section-connection" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
-              <span className="material-icons-outlined text-muted-foreground">
+              <span aria-hidden="true" className="material-icons-outlined text-muted-foreground">
                 usb
               </span>
               <div className="text-left">
@@ -820,7 +883,7 @@ export function SettingsPage() {
             <div className="flex items-center justify-between p-4 rounded-lg border">
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 flex items-center justify-center rounded-lg ${isConnected ? 'bg-green-100 dark:bg-green-900' : 'bg-muted'}`}>
-                  <span className={`material-icons ${isConnected ? 'text-green-600' : 'text-muted-foreground'}`}>
+                  <span aria-hidden="true" className={`material-icons ${isConnected ? 'text-green-600' : 'text-muted-foreground'}`}>
                     {isConnected ? 'usb' : 'usb_off'}
                   </span>
                 </div>
@@ -871,9 +934,9 @@ export function SettingsPage() {
                   className="gap-2"
                 >
                   {isLoading === 'connect' ? (
-                    <span className="material-icons-outlined animate-spin">sync</span>
+                    <span aria-hidden="true" className="material-icons-outlined animate-spin">sync</span>
                   ) : (
-                    <span className="material-icons-outlined">cable</span>
+                    <span aria-hidden="true" className="material-icons-outlined">cable</span>
                   )}
                   Connect
                 </Button>
@@ -919,9 +982,9 @@ export function SettingsPage() {
                   className="gap-2"
                 >
                   {isLoading === 'preferredPort' ? (
-                    <span className="material-icons-outlined animate-spin">sync</span>
+                    <span aria-hidden="true" className="material-icons-outlined animate-spin">sync</span>
                   ) : (
-                    <span className="material-icons-outlined">save</span>
+                    <span aria-hidden="true" className="material-icons-outlined">save</span>
                   )}
                   Save
                 </Button>
@@ -936,7 +999,7 @@ export function SettingsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium flex items-center gap-2">
-                    <span className="material-icons-outlined text-base">power</span>
+                    <span aria-hidden="true" className="material-icons-outlined text-base">power</span>
                     Home on Connect
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
@@ -944,6 +1007,8 @@ export function SettingsPage() {
                   </p>
                 </div>
                 <Switch
+                  id="home-on-connect"
+                  aria-label="Home on Connect"
                   checked={settings.home_on_connect !== false}
                   onCheckedChange={async (checked) => {
                     setSettings({ ...settings, home_on_connect: checked })
@@ -966,7 +1031,7 @@ export function SettingsPage() {
         <AccordionItem value="machine" id="section-machine" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
-              <span className="material-icons-outlined text-muted-foreground">
+              <span aria-hidden="true" className="material-icons-outlined text-muted-foreground">
                 precision_manufacturing
               </span>
               <div className="text-left">
@@ -1026,9 +1091,9 @@ export function SettingsPage() {
                   className="gap-2"
                 >
                   {isLoading === 'machine' ? (
-                    <span className="material-icons-outlined animate-spin">sync</span>
+                    <span aria-hidden="true" className="material-icons-outlined animate-spin">sync</span>
                   ) : (
-                    <span className="material-icons-outlined">save</span>
+                    <span aria-hidden="true" className="material-icons-outlined">save</span>
                   )}
                   Save
                 </Button>
@@ -1062,9 +1127,9 @@ export function SettingsPage() {
                   className="gap-2"
                 >
                   {isLoading === 'machine' ? (
-                    <span className="material-icons-outlined animate-spin">sync</span>
+                    <span aria-hidden="true" className="material-icons-outlined animate-spin">sync</span>
                   ) : (
-                    <span className="material-icons-outlined">save</span>
+                    <span aria-hidden="true" className="material-icons-outlined">save</span>
                   )}
                   Save
                 </Button>
@@ -1075,27 +1140,11 @@ export function SettingsPage() {
             </div>
 
             <Alert className="flex items-start">
-              <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
+              <span aria-hidden="true" className="material-icons-outlined text-base mr-2 shrink-0">info</span>
               <AlertDescription>
                 Table type is normally detected automatically from GRBL settings. Use override if auto-detection is incorrect for your hardware.
               </AlertDescription>
             </Alert>
-
-            <Link
-              to="/setup"
-              className="flex items-center justify-between w-full p-3 rounded-lg border hover:bg-muted/50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <span className="material-icons-outlined text-muted-foreground">build</span>
-                <div className="text-left">
-                  <p className="font-medium text-sm">Hardware Setup & Calibration</p>
-                  <p className="text-xs text-muted-foreground">
-                    Calibrate motor directions and edit FluidNC settings
-                  </p>
-                </div>
-              </div>
-              <span className="material-icons-outlined text-muted-foreground">arrow_forward</span>
-            </Link>
 
           </AccordionContent>
         </AccordionItem>
@@ -1104,7 +1153,7 @@ export function SettingsPage() {
         <AccordionItem value="homing" id="section-homing" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
-              <span className="material-icons-outlined text-muted-foreground">
+              <span aria-hidden="true" className="material-icons-outlined text-muted-foreground">
                 home
               </span>
               <div className="text-left">
@@ -1181,7 +1230,7 @@ export function SettingsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium flex items-center gap-2">
-                    <span className="material-icons-outlined text-base">autorenew</span>
+                    <span aria-hidden="true" className="material-icons-outlined text-base">autorenew</span>
                     Auto-Home During Playlists
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
@@ -1224,7 +1273,7 @@ export function SettingsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium flex items-center gap-2">
-                    <span className="material-icons-outlined text-base">restart_alt</span>
+                    <span aria-hidden="true" className="material-icons-outlined text-base">restart_alt</span>
                     Reset Machine on Theta Normalization
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
@@ -1250,9 +1299,9 @@ export function SettingsPage() {
               className="gap-2"
             >
               {isLoading === 'homing' ? (
-                <span className="material-icons-outlined animate-spin">sync</span>
+                <span aria-hidden="true" className="material-icons-outlined animate-spin">sync</span>
               ) : (
-                <span className="material-icons-outlined">save</span>
+                <span aria-hidden="true" className="material-icons-outlined">save</span>
               )}
               Save Homing Configuration
             </Button>
@@ -1263,7 +1312,7 @@ export function SettingsPage() {
         <AccordionItem value="application" id="section-application" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
-              <span className="material-icons-outlined text-muted-foreground">
+              <span aria-hidden="true" className="material-icons-outlined text-muted-foreground">
                 tune
               </span>
               <div className="text-left">
@@ -1313,9 +1362,9 @@ export function SettingsPage() {
                     onClick={() => document.getElementById('logo-upload')?.click()}
                   >
                     {isLoading === 'logo' ? (
-                      <span className="material-icons-outlined animate-spin text-base">sync</span>
+                      <span aria-hidden="true" className="material-icons-outlined animate-spin text-base">sync</span>
                     ) : (
-                      <span className="material-icons-outlined text-base">upload</span>
+                      <span aria-hidden="true" className="material-icons-outlined text-base">upload</span>
                     )}
                     Upload
                   </Button>
@@ -1325,9 +1374,9 @@ export function SettingsPage() {
                       size="sm"
                       className="gap-2 text-destructive hover:text-destructive"
                       disabled={isLoading === 'logo'}
-                      onClick={handleDeleteLogo}
+                      onClick={() => setLogoConfirmOpen(true)}
                     >
-                      <span className="material-icons-outlined text-base">delete</span>
+                      <span aria-hidden="true" className="material-icons-outlined text-base">delete</span>
                     </Button>
                   )}
                 </div>
@@ -1365,7 +1414,7 @@ export function SettingsPage() {
                     className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
                     onClick={() => setSettings({ ...settings, app_name: 'Dune Weaver' })}
                   >
-                    <span className="material-icons text-base">restart_alt</span>
+                    <span aria-hidden="true" className="material-icons text-base">restart_alt</span>
                   </Button>
                 </div>
                 <Button
@@ -1374,9 +1423,9 @@ export function SettingsPage() {
                   className="gap-2"
                 >
                   {isLoading === 'appName' ? (
-                    <span className="material-icons-outlined animate-spin">sync</span>
+                    <span aria-hidden="true" className="material-icons-outlined animate-spin">sync</span>
                   ) : (
-                    <span className="material-icons-outlined">save</span>
+                    <span aria-hidden="true" className="material-icons-outlined">save</span>
                   )}
                   Save
                 </Button>
@@ -1392,7 +1441,7 @@ export function SettingsPage() {
         <AccordionItem value="clearing" id="section-clearing" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
-              <span className="material-icons-outlined text-muted-foreground">
+              <span aria-hidden="true" className="material-icons-outlined text-muted-foreground">
                 cleaning_services
               </span>
               <div className="text-left">
@@ -1490,9 +1539,9 @@ export function SettingsPage() {
               className="gap-2"
             >
               {isLoading === 'clearing' ? (
-                <span className="material-icons-outlined animate-spin">sync</span>
+                <span aria-hidden="true" className="material-icons-outlined animate-spin">sync</span>
               ) : (
-                <span className="material-icons-outlined">save</span>
+                <span aria-hidden="true" className="material-icons-outlined">save</span>
               )}
               Save Clearing Settings
             </Button>
@@ -1503,7 +1552,7 @@ export function SettingsPage() {
         <AccordionItem value="led" id="section-led" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
-              <span className="material-icons-outlined text-muted-foreground">
+              <span aria-hidden="true" className="material-icons-outlined text-muted-foreground">
                 lightbulb
               </span>
               <div className="text-left">
@@ -1562,7 +1611,7 @@ export function SettingsPage() {
             {ledConfig.provider === 'dw_leds' && (
               <div className="space-y-3 p-4 rounded-lg border">
                 <Alert className="flex items-start">
-                  <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-base mr-2 shrink-0">info</span>
                   <AlertDescription>
                     Supports WS2812, WS2812B, SK6812 and other WS281x LED strips
                   </AlertDescription>
@@ -1653,9 +1702,9 @@ export function SettingsPage() {
               className="gap-2"
             >
               {isLoading === 'led' ? (
-                <span className="material-icons-outlined animate-spin">sync</span>
+                <span aria-hidden="true" className="material-icons-outlined animate-spin">sync</span>
               ) : (
-                <span className="material-icons-outlined">save</span>
+                <span aria-hidden="true" className="material-icons-outlined">save</span>
               )}
               Save LED Configuration
             </Button>
@@ -1666,7 +1715,7 @@ export function SettingsPage() {
         <AccordionItem value="mqtt" id="section-mqtt" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
-              <span className="material-icons-outlined text-muted-foreground">
+              <span aria-hidden="true" className="material-icons-outlined text-muted-foreground">
                 home
               </span>
               <div className="text-left">
@@ -1687,10 +1736,21 @@ export function SettingsPage() {
                 </p>
               </div>
               <Switch
+                id="mqtt-enabled"
+                aria-label="Enable MQTT"
                 checked={mqttConfig.enabled}
-                onCheckedChange={(checked) =>
+                onCheckedChange={async (checked) => {
                   setMqttConfig({ ...mqttConfig, enabled: checked })
-                }
+                  try {
+                    await apiClient.patch('/api/settings', {
+                      mqtt: { enabled: checked },
+                    })
+                    toast.success(checked ? 'MQTT enabled. Restart required.' : 'MQTT disabled. Restart required.')
+                  } catch {
+                    setMqttConfig((prev) => ({ ...prev, enabled: !checked }))
+                    toast.error('Failed to save setting')
+                  }
+                }}
               />
             </div>
 
@@ -1779,7 +1839,7 @@ export function SettingsPage() {
                 </div>
 
                 <Alert className="flex items-start">
-                  <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-base mr-2 shrink-0">info</span>
                   <AlertDescription>
                     MQTT configuration changes require a restart to take effect.
                   </AlertDescription>
@@ -1794,9 +1854,9 @@ export function SettingsPage() {
                 className="gap-2"
               >
                 {isLoading === 'mqtt' ? (
-                  <span className="material-icons-outlined animate-spin">sync</span>
+                  <span aria-hidden="true" className="material-icons-outlined animate-spin">sync</span>
                 ) : (
-                  <span className="material-icons-outlined">save</span>
+                  <span aria-hidden="true" className="material-icons-outlined">save</span>
                 )}
                 Save MQTT Configuration
               </Button>
@@ -1808,9 +1868,9 @@ export function SettingsPage() {
                   className="gap-2"
                 >
                   {isLoading === 'mqttTest' ? (
-                    <span className="material-icons-outlined animate-spin">sync</span>
+                    <span aria-hidden="true" className="material-icons-outlined animate-spin">sync</span>
                   ) : (
-                    <span className="material-icons-outlined">wifi_tethering</span>
+                    <span aria-hidden="true" className="material-icons-outlined">wifi_tethering</span>
                   )}
                   Test Connection
                 </Button>
@@ -1823,7 +1883,7 @@ export function SettingsPage() {
         <AccordionItem value="autoplay" id="section-autoplay" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
-              <span className="material-icons-outlined text-muted-foreground">
+              <span aria-hidden="true" className="material-icons-outlined text-muted-foreground">
                 play_circle
               </span>
               <div className="text-left">
@@ -1843,10 +1903,21 @@ export function SettingsPage() {
                 </p>
               </div>
               <Switch
+                id="autoplay-enabled"
+                aria-label="Enable Auto-play"
                 checked={autoPlaySettings.enabled}
-                onCheckedChange={(checked) =>
+                onCheckedChange={async (checked) => {
                   setAutoPlaySettings({ ...autoPlaySettings, enabled: checked })
-                }
+                  try {
+                    await apiClient.patch('/api/settings', {
+                      auto_play: { enabled: checked },
+                    })
+                    toast.success(checked ? 'Auto-play enabled' : 'Auto-play disabled')
+                  } catch {
+                    setAutoPlaySettings((prev) => ({ ...prev, enabled: !checked }))
+                    toast.error('Failed to save setting')
+                  }
+                }}
               />
             </div>
 
@@ -1904,9 +1975,10 @@ export function SettingsPage() {
                     </Select>
                   </div>
                   <div className="space-y-3">
-                    <Label>Pause Between Patterns</Label>
+                    <Label htmlFor="autoplay-pause">Pause Between Patterns</Label>
                     <div className="flex gap-2">
                       <Input
+                        id="autoplay-pause"
                         type="text"
                         inputMode="numeric"
                         value={autoPlayPauseInput}
@@ -1995,9 +2067,9 @@ export function SettingsPage() {
               className="gap-2"
             >
               {isLoading === 'autoplay' ? (
-                <span className="material-icons-outlined animate-spin">sync</span>
+                <span aria-hidden="true" className="material-icons-outlined animate-spin">sync</span>
               ) : (
-                <span className="material-icons-outlined">save</span>
+                <span aria-hidden="true" className="material-icons-outlined">save</span>
               )}
               Save Auto-play Settings
             </Button>
@@ -2008,7 +2080,7 @@ export function SettingsPage() {
         <AccordionItem value="stillsands" id="section-stillsands" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
-              <span className="material-icons-outlined text-muted-foreground">
+              <span aria-hidden="true" className="material-icons-outlined text-muted-foreground">
                 bedtime
               </span>
               <div className="text-left">
@@ -2028,10 +2100,21 @@ export function SettingsPage() {
                 </p>
               </div>
               <Switch
+                id="stillsands-enabled"
+                aria-label="Enable Still Sands"
                 checked={stillSandsSettings.enabled}
-                onCheckedChange={(checked) =>
+                onCheckedChange={async (checked) => {
                   setStillSandsSettings({ ...stillSandsSettings, enabled: checked })
-                }
+                  try {
+                    await apiClient.patch('/api/settings', {
+                      scheduled_pause: { enabled: checked },
+                    })
+                    toast.success(checked ? 'Still Sands enabled' : 'Still Sands disabled')
+                  } catch {
+                    setStillSandsSettings((prev) => ({ ...prev, enabled: !checked }))
+                    toast.error('Failed to save setting')
+                  }
+                }}
               />
             </div>
 
@@ -2041,7 +2124,7 @@ export function SettingsPage() {
                 <div className="p-4 rounded-lg border space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="material-icons-outlined text-base text-muted-foreground">
+                      <span aria-hidden="true" className="material-icons-outlined text-base text-muted-foreground">
                         hourglass_bottom
                       </span>
                       <div>
@@ -2063,7 +2146,7 @@ export function SettingsPage() {
 
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="material-icons-outlined text-base text-muted-foreground">
+                      <span aria-hidden="true" className="material-icons-outlined text-base text-muted-foreground">
                         lightbulb
                       </span>
                       <div>
@@ -2084,7 +2167,7 @@ export function SettingsPage() {
                   {/* Timezone */}
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-3 border-t">
                     <div className="flex items-center gap-3">
-                      <span className="material-icons-outlined text-muted-foreground">
+                      <span aria-hidden="true" className="material-icons-outlined text-muted-foreground">
                         schedule
                       </span>
                       <div>
@@ -2150,7 +2233,7 @@ export function SettingsPage() {
                   <div className="flex items-center justify-between">
                     <h4 className="font-medium">Still Periods</h4>
                     <Button onClick={addTimeSlot} size="sm" variant="secondary" className="gap-1">
-                      <span className="material-icons text-base">add</span>
+                      <span aria-hidden="true" className="material-icons text-base">add</span>
                       Add Period
                     </Button>
                   </div>
@@ -2161,7 +2244,7 @@ export function SettingsPage() {
 
                   {stillSandsSettings.time_slots.length === 0 ? (
                     <div className="text-center py-6 text-muted-foreground">
-                      <span className="material-icons text-3xl mb-2">schedule</span>
+                      <span aria-hidden="true" className="material-icons text-3xl mb-2">schedule</span>
                       <p className="text-sm">No still periods configured</p>
                       <p className="text-xs">Click "Add Period" to create one</p>
                     </div>
@@ -2180,14 +2263,15 @@ export function SettingsPage() {
                               onClick={() => removeTimeSlot(index)}
                               className="h-7 w-7 text-destructive hover:text-destructive"
                             >
-                              <span className="material-icons text-lg">delete</span>
+                              <span aria-hidden="true" className="material-icons text-lg">delete</span>
                             </Button>
                           </div>
 
                           <div className="grid grid-cols-[1fr_1fr] gap-2">
                             <div className="space-y-1.5 min-w-0 overflow-hidden">
-                              <Label className="text-xs">Start Time</Label>
+                              <Label htmlFor={`slot-start-${index}`} className="text-xs">Start Time</Label>
                               <Input
+                                id={`slot-start-${index}`}
                                 type="time"
                                 value={slot.start_time}
                                 onChange={(e) =>
@@ -2197,8 +2281,9 @@ export function SettingsPage() {
                               />
                             </div>
                             <div className="space-y-1.5 min-w-0 overflow-hidden">
-                              <Label className="text-xs">End Time</Label>
+                              <Label htmlFor={`slot-end-${index}`} className="text-xs">End Time</Label>
                               <Input
+                                id={`slot-end-${index}`}
                                 type="time"
                                 value={slot.end_time}
                                 onChange={(e) =>
@@ -2277,7 +2362,7 @@ export function SettingsPage() {
                 </div>
 
                 <Alert className="flex items-start">
-                  <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-base mr-2 shrink-0">info</span>
                   <AlertDescription>
                     Times are based on the timezone selected above (or system default). Still
                     periods that span midnight (e.g., 22:00 to 06:00) are supported. Patterns
@@ -2293,9 +2378,9 @@ export function SettingsPage() {
               className="gap-2"
             >
               {isLoading === 'stillsands' ? (
-                <span className="material-icons-outlined animate-spin">sync</span>
+                <span aria-hidden="true" className="material-icons-outlined animate-spin">sync</span>
               ) : (
-                <span className="material-icons-outlined">save</span>
+                <span aria-hidden="true" className="material-icons-outlined">save</span>
               )}
               Save Still Sands Settings
             </Button>
@@ -2306,7 +2391,7 @@ export function SettingsPage() {
         <AccordionItem value="reboot" id="section-reboot" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
-              <span className="material-icons-outlined text-muted-foreground">
+              <span aria-hidden="true" className="material-icons-outlined text-muted-foreground">
                 restart_alt
               </span>
               <div className="text-left">
@@ -2326,10 +2411,21 @@ export function SettingsPage() {
                 </p>
               </div>
               <Switch
+                id="reboot-enabled"
+                aria-label="Enable Scheduled Reboot"
                 checked={rebootSettings.enabled}
-                onCheckedChange={(checked) =>
+                onCheckedChange={async (checked) => {
                   setRebootSettings({ ...rebootSettings, enabled: checked })
-                }
+                  try {
+                    await apiClient.patch('/api/settings', {
+                      scheduled_reboot: { enabled: checked },
+                    })
+                    toast.success(checked ? 'Scheduled reboot enabled' : 'Scheduled reboot disabled')
+                  } catch {
+                    setRebootSettings((prev) => ({ ...prev, enabled: !checked }))
+                    toast.error('Failed to save setting')
+                  }
+                }}
               />
             </div>
 
@@ -2338,7 +2434,7 @@ export function SettingsPage() {
                 <div className="p-4 rounded-lg border">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <span className="material-icons-outlined text-muted-foreground">
+                      <span aria-hidden="true" className="material-icons-outlined text-muted-foreground">
                         schedule
                       </span>
                       <div>
@@ -2349,18 +2445,33 @@ export function SettingsPage() {
                       </div>
                     </div>
                     <Input
+                      id="reboot-time"
+                      aria-label="Reboot Time"
                       type="time"
                       value={rebootSettings.time}
                       onChange={(e) =>
                         setRebootSettings({ ...rebootSettings, time: e.target.value })
                       }
+                      onBlur={async (e) => {
+                        const time = e.target.value
+                        // type="time" yields '' while incomplete — don't save that
+                        if (!/^\d{2}:\d{2}$/.test(time)) return
+                        try {
+                          await apiClient.patch('/api/settings', {
+                            scheduled_reboot: { time },
+                          })
+                          toast.success(`Reboot time set to ${time}`)
+                        } catch {
+                          toast.error('Failed to save reboot time')
+                        }
+                      }}
                       className="w-full sm:w-[140px]"
                     />
                   </div>
                 </div>
 
                 <Alert className="flex items-start">
-                  <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
+                  <span aria-hidden="true" className="material-icons-outlined text-base mr-2 shrink-0">info</span>
                   <AlertDescription>
                     If a pattern is drawing at the scheduled time, the reboot waits until the
                     table is idle. The table reconnects and homes automatically after rebooting.
@@ -2369,18 +2480,6 @@ export function SettingsPage() {
               </div>
             )}
 
-            <Button
-              onClick={handleSaveRebootSettings}
-              disabled={isLoading === 'reboot'}
-              className="gap-2"
-            >
-              {isLoading === 'reboot' ? (
-                <span className="material-icons-outlined animate-spin">sync</span>
-              ) : (
-                <span className="material-icons-outlined">save</span>
-              )}
-              Save Reboot Settings
-            </Button>
           </AccordionContent>
         </AccordionItem>
 
@@ -2388,7 +2487,7 @@ export function SettingsPage() {
         <AccordionItem value="security" id="section-security" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
-              <span className="material-icons-outlined text-muted-foreground">
+              <span aria-hidden="true" className="material-icons-outlined text-muted-foreground">
                 lock
               </span>
               <div className="text-left">
@@ -2411,9 +2510,6 @@ export function SettingsPage() {
                 value={securityMode}
                 onValueChange={(value) => {
                   const newMode = value as 'off' | 'lockdown' | 'play_only'
-                  if (newMode === 'off' && securityMode !== 'off') {
-                    if (!confirm('Turn off security? This will remove the password and unlock the app.')) return
-                  }
                   setSecurityMode(newMode)
                   // Clear password fields when switching modes
                   setSecurityPassword('')
@@ -2484,39 +2580,7 @@ export function SettingsPage() {
 
             {/* Save button */}
             <Button
-              onClick={async () => {
-                // Validate
-                if (securityMode !== 'off') {
-                  if (securityPassword && securityPassword !== securityPasswordConfirm) {
-                    toast.error('Passwords do not match')
-                    return
-                  }
-                  if (!hasExistingPassword && !securityPassword) {
-                    toast.error('Please set a password')
-                    return
-                  }
-                }
-
-                setIsLoading('security')
-                try {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const payload: any = { security: { mode: securityMode } }
-                  if (securityPassword) {
-                    payload.security.password = securityPassword
-                  }
-                  await apiClient.patch('/api/settings', payload)
-                  toast.success('Security settings saved')
-                  setSecurityPassword('')
-                  setSecurityPasswordConfirm('')
-                  setHasExistingPassword(securityMode !== 'off')
-                  // Notify Layout to refetch security state
-                  window.dispatchEvent(new CustomEvent('security-updated'))
-                } catch {
-                  toast.error('Failed to save security settings')
-                } finally {
-                  setIsLoading(null)
-                }
-              }}
+              onClick={handleSaveSecuritySettings}
               disabled={
                 isLoading === 'security' ||
                 (securityMode !== 'off' && securityPassword !== '' && securityPassword !== securityPasswordConfirm) ||
@@ -2525,9 +2589,9 @@ export function SettingsPage() {
               className="w-full gap-2"
             >
               {isLoading === 'security' ? (
-                <span className="material-icons-outlined animate-spin">sync</span>
+                <span aria-hidden="true" className="material-icons-outlined animate-spin">sync</span>
               ) : (
-                <span className="material-icons-outlined">save</span>
+                <span aria-hidden="true" className="material-icons-outlined">save</span>
               )}
               Save Security Settings
             </Button>
@@ -2538,7 +2602,7 @@ export function SettingsPage() {
         <AccordionItem value="wifi" id="section-wifi" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
-              <span className="material-icons-outlined text-muted-foreground">
+              <span aria-hidden="true" className="material-icons-outlined text-muted-foreground">
                 wifi
               </span>
               <div className="text-left">
@@ -2558,7 +2622,7 @@ export function SettingsPage() {
               className="w-full gap-2"
               onClick={() => navigate('/wifi-setup')}
             >
-              <span className="material-icons-outlined">settings</span>
+              <span aria-hidden="true" className="material-icons-outlined">settings</span>
               Open WiFi Setup
             </Button>
           </AccordionContent>
@@ -2568,7 +2632,7 @@ export function SettingsPage() {
         <AccordionItem value="version" id="section-version" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
-              <span className="material-icons-outlined text-muted-foreground">
+              <span aria-hidden="true" className="material-icons-outlined text-muted-foreground">
                 info
               </span>
               <div className="text-left">
@@ -2582,19 +2646,19 @@ export function SettingsPage() {
           <AccordionContent className="pt-4 pb-6 space-y-3">
             <div className="flex items-center gap-4 p-4 rounded-lg bg-muted/50">
               <div className="w-10 h-10 flex items-center justify-center bg-background rounded-lg">
-                <span className="material-icons text-muted-foreground">terminal</span>
+                <span aria-hidden="true" className="material-icons text-muted-foreground">terminal</span>
               </div>
               <div className="flex-1">
                 <p className="font-medium">Current Version</p>
                 <p className="text-sm text-muted-foreground">
-                  {versionInfo?.current ? `v${versionInfo.current}` : 'Loading...'}
+                  {versionInfo?.current ? `v${versionInfo.current}` : versionError ? '—' : 'Loading...'}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-4 p-4 rounded-lg bg-muted/50">
               <div className="w-10 h-10 flex items-center justify-center bg-background rounded-lg">
-                <span className="material-icons text-muted-foreground">system_update</span>
+                <span aria-hidden="true" className="material-icons text-muted-foreground">system_update</span>
               </div>
               <div className="flex-1">
                 <p className="font-medium">Latest Version</p>
@@ -2608,6 +2672,18 @@ export function SettingsPage() {
                     >
                       v{versionInfo.latest}
                     </a>
+                  ) : versionError ? (
+                    <span className="inline-flex items-center gap-2">
+                      Couldn't check for updates
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => fetchVersionInfo()}
+                      >
+                        Retry
+                      </Button>
+                    </span>
                   ) : 'Checking...'}
                   {versionInfo?.update_available && ' (Update available!)'}
                 </p>
@@ -2616,7 +2692,7 @@ export function SettingsPage() {
 
             {versionInfo?.update_available && (
               <Button onClick={() => setUpdateDialogOpen(true)} className="w-full">
-                <span className="material-icons text-base mr-2">system_update</span>
+                <span aria-hidden="true" className="material-icons text-base mr-2">system_update</span>
                 Update Now
               </Button>
             )}
@@ -2630,6 +2706,26 @@ export function SettingsPage() {
           </AccordionContent>
         </AccordionItem>
       </Accordion>
+
+      <ConfirmDialog
+        open={logoConfirmOpen}
+        onOpenChange={setLogoConfirmOpen}
+        title="Remove custom logo?"
+        description="The app will revert to the default logo and favicon."
+        confirmLabel="Remove"
+        destructive
+        onConfirm={handleDeleteLogo}
+      />
+
+      <ConfirmDialog
+        open={securityOffConfirmOpen}
+        onOpenChange={setSecurityOffConfirmOpen}
+        title="Turn off security?"
+        description="This removes the password and unlocks the app for everyone on the network."
+        confirmLabel="Turn off"
+        destructive
+        onConfirm={doSaveSecuritySettings}
+      />
     </div>
   )
 }

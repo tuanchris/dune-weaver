@@ -111,7 +111,8 @@ function CalibrationWizard() {
     async (axis: 'x' | 'y') => {
       setWizard((w) => ({ ...w, fixing: true }))
       try {
-        // Toggle direction, save config
+        // The backend treats direction_inverted as a toggle command — the
+        // value is ignored and the pin's :low modifier is flipped each call
         await apiClient.patch('/api/fluidnc/config', {
           axes: { [axis]: { direction_inverted: true } },
         })

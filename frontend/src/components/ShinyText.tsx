@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { motion, useMotionValue, useAnimationFrame, useTransform } from 'motion/react';
+import { motion, useMotionValue, useAnimationFrame, useTransform, useReducedMotion } from 'motion/react';
 
 interface ShinyTextProps {
   text: string;
@@ -29,6 +29,8 @@ const ShinyText: React.FC<ShinyTextProps> = ({
   delay = 0
 }) => {
   const [isPaused, setIsPaused] = useState(false);
+  const prefersReducedMotion = useReducedMotion();
+  const isStatic = disabled || prefersReducedMotion;
   const progress = useMotionValue(0);
   const elapsedRef = useRef(0);
   const lastTimeRef = useRef<number | null>(null);
@@ -37,8 +39,10 @@ const ShinyText: React.FC<ShinyTextProps> = ({
   const animationDuration = speed * 1000;
   const delayDuration = delay * 1000;
 
+  // useAnimationFrame can't be conditionally registered, so the callback
+  // exits cheaply when the animation shouldn't run (disabled/reduced motion).
   useAnimationFrame(time => {
-    if (disabled || isPaused) {
+    if (isStatic || isPaused) {
       lastTimeRef.current = null;
       return;
     }
@@ -119,7 +123,7 @@ const ShinyText: React.FC<ShinyTextProps> = ({
   return (
     <motion.span
       className={`inline-block ${className}`}
-      style={{ ...gradientStyle, backgroundPosition }}
+      style={{ ...gradientStyle, backgroundPosition: isStatic ? '150% center' : backgroundPosition }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
