@@ -562,36 +562,17 @@ class MotionControlThread:
         """
         gcode = f"$J=G91 G21 Y{y:.2f} F{speed}" if home else f"G1 X{x:.2f} Y{y:.2f} F{speed}"
         max_wait_time = 120  # Maximum seconds to wait for 'ok' response
-        max_corruption_retries = 10  # Max retries for corruption-type errors
+        max_error_retries = 10  # Max retries for any FluidNC error response
         max_timeout_retries = 10  # Max retries for timeout (lost 'ok' response)
-        corruption_retry_count = 0
+        error_retry_count = 0
         timeout_retry_count = 0
 
-        # GRBL error codes that indicate likely serial corruption (syntax errors)
-        # These are recoverable by resending the command
-        corruption_error_codes = {
-            'error:1',   # Expected command letter
-            'error:2',   # Bad number format
-            'error:20',  # Invalid gcode ID (e.g., G5s instead of G53)
-            'error:21',  # Invalid gcode command value
-            'error:22',  # Invalid gcode command value in negative
-            'error:23',  # Invalid gcode command value in decimal
-            # FluidNC extended codes (170-181): expression/flow-control parser
-            # errors. We never send expressions or o-codes, so these can only
-            # mean a corrupted line (e.g. leading 'G' garbled into 'o')
-            'error:170', # Expression divide by zero
-            'error:171', # Expression invalid argument
-            'error:172', # Expression invalid result
-            'error:173', # Expression unknown op
-            'error:174', # Expression argument out of range
-            'error:175', # Expression syntax error
-            'error:176', # Flow control syntax error
-            'error:177', # Flow control not executing macro
-            'error:178', # Flow control out of memory
-            'error:179', # Flow control stack overflow
-            'error:180', # Parameter assignment failed
-            'error:181', # Gcode value word invalid
-        }
+        # Exponential backoff between error retries. The motion thread only
+        # ever sends simple G1/$J moves, so ANY error:XX from FluidNC means
+        # the line was garbled in transit (serial corruption) rather than a
+        # genuinely bad command — back off and resend instead of aborting.
+        error_backoff_base = 0.02  # first retry waits 20ms
+        error_backoff_max = 1.0    # cap each backoff at 1s
 
         while True:
             # Check stop_requested at the start of each iteration
@@ -629,7 +610,7 @@ class MotionControlThread:
                         # Attempt to recover by checking machine status
                         # The 'ok' might have been lost but command may have executed
                         logger.info("Motion thread: Attempting timeout recovery - checking machine status")
-                        logger.info(f"Motion thread: Current retry counts - timeout: {timeout_retry_count}/{max_timeout_retries}, corruption: {corruption_retry_count}/{max_corruption_retries}")
+                        logger.info(f"Motion thread: Current retry counts - timeout: {timeout_retry_count}/{max_timeout_retries}, error: {error_retry_count}/{max_error_retries}")
 
                         try:
                             # Check connection state first
@@ -793,7 +774,7 @@ class MotionControlThread:
                         logger.error("Motion thread: TIMEOUT RECOVERY FAILED - STOPPING PATTERN")
                         logger.error(f"  Failed command: {gcode}")
                         logger.error(f"  Timeout retries used: {timeout_retry_count}/{max_timeout_retries}")
-                        logger.error(f"  Corruption retries used: {corruption_retry_count}/{max_corruption_retries}")
+                        logger.error(f"  Error retries used: {error_retry_count}/{max_error_retries}")
                         logger.error("  Possible causes:")
                         logger.error("    - Serial connection lost or unstable")
                         logger.error("    - Hardware controller unresponsive")
@@ -807,38 +788,36 @@ class MotionControlThread:
                         logger.debug(f"Motion thread response: {response}")
                         if response.lower() == "ok":
                             logger.debug("Motion thread: Command execution confirmed.")
-                            # Reset corruption retry count on success
-                            if corruption_retry_count > 0:
-                                logger.info(f"Motion thread: Command succeeded after {corruption_retry_count} corruption retry(ies)")
+                            # Reset error retry count on success
+                            if error_retry_count > 0:
+                                logger.info(f"Motion thread: Command succeeded after {error_retry_count} error retry(ies)")
                             return True
 
-                        # Handle GRBL errors
+                        # Handle FluidNC errors. We only ever send simple G1/$J
+                        # moves, so any error:XX means the line was garbled in
+                        # transit — retry with exponential backoff rather than
+                        # killing the pattern. A genuinely bad command just
+                        # retries then stops: same end result, no false aborts
+                        # on transient serial noise.
                         if response.lower().startswith("error"):
-                            error_code = response.lower().split()[0] if response else ""
-
-                            # Check if this is a corruption-type error (recoverable)
-                            if error_code in corruption_error_codes:
-                                corruption_retry_count += 1
-                                if corruption_retry_count <= max_corruption_retries:
-                                    logger.warning(f"Motion thread: Likely serial corruption detected ({response})")
-                                    logger.warning(f"Motion thread: Retrying command ({corruption_retry_count}/{max_corruption_retries}): {gcode}")
-                                    # Clear buffer and wait longer before retry
-                                    if hasattr(state.conn, 'reset_input_buffer'):
-                                        state.conn.reset_input_buffer()
-                                    time.sleep(0.02)  # 20ms delay before retry
-                                    break  # Break inner loop to retry send
-                                else:
-                                    logger.error(f"Motion thread: Max corruption retries ({max_corruption_retries}) exceeded")
-                                    logger.error(f"Motion thread: GRBL error received: {response}")
-                                    logger.error(f"Failed command: {gcode}")
-                                    logger.error("Stopping pattern due to persistent serial corruption")
-                                    state.stop_requested = True
-                                    return False
+                            error_retry_count += 1
+                            if error_retry_count <= max_error_retries:
+                                backoff = min(
+                                    error_backoff_base * (2 ** (error_retry_count - 1)),
+                                    error_backoff_max,
+                                )
+                                logger.warning(f"Motion thread: FluidNC error ({response}); retry {error_retry_count}/{max_error_retries} in {backoff:.2f}s: {gcode}")
+                                # Clear buffer so a partial/garbled line doesn't
+                                # bleed into the next read
+                                if hasattr(state.conn, 'reset_input_buffer'):
+                                    state.conn.reset_input_buffer()
+                                time.sleep(backoff)
+                                break  # Break inner loop to retry send
                             else:
-                                # Non-corruption error - stop immediately
-                                logger.error(f"Motion thread: GRBL error received: {response}")
+                                logger.error(f"Motion thread: Max error retries ({max_error_retries}) exceeded")
+                                logger.error(f"Motion thread: Last error: {response}")
                                 logger.error(f"Failed command: {gcode}")
-                                logger.error("Stopping pattern due to GRBL error")
+                                logger.error("Stopping pattern due to persistent FluidNC errors")
                                 state.stop_requested = True
                                 return False
 
@@ -855,15 +834,12 @@ class MotionControlThread:
                             logger.debug(f"Motion thread: Ignoring echoed command: {response}")
                             continue  # Read next line to get 'ok'
 
-                        # Check for corruption indicator in MSG:ERR responses
+                        # FluidNC prints "[MSG:ERR: Bad GCode...]" just before
+                        # the error:XX line. Log it and keep reading — the
+                        # error:XX handler above owns the counting and backoff.
                         if 'MSG:ERR' in response and 'Bad GCode' in response:
-                            corruption_retry_count += 1
-                            if corruption_retry_count <= max_corruption_retries:
-                                logger.warning(f"Motion thread: Corrupted command detected: {response}")
-                                logger.warning(f"Motion thread: Retrying command ({corruption_retry_count}/{max_corruption_retries}): {gcode}")
-                                # Don't break yet - wait for the error:XX that follows
-                                continue
-                            # If we've exceeded retries, the error:XX handler above will catch it
+                            logger.warning(f"Motion thread: Corrupted command reported: {response}")
+                            continue
 
                         # Log truly unexpected responses
                         logger.warning(f"Motion thread: Unexpected response: '{response}'")
