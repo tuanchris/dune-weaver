@@ -7,9 +7,8 @@ Tests the core pattern file operations:
 - Error handling for invalid files
 - Listing pattern files
 """
-import os
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import AsyncMock, patch
 
 
 class TestParseTheTaRhoFile:
@@ -314,6 +313,61 @@ class TestGetStatus:
         assert status["playlist"]["total_files"] == 3
         assert status["playlist"]["mode"] == "indefinite"
         assert status["playlist"]["name"] == "test_playlist"
+
+
+class TestPlaylistShuffle:
+    """Tests for playlist shuffle behavior in run_theta_rho_files."""
+
+    async def test_shuffle_reshuffles_on_each_repeat_cycle(self, mock_state):
+        """With shuffle enabled, a repeating playlist must re-shuffle every
+        cycle instead of replaying the first random order forever."""
+        playlist = ["a.thr", "b.thr"]
+        executed = []
+        shuffle_calls = []
+
+        async def fake_run_pattern(file_path, **kwargs):
+            executed.append(file_path)
+            if len(executed) >= 3:
+                mock_state.stop_requested = True
+
+        with patch("modules.core.pattern_manager.state", mock_state), \
+             patch("modules.core.pattern_manager.run_theta_rho_file",
+                   AsyncMock(side_effect=fake_run_pattern)), \
+             patch("modules.core.pattern_manager.broadcast_progress", AsyncMock()), \
+             patch("modules.core.pattern_manager.start_idle_led_timeout", AsyncMock()), \
+             patch("modules.core.pattern_manager.random.shuffle",
+                   side_effect=lambda seq: shuffle_calls.append(list(seq))):
+            from modules.core.pattern_manager import run_theta_rho_files
+
+            await run_theta_rho_files(playlist, run_mode="indefinite", shuffle=True)
+
+        # The playlist restarted once (3 patterns executed from a 2-pattern
+        # playlist), so it must have been shuffled twice: once per cycle.
+        assert len(executed) == 3
+        assert len(shuffle_calls) == 2
+
+    async def test_no_shuffle_preserves_order(self, mock_state):
+        """Without shuffle, the playlist order is never touched."""
+        playlist = ["a.thr", "b.thr"]
+        executed = []
+        shuffle_calls = []
+
+        async def fake_run_pattern(file_path, **kwargs):
+            executed.append(file_path)
+
+        with patch("modules.core.pattern_manager.state", mock_state), \
+             patch("modules.core.pattern_manager.run_theta_rho_file",
+                   AsyncMock(side_effect=fake_run_pattern)), \
+             patch("modules.core.pattern_manager.broadcast_progress", AsyncMock()), \
+             patch("modules.core.pattern_manager.start_idle_led_timeout", AsyncMock()), \
+             patch("modules.core.pattern_manager.random.shuffle",
+                   side_effect=lambda seq: shuffle_calls.append(list(seq))):
+            from modules.core.pattern_manager import run_theta_rho_files
+
+            await run_theta_rho_files(playlist, run_mode="single", shuffle=False)
+
+        assert executed == ["a.thr", "b.thr"]
+        assert shuffle_calls == []
 
 
 class TestIsClearPattern:
