@@ -14,6 +14,7 @@ requests>=2.31.0
 Pillow
 aiohttp
 pyyaml>=6.0
+zeroconf>=0.131.0  # mDNS auto-discovery of other Dune Weaver tables
 # GPIO/NeoPixel support for DW LEDs and Desert Compass
 # Note: rpi-lgpio is a drop-in replacement for RPi.GPIO that works on Pi 5
 # Do NOT install both RPi.GPIO and rpi-lgpio - they conflict

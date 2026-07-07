@@ -19,6 +19,7 @@ export interface Table {
   version?: string
   isOnline?: boolean
   isCurrent?: boolean // True if this is the backend serving the frontend
+  isDiscovered?: boolean // True if found via mDNS but not yet saved to known-tables
   customLogo?: string // Custom logo filename if set (e.g., "logo_abc123.png")
 }
 
@@ -127,7 +128,29 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
   }, [tables, activeTable])
 
   // Set active table - saves to localStorage and reloads page for clean state
-  const setActiveTable = useCallback((table: Table) => {
+  const setActiveTable = useCallback(async (table: Table) => {
+    // Persist mDNS-discovered tables to known-tables so they remain listed
+    // (and reachable at their last address) even when not advertising
+    if (table.isDiscovered) {
+      try {
+        await fetch('/api/known-tables', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: table.id,
+            name: table.name,
+            url: table.url,
+            host: table.host,
+            port: table.port,
+            version: table.version,
+          }),
+        })
+      } catch (e) {
+        console.error('Failed to persist discovered table:', e)
+        // Continue anyway - switching still works for this session
+      }
+    }
+
     // Save to localStorage before reload
     try {
       const currentTables = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
@@ -158,11 +181,12 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
     setIsDiscovering(true)
 
     try {
-      // Fetch table info, settings, and known tables in parallel
-      const [infoResponse, settingsResponse, knownTablesResponse] = await Promise.all([
+      // Fetch table info, settings, known tables, and mDNS-discovered tables in parallel
+      const [infoResponse, settingsResponse, knownTablesResponse, discoveredResponse] = await Promise.all([
         fetch('/api/table-info'),
         fetch('/api/settings').catch(() => null),
         fetch('/api/known-tables').catch(() => null),
+        fetch('/api/discovered-tables').catch(() => null),
       ])
 
       if (!infoResponse.ok) {
@@ -173,6 +197,8 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
       const settings = settingsResponse?.ok ? await settingsResponse.json() : null
       const knownTablesData = knownTablesResponse?.ok ? await knownTablesResponse.json() : null
       const knownTables: Array<{ id: string; name: string; url: string; host?: string; port?: number; version?: string }> = knownTablesData?.tables || []
+      const discoveredData = discoveredResponse?.ok ? await discoveredResponse.json() : null
+      const discoveredTables: Array<{ id: string; name: string; url: string; host?: string; port?: number; version?: string }> = discoveredData?.tables || []
 
       const currentTable: Table = {
         id: info.id,
@@ -201,6 +227,33 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
               version: known.version,
               isOnline: false, // Will be updated by background refresh
               isCurrent: false,
+            })
+          }
+        })
+
+        // Merge in tables auto-discovered via mDNS. A live mDNS announcement
+        // is both an online signal and the table's *current* address, so it
+        // wins over a possibly stale saved URL (DHCP reassignment).
+        discoveredTables.forEach(found => {
+          if (found.id === currentTable.id) return
+          const existing = merged.find(t => t.id === found.id)
+          if (existing) {
+            existing.isOnline = true
+            existing.url = found.url
+            existing.host = found.host
+            existing.port = found.port
+            if (found.version) existing.version = found.version
+          } else {
+            merged.push({
+              id: found.id,
+              name: found.name,
+              url: found.url,
+              host: found.host,
+              port: found.port,
+              version: found.version,
+              isOnline: true,
+              isCurrent: false,
+              isDiscovered: true,
             })
           }
         })

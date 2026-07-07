@@ -83,7 +83,9 @@ export function TableSelector({ children }: TableSelectorProps) {
         setNewTableUrl('')
         setNewTableName('')
       } else {
-        toast.error('Failed to add table. Check the URL and try again.')
+        toast.error(
+          "Couldn't reach a Dune Weaver server at that address. Use the address of the table's server (Raspberry Pi), not the controller board — tables on your network appear here automatically."
+        )
       }
     } finally {
       setIsAdding(false)
@@ -182,6 +184,11 @@ export function TableSelector({ children }: TableSelectorProps) {
                       {table.isCurrent && (
                         <Badge variant="secondary" className="text-[10px] px-1 py-0">
                           This
+                        </Badge>
+                      )}
+                      {table.isDiscovered && (
+                        <Badge variant="outline" className="text-[10px] px-1 py-0">
+                          Discovered
                         </Badge>
                       )}
                     </div>
