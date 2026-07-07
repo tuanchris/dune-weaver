@@ -23,6 +23,7 @@ from modules.screen.screen_controller import ScreenController
 from modules.led.idle_timeout_manager import idle_timeout_manager
 from modules.core.cache_manager import get_cache_path, generate_image_preview, get_pattern_metadata
 from modules.core.version_manager import version_manager
+from modules.core.mdns_discovery import discovery as mdns_discovery
 from modules.core.log_handler import init_memory_handler, get_memory_handler
 from modules.wifi.router import router as wifi_router, captive_portal_router
 import json
@@ -153,6 +154,20 @@ async def lifespan(app: FastAPI):
 
     # Start connection/homing in background - doesn't block server startup
     asyncio.create_task(connect_and_home())
+
+    # Keep app state in sync with the board. During playback the pattern
+    # executor polls /sand_status at a higher rate; this low-rate poller keeps
+    # theta/rho/state fresh while idle (after jogs, homing, board-side changes).
+    async def board_status_poller():
+        while True:
+            try:
+                if state.conn and state.conn.is_connected():
+                    await asyncio.to_thread(connection_manager.poll_status_once)
+            except Exception as e:
+                logger.debug(f"Idle status poll failed: {e}")
+            await asyncio.sleep(2.0)
+
+    asyncio.create_task(board_status_poller())
 
     # Initialize LED controller based on saved configuration
     try:
@@ -345,10 +360,22 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(still_sands_led_monitor())
 
+    # Advertise this table via mDNS and browse for peer tables (best-effort)
+    try:
+        await mdns_discovery.start(
+            table_id=state.table_id,
+            table_name=state.table_name,
+            port=8080,
+            version=await version_manager.get_current_version(),
+        )
+    except Exception as e:
+        logger.warning(f"mDNS table discovery unavailable: {e}")
+
     yield  # This separates startup from shutdown code
 
     # Shutdown
     logger.info("Shutting down Dune Weaver application...")
+    await mdns_discovery.stop()
 
 app = FastAPI(lifespan=lifespan)
 
@@ -1157,12 +1184,24 @@ async def update_table_info(update: TableInfoUpdate):
         state.table_name = update.name.strip() or "Dune Weaver"
         state.save()
         logger.info(f"Table name updated to: {state.table_name}")
+        await mdns_discovery.update_name(state.table_name)
 
     return {
         "success": True,
         "id": state.table_id,
         "name": state.table_name
     }
+
+@app.get("/api/discovered-tables", tags=["multi-table"])
+async def get_discovered_tables():
+    """
+    Get Dune Weaver tables auto-discovered via mDNS on the local network.
+
+    Unlike known-tables these are not persisted - the list reflects which
+    peer backends are currently advertising themselves. Returns an empty
+    list when mDNS is unavailable (e.g. zeroconf not installed).
+    """
+    return {"tables": mdns_discovery.get_tables()}
 
 @app.get("/api/known-tables", tags=["multi-table"])
 async def get_known_tables():
@@ -1407,23 +1446,25 @@ async def list_ports():
 
 @app.post("/connect")
 async def connect(request: ConnectRequest):
-    if not request.port:
-        state.conn = connection_manager.WebSocketConnection('ws://fluidnc.local:81')
-        if not connection_manager.device_init():
-            raise HTTPException(status_code=500, detail="Failed to initialize device - could not get machine parameters")
-        logger.info('Successfully connected to websocket ws://fluidnc.local:81')
-        return {"success": True}
-
+    # `request.port` carries the board address now (a URL or bare IP). Blank =>
+    # use the configured/default board URL.
+    from modules.connection.fluidnc_client import FluidNCClient
     try:
-        state.conn = connection_manager.SerialConnection(request.port)
-        if not connection_manager.device_init():
-            raise HTTPException(status_code=500, detail="Failed to initialize device - could not get machine parameters")
-        logger.info(f'Successfully connected to serial port {request.port}')
+        url = connection_manager._normalize_board_url(request.port or "") or connection_manager.board_url()
+        state.board_url = url
+        state.save()
+        state.conn = FluidNCClient(url)
+        if not state.conn.reachable():
+            state.conn = None
+            raise HTTPException(status_code=500, detail=f"Board not reachable at {url}")
+        if not await asyncio.to_thread(connection_manager.device_init, False):
+            raise HTTPException(status_code=500, detail="Failed to initialize board")
+        logger.info(f"Successfully connected to board at {url}")
         return {"success": True}
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f'Failed to connect to serial port {request.port}: {str(e)}')
+        logger.error(f"Failed to connect to board: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/disconnect")
@@ -2579,6 +2620,11 @@ async def set_speed(request: SpeedRequest):
             raise HTTPException(status_code=400, detail="Invalid speed value")
 
         state.speed = request.speed
+        # Push the feed live to the board (works mid-pattern; persists across the run).
+        try:
+            await asyncio.to_thread(state.conn.set_feed, int(request.speed))
+        except Exception as e:
+            logger.warning(f"Could not push feed to board: {e}")
         return {"success": True, "speed": request.speed}
     except HTTPException:
         raise  # Re-raise HTTPException as-is

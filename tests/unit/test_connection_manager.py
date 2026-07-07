@@ -1,282 +1,144 @@
 """
-Unit tests for connection_manager parsing functions.
+Unit tests for the FluidNC HTTP connection layer.
 
-Tests the pure functions that parse GRBL responses:
-- Machine position parsing (MPos and WPos formats)
-- Serial port listing/filtering
+The backend drives the board over HTTP now (no serial/GRBL transport), so these
+tests cover the FluidNCClient command/route formatting and the connection_manager
+helpers that sit on top of it. HTTP is mocked — no board required.
 """
 import pytest
 from unittest.mock import patch, MagicMock
 
-
-class TestParseMachinePosition:
-    """Tests for parse_machine_position function."""
-
-    def test_parse_machine_position_mpos_format(self):
-        """Test parsing MPos format from GRBL status response."""
-        from modules.connection.connection_manager import parse_machine_position
-
-        response = "<Idle|MPos:100.500,-50.250,0.000|Bf:15,128>"
-        result = parse_machine_position(response)
-
-        assert result is not None
-        assert result == (100.5, -50.25)
-
-    def test_parse_machine_position_wpos_format(self):
-        """Test parsing WPos format from GRBL status response."""
-        from modules.connection.connection_manager import parse_machine_position
-
-        response = "<Idle|WPos:0.000,19.000,0.000|Bf:15,128>"
-        result = parse_machine_position(response)
-
-        assert result is not None
-        assert result == (0.0, 19.0)
-
-    def test_parse_machine_position_prefers_mpos(self):
-        """Test that MPos is preferred when both are present (rare but possible)."""
-        from modules.connection.connection_manager import parse_machine_position
-
-        # This response has both MPos and WPos - MPos should be used first
-        response = "<Idle|MPos:10.0,20.0,0.0|WPos:5.0,10.0,0.0|Bf:15,128>"
-        result = parse_machine_position(response)
-
-        assert result is not None
-        assert result == (10.0, 20.0)
-
-    def test_parse_machine_position_invalid(self):
-        """Test parsing returns None for invalid response."""
-        from modules.connection.connection_manager import parse_machine_position
-
-        # No position info
-        result = parse_machine_position("ok")
-        assert result is None
-
-        # Empty string
-        result = parse_machine_position("")
-        assert result is None
-
-        # Malformed response
-        result = parse_machine_position("<Idle|Bf:15,128>")
-        assert result is None
-
-    def test_parse_machine_position_run_state(self):
-        """Test parsing position during run state."""
-        from modules.connection.connection_manager import parse_machine_position
-
-        response = "<Run|MPos:-994.869,-321.861,0.000|Bf:15,127>"
-        result = parse_machine_position(response)
-
-        assert result is not None
-        assert result[0] == pytest.approx(-994.869)
-        assert result[1] == pytest.approx(-321.861)
-
-    def test_parse_machine_position_alarm_state(self):
-        """Test parsing position during alarm state."""
-        from modules.connection.connection_manager import parse_machine_position
-
-        response = "<Alarm|MPos:0.000,0.000,0.000|Bf:15,128|Pn:XY>"
-        result = parse_machine_position(response)
-
-        assert result is not None
-        assert result == (0.0, 0.0)
-
-    def test_parse_machine_position_with_extra_info(self):
-        """Test parsing position with extra fields in response."""
-        from modules.connection.connection_manager import parse_machine_position
-
-        # Response with WCO (Work Coordinate Offset)
-        response = "<Idle|MPos:5.0,10.0,0.0|FS:0,0|WCO:0,0,0>"
-        result = parse_machine_position(response)
-
-        assert result is not None
-        assert result == (5.0, 10.0)
-
-    def test_parse_machine_position_negative_coords(self):
-        """Test parsing negative coordinates."""
-        from modules.connection.connection_manager import parse_machine_position
-
-        response = "<Idle|MPos:-100.123,-200.456,0.000|Bf:15,128>"
-        result = parse_machine_position(response)
-
-        assert result is not None
-        assert result[0] == pytest.approx(-100.123)
-        assert result[1] == pytest.approx(-200.456)
-
-    def test_parse_machine_position_high_precision(self):
-        """Test parsing high precision coordinates."""
-        from modules.connection.connection_manager import parse_machine_position
-
-        response = "<Idle|MPos:123.456789,987.654321,0.000000|Bf:15,128>"
-        result = parse_machine_position(response)
-
-        assert result is not None
-        assert result[0] == pytest.approx(123.456789)
-        assert result[1] == pytest.approx(987.654321)
-
-
-class TestListSerialPorts:
-    """Tests for list_serial_ports function."""
-
-    def test_list_serial_ports_filters_ignored(self):
-        """Test that ignored ports are filtered out."""
-        # Create mock port objects
-        mock_port1 = MagicMock()
-        mock_port1.device = "/dev/ttyUSB0"
-
-        mock_port2 = MagicMock()
-        mock_port2.device = "/dev/cu.debug-console"  # Should be filtered
-
-        mock_port3 = MagicMock()
-        mock_port3.device = "/dev/cu.Bluetooth-Incoming-Port"  # Should be filtered
-
-        mock_port4 = MagicMock()
-        mock_port4.device = "/dev/ttyACM0"
-
-        with patch("serial.tools.list_ports.comports", return_value=[mock_port1, mock_port2, mock_port3, mock_port4]):
-            from modules.connection.connection_manager import list_serial_ports
-
-            ports = list_serial_ports()
-
-        assert "/dev/ttyUSB0" in ports
-        assert "/dev/ttyACM0" in ports
-        assert "/dev/cu.debug-console" not in ports
-        assert "/dev/cu.Bluetooth-Incoming-Port" not in ports
-        assert len(ports) == 2
-
-    def test_list_serial_ports_empty(self):
-        """Test list_serial_ports returns empty when no ports available."""
-        with patch("serial.tools.list_ports.comports", return_value=[]):
-            from modules.connection.connection_manager import list_serial_ports
-
-            ports = list_serial_ports()
-
-        assert ports == []
-
-    def test_list_serial_ports_all_ignored(self):
-        """Test list_serial_ports when all ports are ignored."""
-        mock_port1 = MagicMock()
-        mock_port1.device = "/dev/cu.debug-console"
-
-        mock_port2 = MagicMock()
-        mock_port2.device = "/dev/cu.Bluetooth-Incoming-Port"
-
-        with patch("serial.tools.list_ports.comports", return_value=[mock_port1, mock_port2]):
-            from modules.connection.connection_manager import list_serial_ports
-
-            ports = list_serial_ports()
-
-        assert ports == []
-
-
-class TestConnectionClasses:
-    """Tests for connection class structure (no hardware required)."""
-
-    def test_base_connection_interface(self):
-        """Test that BaseConnection defines required interface."""
-        from modules.connection.connection_manager import BaseConnection
-
-        # BaseConnection should have these abstract methods
-        base = BaseConnection()
-
-        with pytest.raises(NotImplementedError):
-            base.send("test")
-
-        with pytest.raises(NotImplementedError):
-            base.flush()
-
-        with pytest.raises(NotImplementedError):
-            base.readline()
-
-        with pytest.raises(NotImplementedError):
-            base.in_waiting()
-
-        with pytest.raises(NotImplementedError):
-            base.is_connected()
-
-        with pytest.raises(NotImplementedError):
-            base.close()
-
-    def test_serial_connection_inherits_base(self):
-        """Test SerialConnection inherits from BaseConnection."""
-        from modules.connection.connection_manager import SerialConnection, BaseConnection
-
-        assert issubclass(SerialConnection, BaseConnection)
-
-    def test_websocket_connection_inherits_base(self):
-        """Test WebSocketConnection inherits from BaseConnection."""
-        from modules.connection.connection_manager import WebSocketConnection, BaseConnection
-
-        assert issubclass(WebSocketConnection, BaseConnection)
-
-
-class TestIgnorePorts:
-    """Tests for IGNORE_PORTS and DEPRIORITIZED_PORTS constants."""
-
-    def test_ignore_ports_defined(self):
-        """Test that IGNORE_PORTS constant is defined."""
-        from modules.connection.connection_manager import IGNORE_PORTS
-
-        assert isinstance(IGNORE_PORTS, list)
-        assert "/dev/cu.debug-console" in IGNORE_PORTS
-        assert "/dev/cu.Bluetooth-Incoming-Port" in IGNORE_PORTS
-
-    def test_deprioritized_ports_defined(self):
-        """Test that DEPRIORITIZED_PORTS constant is defined."""
-        from modules.connection.connection_manager import DEPRIORITIZED_PORTS
-
-        assert isinstance(DEPRIORITIZED_PORTS, list)
-        # ttyS0 is typically the Pi hardware UART - should be deprioritized
-        assert "/dev/ttyS0" in DEPRIORITIZED_PORTS
-
-
-class TestIsMachineIdle:
-    """Tests for is_machine_idle function."""
+from modules.connection.fluidnc_client import FluidNCClient
+
+
+def _resp(text="ok", json_data=None, status=200):
+    r = MagicMock()
+    r.text = text
+    r.status_code = status
+    r.raise_for_status = MagicMock()
+    if json_data is not None:
+        r.json = MagicMock(return_value=json_data)
+    return r
+
+
+class TestFluidNCClient:
+    """Command / route formatting for the board client."""
+
+    def test_run_pattern_uses_sd_run(self):
+        client = FluidNCClient("http://board")
+        with patch("modules.connection.fluidnc_client.requests") as req:
+            req.get.return_value = _resp()
+            client.run_pattern("/patterns/star.thr")
+        url, kwargs = req.get.call_args[0][0], req.get.call_args[1]
+        assert url == "http://board/command"
+        assert kwargs["params"] == {"plain": "$SD/Run=/patterns/star.thr"}
+
+    def test_run_pattern_with_clear_uses_sand_run(self):
+        client = FluidNCClient("http://board")
+        with patch("modules.connection.fluidnc_client.requests") as req:
+            req.get.return_value = _resp()
+            client.run_pattern("/patterns/star.thr", clear="adaptive")
+        assert req.get.call_args[1]["params"] == {
+            "plain": "$Sand/Run=/patterns/star.thr clear=adaptive"
+        }
+
+    def test_set_feed_mm(self):
+        client = FluidNCClient("http://board")
+        with patch("modules.connection.fluidnc_client.requests") as req:
+            req.get.return_value = _resp()
+            client.set_feed(mm=850)
+        assert req.get.call_args[0][0] == "http://board/sand_feed"
+        assert req.get.call_args[1]["params"] == {"mm": 850}
+
+    def test_goto_includes_only_given_axes(self):
+        client = FluidNCClient("http://board")
+        with patch("modules.connection.fluidnc_client.requests") as req:
+            req.get.return_value = _resp()
+            client.goto(rho=0)
+        assert req.get.call_args[1]["params"] == {"rho": 0}
+
+    def test_stop_hits_sand_stop(self):
+        client = FluidNCClient("http://board")
+        with patch("modules.connection.fluidnc_client.requests") as req:
+            req.get.return_value = _resp()
+            client.stop()
+        assert req.get.call_args[0][0] == "http://board/sand_stop"
+
+    def test_get_status_returns_json(self):
+        client = FluidNCClient("http://board")
+        with patch("modules.connection.fluidnc_client.requests") as req:
+            req.get.return_value = _resp(json_data={"state": "Idle", "theta": 1.0})
+            st = client.get_status()
+        assert st["state"] == "Idle"
+
+    def test_reachable_true_and_false(self):
+        client = FluidNCClient("http://board")
+        with patch("modules.connection.fluidnc_client.requests") as req:
+            req.get.return_value = _resp(json_data={"state": "Idle"})
+            assert client.reachable() is True
+            assert client.is_connected() is True
+            req.get.side_effect = Exception("timeout")
+            assert client.reachable() is False
+            assert client.is_connected() is False
+
+    def test_upload_file_field_naming(self):
+        """The multipart file part is named by the full SD path, plus a '<path>S' size field."""
+        client = FluidNCClient("http://board")
+        with patch("modules.connection.fluidnc_client.requests") as req:
+            req.post.return_value = _resp(text="{}", json_data={})
+            client.upload_file("/playlists/a.txt", b"hello", "/playlists")
+        kwargs = req.post.call_args[1]
+        assert kwargs["params"] == {"path": "/playlists"}
+        assert kwargs["data"] == {"/playlists/a.txtS": "5"}
+        assert "/playlists/a.txt" in kwargs["files"]
+
+    def test_delete_file_action(self):
+        client = FluidNCClient("http://board")
+        with patch("modules.connection.fluidnc_client.requests") as req:
+            req.get.return_value = _resp(text="{}", json_data={"status": "ok"})
+            client.delete_file("patterns", "old.thr")
+        assert req.get.call_args[1]["params"]["action"] == "delete"
+        assert req.get.call_args[1]["params"]["filename"] == "old.thr"
+
+
+class TestConnectionManagerHelpers:
+    """Helpers in connection_manager that sit on top of the client."""
+
+    def test_normalize_board_url(self):
+        from modules.connection import connection_manager as cm
+        assert cm._normalize_board_url("192.168.1.5") == "http://192.168.1.5"
+        assert cm._normalize_board_url("http://x/") == "http://x"
+        assert cm._normalize_board_url("") == ""
+
+    def test_list_serial_ports_returns_board_url(self, mock_state):
+        from modules.connection import connection_manager as cm
+        mock_state.board_url = "http://192.168.1.9"
+        with patch("modules.connection.connection_manager.state", mock_state):
+            ports = cm.list_serial_ports()
+        assert ports == ["http://192.168.1.9"]
+
+    def test_apply_status_maps_fields(self, mock_state):
+        from modules.connection import connection_manager as cm
+        with patch("modules.connection.connection_manager.state", mock_state):
+            cm.apply_status({"theta": 1.23, "rho": 0.5, "feed": 900})
+        assert mock_state.current_theta == 1.23
+        assert mock_state.current_rho == 0.5
+        assert mock_state.speed == 900
+
+    def test_is_machine_idle_true(self, mock_state):
+        from modules.connection import connection_manager as cm
+        mock_state.conn.get_status.return_value = {"state": "Idle"}
+        with patch("modules.connection.connection_manager.state", mock_state):
+            assert cm.is_machine_idle() is True
+
+    def test_is_machine_idle_running(self, mock_state):
+        from modules.connection import connection_manager as cm
+        mock_state.conn.get_status.return_value = {"state": "Run"}
+        with patch("modules.connection.connection_manager.state", mock_state):
+            assert cm.is_machine_idle() is False
 
     def test_is_machine_idle_no_connection(self, mock_state):
-        """Test is_machine_idle returns False when no connection."""
+        from modules.connection import connection_manager as cm
         mock_state.conn = None
-
         with patch("modules.connection.connection_manager.state", mock_state):
-            from modules.connection.connection_manager import is_machine_idle
-
-            result = is_machine_idle()
-
-        assert result is False
-
-    def test_is_machine_idle_disconnected(self, mock_state):
-        """Test is_machine_idle returns False when disconnected."""
-        mock_state.conn.is_connected.return_value = False
-
-        with patch("modules.connection.connection_manager.state", mock_state):
-            from modules.connection.connection_manager import is_machine_idle
-
-            result = is_machine_idle()
-
-        assert result is False
-
-    def test_is_machine_idle_when_idle(self, mock_state):
-        """Test is_machine_idle returns True when machine is idle."""
-        mock_state.conn.is_connected.return_value = True
-        mock_state.conn.send = MagicMock()
-        mock_state.conn.readline.return_value = "<Idle|MPos:0,0,0|Bf:15,128>"
-
-        with patch("modules.connection.connection_manager.state", mock_state):
-            from modules.connection.connection_manager import is_machine_idle
-
-            result = is_machine_idle()
-
-        assert result is True
-        mock_state.conn.send.assert_called_with('?')
-
-    def test_is_machine_idle_when_running(self, mock_state):
-        """Test is_machine_idle returns False when machine is running."""
-        mock_state.conn.is_connected.return_value = True
-        mock_state.conn.send = MagicMock()
-        mock_state.conn.readline.return_value = "<Run|MPos:0,0,0|Bf:15,128>"
-
-        with patch("modules.connection.connection_manager.state", mock_state):
-            from modules.connection.connection_manager import is_machine_idle
-
-            result = is_machine_idle()
-
-        assert result is False
+            assert cm.is_machine_idle() is False

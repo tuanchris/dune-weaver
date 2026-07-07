@@ -1166,6 +1166,31 @@ def is_clear_pattern(file_path):
     # Check if the file path matches any clear pattern path
     return normalized_path in normalized_clear_patterns
 
+def _to_sd_path(file_path):
+    """Map a host pattern path (e.g. './patterns/star.thr') to its board SD path
+    ('/patterns/star.thr'). The board SD mirrors the host's patterns/ tree."""
+    p = file_path.replace("\\", "/").lstrip(".").lstrip("/")
+    idx = p.find("patterns/")
+    rel = p[idx:] if idx >= 0 else ("patterns/" + os.path.basename(p))
+    return "/" + rel
+
+
+def _ensure_on_board(file_path, sd_path):
+    """Upload the pattern to the board's SD card if it isn't already there."""
+    try:
+        if not state.conn:
+            return
+        if state.conn.file_exists(sd_path):
+            return
+        with open(file_path, "rb") as f:
+            data = f.read()
+        directory = sd_path.rsplit("/", 1)[0] or "/patterns"
+        state.conn.upload_file(sd_path, data, directory)
+        logger.info(f"Mirrored {file_path} to board at {sd_path}")
+    except Exception as e:
+        logger.warning(f"Could not mirror {file_path} to board: {e}")
+
+
 async def _execute_pattern_internal(file_path):
     """Internal function to execute a pattern file. Must be called with lock already held.
 
@@ -1237,190 +1262,117 @@ async def _execute_pattern_internal(file_path):
 
     logger.info(f"Starting pattern execution: {file_path}")
     logger.info(f"t: {state.current_theta}, r: {state.current_rho}")
-    await reset_theta()
+    # --- Delegate playback to the board and poll /sand_status for progress ---
+    # The firmware owns kinematics and .thr playback; the host hands it the file,
+    # sets the feed, starts the job, then tracks progress via /sand_status.
+    sd_path = _to_sd_path(file_path)
+    await asyncio.to_thread(_ensure_on_board, file_path, sd_path)
+
+    current_speed = state.clear_pattern_speed if (is_clear_file and state.clear_pattern_speed is not None) else state.speed
 
     start_time = time.time()
-    total_pause_time = 0  # Track total time spent paused (manual + scheduled)
-    completed_weight = 0.0  # Track rho-weighted progress
-    smoothed_rate = None  # For exponential smoothing of time-per-unit-weight rate
-    # For WLED: always trigger (uses hardcoded preset 2)
-    # For DW_LED: only trigger if effect is configured
+    total_pause_time = 0.0
+    pause_clock = 0.0
+
+    # Trigger the "playing" LED effect (WLED always; DW only if an effect is set).
     if state.led_controller and state.led_automation_enabled and (state.led_provider == "wled" or state.dw_led_playing_effect):
         logger.info(f"Setting LED to playing effect: {state.dw_led_playing_effect}")
         await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
-        # Cancel idle timeout when playing starts
         idle_timeout_manager.cancel_timeout()
 
-    with tqdm(
-        total=total_coordinates,
-        unit="coords",
-        desc=f"Executing Pattern {file_path}",
-        dynamic_ncols=True,
-        disable=False,
-        mininterval=1.0
-    ) as pbar:
-        for i, coordinate in enumerate(coordinates):
-            theta, rho = coordinate
-            if state.stop_requested:
-                logger.info("Execution stopped by user")
-                await start_idle_led_timeout()
+    # Start the job on the board.
+    try:
+        await asyncio.to_thread(state.conn.set_feed, int(current_speed))
+        await asyncio.to_thread(state.conn.run_pattern, sd_path)
+    except Exception as e:
+        logger.error(f"Failed to start pattern on board: {e}")
+        return False
+
+    started = False
+    board_paused = False
+    startup_deadline = time.time() + 15
+
+    while True:
+        if state.stop_requested:
+            logger.info("Execution stopped by user")
+            await asyncio.to_thread(state.conn.stop)
+            await start_idle_led_timeout()
+            break
+
+        if state.skip_requested:
+            logger.info("Skipping pattern...")
+            await asyncio.to_thread(state.conn.stop)
+            await connection_manager.check_idle_async()
+            await start_idle_led_timeout()
+            break
+
+        # Pause handling: manual pause, or a scheduled Still Sands period.
+        manual_pause = state.pause_requested
+        scheduled_pause = is_in_scheduled_pause_period() if not state.scheduled_pause_finish_pattern else False
+        want_pause = manual_pause or scheduled_pause
+
+        if want_pause and not board_paused:
+            logger.info("Pausing pattern on board")
+            await asyncio.to_thread(state.conn.pause)
+            board_paused = True
+            pause_clock = time.time()
+            if scheduled_pause and state.scheduled_pause_control_wled and state.led_controller and not manual_pause:
+                await state.led_controller.set_power_async(0)
+            else:
+                await start_idle_led_timeout(check_still_sands=False)
+        elif not want_pause and board_paused:
+            logger.info("Resuming pattern on board")
+            await asyncio.to_thread(state.conn.resume)
+            board_paused = False
+            total_pause_time += time.time() - pause_clock
+            if state.led_controller:
+                if state.scheduled_pause_control_wled and state.led_automation_enabled:
+                    await state.led_controller.set_power_async(1)
+                    await asyncio.sleep(0.5)
+                should_trigger = state.led_automation_enabled and (state.led_provider == "wled" or state.dw_led_playing_effect)
+                if should_trigger:
+                    await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
+                idle_timeout_manager.cancel_timeout()
+
+        if board_paused:
+            await asyncio.sleep(0.4)
+            continue
+
+        # Poll the board and translate its progress (0..1) into our scale.
+        st = await asyncio.to_thread(connection_manager.poll_status_once)
+        elapsed_time = time.time() - start_time
+        if st:
+            running = bool(st.get("running"))
+            machine_state = st.get("state", "")
+            prog = st.get("progress", -1)
+            if running:
+                started = True
+            if prog is not None and prog >= 0:
+                coords_done = int(round(min(max(prog, 0.0), 1.0) * total_coordinates))
+                active = elapsed_time - total_pause_time
+                est_remaining = (active / prog - active) if prog > 0.02 else None
+            else:
+                coords_done = state.execution_progress[0] if state.execution_progress else 0
+                est_remaining = None
+            state.execution_progress = (coords_done, total_coordinates, est_remaining, elapsed_time)
+            # Done once the job has started and the board is no longer running it.
+            if started and not running:
+                break
+            if started and machine_state == "Idle":
                 break
 
-            if state.skip_requested:
-                logger.info("Skipping pattern...")
-                await connection_manager.check_idle_async()
-                await start_idle_led_timeout()
-                break
+        if not started and time.time() > startup_deadline:
+            logger.warning("Pattern did not start on the board within 15s")
+            break
 
-            # Wait for resume if paused (manual or scheduled)
-            manual_pause = state.pause_requested
-            # Only check scheduled pause during pattern if "finish pattern first" is NOT enabled
-            scheduled_pause = is_in_scheduled_pause_period() if not state.scheduled_pause_finish_pattern else False
+        await asyncio.sleep(0.4)
 
-            if manual_pause or scheduled_pause:
-                pause_start = time.time()  # Track when pause started
-                if manual_pause and scheduled_pause:
-                    logger.info("Execution paused (manual + scheduled pause active)...")
-                elif manual_pause:
-                    logger.info("Execution paused (manual)...")
-                else:
-                    logger.info("Execution paused (scheduled pause period)...")
-                    # Turn off LED controller if scheduled pause and control_wled is enabled
-                    if state.scheduled_pause_control_wled and state.led_controller:
-                        logger.info("Turning off LED lights during Still Sands period")
-                        await state.led_controller.set_power_async(0)
-
-                # Show idle effect for manual pause or scheduled pause without LED control
-                # (skip Still Sands check since we handle it above with local scheduled_pause variable)
-                if not (scheduled_pause and state.scheduled_pause_control_wled):
-                    await start_idle_led_timeout(check_still_sands=False)
-
-                # Remember if we turned off LED controller for scheduled pause
-                wled_was_off_for_scheduled = scheduled_pause and state.scheduled_pause_control_wled and not manual_pause
-
-                # Wait until both manual pause is released AND we're outside scheduled pause period
-                # Also check for stop/skip requests to allow immediate interruption
-                interrupted = False
-                while state.pause_requested or is_in_scheduled_pause_period():
-                    # Check for stop/skip first
-                    if state.stop_requested:
-                        logger.info("Stop requested during pause, exiting")
-                        interrupted = True
-                        break
-                    if state.skip_requested:
-                        logger.info("Skip requested during pause, skipping pattern")
-                        interrupted = True
-                        break
-
-                    if state.pause_requested:
-                        # For manual pause, wait on multiple events for immediate response
-                        # Wake on: resume, stop, skip, or timeout (for flag polling fallback)
-                        pause_event = get_pause_event()
-                        stop_event = state.get_stop_event()
-                        skip_event = state.get_skip_event()
-
-                        wait_tasks = [asyncio.create_task(pause_event.wait(), name='pause')]
-                        if stop_event:
-                            wait_tasks.append(asyncio.create_task(stop_event.wait(), name='stop'))
-                        if skip_event:
-                            wait_tasks.append(asyncio.create_task(skip_event.wait(), name='skip'))
-                        # Add timeout to ensure we periodically check flags even if events aren't set
-                        # This handles the case where stop is called from sync context (no event loop)
-                        timeout_task = asyncio.create_task(asyncio.sleep(1.0), name='timeout')
-                        wait_tasks.append(timeout_task)
-
-                        try:
-                            done, pending = await asyncio.wait(
-                                wait_tasks, return_when=asyncio.FIRST_COMPLETED
-                            )
-                        finally:
-                            for task in pending:
-                                task.cancel()
-                            for task in pending:
-                                try:
-                                    await task
-                                except asyncio.CancelledError:
-                                    pass
-                    else:
-                        # For scheduled pause, use wait_for_interrupt for instant response
-                        result = await state.wait_for_interrupt(timeout=1.0)
-                        if result in ('stopped', 'skipped'):
-                            interrupted = True
-                            break
-
-                total_pause_time += time.time() - pause_start  # Add pause duration
-
-                if interrupted:
-                    # Exit the coordinate loop if we were interrupted
-                    break
-
-                logger.info("Execution resumed...")
-                if state.led_controller:
-                    # Always power LEDs back on if they were turned off for scheduled pause,
-                    # regardless of whether a playing effect is configured
-                    if wled_was_off_for_scheduled and state.led_automation_enabled:
-                        logger.info("Turning LED lights back on as Still Sands period ended")
-                        await state.led_controller.set_power_async(1)
-                        # CRITICAL: Give LED controller time to fully power on before sending more commands
-                        # Without this delay, rapid-fire requests can crash controllers on resource-constrained Pis
-                        await asyncio.sleep(0.5)
-                    # Apply playing effect if configured
-                    # For WLED: always trigger (uses hardcoded preset 2)
-                    # For DW_LED: only trigger if effect is configured
-                    should_trigger_led = state.led_automation_enabled and (state.led_provider == "wled" or state.dw_led_playing_effect)
-                    if should_trigger_led:
-                        await state.led_controller.effect_playing_async(state.dw_led_playing_effect)
-                    # Cancel idle timeout when resuming from pause
-                    idle_timeout_manager.cancel_timeout()
-
-            # Dynamically determine the speed for each movement
-            # Use clear_pattern_speed if it's set and this is a clear file, otherwise use state.speed
-            if is_clear_file and state.clear_pattern_speed is not None:
-                current_speed = state.clear_pattern_speed
-            else:
-                current_speed = state.speed
-
-            await move_polar(theta, rho, current_speed)
-
-            # Update progress for all coordinates including the first one
-            pbar.update(1)
-            elapsed_time = time.time() - start_time
-            coords_done = i + 1
-
-            # Track rho-weighted progress for accurate time estimation
-            completed_weight += coord_weights[i]
-            remaining_weight = total_weight - completed_weight
-
-            # Calculate actual execution time (excluding pauses)
-            active_time = elapsed_time - total_pause_time
-
-            # Need minimum samples for stable estimate (at least 100 coords and 10 seconds)
-            if coords_done >= 100 and active_time > 10:
-                # Rate is time per unit weight (accounts for slower moves near center)
-                current_rate = active_time / completed_weight
-
-                # Smooth the RATE for stability
-                if smoothed_rate is not None:
-                    alpha = 0.02  # Very smooth - 2% new, 98% old
-                    smoothed_rate = alpha * current_rate + (1 - alpha) * smoothed_rate
-                else:
-                    smoothed_rate = current_rate
-
-                # Remaining time based on weighted remaining work
-                estimated_remaining_time = smoothed_rate * remaining_weight
-            else:
-                estimated_remaining_time = None
-
-            state.execution_progress = (coords_done, total_coordinates, estimated_remaining_time, elapsed_time)
-
-            # Add a small delay to allow other async operations
-            await asyncio.sleep(0.001)
-
-    # Update progress one last time to show 100%
+    # Final progress + timing.
     elapsed_time = time.time() - start_time
     actual_execution_time = elapsed_time - total_pause_time
-    state.execution_progress = (total_coordinates, total_coordinates, 0, elapsed_time)
-    # Give WebSocket a chance to send the final update
+    if started and not state.stop_requested and not state.skip_requested:
+        state.execution_progress = (total_coordinates, total_coordinates, 0, elapsed_time)
+    # Give the WebSocket a chance to send the final update.
     await asyncio.sleep(0.1)
 
     # Log execution time (only for completed patterns, not stopped/skipped)
@@ -1813,9 +1765,12 @@ async def stop_actions(clear_playlist = True, wait_for_lock = True):
         # Also set the pause event to wake up any paused patterns
         get_pause_event().set()
 
-        # Send stop command to motion thread to clear its queue
-        if motion_controller.running:
-            motion_controller.command_queue.put(MotionCommand('stop'))
+        # Tell the board to stop any motion in progress.
+        if state.conn and state.conn.is_connected():
+            try:
+                await asyncio.to_thread(state.conn.stop)
+            except Exception as e:
+                logger.error(f"Error sending stop to board: {e}")
 
         # Wait for the pattern lock to be released before continuing
         # This ensures that when stop_actions completes, the pattern has fully stopped
@@ -1874,39 +1829,23 @@ async def stop_actions(clear_playlist = True, wait_for_lock = True):
 
 async def move_polar(theta, rho, speed=None):
     """
-    Queue a motion command to be executed in the dedicated motion control thread.
-    This makes motion control non-blocking for API endpoints.
+    Jog to an absolute (theta, rho) by delegating to the board's /sand_goto.
+    Used by the manual move endpoints (center / perimeter / send_coordinate).
 
     Args:
-        theta (float): Target theta coordinate
-        rho (float): Target rho coordinate
-        speed (int, optional): Speed override. If None, uses state.speed
+        theta (float): Target theta in radians
+        rho (float): Target rho (0..1)
+        speed (int, optional): Feed override. If None, uses the board's current feed.
     """
-    # Note: stop_requested is cleared once at pattern start (execute_theta_rho_file line 890)
-    # Don't clear it here on every coordinate - causes performance issues with event system
-
-    # Ensure motion control thread is running
-    if not motion_controller.running:
-        motion_controller.start()
-
-    # Create future for async/await pattern
-    loop = asyncio.get_event_loop()
-    future = loop.create_future()
-
-    # Create and queue motion command
-    command = MotionCommand(
-        command_type='move',
-        theta=theta,
-        rho=rho,
-        speed=speed,
-        future=future
-    )
-
-    motion_controller.command_queue.put(command)
-    logger.debug(f"Queued motion command: theta={theta}, rho={rho}, speed={speed}")
-
-    # Wait for command completion
-    await future
+    if not state.conn or not state.conn.is_connected():
+        logger.warning("Cannot move: no board connection")
+        return
+    if speed is not None:
+        try:
+            await asyncio.to_thread(state.conn.set_feed, int(speed))
+        except Exception as e:
+            logger.warning(f"Could not set feed before jog: {e}")
+    await asyncio.to_thread(state.conn.goto, theta, rho)
     
 def pause_execution():
     """Pause pattern execution using asyncio Event."""
@@ -1924,41 +1863,14 @@ def resume_execution():
     
 async def reset_theta():
     """
-    Reset theta to [0, 2π) range and optionally hard reset machine position using $Bye.
+    Normalize the host's tracked theta to [0, 2π).
 
-    When state.hard_reset_theta is True:
-    - $Bye sends a soft reset to FluidNC which resets the controller and clears
-      all position counters to 0. This is more reliable than G92 which only sets
-      a work coordinate offset without changing the actual machine position (MPos).
-    - We wait for machine to be idle before sending $Bye to avoid error:25
-
-    When state.hard_reset_theta is False (default):
-    - Only normalizes theta to [0, 2π) range without affecting machine position
-    - Faster and doesn't interrupt machine state
+    The board now owns machine position and theta accumulation, so this only keeps
+    the host-side ``current_theta`` tidy for display. (The old $Bye hard-reset path
+    was removed — rebooting the controller on a manual move is never what we want.)
     """
-    logger.info('Resetting Theta')
-
-    # Always normalize theta to [0, 2π) range
     state.current_theta = state.current_theta % (2 * pi)
     logger.info(f'Theta normalized to {state.current_theta:.4f} radians')
-
-    # Only perform hard reset if enabled
-    if state.hard_reset_theta:
-        logger.info('Hard reset enabled - performing machine soft reset')
-
-        # Wait for machine to be idle before reset to prevent error:25
-        if state.conn and state.conn.is_connected():
-            logger.info("Waiting for machine to be idle before reset...")
-            idle = await connection_manager.check_idle_async(timeout=30)
-            if not idle:
-                logger.warning("Machine not idle after 30s, proceeding with reset anyway")
-
-        # Hard reset machine position using $Bye via connection_manager
-        success = await connection_manager.perform_soft_reset()
-        if not success:
-            logger.error("Soft reset failed - theta reset may be unreliable")
-    else:
-        logger.info('Hard reset disabled - skipping machine soft reset')
 
 def set_speed(new_speed):
     state.speed = new_speed

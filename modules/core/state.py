@@ -98,6 +98,9 @@ class AppState:
         self.conn = None
         self.port = None
         self.preferred_port = None  # User's preferred port for auto-connect
+        # Address of the FluidNC board (e.g. "http://192.168.68.160" or a bare IP).
+        # None => fall back to the DUNE_BOARD_URL env var or the built-in default.
+        self.board_url = None
         self.wled_ip = None
         self.led_provider = "none"  # "wled", "dw_leds", or "none"
         self.led_controller = None
@@ -507,6 +510,7 @@ class AppState:
             "custom_clear_from_in": self.custom_clear_from_in,
             "custom_clear_from_out": self.custom_clear_from_out,
             "preferred_port": self.preferred_port,
+            "board_url": self.board_url,
             "wled_ip": self.wled_ip,
             "led_provider": self.led_provider,
             "dw_led_num_leds": self.dw_led_num_leds,
@@ -613,6 +617,7 @@ class AppState:
         self.custom_clear_from_in = data.get("custom_clear_from_in", None)
         self.custom_clear_from_out = data.get("custom_clear_from_out", None)
         self.preferred_port = data.get("preferred_port", None)
+        self.board_url = data.get("board_url", None)
         self.wled_ip = data.get('wled_ip', None)
         self.led_provider = data.get('led_provider', "none")
         self.dw_led_num_leds = data.get('dw_led_num_leds', 60)
