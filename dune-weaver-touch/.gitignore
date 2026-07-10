@@ -1,0 +1,9 @@
+# Local runtime state (not source)
+preview_cache/
+touch_settings.json
+.env
+venv/
+
+# Python
+__pycache__/
+*.pyc

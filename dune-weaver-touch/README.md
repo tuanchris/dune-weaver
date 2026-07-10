@@ -1,6 +1,34 @@
 # Dune Weaver Touch Interface
 
-A PySide6/QML touch interface for the Dune Weaver sand table system that works alongside the existing FastAPI web server.
+A PySide6/QML touch interface for the Dune Weaver sand table. It talks **directly to the
+table's FluidNC firmware** over its stateless HTTP/JSON API — there is no separate host
+(Raspberry Pi FastAPI) service in between.
+
+## Connecting to the table
+
+The firmware is headless and advertises itself over mDNS. On launch the app:
+
+1. **Auto-discovers** tables via mDNS (`_http._tcp` advertisements with `model=dune-weaver`).
+   If exactly one is found it connects automatically; otherwise pick one from the Control
+   page's table list (tap **Refresh** to re-scan).
+2. **Pin a table** by setting `DUNE_WEAVER_URL` in `.env` (e.g. `DUNE_WEAVER_URL=dunetable.local`
+   or an IP). This skips discovery.
+
+The chosen table is remembered in `touch_settings.json`.
+
+### How it maps to the firmware API
+
+- **Status** is polled from `GET /sand_status` (~1 Hz) instead of a WebSocket.
+- **Actions** go out as `$...` commands via `/command` and the `/sand_*` routes
+  (run/stop/pause/resume/home/goto/feed/LED).
+- **Patterns** come from `GET /sand_patterns`; previews are rendered locally from the
+  raw `.thr` files (`/sd/patterns/...`) and cached under `preview_cache/`.
+- **Playlists** are `.txt` files on the SD card — listed via `GET /sand_playlists`,
+  read from `/sd/playlists/...`, and created/edited by uploading/deleting files.
+- **LEDs** use the firmware's named effect/palette catalogue (`$LED/*` / `/sand_led`).
+- **Screen / LCD backlight** control stays local to the touch host (sysfs + sudo scripts).
+
+See the firmware's `API.md` for the full contract.
 
 ## Features
 
@@ -14,10 +42,18 @@ A PySide6/QML touch interface for the Dune Weaver sand table system that works a
 
 ## Architecture
 
-- **Pattern Browsing**: Direct file system access for instant loading
-- **Execution Control**: REST API calls to existing FastAPI endpoints  
-- **Status Monitoring**: WebSocket connection for real-time updates
+- **Pattern Browsing**: `GET /sand_patterns` on the table; `.thr` previews rendered locally
+- **Execution Control**: firmware `$...` commands via `/command` + `/sand_*` routes
+- **Status Monitoring**: polling `GET /sand_status` (~1 Hz)
 - **Navigation**: StackView-based page navigation
+
+### Key modules
+
+- `firmware_client.py` — shared async HTTP client + LED/clear-mode maps (singleton)
+- `discovery.py` — mDNS table discovery (zeroconf; degrades gracefully if absent)
+- `thr_preview.py` — renders `.thr` → cached PNG previews
+- `backend.py` — QML-facing controller (status poll, actions, LEDs, playlists, local screen)
+- `models/` — `PatternModel` / `PlaylistModel`, both firmware-backed
 
 ## Quick Installation (Auto-Start Setup)
 
@@ -55,11 +91,8 @@ sudo systemctl disable dune-weaver-touch
    pip install -r requirements.txt
    ```
 
-2. Ensure the main Dune Weaver FastAPI server is running:
-   ```bash
-   cd ../  # Go to main dune-weaver directory
-   python main.py
-   ```
+2. Power on the sand table and make sure it's on the same network (or set
+   `DUNE_WEAVER_URL` in `.env` to pin its address).
 
 3. Run the touch interface:
    ```bash
@@ -121,8 +154,8 @@ dune-weaver-touch/
 
 ## Notes
 
-- The touch interface runs independently from the web UI
-- Both interfaces can be used simultaneously
-- Pattern browsing works even if the FastAPI server is offline
-- Execution requires the FastAPI server to be running
-- Paths are relative to the main dune-weaver directory
+- The touch interface talks directly to the table firmware; no host service is required
+- The firmware's HTTP API is multi-client, so the app can run alongside other clients
+  (phone/web app, Home Assistant) at the same time
+- Pattern previews render locally the first time a pattern is seen, then load from cache
+- Requires the table to be reachable on the network (mDNS or `DUNE_WEAVER_URL`)

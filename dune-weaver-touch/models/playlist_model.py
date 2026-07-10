@@ -1,101 +1,132 @@
-from PySide6.QtCore import QAbstractListModel, Qt, Slot
+"""Playlist list model backed by the firmware's playlist routes.
+
+Playlists are plain ``.txt`` files on the table's SD card (one SD-relative
+pattern path per line). We list them via ``/sand_playlists`` and read their
+contents from ``/sd/playlists/<name>.txt``.
+"""
+
+import asyncio
+import logging
+
+from PySide6.QtCore import QAbstractListModel, Qt, Slot, QModelIndex
 from PySide6.QtQml import QmlElement
-from pathlib import Path
-import json
+
+from firmware_client import FirmwareClient
 
 QML_IMPORT_NAME = "DuneWeaver"
 QML_IMPORT_MAJOR_VERSION = 1
 
+logger = logging.getLogger("DuneWeaver.PlaylistModel")
+
+
+def _strip_txt(name):
+    return name[:-4] if name.endswith(".txt") else name
+
+
+def _parse_playlist(text):
+    """Parse a playlist file into a list of SD-relative pattern paths."""
+    items = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        items.append(line)
+    return items
+
+
 @QmlElement
 class PlaylistModel(QAbstractListModel):
-    """Model for playlist list with direct JSON file access"""
-    
+    """Model for playlists, sourced from the sand table over HTTP."""
+
     NameRole = Qt.UserRole + 1
     ItemCountRole = Qt.UserRole + 2
-    
+
     def __init__(self):
         super().__init__()
-        self._playlists = []
-        # Look for playlists in the parent directory (main dune-weaver folder)
-        self.playlists_file = Path("../playlists.json")
+        self._playlists = []        # [{name, itemCount}]
+        self._contents = {}         # name -> [raw pattern path, ...]
+
+        self._client = FirmwareClient.instance()
+        self._client.baseUrlChanged.connect(lambda _u: self.refresh())
         self.refresh()
-    
+
     def roleNames(self):
         return {
             self.NameRole: b"name",
-            self.ItemCountRole: b"itemCount"
+            self.ItemCountRole: b"itemCount",
         }
-    
-    def rowCount(self, parent=None):
+
+    def rowCount(self, parent=QModelIndex()):
         return len(self._playlists)
-    
+
     def data(self, index, role):
         if not index.isValid() or index.row() >= len(self._playlists):
             return None
-        
         playlist = self._playlists[index.row()]
-        
         if role == self.NameRole:
             return playlist["name"]
         elif role == self.ItemCountRole:
             return playlist["itemCount"]
-        
         return None
-    
+
+    # -------------------------------------------------------------- fetching
     @Slot()
     def refresh(self):
-        self.beginResetModel()
+        try:
+            asyncio.get_event_loop().create_task(self._fetch())
+        except RuntimeError:
+            logger.debug("No running loop yet; playlists will load once started")
+
+    async def _fetch(self):
+        if not self._client.base_url:
+            self._apply([], {})
+            return
+        try:
+            names = await self._client.playlists()
+        except Exception as exc:
+            logger.warning(f"Failed to fetch playlists: {exc}")
+            return
+
+        contents = {}
         playlists = []
-        
-        if self.playlists_file.exists():
+        for raw_name in names:
+            name = _strip_txt(str(raw_name).lstrip("/"))
+            items = []
             try:
-                with open(self.playlists_file, 'r') as f:
-                    self._playlist_data = json.load(f)
-                    for name, playlist_patterns in self._playlist_data.items():
-                        # playlist_patterns is a list of pattern filenames
-                        playlists.append({
-                            "name": name,
-                            "itemCount": len(playlist_patterns) if isinstance(playlist_patterns, list) else 0
-                        })
-            except (json.JSONDecodeError, KeyError, AttributeError):
-                self._playlist_data = {}
-        else:
-            self._playlist_data = {}
-        
-        self._playlists = sorted(playlists, key=lambda x: x["name"])
+                text_bytes = await self._client.fetch_sd_file(f"/playlists/{name}.txt")
+                items = _parse_playlist(text_bytes.decode("utf-8", errors="ignore"))
+            except Exception as exc:
+                logger.debug(f"Failed to read playlist {name}: {exc}")
+            contents[name] = items
+            playlists.append({"name": name, "itemCount": len(items)})
+
+        playlists.sort(key=lambda x: x["name"].lower())
+        self._apply(playlists, contents)
+
+    def _apply(self, playlists, contents):
+        self.beginResetModel()
+        self._playlists = playlists
+        self._contents = contents
         self.endResetModel()
-    
+        logger.info(f"Loaded {len(self._playlists)} playlists")
+
+    # --------------------------------------------------------------- queries
     @Slot(str, result=list)
     def getPatternsForPlaylist(self, playlistName):
-        """Get the list of patterns for a given playlist (cleaned for display)"""
-        if hasattr(self, '_playlist_data') and playlistName in self._playlist_data:
-            patterns = self._playlist_data[playlistName]
-            if isinstance(patterns, list):
-                # Clean up pattern names for display
-                cleaned_patterns = []
-                for pattern in patterns:
-                    # Remove path and .thr extension for display
-                    clean_name = pattern
-                    if '/' in clean_name:
-                        clean_name = clean_name.split('/')[-1]
-                    if clean_name.endswith('.thr'):
-                        clean_name = clean_name[:-4]
-                    cleaned_patterns.append(clean_name)
-                return cleaned_patterns
-        return []
+        """Cleaned pattern names for display (no path, no .thr)."""
+        cleaned = []
+        for pattern in self._contents.get(playlistName, []):
+            clean = pattern.split("/")[-1]
+            if clean.endswith(".thr"):
+                clean = clean[:-4]
+            cleaned.append(clean)
+        return cleaned
 
     @Slot(str, result=list)
     def getRawPatternsForPlaylist(self, playlistName):
-        """Get the raw list of patterns for a playlist (with full paths, for API calls)"""
-        if hasattr(self, '_playlist_data') and playlistName in self._playlist_data:
-            patterns = self._playlist_data[playlistName]
-            if isinstance(patterns, list):
-                return patterns
-        return []
+        """Raw SD-relative pattern paths (for API calls / editing)."""
+        return list(self._contents.get(playlistName, []))
 
     @Slot(result=list)
     def getAllPlaylistNames(self):
-        """Get a list of all playlist names"""
-        if hasattr(self, '_playlist_data'):
-            return sorted(list(self._playlist_data.keys()))
-        return []
+        return sorted(self._contents.keys())
