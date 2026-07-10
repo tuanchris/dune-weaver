@@ -1,8 +1,6 @@
-pyserial>=3.5
 tqdm>=4.65.0
 paho-mqtt>=1.6.1
 python-dotenv>=1.0.0
-websocket-client>=1.6.1
 fastapi>=0.100.0
 uvicorn>=0.23.0
 pydantic>=2.0.0
@@ -15,12 +13,3 @@ Pillow
 aiohttp
 pyyaml>=6.0
 zeroconf>=0.131.0  # mDNS auto-discovery of other Dune Weaver tables
-# GPIO/NeoPixel support for DW LEDs and Desert Compass
-# Note: rpi-lgpio is a drop-in replacement for RPi.GPIO that works on Pi 5
-# Do NOT install both RPi.GPIO and rpi-lgpio - they conflict
-lgpio>=0.2.2.0  # Low-level GPIO library (required by rpi-lgpio)
-rpi-lgpio>=0.4  # Provides RPi.GPIO interface, works on Pi 4 and Pi 5
-rpi-ws281x>=5.0.0  # Low-level NeoPixel/WS281x driver (Pi 4)
-adafruit-circuitpython-neopixel>=6.3.0  # Standard NeoPixel library (Pi 4)
-Adafruit-Blinka>=8.0.0  # CircuitPython compatibility layer
-Adafruit-Blinka-Raspberry-Pi5-Neopixel>=1.0.0rc1  # Pi 5 PIO-based NeoPixel driver (pre-release)

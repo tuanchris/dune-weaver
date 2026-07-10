@@ -320,7 +320,7 @@ class MQTTHandler(BaseMQTTHandler):
         self._publish_discovery("sensor", "time_remaining", time_remaining_config)
 
         # LED Control Entities (only for DW LEDs - WLED has its own MQTT integration)
-        if state.led_provider == "dw_leds":
+        if state.led_provider == "board":
             # LED Power Switch
             led_power_config = {
                 "name": f"{self.device_name} LED Power",
@@ -538,7 +538,7 @@ class MQTTHandler(BaseMQTTHandler):
 
     def _publish_led_state(self):
         """Helper to publish LED state to MQTT (DW LEDs only - WLED has its own MQTT)."""
-        if not state.led_controller or state.led_provider != "dw_leds":
+        if not state.led_controller or state.led_provider != "board":
             return
 
         try:
@@ -785,7 +785,7 @@ class MQTTHandler(BaseMQTTHandler):
             elif msg.topic == self.led_power_topic:
                 # Handle LED power command (DW LEDs only)
                 payload = msg.payload.decode()
-                if state.led_controller and state.led_provider == "dw_leds":
+                if state.led_controller and state.led_provider == "board":
                     power_state = 1 if payload == "ON" else 0
                     state.led_controller.set_power(power_state)
                     # Reset idle timeout when LEDs are manually powered on via MQTT (only if idle timeout is enabled)
@@ -796,7 +796,7 @@ class MQTTHandler(BaseMQTTHandler):
             elif msg.topic == self.led_brightness_topic:
                 # Handle LED brightness command (DW LEDs only)
                 brightness = int(msg.payload.decode())
-                if 0 <= brightness <= 100 and state.led_controller and state.led_provider == "dw_leds":
+                if 0 <= brightness <= 100 and state.led_controller and state.led_provider == "board":
                     controller = state.led_controller.get_controller()
                     if controller and hasattr(controller, 'set_brightness'):
                         # DW LED controller expects 0-100, converts internally to 0.0-1.0
@@ -805,7 +805,7 @@ class MQTTHandler(BaseMQTTHandler):
             elif msg.topic == self.led_effect_topic:
                 # Handle LED effect command (DW LEDs only)
                 effect_name = msg.payload.decode()
-                if state.led_controller and state.led_provider == "dw_leds":
+                if state.led_controller and state.led_provider == "board":
                     # Map effect name to ID
                     effect_map = {
                         "Static": 0, "Blink": 1, "Breathe": 2, "Wipe": 3, "Fade": 4,
@@ -829,7 +829,7 @@ class MQTTHandler(BaseMQTTHandler):
             elif msg.topic == self.led_speed_topic:
                 # Handle LED speed command (DW LEDs only)
                 speed = int(msg.payload.decode())
-                if 0 <= speed <= 255 and state.led_controller and state.led_provider == "dw_leds":
+                if 0 <= speed <= 255 and state.led_controller and state.led_provider == "board":
                     controller = state.led_controller.get_controller()
                     if controller and hasattr(controller, 'set_speed'):
                         controller.set_speed(speed)
@@ -837,7 +837,7 @@ class MQTTHandler(BaseMQTTHandler):
             elif msg.topic == self.led_intensity_topic:
                 # Handle LED intensity command (DW LEDs only)
                 intensity = int(msg.payload.decode())
-                if 0 <= intensity <= 255 and state.led_controller and state.led_provider == "dw_leds":
+                if 0 <= intensity <= 255 and state.led_controller and state.led_provider == "board":
                     controller = state.led_controller.get_controller()
                     if controller and hasattr(controller, 'set_intensity'):
                         controller.set_intensity(intensity)
@@ -846,7 +846,7 @@ class MQTTHandler(BaseMQTTHandler):
                 # Handle LED color command (RGB) (DW LEDs only)
                 try:
                     color_data = json.loads(msg.payload.decode())
-                    if state.led_controller and state.led_provider == "dw_leds" and 'r' in color_data and 'g' in color_data and 'b' in color_data:
+                    if state.led_controller and state.led_provider == "board" and 'r' in color_data and 'g' in color_data and 'b' in color_data:
                         controller = state.led_controller.get_controller()
                         if controller and hasattr(controller, 'set_color'):
                             r, g, b = color_data['r'], color_data['g'], color_data['b']

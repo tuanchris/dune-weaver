@@ -343,8 +343,14 @@ def save_metadata_cache(cache_data):
         else:
             structured_cache = cache_data
         
-        with open(METADATA_CACHE_FILE, 'w') as f:
+        # Atomic replace: write to a temp file, then rename over the real one.
+        # A crash/kill mid-write must never leave a truncated JSON — a corrupt
+        # cache is silently invalidated on the next boot, forcing a full
+        # 1000+ pattern regeneration.
+        tmp_path = METADATA_CACHE_FILE + ".tmp"
+        with open(tmp_path, 'w') as f:
             json.dump(structured_cache, f, indent=2)
+        os.replace(tmp_path, METADATA_CACHE_FILE)
     except Exception as e:
         logger.error(f"Failed to save metadata cache: {str(e)}")
 
@@ -386,33 +392,48 @@ async def get_pattern_metadata_async(pattern_file):
     
     return None
 
-async def cache_pattern_metadata(pattern_file, first_coord, last_coord, total_coords):
-    """Cache metadata for a pattern file.
+async def cache_pattern_metadata_batch(entries):
+    """Cache metadata for many patterns with a single read-modify-write.
 
-    Uses asyncio.Lock to prevent race conditions when multiple concurrent tasks
-    (from asyncio.gather) try to read-modify-write the cache file simultaneously.
+    entries: iterable of (pattern_file, first_coord, last_coord, total_coords).
+    One whole-file rewrite per batch instead of per pattern — during a full
+    generation this is the difference between ~1080 and ~360 rewrites of a
+    growing JSON. Uses asyncio.Lock to prevent race conditions when concurrent
+    tasks read-modify-write the cache file simultaneously.
     """
+    entries = list(entries)
+    if not entries:
+        return
     async with _get_metadata_cache_lock():
         try:
             cache_data = await asyncio.to_thread(load_metadata_cache)
             data_section = cache_data.get('data', {})
-            pattern_path = os.path.join(THETA_RHO_DIR, pattern_file)
-            file_mtime = await asyncio.to_thread(os.path.getmtime, pattern_path)
-
-            data_section[pattern_file] = {
-                'mtime': file_mtime,
-                'metadata': {
-                    'first_coordinate': first_coord,
-                    'last_coordinate': last_coord,
-                    'total_coordinates': total_coords
+            for pattern_file, first_coord, last_coord, total_coords in entries:
+                pattern_path = os.path.join(THETA_RHO_DIR, pattern_file)
+                try:
+                    file_mtime = await asyncio.to_thread(os.path.getmtime, pattern_path)
+                except OSError as e:
+                    logger.warning(f"Failed to cache metadata for {pattern_file}: {str(e)}")
+                    continue
+                data_section[pattern_file] = {
+                    'mtime': file_mtime,
+                    'metadata': {
+                        'first_coordinate': first_coord,
+                        'last_coordinate': last_coord,
+                        'total_coordinates': total_coords
+                    }
                 }
-            }
+                logger.debug(f"Cached metadata for {pattern_file}")
 
             cache_data['data'] = data_section
             await asyncio.to_thread(save_metadata_cache, cache_data)
-            logger.debug(f"Cached metadata for {pattern_file}")
         except Exception as e:
-            logger.warning(f"Failed to cache metadata for {pattern_file}: {str(e)}")
+            logger.warning(f"Failed to cache metadata batch: {str(e)}")
+
+
+async def cache_pattern_metadata(pattern_file, first_coord, last_coord, total_coords):
+    """Cache metadata for a single pattern file."""
+    await cache_pattern_metadata_batch([(pattern_file, first_coord, last_coord, total_coords)])
 
 def needs_cache(pattern_file):
     """Check if a pattern file needs its cache generated."""
@@ -630,12 +651,13 @@ async def generate_metadata_cache():
         successful = 0
         for i in range(0, total_files, batch_size):
             batch = files_to_process[i:i + batch_size]
-            
+            batch_entries = []
+
             # Process files sequentially within batch (no parallel tasks)
             for file_name in batch:
                 pattern_path = os.path.join(THETA_RHO_DIR, file_name)
                 cache_progress["current_file"] = file_name
-                
+
                 try:
                     # Parse file to get metadata
                     coordinates = await asyncio.to_thread(parse_theta_rho_file, pattern_path)
@@ -645,8 +667,7 @@ async def generate_metadata_cache():
                         last_coord = {"x": coordinates[-1][0], "y": coordinates[-1][1]}
                         total_coords = len(coordinates)
 
-                        # Cache the metadata
-                        await cache_pattern_metadata(file_name, first_coord, last_coord, total_coords)
+                        batch_entries.append((file_name, first_coord, last_coord, total_coords))
                         successful += 1
                         logger.debug(f"Generated metadata for {file_name}")
 
@@ -655,6 +676,10 @@ async def generate_metadata_cache():
 
                 except Exception as e:
                     logger.error(f"Failed to generate metadata for {file_name}: {str(e)}")
+
+            # One cache-file rewrite per batch, so progress survives restarts
+            # without hammering the disk once per pattern.
+            await cache_pattern_metadata_batch(batch_entries)
             
             # Update progress
             cache_progress["processed_files"] = min(i + batch_size, total_files)

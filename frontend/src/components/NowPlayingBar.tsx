@@ -13,22 +13,6 @@ import {
 import { apiClient } from '@/lib/apiClient'
 import { useStatusStore } from '@/stores/useStatusStore'
 import type { StatusData } from '@/stores/useStatusStore'
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
-import type { DragEndEvent } from '@dnd-kit/core'
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 
 type Coordinate = [number, number]
 
@@ -46,39 +30,16 @@ function formatPatternName(path: string | null): string {
   return name
 }
 
-// Sortable queue item component for drag-and-drop (upcoming patterns only)
-interface SortableQueueItemProps {
-  id: string
+// Read-only queue item. The firmware owns the running queue (loaded into its
+// memory at playlist start), so the list shows what's coming without editing.
+interface QueueItemProps {
   file: string
   index: number
   previewUrl: string | null
-  isFirst: boolean
-  isLast: boolean
-  onMoveToTop: () => void
-  onMoveToBottom: () => void
   requestPreview: (file: string) => void
 }
 
-function SortableQueueItem({
-  id,
-  file,
-  index,
-  previewUrl,
-  isFirst,
-  isLast,
-  onMoveToTop,
-  onMoveToBottom,
-  requestPreview,
-}: SortableQueueItemProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id })
-
+function QueueItem({ file, index, previewUrl, requestPreview }: QueueItemProps) {
   const previewContainerRef = useRef<HTMLDivElement>(null)
   const hasRequestedRef = useRef(false)
 
@@ -104,28 +65,8 @@ function SortableQueueItem({
     return () => observer.disconnect()
   }, [file, previewUrl, requestPreview])
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 1000 : 'auto',
-  }
-
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`group flex items-center gap-2 p-2 rounded-lg transition-colors hover:bg-muted/50 ${isDragging ? 'shadow-lg bg-background' : ''}`}
-    >
-      {/* Drag handle */}
-      <div
-        {...attributes}
-        {...listeners}
-        className="w-6 flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing touch-none"
-      >
-        <span className="material-icons-outlined text-muted-foreground text-sm">drag_indicator</span>
-      </div>
-
+    <div className="flex items-center gap-2 p-2 rounded-lg transition-colors hover:bg-muted/50">
       {/* Preview thumbnail */}
       <div ref={previewContainerRef} className="w-28 h-28 rounded-full overflow-hidden bg-muted border shrink-0">
         {previewUrl ? (
@@ -146,26 +87,6 @@ function SortableQueueItem({
       <div className="flex-1 min-w-0">
         <p className="text-sm truncate">{formatPatternName(file)}</p>
         <p className="text-xs text-muted-foreground">#{index + 1}</p>
-      </div>
-
-      {/* Move to top/bottom buttons - always visible on mobile, hover on desktop */}
-      <div className="flex flex-col gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0">
-        <button
-          onClick={onMoveToTop}
-          disabled={isFirst}
-          className="p-1 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
-          title="Move to top"
-        >
-          <span className="material-icons-outlined text-sm">vertical_align_top</span>
-        </button>
-        <button
-          onClick={onMoveToBottom}
-          disabled={isLast}
-          className="p-1 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
-          title="Move to bottom"
-        >
-          <span className="material-icons-outlined text-sm">vertical_align_bottom</span>
-        </button>
       </div>
     </div>
   )
@@ -661,53 +582,8 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
     queueTouchStartY.current = null
   }
 
-  // Optimistic queue state for smooth drag-and-drop
-  const [optimisticQueue, setOptimisticQueue] = useState<string[] | null>(null)
-  const optimisticTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Sync optimistic queue with server state after a delay
-  // This allows the optimistic update to "stick" while the server catches up
-  useEffect(() => {
-    if (optimisticQueue && status?.playlist?.files) {
-      // Clear any pending timeout
-      if (optimisticTimeoutRef.current) {
-        clearTimeout(optimisticTimeoutRef.current)
-      }
-      // After server confirms (via WebSocket), clear optimistic state
-      // We check if server state matches our optimistic state
-      const serverOrder = status.playlist.files.join(',')
-      const optimisticOrder = optimisticQueue.join(',')
-      if (serverOrder === optimisticOrder) {
-        // Server caught up, clear optimistic state
-        setOptimisticQueue(null)
-      } else {
-        // Give server time to catch up, then accept server state
-        optimisticTimeoutRef.current = setTimeout(() => {
-          setOptimisticQueue(null)
-        }, 2000)
-      }
-    }
-    return () => {
-      if (optimisticTimeoutRef.current) {
-        clearTimeout(optimisticTimeoutRef.current)
-      }
-    }
-  }, [status?.playlist?.files, optimisticQueue])
-
-  // Use optimistic queue if available, otherwise use server state
-  const displayQueue = optimisticQueue || status?.playlist?.files || []
-
-  // Drag and drop sensors
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8, // Require 8px movement before starting drag
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  )
+  // The firmware owns the running queue; the host mirror is read-only.
+  const displayQueue = status?.playlist?.files || []
 
   const handleSpeedSubmit = async () => {
     const speed = parseInt(speedInput)
@@ -762,77 +638,6 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
       }
     }, 100)
   }, [queuePreviews])
-
-  // Helper to reorder array (move item from one index to another)
-  const reorderArray = (arr: string[], fromIndex: number, toIndex: number): string[] => {
-    const result = [...arr]
-    const [removed] = result.splice(fromIndex, 1)
-    result.splice(toIndex, 0, removed)
-    return result
-  }
-
-  // Handle drag end for reordering queue
-  // Since playlist now contains only main patterns, indices map directly
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event
-
-    if (!over || active.id === over.id || !status?.playlist?.files) return
-
-    // Extract indices from IDs
-    const fromIndex = parseInt(active.id.toString().replace('queue-item-', ''))
-    const toIndex = parseInt(over.id.toString().replace('queue-item-', ''))
-
-    if (isNaN(fromIndex) || isNaN(toIndex)) return
-
-    const currentIndex = status.playlist.current_index
-
-    // Can't move patterns that have already played
-    if (fromIndex < currentIndex) {
-      toast.error("Can't move completed pattern")
-      return
-    }
-    if (toIndex < currentIndex) {
-      toast.error("Can't move to completed position")
-      return
-    }
-
-    // Optimistically update the queue immediately
-    const currentQueue = optimisticQueue || status.playlist.files
-    const newQueue = reorderArray(currentQueue, fromIndex, toIndex)
-    setOptimisticQueue(newQueue)
-
-    try {
-      await apiClient.post('/reorder_playlist', {
-        from_index: fromIndex,
-        to_index: toIndex
-      })
-    } catch {
-      // Revert optimistic update on failure
-      setOptimisticQueue(null)
-      toast.error('Failed to reorder')
-    }
-  }
-
-  // Helper to move queue item to a specific position
-  const moveToPosition = async (fromIndex: number, toIndex: number) => {
-    if (fromIndex === toIndex || !status?.playlist?.files) return
-
-    // Optimistically update the queue immediately
-    const currentQueue = optimisticQueue || status.playlist.files
-    const newQueue = reorderArray(currentQueue, fromIndex, toIndex)
-    setOptimisticQueue(newQueue)
-
-    try {
-      await apiClient.post('/reorder_playlist', {
-        from_index: fromIndex,
-        to_index: toIndex
-      })
-    } catch {
-      // Revert optimistic update on failure
-      setOptimisticQueue(null)
-      toast.error('Failed to reorder')
-    }
-  }
 
   // Don't render if not visible
   if (!isVisible) {
@@ -1314,47 +1119,37 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
           <div className="flex-1 overflow-y-auto -mx-6 px-6 py-2" data-scrollable>
             {status?.playlist && displayQueue.length > 0 ? (
               (() => {
-                // Only show upcoming patterns (after current)
+                const shuffled = Boolean(status.playlist!.shuffled)
+                // With firmware-side shuffle the played order is unknown to the
+                // host — show the playlist's contents instead of "up next".
                 const currentIndex = status.playlist!.current_index
-                const upcomingFiles = displayQueue
-                  .map((file, index) => ({ file, index }))
-                  .filter(({ index }) => index > currentIndex)
+                const items = shuffled
+                  ? displayQueue.map((file, index) => ({ file, index }))
+                  : displayQueue
+                      .map((file, index) => ({ file, index }))
+                      .filter(({ index }) => index > currentIndex)
 
-                if (upcomingFiles.length === 0) {
+                if (items.length === 0) {
                   return <p className="text-center text-muted-foreground py-8">No upcoming patterns</p>
                 }
 
-                const firstUpcomingIndex = upcomingFiles[0].index
-                const lastUpcomingIndex = upcomingFiles[upcomingFiles.length - 1].index
-
                 return (
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleDragEnd}
-                  >
-                    <SortableContext
-                      items={upcomingFiles.map(({ index }) => `queue-item-${index}`)}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      <div className="space-y-1">
-                        {upcomingFiles.map(({ file, index }) => (
-                          <SortableQueueItem
-                            key={`queue-item-${index}`}
-                            id={`queue-item-${index}`}
-                            file={file}
-                            index={index}
-                            previewUrl={queuePreviews[file] || null}
-                            isFirst={index === firstUpcomingIndex}
-                            isLast={index === lastUpcomingIndex}
-                            onMoveToTop={() => moveToPosition(index, firstUpcomingIndex)}
-                            requestPreview={requestQueuePreview}
-                            onMoveToBottom={() => moveToPosition(index, lastUpcomingIndex)}
-                          />
-                        ))}
-                      </div>
-                    </SortableContext>
-                  </DndContext>
+                  <div className="space-y-1">
+                    {shuffled && (
+                      <p className="text-xs text-muted-foreground px-2 pb-1">
+                        Shuffle is on — the table picks the order, so this lists the playlist's patterns, not the play order.
+                      </p>
+                    )}
+                    {items.map(({ file, index }) => (
+                      <QueueItem
+                        key={`queue-item-${index}`}
+                        file={file}
+                        index={index}
+                        previewUrl={queuePreviews[file] || null}
+                        requestPreview={requestQueuePreview}
+                      />
+                    ))}
+                  </div>
                 )
               })()
             ) : (

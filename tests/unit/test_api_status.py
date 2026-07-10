@@ -16,36 +16,32 @@ class TestSerialStatus:
 
     @pytest.mark.asyncio
     async def test_serial_status_when_connected(self, async_client, mock_state):
-        """Test serial_status returns connected state."""
+        """Test serial_status returns connected state and the board URL."""
         mock_state.conn = MagicMock()
         mock_state.conn.is_connected.return_value = True
-        mock_state.port = "/dev/ttyUSB0"
-        mock_state.preferred_port = "__auto__"
 
-        with patch("main.state", mock_state):
+        with patch("main.state", mock_state), \
+             patch("main.connection_manager.board_url", return_value="http://192.168.68.160"):
             response = await async_client.get("/serial_status")
 
         assert response.status_code == 200
         data = response.json()
         assert data["connected"] is True
-        assert data["port"] == "/dev/ttyUSB0"
-        assert data["preferred_port"] == "__auto__"
+        assert data["port"] == "http://192.168.68.160"
 
     @pytest.mark.asyncio
     async def test_serial_status_when_disconnected(self, async_client, mock_state):
-        """Test serial_status returns disconnected state."""
+        """Test serial_status still reports the configured board URL when disconnected."""
         mock_state.conn = None
-        mock_state.port = None
-        mock_state.preferred_port = "__none__"
 
-        with patch("main.state", mock_state):
+        with patch("main.state", mock_state), \
+             patch("main.connection_manager.board_url", return_value="http://192.168.68.160"):
             response = await async_client.get("/serial_status")
 
         assert response.status_code == 200
         data = response.json()
         assert data["connected"] is False
-        assert data["port"] is None
-        assert data["preferred_port"] == "__none__"
+        assert data["port"] == "http://192.168.68.160"
 
     @pytest.mark.asyncio
     async def test_serial_status_with_disconnected_conn(self, async_client, mock_state):
@@ -96,19 +92,12 @@ class TestGetAllSettings:
 
     @pytest.mark.asyncio
     async def test_get_all_settings_returns_expected_structure(self, async_client, mock_state):
-        """Test get_all_settings returns complete settings structure."""
+        """Test get_all_settings returns the unified settings structure."""
         mock_state.app_name = "Test Table"
         mock_state.custom_logo = None
-        mock_state.preferred_port = "__auto__"
         mock_state.clear_pattern_speed = 150
         mock_state.custom_clear_from_in = None
         mock_state.custom_clear_from_out = None
-        mock_state.auto_play_enabled = False
-        mock_state.auto_play_playlist = None
-        mock_state.auto_play_run_mode = "single"
-        mock_state.auto_play_pause_time = 0
-        mock_state.auto_play_clear_pattern = None
-        mock_state.auto_play_shuffle = False
         mock_state.scheduled_pause_enabled = False
         mock_state.scheduled_pause_control_wled = False
         mock_state.scheduled_pause_finish_pattern = False
@@ -121,14 +110,7 @@ class TestGetAllSettings:
         mock_state.auto_home_after_patterns = 10
         mock_state.led_provider = "none"
         mock_state.wled_ip = None
-        mock_state.dw_led_num_leds = 60
-        mock_state.dw_led_gpio_pin = 18
-        mock_state.dw_led_pixel_order = "GRB"
-        mock_state.dw_led_brightness = 50
-        mock_state.dw_led_speed = 128
-        mock_state.dw_led_intensity = 128
-        mock_state.dw_led_idle_effect = "solid"
-        mock_state.dw_led_playing_effect = "rainbow"
+        mock_state.dw_led_control_mode = "automated"
         mock_state.dw_led_idle_timeout_enabled = False
         mock_state.dw_led_idle_timeout_minutes = 30
         mock_state.mqtt_enabled = False
@@ -140,11 +122,6 @@ class TestGetAllSettings:
         mock_state.mqtt_discovery_prefix = "homeassistant"
         mock_state.mqtt_device_id = "dune_weaver_01"
         mock_state.mqtt_device_name = "Dune Weaver"
-        mock_state.table_type = "dune_weaver"
-        mock_state.table_type_override = None
-        mock_state.gear_ratio = 10.0
-        mock_state.x_steps_per_mm = 200.0
-        mock_state.y_steps_per_mm = 287.0
         mock_state.timezone = "UTC"
 
         with patch("main.state", mock_state):
@@ -153,85 +130,22 @@ class TestGetAllSettings:
         assert response.status_code == 200
         data = response.json()
 
-        # Check top-level structure
+        # Check top-level structure (auto_play/connection are gone: auto-play
+        # lives on the board, serial ports no longer exist)
         assert "app" in data
-        assert "connection" in data
         assert "patterns" in data
-        assert "auto_play" in data
         assert "scheduled_pause" in data
         assert "homing" in data
         assert "led" in data
         assert "mqtt" in data
         assert "machine" in data
+        assert "auto_play" not in data
+        assert "connection" not in data
 
         # Verify specific values
         assert data["app"]["name"] == "Test Table"
-        assert data["connection"]["preferred_port"] == "__auto__"
         assert data["patterns"]["clear_pattern_speed"] == 150
-        assert data["machine"]["detected_table_type"] == "dune_weaver"
-
-    @pytest.mark.asyncio
-    async def test_get_all_settings_effective_table_type(self, async_client, mock_state):
-        """Test that effective_table_type uses override when set."""
-        mock_state.app_name = "Test"
-        mock_state.custom_logo = None
-        mock_state.preferred_port = None
-        mock_state.clear_pattern_speed = None
-        mock_state.custom_clear_from_in = None
-        mock_state.custom_clear_from_out = None
-        mock_state.auto_play_enabled = False
-        mock_state.auto_play_playlist = None
-        mock_state.auto_play_run_mode = "single"
-        mock_state.auto_play_pause_time = 0
-        mock_state.auto_play_clear_pattern = None
-        mock_state.auto_play_shuffle = False
-        mock_state.scheduled_pause_enabled = False
-        mock_state.scheduled_pause_control_wled = False
-        mock_state.scheduled_pause_finish_pattern = False
-        mock_state.scheduled_pause_timezone = None
-        mock_state.scheduled_pause_time_slots = []
-        mock_state.homing = 0
-        mock_state.homing_user_override = False
-        mock_state.angular_homing_offset_degrees = 0.0
-        mock_state.auto_home_enabled = False
-        mock_state.auto_home_after_patterns = 10
-        mock_state.led_provider = "none"
-        mock_state.wled_ip = None
-        mock_state.dw_led_num_leds = 60
-        mock_state.dw_led_gpio_pin = 18
-        mock_state.dw_led_pixel_order = "GRB"
-        mock_state.dw_led_brightness = 50
-        mock_state.dw_led_speed = 128
-        mock_state.dw_led_intensity = 128
-        mock_state.dw_led_idle_effect = "solid"
-        mock_state.dw_led_playing_effect = "rainbow"
-        mock_state.dw_led_idle_timeout_enabled = False
-        mock_state.dw_led_idle_timeout_minutes = 30
-        mock_state.mqtt_enabled = False
-        mock_state.mqtt_broker = None
-        mock_state.mqtt_port = 1883
-        mock_state.mqtt_username = None
-        mock_state.mqtt_password = None
-        mock_state.mqtt_client_id = "dune_weaver"
-        mock_state.mqtt_discovery_prefix = "homeassistant"
-        mock_state.mqtt_device_id = "dune_weaver_01"
-        mock_state.mqtt_device_name = "Dune Weaver"
-        mock_state.table_type = "dune_weaver"
-        mock_state.table_type_override = "dune_weaver_mini"  # Override set
-        mock_state.gear_ratio = 6.25
-        mock_state.x_steps_per_mm = 256.0
-        mock_state.y_steps_per_mm = 180.0
-        mock_state.timezone = "UTC"
-
-        with patch("main.state", mock_state):
-            response = await async_client.get("/api/settings")
-
-        assert response.status_code == 200
-        data = response.json()
-
-        assert data["machine"]["detected_table_type"] == "dune_weaver"
-        assert data["machine"]["table_type_override"] == "dune_weaver_mini"
-        assert data["machine"]["effective_table_type"] == "dune_weaver_mini"
+        assert data["machine"]["timezone"] == "UTC"
 
 
 class TestGetTableInfo:

@@ -222,10 +222,7 @@ class TestRunPlaylist:
 
     @pytest.mark.asyncio
     async def test_run_playlist_when_disconnected(self, async_client, mock_state):
-        """Test run_playlist fails when not connected.
-
-        Note: The endpoint catches HTTPException and re-raises as 500.
-        """
+        """Test run_playlist fails when not connected."""
         mock_state.conn = None
         mock_state.is_homing = False
 
@@ -240,17 +237,13 @@ class TestRunPlaylist:
                 }
             )
 
-        # Endpoint wraps in try/except and returns 500
-        assert response.status_code == 500
+        assert response.status_code == 400
         data = response.json()
         assert "not established" in data["detail"].lower()
 
     @pytest.mark.asyncio
     async def test_run_playlist_during_homing(self, async_client, mock_state):
-        """Test run_playlist fails during homing.
-
-        Note: The endpoint catches HTTPException and re-raises as 500.
-        """
+        """Test run_playlist fails during homing."""
         mock_state.is_homing = True
         mock_state.conn = MagicMock()
         mock_state.conn.is_connected.return_value = True
@@ -266,37 +259,54 @@ class TestRunPlaylist:
                 }
             )
 
-        # Endpoint wraps in try/except and returns 500
-        assert response.status_code == 500
+        assert response.status_code == 409
         data = response.json()
         assert "homing" in data["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_run_playlist_delegates_to_board(self, async_client, mock_state):
+        """Test run_playlist hands the run to the firmware-delegation layer."""
+        mock_state.is_homing = False
+        mock_state.conn = MagicMock()
+        mock_state.conn.is_connected.return_value = True
+
+        with patch("main.state", mock_state), \
+             patch("main.execution.start_playlist", new_callable=AsyncMock) as start:
+            response = await async_client.post(
+                "/run_playlist",
+                json={
+                    "playlist_name": "test",
+                    "pause_time": 5,
+                    "clear_pattern": "adaptive",
+                    "run_mode": "indefinite",
+                    "shuffle": True
+                }
+            )
+
+        assert response.status_code == 200
+        start.assert_awaited_once_with(
+            "test", run_mode="indefinite", pause_time=5,
+            clear_pattern="adaptive", shuffle=True,
+        )
 
 
 class TestSkipPattern:
     """Tests for /skip_pattern endpoint."""
 
     @pytest.mark.asyncio
-    async def test_skip_pattern(self, async_client, mock_state):
-        """Test skip_pattern during playlist execution."""
-        mock_state.current_playlist = ["a.thr", "b.thr"]
-        mock_state.current_playlist_index = 0
-        mock_state.skip_requested = False
-
-        with patch("main.state", mock_state):
+    async def test_skip_pattern(self, async_client):
+        """Test skip_pattern delegates to the board."""
+        with patch("main.execution.skip", new_callable=AsyncMock, return_value=True):
             response = await async_client.post("/skip_pattern")
 
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
-        # Endpoint sets skip_requested directly
-        assert mock_state.skip_requested is True
 
     @pytest.mark.asyncio
-    async def test_skip_pattern_no_playlist(self, async_client, mock_state):
-        """Test skip_pattern fails when no playlist is running."""
-        mock_state.current_playlist = None
-
-        with patch("main.state", mock_state):
+    async def test_skip_pattern_no_playlist(self, async_client):
+        """Test skip_pattern fails when nothing is running."""
+        with patch("main.execution.skip", new_callable=AsyncMock, return_value=False):
             response = await async_client.post("/skip_pattern")
 
         assert response.status_code == 400

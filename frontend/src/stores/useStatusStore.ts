@@ -4,8 +4,6 @@ import { apiClient } from '@/lib/apiClient'
 export interface StatusData {
   current_file: string | null
   is_paused: boolean
-  manual_pause: boolean
-  scheduled_pause: boolean
   is_running: boolean
   is_homing: boolean
   is_clearing: boolean
@@ -29,6 +27,9 @@ export interface StatusData {
     next_file: string | null
     files: string[]
     name: string | null
+    // Firmware-side shuffle: the played order is unknown to the host, so the
+    // queue list shows contents, not order.
+    shuffled?: boolean
   } | null
   speed: number
   pause_time_remaining: number

@@ -27,13 +27,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { apiClient } from '@/lib/apiClient'
 import { useStatusStore } from '@/stores/useStatusStore'
 
@@ -55,14 +48,11 @@ export function TableControlPage() {
   }, [speed])
 
   // Serial terminal state
-  const [serialPorts, setSerialPorts] = useState<string[]>([])
-  const [selectedSerialPort, setSelectedSerialPort] = useState('')
-  const [serialConnected, setSerialConnected] = useState(false)
-  const [serialCommand, setSerialCommand] = useState('')
-  const [serialHistory, setSerialHistory] = useState<Array<{ type: 'cmd' | 'resp' | 'error'; text: string; time: string }>>([])
-  const [serialLoading, setSerialLoading] = useState(false)
-  const serialOutputRef = useRef<HTMLDivElement>(null)
-  const serialInputRef = useRef<HTMLInputElement>(null)
+  const [consoleCommand, setConsoleCommand] = useState('')
+  const [consoleHistory, setConsoleHistory] = useState<Array<{ type: 'cmd' | 'resp' | 'error'; text: string; time: string }>>([])
+  const [consoleLoading, setConsoleLoading] = useState(false)
+  const consoleOutputRef = useRef<HTMLDivElement>(null)
+  const consoleInputRef = useRef<HTMLInputElement>(null)
 
   const handleAction = async (
     action: string,
@@ -196,146 +186,54 @@ export function TableControlPage() {
     }
   }
 
-  // Serial terminal functions
-  const fetchSerialPorts = async () => {
-    try {
-      const data = await apiClient.get<string[]>('/list_serial_ports')
-      setSerialPorts(Array.isArray(data) ? data : [])
-    } catch {
-      toast.error('Failed to fetch serial ports')
-    }
-  }
-
-  const fetchMainConnectionStatus = async () => {
-    try {
-      // Fetch available ports first to validate against
-      const portsData = await apiClient.get<string[]>('/list_serial_ports')
-      const availablePorts = Array.isArray(portsData) ? portsData : []
-
-      const data = await apiClient.get<{ connected: boolean; port?: string }>('/serial_status')
-      if (data.connected && data.port) {
-        // Only set port if it exists in available ports
-        // This prevents race conditions where stale port data from a different
-        // backend (e.g., Mac port on a Pi) could be set and auto-connected
-        if (availablePorts.includes(data.port)) {
-          setSelectedSerialPort(data.port)
-        } else {
-          console.warn(`Port ${data.port} from status not in available ports, ignoring`)
-        }
-      }
-    } catch {
-      // Ignore errors
-    }
-  }
-
-  const handleSerialConnect = async (silent = false) => {
-    if (!selectedSerialPort) {
-      if (!silent) toast.error('Please select a serial port')
-      return
-    }
-    setSerialLoading(true)
-    try {
-      await apiClient.post('/api/debug-serial/open', { port: selectedSerialPort })
-      setSerialConnected(true)
-      addSerialHistory('resp', `Connected to ${selectedSerialPort}`)
-      if (!silent) toast.success(`Connected to ${selectedSerialPort}`)
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
-      addSerialHistory('error', `Failed to connect: ${errorMsg}`)
-      if (!silent) toast.error('Failed to connect to serial port')
-    } finally {
-      setSerialLoading(false)
-    }
-  }
-
-  const handleSerialDisconnect = async () => {
-    setSerialLoading(true)
-    try {
-      await apiClient.post('/api/debug-serial/close', { port: selectedSerialPort })
-      setSerialConnected(false)
-      addSerialHistory('resp', 'Disconnected')
-      toast.success('Disconnected from serial port')
-    } catch {
-      toast.error('Failed to disconnect')
-    } finally {
-      setSerialLoading(false)
-    }
-  }
-
-  const addSerialHistory = (type: 'cmd' | 'resp' | 'error', text: string) => {
+  // Board command console: sends $-commands to the FluidNC firmware through
+  // the backend (/api/board/command); output comes from the board's reply and
+  // its rolling session log.
+  const addConsoleHistory = (type: 'cmd' | 'resp' | 'error', text: string) => {
     const time = new Date().toLocaleTimeString()
-    setSerialHistory((prev) => [...prev.slice(-200), { type, text, time }])
+    setConsoleHistory((prev) => [...prev.slice(-200), { type, text, time }])
     setTimeout(() => {
-      if (serialOutputRef.current) {
-        serialOutputRef.current.scrollTop = serialOutputRef.current.scrollHeight
+      if (consoleOutputRef.current) {
+        consoleOutputRef.current.scrollTop = consoleOutputRef.current.scrollHeight
       }
     }, 10)
   }
 
-  const handleSerialSend = async () => {
-    if (!serialCommand.trim() || !serialConnected || serialLoading) return
+  const handleConsoleSend = async () => {
+    if (!consoleCommand.trim() || consoleLoading) return
 
-    const cmd = serialCommand.trim()
-    setSerialCommand('')
-    setSerialLoading(true)
-    addSerialHistory('cmd', cmd)
-
-    try {
-      const data = await apiClient.post<{ responses?: string[]; detail?: string }>('/api/debug-serial/send', { port: selectedSerialPort, command: cmd })
-      if (data.responses) {
-        if (data.responses.length > 0) {
-          data.responses.forEach((line: string) => addSerialHistory('resp', line))
-        } else {
-          addSerialHistory('resp', '(no response)')
-        }
-      } else if (data.detail) {
-        addSerialHistory('error', data.detail || 'Command failed')
-      }
-    } catch (error) {
-      addSerialHistory('error', `Error: ${error}`)
-    } finally {
-      setSerialLoading(false)
-      setTimeout(() => serialInputRef.current?.focus(), 0)
-    }
-  }
-
-  const handleSerialReset = async () => {
-    if (!serialConnected || serialLoading) return
-
-    setSerialLoading(true)
-    addSerialHistory('cmd', '[Soft Reset]')
+    const cmd = consoleCommand.trim()
+    setConsoleCommand('')
+    setConsoleLoading(true)
+    addConsoleHistory('cmd', cmd)
 
     try {
-      // Send soft reset command (backend auto-detects: $Bye for FluidNC, Ctrl+X for GRBL)
-      const data = await apiClient.post<{ responses?: string[]; detail?: string }>('/api/debug-serial/send', { port: selectedSerialPort, command: '\x18' })
-      if (data.responses && data.responses.length > 0) {
-        data.responses.forEach((line: string) => addSerialHistory('resp', line))
+      const data = await apiClient.post<{ responses?: string[]; log?: string; detail?: string }>(
+        '/api/board/command', { command: cmd })
+      const lines = data.responses ?? []
+      if (lines.length > 0) {
+        lines.forEach((line: string) => addConsoleHistory('resp', line))
+      } else if (data.log) {
+        data.log.split('\n').slice(-5).forEach((line: string) => addConsoleHistory('resp', line))
       } else {
-        addSerialHistory('resp', 'Reset sent')
+        addConsoleHistory('resp', '(no response — check the board log)')
       }
-      toast.success('Reset command sent')
     } catch (error) {
-      addSerialHistory('error', `Reset failed: ${error}`)
-      toast.error('Failed to send reset')
+      addConsoleHistory('error', `Error: ${error}`)
     } finally {
-      setSerialLoading(false)
+      setConsoleLoading(false)
+      setTimeout(() => consoleInputRef.current?.focus(), 0)
     }
   }
 
-  const handleSerialKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleConsoleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      if (!serialLoading) {
-        handleSerialSend()
+      if (!consoleLoading) {
+        handleConsoleSend()
       }
     }
   }
-
-  // Fetch serial ports and main connection status on mount
-  useEffect(() => {
-    fetchSerialPorts()
-    fetchMainConnectionStatus()
-  }, [])
 
   return (
     <TooltipProvider>
@@ -692,104 +590,33 @@ export function TableControlPage() {
           </Card>
         </div>
 
-        {/* Serial Terminal */}
+        {/* Board Command Console */}
         <Card className="transition-all duration-200 hover:shadow-md hover:border-primary/20">
           <CardHeader className="pb-3 space-y-3">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 space-y-2">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <span className="material-icons-outlined text-xl">terminal</span>
-                  Serial Terminal
+                  Command Console
                 </CardTitle>
-                <CardDescription className="hidden sm:block">Send raw commands to the table controller</CardDescription>
-                {/* Warning about pattern interference */}
+                <CardDescription className="hidden sm:block">
+                  Send $-commands to the table's firmware (e.g. $Sand/HomingMode, $LED/Effect=fire)
+                </CardDescription>
                 <Alert className="flex items-center border-amber-500/50 py-2">
                   <span className="material-icons-outlined text-amber-500 text-base mr-2 shrink-0">warning</span>
                   <AlertDescription className="text-xs text-amber-600 dark:text-amber-400">
-                    Do not use while a pattern is running. This will interfere with the main connection.
+                    For advanced use. Motion commands sent here can interfere with a running pattern.
                   </AlertDescription>
                 </Alert>
               </div>
-              {/* Clear button - only show on desktop in header */}
-              <div className="hidden sm:flex items-center gap-1">
-                {serialHistory.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setSerialHistory([])}
-                    title="Clear history"
-                  >
-                    <span className="material-icons-outlined">delete_sweep</span>
-                  </Button>
-                )}
-              </div>
-            </div>
-            {/* Controls row - stacks better on mobile */}
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Port selector - auto-refreshes on open */}
-              <Select
-                value={selectedSerialPort}
-                onValueChange={setSelectedSerialPort}
-                onOpenChange={(open) => open && fetchSerialPorts()}
-                disabled={serialConnected || serialLoading}
-              >
-                <SelectTrigger className="h-9 flex-1 min-w-[180px] max-w-[280px]">
-                  <SelectValue placeholder="Select port..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {serialPorts.map((port) => (
-                    <SelectItem key={port} value={port}>{port}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {!serialConnected ? (
-                <Button
-                  size="sm"
-                  onClick={() => handleSerialConnect()}
-                  disabled={!selectedSerialPort || serialLoading}
-                  title="Connect"
-                >
-                  {serialLoading ? (
-                    <span className="material-icons-outlined animate-spin sm:mr-1">sync</span>
-                  ) : (
-                    <span className="material-icons-outlined sm:mr-1">power</span>
-                  )}
-                  <span className="hidden sm:inline">Connect</span>
-                </Button>
-              ) : (
-                <>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={handleSerialDisconnect}
-                    disabled={serialLoading}
-                    title="Disconnect"
-                  >
-                    <span className="material-icons-outlined sm:mr-1">power_off</span>
-                    <span className="hidden sm:inline">Disconnect</span>
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={handleSerialReset}
-                    disabled={serialLoading}
-                    title="Send soft reset to controller"
-                  >
-                    <span className="material-icons-outlined sm:mr-1">restart_alt</span>
-                    <span className="hidden sm:inline">Reset</span>
-                  </Button>
-                </>
-              )}
-              {/* Clear button - show on mobile in controls row */}
-              {serialHistory.length > 0 && (
+              {consoleHistory.length > 0 && (
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="sm:hidden"
-                  onClick={() => setSerialHistory([])}
+                  onClick={() => setConsoleHistory([])}
                   title="Clear history"
                 >
-                  <span className="material-icons-outlined">delete</span>
+                  <span className="material-icons-outlined">delete_sweep</span>
                 </Button>
               )}
             </div>
@@ -797,11 +624,11 @@ export function TableControlPage() {
           <CardContent>
             {/* Output area */}
             <div
-              ref={serialOutputRef}
+              ref={consoleOutputRef}
               className="bg-black/90 rounded-md p-3 h-48 overflow-y-auto font-mono text-sm mb-3"
             >
-              {serialHistory.length > 0 ? (
-                serialHistory.map((entry, i) => (
+              {consoleHistory.length > 0 ? (
+                consoleHistory.map((entry, i) => (
                   <div
                     key={i}
                     className={`${
@@ -819,9 +646,7 @@ export function TableControlPage() {
                 ))
               ) : (
                 <div className="text-gray-500 italic">
-                  {serialConnected
-                    ? 'Ready. Enter a command below (e.g., $, $$, ?, $H)'
-                    : 'Connect to a serial port to send commands'}
+                  Ready. Enter a firmware command (e.g. $Sand/HomingMode, $Playlist/List)
                 </div>
               )}
             </div>
@@ -829,21 +654,20 @@ export function TableControlPage() {
             {/* Input area */}
             <div className="flex gap-2">
               <Input
-                ref={serialInputRef}
-                value={serialCommand}
-                onChange={(e) => setSerialCommand(e.target.value)}
-                onKeyDown={handleSerialKeyDown}
-                disabled={!serialConnected}
-                readOnly={serialLoading}
-                placeholder={serialConnected ? 'Enter command (e.g., $, $$, ?, $H)' : 'Connect to send commands'}
+                ref={consoleInputRef}
+                value={consoleCommand}
+                onChange={(e) => setConsoleCommand(e.target.value)}
+                onKeyDown={handleConsoleKeyDown}
+                readOnly={consoleLoading}
+                placeholder="Enter command (e.g. $Sand/HomingMode)"
                 className="font-mono text-base h-11"
               />
               <Button
-                onClick={handleSerialSend}
-                disabled={!serialConnected || !serialCommand.trim() || serialLoading}
+                onClick={handleConsoleSend}
+                disabled={!consoleCommand.trim() || consoleLoading}
                 className="h-11 px-6"
               >
-                {serialLoading ? (
+                {consoleLoading ? (
                   <span className="material-icons-outlined animate-spin">sync</span>
                 ) : (
                   <span className="material-icons-outlined">send</span>

@@ -128,12 +128,9 @@ export default defineConfig({
       '/stop_execution': 'http://localhost:8080',
       '/force_stop': 'http://localhost:8080',
       '/soft_reset': 'http://localhost:8080',
-      '/controller_restart': 'http://localhost:8080',
       '/pause_execution': 'http://localhost:8080',
       '/resume_execution': 'http://localhost:8080',
       '/skip_pattern': 'http://localhost:8080',
-      '/reorder_playlist': 'http://localhost:8080',
-      '/add_to_queue': 'http://localhost:8080',
       '/run_theta_rho': 'http://localhost:8080',
       '/run_playlist': 'http://localhost:8080',
       // Movement

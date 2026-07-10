@@ -26,10 +26,19 @@ import { ColorPicker } from '@/components/ui/color-picker'
 
 // Types
 interface LedConfig {
-  provider: 'none' | 'wled' | 'dw_leds'
+  provider: 'none' | 'wled' | 'board'
   wled_ip?: string
   num_leds?: number
   gpio_pin?: number
+}
+
+interface BallParams {
+  fgbright: number
+  bgbright: number
+  size: number
+  bg: string
+  direction: 'cw' | 'ccw'
+  align: number
 }
 
 interface DWLedsStatus {
@@ -43,6 +52,7 @@ interface DWLedsStatus {
   num_leds: number
   gpio_pin: number
   colors: string[]
+  ball?: BallParams
   error?: string
 }
 
@@ -63,6 +73,7 @@ export function LEDPage() {
   // DW LEDs state
   const [dwStatus, setDwStatus] = useState<DWLedsStatus | null>(null)
   const [effects, setEffects] = useState<[number, string][]>([])
+  const [effectNames, setEffectNames] = useState<[number, string][]>([])
   const [palettes, setPalettes] = useState<[number, string][]>([])
   const [brightness, setBrightness] = useState(35)
   const [speed, setSpeed] = useState(128)
@@ -74,6 +85,14 @@ export function LEDPage() {
   const [color1, setColor1] = useState('#ff0000')
   const [color2, setColor2] = useState('#000000')
   const [color3, setColor3] = useState('#0000ff')
+
+  // Ball tracker (firmware-native 'ball' effect) params
+  const [ballFgBright, setBallFgBright] = useState(255)
+  const [ballBgBright, setBallBgBright] = useState(255)
+  const [ballSize, setBallSize] = useState(3)
+  const [ballBg, setBallBg] = useState('static')
+  const [ballDirection, setBallDirection] = useState<'cw' | 'ccw'>('cw')
+  const [ballAlign, setBallAlign] = useState(0)
 
   // Ref for debouncing color picker API calls
   const colorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -115,13 +134,13 @@ export function LEDPage() {
     fetchConfig()
   }, [])
 
-  // Initialize DW LEDs when provider is dw_leds
+  // Initialize the control panel for the board provider (the table's own ring
+  // via the firmware). The /api/dw_leds/* endpoints are the shared LED contract.
   useEffect(() => {
-    if (ledConfig?.provider === 'dw_leds') {
+    if (ledConfig?.provider === 'board') {
       fetchDWLedsStatus()
       fetchEffectsAndPalettes()
       fetchEffectSettings()
-      fetchIdleTimeout()
     }
   }, [ledConfig])
 
@@ -142,22 +161,42 @@ export function LEDPage() {
           setColor2(data.colors[1] || '#000000')
           setColor3(data.colors[2] || '#0000ff')
         }
+        if (data.ball) {
+          setBallFgBright(data.ball.fgbright ?? 255)
+          setBallBgBright(data.ball.bgbright ?? 255)
+          setBallSize(data.ball.size ?? 3)
+          setBallBg(data.ball.bg || 'static')
+          setBallDirection(data.ball.direction === 'ccw' ? 'ccw' : 'cw')
+          setBallAlign(data.ball.align ?? 0)
+        }
       }
     } catch (error) {
       console.error('Error fetching DW LEDs status:', error)
     }
   }
 
+  // Push one or more ball-tracker params to the firmware (/sand_led).
+  const sendBall = async (params: Record<string, number | string>) => {
+    try {
+      await apiClient.post('/api/dw_leds/ball', params)
+    } catch {
+      toast.error('Failed to update ball tracker')
+    }
+  }
+
   const fetchEffectsAndPalettes = async () => {
     try {
       const [effectsData, palettesData] = await Promise.all([
-        apiClient.get<{ effects?: [number, string][] }>('/api/dw_leds/effects'),
+        apiClient.get<{ effects?: [number, string][]; names?: [number, string][] }>('/api/dw_leds/effects'),
         apiClient.get<{ palettes?: [number, string][] }>('/api/dw_leds/palettes'),
       ])
 
       if (effectsData.effects) {
         const sorted = [...effectsData.effects].sort((a, b) => a[1].localeCompare(b[1]))
         setEffects(sorted)
+      }
+      if (effectsData.names) {
+        setEffectNames(effectsData.names)
       }
       if (palettesData.palettes) {
         const sorted = [...palettesData.palettes].sort((a, b) => a[1].localeCompare(b[1]))
@@ -175,17 +214,6 @@ export function LEDPage() {
       setPlayingEffect(data.playing_effect || null)
     } catch (error) {
       console.error('Error fetching effect settings:', error)
-    }
-  }
-
-  const fetchIdleTimeout = async () => {
-    try {
-      const data = await apiClient.get<{ enabled?: boolean; minutes?: number }>('/api/dw_leds/idle_timeout')
-      setIdleTimeoutEnabled(data.enabled || false)
-      setIdleTimeoutMinutes(data.minutes || 30)
-      setIdleTimeoutInput(String(data.minutes || 30))
-    } catch (error) {
-      console.error('Error fetching idle timeout:', error)
     }
   }
 
@@ -365,6 +393,9 @@ export function LEDPage() {
   const formatEffectSettings = (settings: EffectSettings | null) => {
     if (!settings) return 'Not configured'
     const effectName = effects.find((e) => e[0] === settings.effect_id)?.[1] || settings.effect_id
+    // Board-provider automation stores only the effect name (the firmware keeps
+    // its current palette/speed/colors); other fields come back null.
+    if (settings.palette_id == null) return String(effectName)
     const paletteName = palettes.find((p) => p[0] === settings.palette_id)?.[1] || settings.palette_id
     return `${effectName} | ${paletteName} | Speed: ${settings.speed} | Intensity: ${settings.intensity}`
   }
@@ -392,7 +423,7 @@ export function LEDPage() {
         <div className="space-y-2">
           <h1 className="text-xl sm:text-2xl font-bold">LED Controller Not Configured</h1>
           <p className="text-sm sm:text-base text-muted-foreground max-w-md">
-            Configure your LED controller (WLED or DW LEDs) in the Settings page to control your lights.
+            Configure your LED controller (the table's built-in LEDs or WLED) in the Settings page to control your lights.
           </p>
         </div>
         <Button asChild className="gap-2">
@@ -472,18 +503,35 @@ export function LEDPage() {
     )
   }
 
-  // DW LEDs control panel
+  // LED control panel (board = the table's ring via firmware; dw_leds = legacy host GPIO)
+  const isBoard = ledConfig.provider === 'board'
+  // The firmware-native 'ball' tracker: detected by the selected effect's label.
+  const isBallEffect = effects.find(([id]) => String(id) === selectedEffect)?.[1] === 'Ball'
+  // Background sub-effect choices for the ball (firmware effect names, + static/off).
+  const ballBgOptions = [
+    { value: 'static', label: 'Solid color' },
+    { value: 'off', label: 'Off (black)' },
+    ...effectNames
+      .filter(([, name]) => !['ball', 'off', 'static'].includes(name))
+      .map(([id, name]) => ({
+        value: name,
+        label: effects.find(([eid]) => eid === id)?.[1] || name,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+  ]
   return (
     <div className="flex flex-col w-full max-w-5xl mx-auto gap-6 py-3 sm:py-6 px-0 sm:px-4">
       {/* Page Header */}
       <div className="space-y-0.5 sm:space-y-1 pl-1">
         <h1 className="text-xl font-semibold tracking-tight">LED Control</h1>
-        <p className="text-xs text-muted-foreground">DW LEDs - GPIO controlled LED strip</p>
+        <p className="text-xs text-muted-foreground">
+          {isBoard ? "Table's built-in LED ring, controlled by the firmware" : 'DW LEDs - GPIO controlled LED strip'}
+        </p>
       </div>
 
       <Separator />
 
-      {modeSelector}
+      {!isBoard && modeSelector}
 
       {/* Main Control Grid - 2 columns on large screens */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -520,7 +568,7 @@ export function LEDPage() {
                       {dwStatus?.connected ? 'check_circle' : 'error'}
                     </span>
                     {dwStatus?.connected
-                      ? `${dwStatus.num_leds} LEDs on GPIO ${dwStatus.gpio_pin}`
+                      ? (isBoard ? 'Table LEDs connected' : `${dwStatus.num_leds} LEDs on GPIO ${dwStatus.gpio_pin}`)
                       : 'Not connected'}
                   </div>
 
@@ -630,6 +678,8 @@ export function LEDPage() {
                     step={1}
                   />
                 </div>
+                {/* The firmware has no intensity control — dw_leds only */}
+                {!isBoard && (
                 <div className="p-4 rounded-lg border space-y-3">
                   <div className="flex justify-between items-center">
                     <Label>
@@ -669,9 +719,127 @@ export function LEDPage() {
                     step={1}
                   />
                 </div>
+                )}
               </div>
             </CardContent>
           </Card>
+
+          {/* Ball Tracker Card — firmware-native effect that follows the sand
+              ball. Shown when the 'Ball' effect is selected on the board. */}
+          {isBoard && isBallEffect && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <span className="material-icons-outlined text-muted-foreground">sports_baseball</span>
+                  Ball Tracker
+                </CardTitle>
+                <CardDescription>A glowing dot that follows the sand ball around the ring.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Blob controls */}
+                <div className="space-y-4">
+                  <p className="text-sm font-medium text-muted-foreground">Blob (the dot that tracks the ball)</p>
+                  <div className="flex items-center justify-between gap-4">
+                    <Label>Blob color</Label>
+                    <ColorPicker value={color1} onChange={(color) => handleColorChange(1, color)} />
+                  </div>
+                  <div className="p-4 rounded-lg border space-y-3">
+                    <div className="flex justify-between items-center">
+                      <Label>Blob brightness</Label>
+                      <span className="text-sm font-medium">{ballFgBright}</span>
+                    </div>
+                    <Slider
+                      value={[ballFgBright]}
+                      onValueChange={(v) => setBallFgBright(v[0])}
+                      onValueCommit={(v) => { setBallFgBright(v[0]); sendBall({ fgbright: v[0] }) }}
+                      max={255}
+                      step={1}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Direction</Label>
+                      <Select
+                        value={ballDirection}
+                        onValueChange={(v) => { const d = v as 'cw' | 'ccw'; setBallDirection(d); sendBall({ direction: d }) }}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cw">Clockwise</SelectItem>
+                          <SelectItem value="ccw">Counter-clockwise</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="p-4 rounded-lg border space-y-3">
+                      <div className="flex justify-between items-center">
+                        <Label>Glow size</Label>
+                        <span className="text-sm font-medium">{ballSize}</span>
+                      </div>
+                      <Slider
+                        value={[ballSize]}
+                        onValueChange={(v) => setBallSize(v[0])}
+                        onValueCommit={(v) => { setBallSize(v[0]); sendBall({ size: v[0] }) }}
+                        min={1}
+                        max={30}
+                        step={1}
+                      />
+                    </div>
+                  </div>
+                  <div className="p-4 rounded-lg border space-y-3">
+                    <div className="flex justify-between items-center">
+                      <Label>Alignment (°)</Label>
+                      <span className="text-sm font-medium">{ballAlign}</span>
+                    </div>
+                    <Slider
+                      value={[ballAlign]}
+                      onValueChange={(v) => setBallAlign(v[0])}
+                      onValueCommit={(v) => { setBallAlign(v[0]); sendBall({ align: v[0] }) }}
+                      max={359}
+                      step={1}
+                    />
+                    <p className="text-xs text-muted-foreground">Rotate the blob so it sits on the ball.</p>
+                  </div>
+                </div>
+
+                {/* Background controls */}
+                <div className="space-y-4 pt-2 border-t">
+                  <p className="text-sm font-medium text-muted-foreground">Background (behind the blob)</p>
+                  <div className="space-y-2">
+                    <Label>Background</Label>
+                    <Select value={ballBg} onValueChange={(v) => { setBallBg(v); sendBall({ bg: v }) }}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {ballBgOptions.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {ballBg === 'static' && (
+                    <div className="flex items-center justify-between gap-4">
+                      <Label>Background color</Label>
+                      <ColorPicker value={color2} onChange={(color) => handleColorChange(2, color)} />
+                    </div>
+                  )}
+                  {ballBg !== 'off' && (
+                    <div className="p-4 rounded-lg border space-y-3">
+                      <div className="flex justify-between items-center">
+                        <Label>Background brightness</Label>
+                        <span className="text-sm font-medium">{ballBgBright}</span>
+                      </div>
+                      <Slider
+                        value={[ballBgBright]}
+                        onValueChange={(v) => setBallBgBright(v[0])}
+                        onValueCommit={(v) => { setBallBgBright(v[0]); sendBall({ bgbright: v[0] }) }}
+                        max={255}
+                        step={1}
+                      />
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Right Column - Colors & Quick Settings */}
@@ -700,6 +868,8 @@ export function LEDPage() {
                   />
                   <span className="text-xs text-muted-foreground">Secondary</span>
                 </div>
+                {/* The firmware only has two colors (Color/Color2) — dw_leds only */}
+                {!isBoard && (
                 <div className="flex flex-col items-center gap-2">
                   <ColorPicker
                     value={color3}
@@ -707,12 +877,14 @@ export function LEDPage() {
                   />
                   <span className="text-xs text-muted-foreground">Accent</span>
                 </div>
+                )}
               </div>
             </CardContent>
           </Card>
 
-          {/* Auto Turn Off - hidden in manual mode */}
-          {controlMode === 'automated' && (
+          {/* Auto Turn Off - host-side idle timeout, dw_leds only (the board's
+              own Still Sands / IdleEffect cover this for built-in LEDs) */}
+          {!isBoard && controlMode === 'automated' && (
           <Card className="flex-1 flex flex-col">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -765,8 +937,10 @@ export function LEDPage() {
         </div>
       </div>
 
-      {/* Automation Settings - Full Width - hidden in manual mode */}
-      {controlMode === 'automated' && (
+      {/* Automation Settings - Full Width - hidden in manual mode.
+          For board LEDs the switching happens on the table itself
+          ($LED/RunEffect / $LED/IdleEffect), so it's always available. */}
+      {(isBoard || controlMode === 'automated') && (
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
@@ -774,7 +948,9 @@ export function LEDPage() {
             Effect Automation
           </CardTitle>
           <CardDescription>
-            Save current settings to automatically apply when table state changes
+            {isBoard
+              ? 'The table switches to these effects by itself while drawing and at rest'
+              : 'Save current settings to automatically apply when table state changes'}
           </CardDescription>
         </CardHeader>
         <CardContent>

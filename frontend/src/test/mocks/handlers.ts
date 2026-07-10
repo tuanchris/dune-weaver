@@ -222,32 +222,12 @@ export const handlers = [
     return HttpResponse.json({ success: true })
   }),
 
-  http.post('/reorder_playlist', async ({ request }) => {
-    const body = await request.json() as { from_index: number; to_index: number }
-    // Reorder the current queue
-    const queue = [...mockData.status.queue]
-    const [item] = queue.splice(body.from_index, 1)
-    queue.splice(body.to_index, 0, item)
-    mockData.status.queue = queue
-    return HttpResponse.json({ success: true })
-  }),
-
   http.post('/add_to_playlist', async ({ request }) => {
     const body = await request.json() as { playlist_name: string; file_path: string }
     if (!mockData.playlists[body.playlist_name]) {
       mockData.playlists[body.playlist_name] = []
     }
     mockData.playlists[body.playlist_name].push(body.file_path)
-    return HttpResponse.json({ success: true })
-  }),
-
-  http.post('/add_to_queue', async ({ request }) => {
-    const body = await request.json() as { file: string; position?: 'next' | 'end' }
-    if (body.position === 'next') {
-      mockData.status.queue.unshift(body.file)
-    } else {
-      mockData.status.queue.push(body.file)
-    }
     return HttpResponse.json({ success: true })
   }),
 

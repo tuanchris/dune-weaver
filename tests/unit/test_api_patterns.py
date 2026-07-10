@@ -219,7 +219,7 @@ class TestStopExecution:
         mock_state.conn.is_connected.return_value = True
 
         with patch("main.state", mock_state):
-            with patch("main.pattern_manager.stop_actions", new_callable=AsyncMock, return_value=True):
+            with patch("main.execution.stop", new_callable=AsyncMock, return_value=True):
                 response = await async_client.post("/stop_execution")
 
         assert response.status_code == 200
@@ -245,9 +245,8 @@ class TestPauseResumeExecution:
     @pytest.mark.asyncio
     async def test_pause_execution(self, async_client):
         """Test pause_execution endpoint."""
-        # Mock check_table_is_idle to return False (something is playing)
-        with patch("main.pattern_manager.check_table_is_idle", return_value=False):
-            with patch("main.pattern_manager.pause_execution", return_value=True):
+        with patch("main.execution.get_cached_status", return_value={"is_running": True}):
+            with patch("main.execution.pause", new_callable=AsyncMock):
                 response = await async_client.post("/pause_execution")
 
         assert response.status_code == 200
@@ -257,8 +256,8 @@ class TestPauseResumeExecution:
     @pytest.mark.asyncio
     async def test_pause_execution_when_idle(self, async_client):
         """Test pause_execution returns 400 when nothing is playing."""
-        # Mock check_table_is_idle to return True (table is idle)
-        with patch("main.pattern_manager.check_table_is_idle", return_value=True):
+        with patch("main.execution.get_cached_status",
+                   return_value={"is_running": False, "pause_time_remaining": 0}):
             response = await async_client.post("/pause_execution")
 
         assert response.status_code == 400
@@ -268,15 +267,9 @@ class TestPauseResumeExecution:
     @pytest.mark.asyncio
     async def test_resume_execution(self, async_client):
         """Test resume_execution endpoint."""
-        # Mock state.pause_requested to True (execution is paused)
-        from main import state
-        original_value = state.pause_requested
-        try:
-            state.pause_requested = True
-            with patch("main.pattern_manager.resume_execution", return_value=True):
+        with patch("main.execution.get_cached_status", return_value={"is_paused": True}):
+            with patch("main.execution.resume", new_callable=AsyncMock):
                 response = await async_client.post("/resume_execution")
-        finally:
-            state.pause_requested = original_value
 
         assert response.status_code == 200
         data = response.json()
@@ -285,14 +278,8 @@ class TestPauseResumeExecution:
     @pytest.mark.asyncio
     async def test_resume_execution_when_not_paused(self, async_client):
         """Test resume_execution returns 400 when not paused."""
-        # Mock state.pause_requested to False (not paused)
-        from main import state
-        original_value = state.pause_requested
-        try:
-            state.pause_requested = False
+        with patch("main.execution.get_cached_status", return_value={"is_paused": False}):
             response = await async_client.post("/resume_execution")
-        finally:
-            state.pause_requested = original_value
 
         assert response.status_code == 400
         data = response.json()

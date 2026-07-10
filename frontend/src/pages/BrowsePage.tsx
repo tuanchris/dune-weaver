@@ -763,25 +763,6 @@ export function BrowsePage() {
     }
   }
 
-  const handleAddToQueue = async (position: 'next' | 'end') => {
-    if (!selectedPattern) return
-
-    try {
-      await apiClient.post('/add_to_queue', {
-        pattern: selectedPattern.path,
-        position,
-      })
-      toast.success(position === 'next' ? 'Playing next' : 'Added to queue')
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to add to queue'
-      if (message.includes('400') || message.includes('No playlist')) {
-        toast.error('No playlist is currently running')
-      } else {
-        toast.error(message)
-      }
-    }
-  }
-
   const getPreviewUrl = (path: string) => {
     const preview = previews[path]
     return preview?.image_data || null
@@ -1243,27 +1224,6 @@ export function BrowsePage() {
                   )}
                 </div>
 
-                {/* Queue buttons */}
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 gap-1.5"
-                    onClick={() => handleAddToQueue('next')}
-                  >
-                    <span className="material-icons-outlined text-base">playlist_play</span>
-                    Play Next
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 gap-1.5"
-                    onClick={() => handleAddToQueue('end')}
-                  >
-                    <span className="material-icons-outlined text-base">playlist_add</span>
-                    Add to Queue
-                  </Button>
-                </div>
               </div>
             </div>
           )}

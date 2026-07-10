@@ -5,22 +5,9 @@ Provides a common abstraction layer for pattern manager integration.
 import asyncio
 from typing import Optional, Literal
 from modules.led.led_controller import LEDController, effect_loading as wled_loading, effect_idle as wled_idle, effect_connected as wled_connected, effect_playing as wled_playing
+from modules.led.board_led_controller import BoardLEDController
 
-# Try to import DW LED controller - it requires RPi-specific dependencies
-try:
-    from modules.led.dw_led_controller import DWLEDController, effect_loading as dw_led_loading, effect_idle as dw_led_idle, effect_connected as dw_led_connected, effect_playing as dw_led_playing
-    DW_LEDS_AVAILABLE = True
-except ImportError:
-    # Running on non-RPi platform - DW LEDs not available
-    DWLEDController = None
-    dw_led_loading = None
-    dw_led_idle = None
-    dw_led_connected = None
-    dw_led_playing = None
-    DW_LEDS_AVAILABLE = False
-
-
-LEDProviderType = Literal["wled", "dw_leds", "none"]
+LEDProviderType = Literal["wled", "board", "none"]
 
 
 class LEDInterface:
@@ -37,17 +24,9 @@ class LEDInterface:
 
         if provider == "wled" and ip_address:
             self._controller = LEDController(ip_address)
-        elif provider == "dw_leds":
-            if not DW_LEDS_AVAILABLE:
-                raise ImportError("DW LED controller requires Raspberry Pi GPIO libraries. Install with: pip install -r requirements.txt")
-            # DW LEDs uses local GPIO, no IP needed
-            num_leds = num_leds or 60
-            gpio_pin = gpio_pin or 12
-            pixel_order = pixel_order or "GRB"
-            brightness = brightness if brightness is not None else 0.35
-            speed = speed if speed is not None else 128
-            intensity = intensity if intensity is not None else 128
-            self._controller = DWLEDController(num_leds, gpio_pin, brightness, pixel_order=pixel_order, speed=speed, intensity=intensity)
+        elif provider == "board":
+            # The table's own LED ring, driven by the FluidNC firmware.
+            self._controller = BoardLEDController()
 
     @property
     def is_configured(self) -> bool:
@@ -69,18 +48,14 @@ class LEDInterface:
 
         if provider == "wled" and ip_address:
             self._controller = LEDController(ip_address)
-        elif provider == "dw_leds":
-            if not DW_LEDS_AVAILABLE:
-                raise ImportError("DW LED controller requires Raspberry Pi GPIO libraries. Install with: pip install -r requirements.txt")
-            num_leds = num_leds or 60
-            gpio_pin = gpio_pin or 12
-            pixel_order = pixel_order or "GRB"
-            brightness = brightness if brightness is not None else 0.35
-            speed = speed if speed is not None else 128
-            intensity = intensity if intensity is not None else 128
-            self._controller = DWLEDController(num_leds, gpio_pin, brightness, pixel_order=pixel_order, speed=speed, intensity=intensity)
+        elif provider == "board":
+            self._controller = BoardLEDController()
         else:
             self._controller = None
+
+    # NOTE: for the "board" provider the effect_* transition hooks below fall
+    # through to False on purpose — the firmware switches run/idle effects
+    # itself ($LED/RunEffect / $LED/IdleEffect); the host must not fight it.
 
     def effect_loading(self) -> bool:
         """Show loading effect"""
@@ -89,8 +64,6 @@ class LEDInterface:
 
         if self.provider == "wled":
             return wled_loading(self._controller)
-        elif self.provider == "dw_leds":
-            return dw_led_loading(self._controller)
         return False
 
     def effect_idle(self, effect_name: Optional[str] = None) -> bool:
@@ -100,8 +73,6 @@ class LEDInterface:
 
         if self.provider == "wled":
             return wled_idle(self._controller)
-        elif self.provider == "dw_leds":
-            return dw_led_idle(self._controller, effect_name)
         return False
 
     def effect_connected(self) -> bool:
@@ -111,8 +82,6 @@ class LEDInterface:
 
         if self.provider == "wled":
             return wled_connected(self._controller)
-        elif self.provider == "dw_leds":
-            return dw_led_connected(self._controller)
         return False
 
     def effect_playing(self, effect_name: Optional[str] = None) -> bool:
@@ -122,8 +91,6 @@ class LEDInterface:
 
         if self.provider == "wled":
             return wled_playing(self._controller)
-        elif self.provider == "dw_leds":
-            return dw_led_playing(self._controller, effect_name)
         return False
 
     def set_power(self, state: int) -> dict:
@@ -140,7 +107,7 @@ class LEDInterface:
 
         if self.provider == "wled":
             return self._controller.check_wled_status()
-        elif self.provider == "dw_leds":
+        elif self.provider == "board":
             return self._controller.check_status()
 
         return {"connected": False, "message": "Unknown provider"}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams, useNavigate, Link } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { apiClient } from '@/lib/apiClient'
 import { useOnBackendConnected } from '@/hooks/useBackendConnection'
@@ -18,9 +18,7 @@ import {
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -33,16 +31,6 @@ import { UpdateDialog } from '@/components/UpdateDialog'
 interface Settings {
   app_name?: string
   custom_logo?: string
-  preferred_port?: string
-  // Machine settings
-  table_type_override?: string
-  detected_table_type?: string
-  effective_table_type?: string
-  gear_ratio?: number
-  gear_ratio_override?: number | null
-  x_steps_per_mm?: number
-  y_steps_per_mm?: number
-  available_table_types?: { value: string; label: string }[]
   // Homing settings
   homing_mode?: number
   angular_offset?: number
@@ -71,21 +59,29 @@ interface StillSandsSettings {
   time_slots: TimeSlot[]
 }
 
+// Auto-play on boot lives on the board ($Playlist/Autostart*): it fires when
+// the table powers on and homes, independent of this backend. enabled is
+// derived from a non-empty playlist, like the mobile app.
 interface AutoPlaySettings {
   enabled: boolean
   playlist: string
   run_mode: 'single' | 'loop'
   pause_time: number
+  pause_from_start: boolean
   clear_pattern: string
   shuffle: boolean
 }
 
+interface BoardTime {
+  epoch: number
+  synced: boolean
+  local: string
+  tz: string
+}
+
 interface LedConfig {
-  provider: 'none' | 'wled' | 'dw_leds'
+  provider: 'none' | 'wled' | 'board'
   wled_ip?: string
-  num_leds?: number
-  gpio_pin?: number
-  pixel_order?: string
 }
 
 interface MqttConfig {
@@ -105,16 +101,15 @@ export function SettingsPage() {
   const navigate = useNavigate()
   const sectionParam = searchParams.get('section')
 
-  // Connection state
-  const [ports, setPorts] = useState<string[]>([])
-  const [selectedPort, setSelectedPort] = useState('')
+  // Connection state — the board is reached over HTTP (FluidNC firmware),
+  // identified by an IP or hostname instead of a serial port.
+  const [boardAddress, setBoardAddress] = useState('')
   const [isConnected, setIsConnected] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState('Disconnected')
 
   // Settings state
   const [settings, setSettings] = useState<Settings>({})
-  const [ledConfig, setLedConfig] = useState<LedConfig>({ provider: 'none', gpio_pin: 18 })
-  const [numLedsInput, setNumLedsInput] = useState('60')
+  const [ledConfig, setLedConfig] = useState<LedConfig>({ provider: 'none' })
   const [mqttConfig, setMqttConfig] = useState<MqttConfig>({ enabled: false })
 
   // UI state
@@ -129,15 +124,18 @@ export function SettingsPage() {
   // Track which sections have been loaded (for lazy loading)
   const [loadedSections, setLoadedSections] = useState<Set<string>>(new Set())
 
-  // Auto-play state
+  // Auto-play state (read from / written to the board)
   const [autoPlaySettings, setAutoPlaySettings] = useState<AutoPlaySettings>({
     enabled: false,
     playlist: '',
     run_mode: 'loop',
-    pause_time: 5,
-    clear_pattern: 'adaptive',
+    pause_time: 0,
+    pause_from_start: false,
+    clear_pattern: 'none',
     shuffle: false,
   })
+  const [boardReachable, setBoardReachable] = useState(true)
+  const [boardTime, setBoardTime] = useState<BoardTime | null>(null)
   const [autoPlayPauseUnit, setAutoPlayPauseUnit] = useState<'sec' | 'min' | 'hr'>('min')
   const [autoPlayPauseValue, setAutoPlayPauseValue] = useState(5)
   const [autoPlayPauseInput, setAutoPlayPauseInput] = useState('5')
@@ -218,8 +216,7 @@ export function SettingsPage() {
 
     switch (section) {
       case 'connection':
-        await fetchPorts()
-        // Also load settings for preferred port
+        await fetchConnection()
         if (!loadedSections.has('_settings')) {
           setLoadedSections((prev) => new Set(prev).add('_settings'))
           await fetchSettings()
@@ -229,7 +226,6 @@ export function SettingsPage() {
       case 'mqtt':
       case 'autoplay':
       case 'stillsands':
-      case 'machine':
       case 'homing':
       case 'clearing':
       case 'security':
@@ -241,6 +237,10 @@ export function SettingsPage() {
         if ((section === 'autoplay' || section === 'clearing') && !loadedSections.has('_playlists')) {
           setLoadedSections((prev) => new Set(prev).add('_playlists'))
           await fetchPlaylists()
+        }
+        if ((section === 'autoplay' || section === 'stillsands') && !loadedSections.has('_board')) {
+          setLoadedSections((prev) => new Set(prev).add('_board'))
+          await fetchBoardSettings()
         }
         if (section === 'clearing' && !loadedSections.has('_patterns')) {
           setLoadedSections((prev) => new Set(prev).add('_patterns'))
@@ -304,41 +304,33 @@ export function SettingsPage() {
     })
   }, [])
 
-  const fetchPorts = async () => {
+  const fetchConnection = async () => {
     try {
-      // Fetch available ports first
-      const portsData = await apiClient.get<string[]>('/list_serial_ports')
-      const availablePorts = portsData || []
-      setPorts(availablePorts)
-
-      // Fetch connection status
+      // The backend reports the configured board URL as the single "port".
       const statusData = await apiClient.get<{ connected: boolean; port?: string }>('/serial_status')
       setIsConnected(statusData.connected || false)
-      setConnectionStatus(statusData.connected ? 'Connected' : 'Disconnected')
-
-      // Only set selectedPort if it exists in the available ports list
-      // This prevents race conditions where stale port data from a different
-      // backend (e.g., Mac port on a Pi) could be set
-      if (statusData.port && availablePorts.includes(statusData.port)) {
-        setSelectedPort(statusData.port)
-      } else if (statusData.port && !availablePorts.includes(statusData.port)) {
-        // Port from status doesn't exist on this machine - likely stale data
-        console.warn(`Port ${statusData.port} from status not in available ports, ignoring`)
-        setSelectedPort('')
+      setConnectionStatus(
+        statusData.connected ? `Connected to ${statusData.port || 'board'}` : 'Disconnected'
+      )
+      if (statusData.port) {
+        setBoardAddress((prev) => prev || statusData.port || '')
+      } else {
+        const urls = await apiClient.get<string[]>('/list_serial_ports')
+        if (urls?.[0]) setBoardAddress((prev) => prev || urls[0])
       }
     } catch (error) {
-      console.error('Error fetching ports:', error)
+      console.error('Error fetching connection status:', error)
     }
   }
 
-  // Always fetch ports on mount since connection is the default section
+  // Always fetch connection state on mount since connection is the default section
   useEffect(() => {
-    fetchPorts()
+    fetchConnection()
   }, [])
 
   // Refetch when backend reconnects
   useOnBackendConnected(() => {
-    fetchPorts()
+    fetchConnection()
   })
 
   const fetchSettings = async () => {
@@ -349,16 +341,6 @@ export function SettingsPage() {
       setSettings({
         app_name: data.app?.name,
         custom_logo: data.app?.custom_logo,
-        preferred_port: data.connection?.preferred_port,
-        // Machine settings
-        table_type_override: data.machine?.table_type_override,
-        detected_table_type: data.machine?.detected_table_type,
-        effective_table_type: data.machine?.effective_table_type,
-        gear_ratio: data.machine?.gear_ratio,
-        gear_ratio_override: data.machine?.gear_ratio_override ?? null,
-        x_steps_per_mm: data.machine?.x_steps_per_mm,
-        y_steps_per_mm: data.machine?.y_steps_per_mm,
-        available_table_types: data.machine?.available_table_types,
         // Homing settings
         homing_mode: data.homing?.mode,
         angular_offset: data.homing?.angular_offset_degrees,
@@ -371,22 +353,6 @@ export function SettingsPage() {
         custom_clear_from_in: data.patterns?.custom_clear_from_in,
         custom_clear_from_out: data.patterns?.custom_clear_from_out,
       })
-      // Set auto-play settings
-      if (data.auto_play) {
-        const pauseSeconds = data.auto_play.pause_time ?? 300 // Default 5 minutes
-        const { value, unit } = secondsToDisplayPause(pauseSeconds)
-        setAutoPlayPauseValue(value)
-        setAutoPlayPauseInput(String(value))
-        setAutoPlayPauseUnit(unit)
-        setAutoPlaySettings({
-          enabled: data.auto_play.enabled || false,
-          playlist: data.auto_play.playlist || '',
-          run_mode: data.auto_play.run_mode || 'loop',
-          pause_time: pauseSeconds,
-          clear_pattern: data.auto_play.clear_pattern || 'adaptive',
-          shuffle: data.auto_play.shuffle || false,
-        })
-      }
       // Set still sands settings
       if (data.scheduled_pause) {
         setStillSandsSettings({
@@ -427,13 +393,39 @@ export function SettingsPage() {
       setLedConfig({
         provider: data.provider || 'none',
         wled_ip: data.wled_ip,
-        num_leds: data.dw_led_num_leds,
-        gpio_pin: data.dw_led_gpio_pin,
-        pixel_order: data.dw_led_pixel_order,
       })
-      setNumLedsInput(String(data.dw_led_num_leds || 60))
     } catch (error) {
       console.error('Error fetching LED config:', error)
+    }
+  }
+
+  const fetchBoardSettings = async () => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = await apiClient.get<Record<string, any>>('/api/board/settings')
+      setBoardReachable(!!data.reachable)
+      if (!data.reachable) return
+      if (data.time) setBoardTime(data.time)
+      if (data.autostart) {
+        const a = data.autostart
+        const pauseSeconds = a.pause_seconds ?? 0
+        const { value, unit } = secondsToDisplayPause(pauseSeconds)
+        setAutoPlayPauseValue(value)
+        setAutoPlayPauseInput(String(value))
+        setAutoPlayPauseUnit(unit)
+        setAutoPlaySettings({
+          enabled: !!a.playlist,
+          playlist: a.playlist || '',
+          run_mode: a.run_mode === 'single' ? 'single' : 'loop',
+          pause_time: pauseSeconds,
+          pause_from_start: !!a.pause_from_start,
+          clear_pattern: a.clear_pattern || 'none',
+          shuffle: !!a.shuffle,
+        })
+      }
+    } catch (error) {
+      console.error('Error fetching board settings:', error)
+      setBoardReachable(false)
     }
   }
 
@@ -448,22 +440,22 @@ export function SettingsPage() {
   }
 
   const handleConnect = async () => {
-    if (!selectedPort) {
-      toast.error('Please select a port')
+    if (!boardAddress.trim()) {
+      toast.error('Enter the table IP or hostname')
       return
     }
     setIsLoading('connect')
     try {
-      const data = await apiClient.post<{ success?: boolean; message?: string }>('/connect', { port: selectedPort })
+      const data = await apiClient.post<{ success?: boolean; message?: string }>('/connect', { port: boardAddress.trim() })
       if (data.success) {
         setIsConnected(true)
-        setConnectionStatus(`Connected to ${selectedPort}`)
-        toast.success('Connected successfully')
+        setConnectionStatus(`Connected to ${boardAddress.trim()}`)
+        toast.success('Connected to the table')
       } else {
         throw new Error(data.message || 'Connection failed')
       }
     } catch (error) {
-      toast.error('Failed to connect')
+      toast.error('Could not reach the table at that address')
     } finally {
       setIsLoading(null)
     }
@@ -480,28 +472,6 @@ export function SettingsPage() {
       }
     } catch (error) {
       toast.error('Failed to disconnect')
-    } finally {
-      setIsLoading(null)
-    }
-  }
-
-  const handleSavePreferredPort = async () => {
-    setIsLoading('preferredPort')
-    try {
-      // Send the actual value: __auto__, __none__, or specific port
-      const portValue = settings.preferred_port || '__auto__'
-      await apiClient.patch('/api/settings', {
-        connection: { preferred_port: portValue },
-      })
-      if (!settings.preferred_port || settings.preferred_port === '__auto__') {
-        toast.success('Auto-connect: Auto (first available port)')
-      } else if (settings.preferred_port === '__none__') {
-        toast.success('Auto-connect: Disabled')
-      } else {
-        toast.success(`Auto-connect: ${settings.preferred_port}`)
-      }
-    } catch (error) {
-      toast.error('Failed to save auto-connect setting')
     } finally {
       setIsLoading(null)
     }
@@ -577,13 +547,9 @@ export function SettingsPage() {
   const handleSaveLedConfig = async () => {
     setIsLoading('led')
     try {
-      // Use the /set_led_config endpoint (deprecated but still works)
       await apiClient.post('/set_led_config', {
         provider: ledConfig.provider,
         ip_address: ledConfig.wled_ip,
-        num_leds: ledConfig.num_leds,
-        gpio_pin: ledConfig.gpio_pin,
-        pixel_order: ledConfig.pixel_order,
       })
       toast.success('LED configuration saved')
     } catch (error) {
@@ -642,23 +608,6 @@ export function SettingsPage() {
     }
   }
 
-  const handleSaveMachineSettings = async () => {
-    setIsLoading('machine')
-    try {
-      await apiClient.patch('/api/settings', {
-        machine: {
-          table_type_override: settings.table_type_override || '',
-          gear_ratio_override: settings.gear_ratio_override ?? 0,
-        },
-      })
-      toast.success('Machine settings saved')
-    } catch (error) {
-      toast.error('Failed to save machine settings')
-    } finally {
-      setIsLoading(null)
-    }
-  }
-
   const handleSaveHomingConfig = async () => {
     setIsLoading('homing')
     try {
@@ -700,19 +649,27 @@ export function SettingsPage() {
   }
 
   const handleSaveAutoPlaySettings = async () => {
+    if (autoPlaySettings.enabled && !autoPlaySettings.playlist) {
+      toast.error('Choose a startup playlist first')
+      return
+    }
     setIsLoading('autoplay')
     try {
-      // Convert pause value + unit to seconds
       const pauseTimeSeconds = displayPauseToSeconds(autoPlayPauseValue, autoPlayPauseUnit)
-      await apiClient.patch('/api/settings', {
-        auto_play: {
-          ...autoPlaySettings,
-          pause_time: pauseTimeSeconds,
+      // Stored on the board: an empty playlist disables auto-play on boot.
+      await apiClient.patch('/api/board/settings', {
+        autostart: {
+          playlist: autoPlaySettings.enabled ? autoPlaySettings.playlist : '',
+          run_mode: autoPlaySettings.run_mode,
+          shuffle: autoPlaySettings.shuffle,
+          pause_seconds: pauseTimeSeconds,
+          pause_from_start: autoPlaySettings.pause_from_start,
+          clear_pattern: autoPlaySettings.clear_pattern,
         },
       })
-      toast.success('Auto-play settings saved')
+      toast.success('Auto-play saved to the table')
     } catch (error) {
-      toast.error('Failed to save auto-play settings')
+      toast.error('Could not save — is the table connected?')
     } finally {
       setIsLoading(null)
     }
@@ -721,12 +678,27 @@ export function SettingsPage() {
   const handleSaveStillSandsSettings = async () => {
     setIsLoading('stillsands')
     try {
+      // The backend also pushes these to the table's own quiet-hours settings
+      // ($Sands/*), so playlists started on the table honor the same schedule.
       await apiClient.patch('/api/settings', {
         scheduled_pause: stillSandsSettings,
       })
       toast.success('Still Sands settings saved')
     } catch (error) {
       toast.error('Failed to save Still Sands settings')
+    } finally {
+      setIsLoading(null)
+    }
+  }
+
+  const handleSyncBoardTime = async () => {
+    setIsLoading('synctime')
+    try {
+      const data = await apiClient.post<{ success: boolean; time?: BoardTime }>('/api/board/sync_time')
+      if (data.time) setBoardTime(data.time)
+      toast.success('Table clock synced')
+    } catch (error) {
+      toast.error('Could not sync the table clock')
     } finally {
       setIsLoading(null)
     }
@@ -773,17 +745,17 @@ export function SettingsPage() {
         onValueChange={handleAccordionChange}
         className="space-y-3"
       >
-        {/* Device Connection */}
+        {/* Table Connection */}
         <AccordionItem value="connection" id="section-connection" className="border rounded-lg px-4 overflow-visible bg-card">
           <AccordionTrigger className="hover:no-underline">
             <div className="flex items-center gap-3">
               <span className="material-icons-outlined text-muted-foreground">
-                usb
+                wifi
               </span>
               <div className="text-left">
-                <div className="font-semibold">Device Connection</div>
+                <div className="font-semibold">Table Connection</div>
                 <div className="text-sm text-muted-foreground font-normal">
-                  Serial port configuration
+                  Controller board address
                 </div>
               </div>
             </div>
@@ -794,7 +766,7 @@ export function SettingsPage() {
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 flex items-center justify-center rounded-lg ${isConnected ? 'bg-green-100 dark:bg-green-900' : 'bg-muted'}`}>
                   <span className={`material-icons ${isConnected ? 'text-green-600' : 'text-muted-foreground'}`}>
-                    {isConnected ? 'usb' : 'usb_off'}
+                    {isConnected ? 'wifi' : 'wifi_off'}
                   </span>
                 </div>
                 <div>
@@ -816,31 +788,22 @@ export function SettingsPage() {
               )}
             </div>
 
-            {/* Port Selection */}
+            {/* Board address */}
             <div className="space-y-3">
-              <Label>Available Serial Ports</Label>
+              <Label htmlFor="board-address">Table address</Label>
               <div className="flex gap-3">
-                <Select value={selectedPort} onValueChange={setSelectedPort}>
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Select a port..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ports.length === 0 ? (
-                      <div className="py-6 text-center text-sm text-muted-foreground">
-                        No serial ports found
-                      </div>
-                    ) : (
-                      ports.map((port) => (
-                        <SelectItem key={port} value={port}>
-                          {port}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                <Input
+                  id="board-address"
+                  value={boardAddress}
+                  onChange={(e) => setBoardAddress(e.target.value)}
+                  placeholder="IP or host (e.g. 192.168.68.160)"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  className="flex-1"
+                />
                 <Button
                   onClick={handleConnect}
-                  disabled={isLoading === 'connect' || !selectedPort || isConnected}
+                  disabled={isLoading === 'connect' || !boardAddress.trim()}
                   className="gap-2"
                 >
                   {isLoading === 'connect' ? (
@@ -852,55 +815,8 @@ export function SettingsPage() {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Select a port and click 'Connect' to establish a connection.
-              </p>
-            </div>
-
-            <Separator />
-
-            {/* Preferred Port for Auto-Connect */}
-            <div className="space-y-3">
-              <Label>Auto-Connect</Label>
-              <div className="flex gap-3">
-                <Select
-                  value={settings.preferred_port || '__auto__'}
-                  onValueChange={(value) =>
-                    setSettings({ ...settings, preferred_port: value === '__auto__' ? undefined : value })
-                  }
-                >
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Select auto-connect option..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__auto__">Auto (pick first available)</SelectItem>
-                    <SelectItem value="__none__">Disabled (no auto-connect)</SelectItem>
-                    {ports.length > 0 && (
-                      <>
-                        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Available Ports</div>
-                        {ports.map((port) => (
-                          <SelectItem key={port} value={port}>
-                            {port}
-                          </SelectItem>
-                        ))}
-                      </>
-                    )}
-                  </SelectContent>
-                </Select>
-                <Button
-                  onClick={handleSavePreferredPort}
-                  disabled={isLoading === 'preferredPort'}
-                  className="gap-2"
-                >
-                  {isLoading === 'preferredPort' ? (
-                    <span className="material-icons-outlined animate-spin">sync</span>
-                  ) : (
-                    <span className="material-icons-outlined">save</span>
-                  )}
-                  Save
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Choose how the system connects on startup: Auto picks the first available port, Disabled requires manual connection, or select a specific port.
+                The FluidNC controller inside the table, on the same network as this server.
+                The address is saved and reconnected automatically on startup.
               </p>
             </div>
 
@@ -932,144 +848,6 @@ export function SettingsPage() {
                 />
               </div>
             </div>
-          </AccordionContent>
-        </AccordionItem>
-
-        {/* Machine Settings */}
-        <AccordionItem value="machine" id="section-machine" className="border rounded-lg px-4 overflow-visible bg-card">
-          <AccordionTrigger className="hover:no-underline">
-            <div className="flex items-center gap-3">
-              <span className="material-icons-outlined text-muted-foreground">
-                precision_manufacturing
-              </span>
-              <div className="text-left">
-                <div className="font-semibold">Machine Settings</div>
-                <div className="text-sm text-muted-foreground font-normal">
-                  Table type and hardware configuration
-                </div>
-              </div>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="pt-4 pb-6 space-y-6">
-            {/* Hardware Parameters */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="p-3 rounded-lg bg-muted/50">
-                <p className="text-xs text-muted-foreground">Detected Type</p>
-                <p className="font-medium text-sm">{settings.detected_table_type || 'Unknown'}</p>
-              </div>
-              <div className="p-3 rounded-lg bg-muted/50">
-                <p className="text-xs text-muted-foreground">Gear Ratio</p>
-                <p className="font-medium text-sm">{settings.gear_ratio ?? '—'}</p>
-              </div>
-              <div className="p-3 rounded-lg bg-muted/50">
-                <p className="text-xs text-muted-foreground">X Steps/mm</p>
-                <p className="font-medium text-sm">{settings.x_steps_per_mm ?? '—'}</p>
-              </div>
-              <div className="p-3 rounded-lg bg-muted/50">
-                <p className="text-xs text-muted-foreground">Y Steps/mm</p>
-                <p className="font-medium text-sm">{settings.y_steps_per_mm ?? '—'}</p>
-              </div>
-            </div>
-
-            {/* Table Type Override */}
-            <div className="space-y-3">
-              <Label>Table Type Override</Label>
-              <div className="flex gap-3">
-                <Select
-                  value={settings.table_type_override || 'auto'}
-                  onValueChange={(value) =>
-                    setSettings({ ...settings, table_type_override: value === 'auto' ? undefined : value })
-                  }
-                >
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Auto-detect (use detected type)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="auto">Auto-detect (use detected type)</SelectItem>
-                    {settings.available_table_types?.map((type) => (
-                      <SelectItem key={type.value} value={type.value}>
-                        {type.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  onClick={handleSaveMachineSettings}
-                  disabled={isLoading === 'machine'}
-                  className="gap-2"
-                >
-                  {isLoading === 'machine' ? (
-                    <span className="material-icons-outlined animate-spin">sync</span>
-                  ) : (
-                    <span className="material-icons-outlined">save</span>
-                  )}
-                  Save
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Override the automatically detected table type. This affects gear ratio calculations and homing behavior.
-              </p>
-            </div>
-
-            {/* Gear Ratio Override */}
-            <div className="space-y-3">
-              <Label>Gear Ratio Override</Label>
-              <div className="flex gap-3">
-                <Input
-                  type="number"
-                  step={0.25}
-                  min={0}
-                  placeholder="Auto-detect"
-                  value={settings.gear_ratio_override ?? ''}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      gear_ratio_override: e.target.value ? parseFloat(e.target.value) : null,
-                    })
-                  }
-                  className="flex-1"
-                />
-                <Button
-                  onClick={handleSaveMachineSettings}
-                  disabled={isLoading === 'machine'}
-                  className="gap-2"
-                >
-                  {isLoading === 'machine' ? (
-                    <span className="material-icons-outlined animate-spin">sync</span>
-                  ) : (
-                    <span className="material-icons-outlined">save</span>
-                  )}
-                  Save
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Override the gear ratio used for angular/radial coupling compensation. Leave empty to auto-detect from table type (6.25 for mini, 10 for standard).
-              </p>
-            </div>
-
-            <Alert className="flex items-start">
-              <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
-              <AlertDescription>
-                Table type is normally detected automatically from GRBL settings. Use override if auto-detection is incorrect for your hardware.
-              </AlertDescription>
-            </Alert>
-
-            <Link
-              to="/setup"
-              className="flex items-center justify-between w-full p-3 rounded-lg border hover:bg-muted/50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <span className="material-icons-outlined text-muted-foreground">build</span>
-                <div className="text-left">
-                  <p className="font-medium text-sm">Hardware Setup & Calibration</p>
-                  <p className="text-xs text-muted-foreground">
-                    Calibrate motor directions and edit FluidNC settings
-                  </p>
-                </div>
-              </div>
-              <span className="material-icons-outlined text-muted-foreground">arrow_forward</span>
-            </Link>
-
           </AccordionContent>
         </AccordionItem>
 
@@ -1482,7 +1260,7 @@ export function SettingsPage() {
               <div className="text-left">
                 <div className="font-semibold">LED Controller</div>
                 <div className="text-sm text-muted-foreground font-normal">
-                  WLED or local GPIO LED control
+                  Table LEDs or WLED control
                 </div>
               </div>
             </div>
@@ -1503,15 +1281,29 @@ export function SettingsPage() {
                   <Label htmlFor="led-none" className="font-normal">None</Label>
                 </div>
                 <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="board" id="led-board" />
+                  <Label htmlFor="led-board" className="font-normal">Table LEDs (built-in)</Label>
+                </div>
+                <div className="flex items-center space-x-2">
                   <RadioGroupItem value="wled" id="led-wled" />
                   <Label htmlFor="led-wled" className="font-normal">WLED</Label>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="dw_leds" id="led-dw" />
-                  <Label htmlFor="led-dw" className="font-normal">DW LEDs (GPIO)</Label>
-                </div>
               </RadioGroup>
             </div>
+
+            {/* Board LEDs info */}
+            {ledConfig.provider === 'board' && (
+              <div className="space-y-3 p-4 rounded-lg border">
+                <Alert className="flex items-start">
+                  <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
+                  <AlertDescription>
+                    The LED ring wired to the table's controller board, driven by the
+                    firmware. Effects, colors and brightness are controlled from the
+                    LED page and persist on the table itself.
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )}
 
             {/* WLED Config */}
             {ledConfig.provider === 'wled' && (
@@ -1528,95 +1320,6 @@ export function SettingsPage() {
                 <p className="text-xs text-muted-foreground">
                   Enter the IP address of your WLED controller
                 </p>
-              </div>
-            )}
-
-            {/* DW LEDs Config */}
-            {ledConfig.provider === 'dw_leds' && (
-              <div className="space-y-3 p-4 rounded-lg border">
-                <Alert className="flex items-start">
-                  <span className="material-icons-outlined text-base mr-2 shrink-0">info</span>
-                  <AlertDescription>
-                    Supports WS2812, WS2812B, SK6812 and other WS281x LED strips
-                  </AlertDescription>
-                </Alert>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-3">
-                    <Label htmlFor="numLeds">Number of LEDs</Label>
-                    <Input
-                      id="numLeds"
-                      type="text"
-                      inputMode="numeric"
-                      value={numLedsInput}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/[^0-9]/g, '')
-                        setNumLedsInput(val)
-                      }}
-                      onBlur={() => {
-                        const num = Math.min(1000, Math.max(1, parseInt(numLedsInput) || 60))
-                        setLedConfig({ ...ledConfig, num_leds: num })
-                        setNumLedsInput(String(num))
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          const num = Math.min(1000, Math.max(1, parseInt(numLedsInput) || 60))
-                          setLedConfig({ ...ledConfig, num_leds: num })
-                          setNumLedsInput(String(num))
-                        }
-                      }}
-                    />
-                  </div>
-                  <div className="space-y-3">
-                    <Label htmlFor="gpioPin">GPIO Pin</Label>
-                    <Select
-                      value={String(ledConfig.gpio_pin || 18)}
-                      onValueChange={(value) =>
-                        setLedConfig({ ...ledConfig, gpio_pin: parseInt(value) })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="12">GPIO 12 (PWM0)</SelectItem>
-                        <SelectItem value="13">GPIO 13 (PWM1)</SelectItem>
-                        <SelectItem value="18">GPIO 18 (PWM0)</SelectItem>
-                        <SelectItem value="19">GPIO 19 (PWM1)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <Label htmlFor="pixelOrder">Pixel Color Order</Label>
-                  <Select
-                    value={ledConfig.pixel_order || 'RGB'}
-                    onValueChange={(value) =>
-                      setLedConfig({ ...ledConfig, pixel_order: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectLabel>RGB Strips (3-channel)</SelectLabel>
-                        <SelectItem value="RGB">RGB - WS2815/WS2811</SelectItem>
-                        <SelectItem value="GRB">GRB - WS2812/WS2812B</SelectItem>
-                        <SelectItem value="BGR">BGR - Some WS2811 variants</SelectItem>
-                        <SelectItem value="RBG">RBG - Rare variant</SelectItem>
-                        <SelectItem value="GBR">GBR - Rare variant</SelectItem>
-                        <SelectItem value="BRG">BRG - Rare variant</SelectItem>
-                      </SelectGroup>
-                      <SelectGroup>
-                        <SelectLabel>RGBW Strips (4-channel)</SelectLabel>
-                        <SelectItem value="GRBW">GRBW - SK6812 RGBW</SelectItem>
-                        <SelectItem value="RGBW">RGBW - SK6812 variant</SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
             )}
 
@@ -1802,17 +1505,26 @@ export function SettingsPage() {
               <div className="text-left">
                 <div className="font-semibold">Auto-play on Boot</div>
                 <div className="text-sm text-muted-foreground font-normal">
-                  Start a playlist automatically on startup
+                  Start a playlist when the table powers on
                 </div>
               </div>
             </div>
           </AccordionTrigger>
           <AccordionContent className="pt-4 pb-6 space-y-6">
+            {!boardReachable && (
+              <Alert>
+                <AlertDescription>
+                  The table is not reachable, so its saved auto-play settings can't be shown.
+                  Connect to the table first (Table Connection above).
+                </AlertDescription>
+              </Alert>
+            )}
             <div className="flex items-center justify-between p-4 rounded-lg border">
               <div>
                 <p className="font-medium">Enable Auto-play</p>
                 <p className="text-sm text-muted-foreground">
-                  Automatically start playing when the system boots
+                  Automatically start a playlist after the table powers on and homes.
+                  Stored on the table, so it works even when this server is off.
                 </p>
               </div>
               <Switch
@@ -1933,9 +1645,9 @@ export function SettingsPage() {
                       <SelectContent>
                         <SelectItem value="none">None</SelectItem>
                         <SelectItem value="adaptive">Adaptive</SelectItem>
-                        <SelectItem value="clear_from_in">Clear From Center</SelectItem>
-                        <SelectItem value="clear_from_out">Clear From Perimeter</SelectItem>
-                        <SelectItem value="clear_sideway">Clear Sideways</SelectItem>
+                        <SelectItem value="in">Clear From Center</SelectItem>
+                        <SelectItem value="out">Clear From Perimeter</SelectItem>
+                        <SelectItem value="sideway">Clear Sideways</SelectItem>
                         <SelectItem value="random">Random</SelectItem>
                       </SelectContent>
                     </Select>
@@ -1958,6 +1670,21 @@ export function SettingsPage() {
                       }
                     />
                   </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">Pause From Start</p>
+                    <p className="text-xs text-muted-foreground">
+                      Measure the gap from each pattern's start, not its end
+                    </p>
+                  </div>
+                  <Switch
+                    checked={autoPlaySettings.pause_from_start}
+                    onCheckedChange={(checked) =>
+                      setAutoPlaySettings({ ...autoPlaySettings, pause_from_start: checked })
+                    }
+                  />
                 </div>
               </div>
             )}
@@ -1993,11 +1720,47 @@ export function SettingsPage() {
             </div>
           </AccordionTrigger>
           <AccordionContent className="pt-4 pb-6 space-y-6">
+            {/* Table clock — quiet hours only fire on the table when its clock is set */}
+            <div className="flex items-center justify-between p-4 rounded-lg border">
+              <div className="flex items-center gap-3">
+                <span className="material-icons-outlined text-muted-foreground">schedule</span>
+                <div>
+                  <p className="font-medium">Table Clock</p>
+                  <p className="text-sm text-muted-foreground">
+                    {boardTime
+                      ? `${boardTime.local || '—'} · ${boardTime.tz || 'no timezone'} · ${boardTime.synced ? 'synced' : 'not set'}`
+                      : 'No clock reported — is the table connected?'}
+                  </p>
+                  {boardTime && !boardTime.synced && (
+                    <p className="text-xs text-destructive mt-1">
+                      The table clock isn't set, so schedules won't fire on the table.
+                      The server syncs it on connect — sync now to set it immediately.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleSyncBoardTime}
+                disabled={isLoading === 'synctime'}
+                className="gap-2"
+              >
+                {isLoading === 'synctime' ? (
+                  <span className="material-icons-outlined animate-spin text-base">sync</span>
+                ) : (
+                  <span className="material-icons-outlined text-base">sync</span>
+                )}
+                Sync
+              </Button>
+            </div>
+
             <div className="flex items-center justify-between p-4 rounded-lg border">
               <div>
                 <p className="font-medium">Enable Still Sands</p>
                 <p className="text-sm text-muted-foreground">
-                  Pause the table during specified time periods
+                  Pause the table during scheduled quiet periods. Shared with the
+                  table itself, so playlists started from a phone stay quiet too.
                 </p>
               </div>
               <Switch
@@ -2040,9 +1803,9 @@ export function SettingsPage() {
                         lightbulb
                       </span>
                       <div>
-                        <p className="text-sm font-medium">Control LED Lights</p>
+                        <p className="text-sm font-medium">Turn Off LEDs</p>
                         <p className="text-xs text-muted-foreground">
-                          Turn off LED lights during still periods
+                          Switch off the lights during still periods (WLED and the table's LED ring)
                         </p>
                       </div>
                     </div>

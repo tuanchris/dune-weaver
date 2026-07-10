@@ -12,6 +12,8 @@ from modules.connection import connection_manager
 from modules.core import pattern_manager
 from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR
 from modules.core import playlist_manager
+from modules.core import board_settings
+from modules.core import execution
 from modules.update import update_manager
 from modules.core.state import state
 from modules import mqtt
@@ -129,45 +131,20 @@ async def lifespan(app: FastAPI):
                         state.is_homing = False
                         logger.info("Background homing completed")
 
-                # After homing (or skip), check for auto_play mode
-                if state.auto_play_enabled and state.auto_play_playlist:
-                    logger.info(f"Homing complete, checking auto_play playlist: {state.auto_play_playlist}")
-                    try:
-                        playlist_exists = playlist_manager.get_playlist(state.auto_play_playlist) is not None
-                        if not playlist_exists:
-                            logger.warning(f"Auto-play playlist '{state.auto_play_playlist}' not found. Clearing invalid reference.")
-                            state.auto_play_playlist = None
-                            state.save()
-                        elif state.conn and state.conn.is_connected():
-                            logger.info(f"Starting auto-play playlist: {state.auto_play_playlist}")
-                            asyncio.create_task(playlist_manager.run_playlist(
-                                state.auto_play_playlist,
-                                pause_time=state.auto_play_pause_time,
-                                clear_pattern=state.auto_play_clear_pattern,
-                                run_mode=state.auto_play_run_mode,
-                                shuffle=state.auto_play_shuffle
-                            ))
-                    except Exception as e:
-                        logger.error(f"Failed to auto-play playlist: {str(e)}")
+                # Auto-play on boot lives on the board ($Playlist/Autostart,
+                # set via Settings) — nothing to do host-side.
         except Exception as e:
-            logger.warning(f"Failed to auto-connect to serial port: {str(e)}")
+            logger.warning(f"Failed to auto-connect to board: {str(e)}")
 
     # Start connection/homing in background - doesn't block server startup
     asyncio.create_task(connect_and_home())
 
-    # Keep app state in sync with the board. During playback the pattern
-    # executor polls /sand_status at a higher rate; this low-rate poller keeps
-    # theta/rho/state fresh while idle (after jogs, homing, board-side changes).
-    async def board_status_poller():
-        while True:
-            try:
-                if state.conn and state.conn.is_connected():
-                    await asyncio.to_thread(connection_manager.poll_status_once)
-            except Exception as e:
-                logger.debug(f"Idle status poll failed: {e}")
-            await asyncio.sleep(2.0)
-
-    asyncio.create_task(board_status_poller())
+    # The board observer is the single status loop: it polls /sand_status,
+    # translates it into the /ws/status contract, logs play history on file
+    # transitions, runs the clear-speed and WLED quiet-hours shims, adopts
+    # board-side Still Sands edits, and broadcasts to all clients.
+    execution.observer.on_status = broadcast_status_update
+    execution.observer.start()
 
     # Initialize LED controller based on saved configuration
     try:
@@ -181,31 +158,15 @@ async def lifespan(app: FastAPI):
         if state.led_provider == "wled" and state.wled_ip:
             state.led_controller = LEDInterface("wled", state.wled_ip)
             logger.info(f"LED controller initialized: WLED at {state.wled_ip}")
-        elif state.led_provider == "dw_leds":
-            state.led_controller = LEDInterface(
-                "dw_leds",
-                num_leds=state.dw_led_num_leds,
-                gpio_pin=state.dw_led_gpio_pin,
-                pixel_order=state.dw_led_pixel_order,
-                brightness=state.dw_led_brightness / 100.0,
-                speed=state.dw_led_speed,
-                intensity=state.dw_led_intensity
-            )
-            logger.info(f"LED controller initialized: DW LEDs ({state.dw_led_num_leds} LEDs on GPIO{state.dw_led_gpio_pin}, pixel order: {state.dw_led_pixel_order})")
-
-            # Initialize hardware and start idle effect (matches behavior of /set_led_config)
-            status = state.led_controller.check_status()
-            if status.get("connected", False):
-                if state.led_automation_enabled:
-                    state.led_controller.effect_idle(state.dw_led_idle_effect)
-                    _start_idle_led_timeout()
-                    logger.info("DW LEDs hardware initialized and idle effect started")
-                else:
-                    logger.info("DW LEDs hardware initialized (manual mode, no auto-effect)")
-            else:
-                error_msg = status.get("error", "Unknown error")
-                logger.warning(f"DW LED hardware initialization failed: {error_msg}")
+        elif state.led_provider == "board":
+            state.led_controller = LEDInterface("board")
+            logger.info("LED controller initialized: table's built-in LEDs (firmware-controlled)")
         else:
+            if state.led_provider == "dw_leds":
+                # Host GPIO NeoPixels were removed — the table's own ring
+                # (firmware-controlled) replaced them.
+                logger.warning("LED provider 'dw_leds' no longer exists; "
+                               "select 'Table LEDs' in Settings")
             state.led_controller = None
             logger.info("LED controller not configured")
 
@@ -253,112 +214,6 @@ async def lifespan(app: FastAPI):
     # Start cache check in background immediately
     asyncio.create_task(delayed_cache_check())
 
-    # Start idle timeout monitor
-    async def idle_timeout_monitor():
-        """Monitor LED idle timeout and turn off LEDs when timeout expires."""
-        import time
-        while True:
-            try:
-                await asyncio.sleep(30)  # Check every 30 seconds
-
-                if not state.dw_led_idle_timeout_enabled:
-                    continue
-
-                if not state.led_automation_enabled:
-                    continue
-
-                if not state.led_controller or not state.led_controller.is_configured:
-                    continue
-
-                # Check if we're currently playing a pattern
-                is_playing = bool(state.current_playing_file or state.current_playlist)
-                if is_playing:
-                    # Reset activity time when playing
-                    state.dw_led_last_activity_time = time.time()
-                    continue
-
-                # If no activity time set, initialize it
-                if state.dw_led_last_activity_time is None:
-                    state.dw_led_last_activity_time = time.time()
-                    continue
-
-                # Calculate idle duration
-                idle_seconds = time.time() - state.dw_led_last_activity_time
-                timeout_seconds = state.dw_led_idle_timeout_minutes * 60
-
-                # Turn off LEDs if timeout expired
-                if idle_seconds >= timeout_seconds:
-                    status = state.led_controller.check_status()
-                    # Check both "power" (WLED) and "power_on" (DW LEDs) keys
-                    is_powered_on = status.get("power", False) or status.get("power_on", False)
-                    if is_powered_on:  # Only turn off if currently on
-                        logger.info(f"Idle timeout ({state.dw_led_idle_timeout_minutes} minutes) expired, turning off LEDs")
-                        state.led_controller.set_power(0)
-                        # Reset activity time to prevent repeated turn-off attempts
-                        state.dw_led_last_activity_time = time.time()
-
-            except Exception as e:
-                logger.error(f"Error in idle timeout monitor: {e}")
-                await asyncio.sleep(60)  # Wait longer on error
-
-    asyncio.create_task(idle_timeout_monitor())
-
-    # Start Still Sands LED monitor for idle table
-    async def still_sands_led_monitor():
-        """Monitor Still Sands transitions when the table is idle and no playlist is running.
-
-        Handles the case where a Still Sands period starts/ends while the table is completely
-        idle (no pattern or playlist active). Without this, LEDs would stay on all night
-        if the table was idle when the quiet period began.
-        """
-        from modules.core.pattern_manager import is_in_scheduled_pause_period, start_idle_led_timeout
-
-        was_in_still_sands = False
-        while True:
-            try:
-                await asyncio.sleep(30)  # Check every 30 seconds
-
-                # Skip if LED control during Still Sands is disabled
-                if not state.scheduled_pause_control_wled:
-                    was_in_still_sands = False
-                    continue
-
-                # Skip if no LED controller configured
-                if not state.led_controller or not state.led_controller.is_configured:
-                    was_in_still_sands = False
-                    continue
-
-                # Skip if a pattern or playlist is actively running —
-                # the pattern_manager handles Still Sands in that case
-                is_playing = bool(state.current_playing_file or state.current_playlist)
-                if is_playing:
-                    was_in_still_sands = False
-                    continue
-
-                in_still_sands = is_in_scheduled_pause_period()
-
-                if in_still_sands and not was_in_still_sands:
-                    # Entering Still Sands while idle — turn off LEDs
-                    status = state.led_controller.check_status()
-                    is_powered_on = status.get("power", False) or status.get("power_on", False)
-                    if is_powered_on:
-                        logger.info("Still Sands period started while idle, turning off LEDs")
-                        state.led_controller.set_power(0)
-                elif not in_still_sands and was_in_still_sands:
-                    # Leaving Still Sands while idle — restore idle effect and restart timeout
-                    if state.led_automation_enabled:
-                        logger.info("Still Sands period ended while idle, restoring idle LED effect")
-                        await start_idle_led_timeout(check_still_sands=False)
-                    else:
-                        logger.info("Manual mode: Still Sands ended, LEDs remain off")
-
-                was_in_still_sands = in_still_sands
-
-            except Exception as e:
-                logger.error(f"Error in Still Sands LED monitor: {e}")
-                await asyncio.sleep(60)  # Wait longer on error
-
-    asyncio.create_task(still_sands_led_monitor())
 
     # Advertise this table via mDNS and browse for peer tables (best-effort)
     try:
@@ -492,21 +347,10 @@ class AppSettingsUpdate(BaseModel):
     name: Optional[str] = None
     custom_logo: Optional[str] = None  # Filename or empty string to clear (favicon auto-generated)
 
-class ConnectionSettingsUpdate(BaseModel):
-    preferred_port: Optional[str] = None
-
 class PatternSettingsUpdate(BaseModel):
     clear_pattern_speed: Optional[int] = None
     custom_clear_from_in: Optional[str] = None
     custom_clear_from_out: Optional[str] = None
-
-class AutoPlaySettingsUpdate(BaseModel):
-    enabled: Optional[bool] = None
-    playlist: Optional[str] = None
-    run_mode: Optional[str] = None
-    pause_time: Optional[float] = None
-    clear_pattern: Optional[str] = None
-    shuffle: Optional[bool] = None
 
 class ScheduledPauseSettingsUpdate(BaseModel):
     enabled: Optional[bool] = None
@@ -523,23 +367,12 @@ class HomingSettingsUpdate(BaseModel):
     auto_home_after_patterns: Optional[int] = None
     hard_reset_theta: Optional[bool] = None  # Enable hard reset ($Bye) when resetting theta
 
-class DwLedSettingsUpdate(BaseModel):
-    num_leds: Optional[int] = None
-    gpio_pin: Optional[int] = None
-    pixel_order: Optional[str] = None
-    brightness: Optional[int] = None
-    speed: Optional[int] = None
-    intensity: Optional[int] = None
-    idle_effect: Optional[dict] = None
-    playing_effect: Optional[dict] = None
-    idle_timeout_enabled: Optional[bool] = None
-    idle_timeout_minutes: Optional[int] = None
-
 class LedSettingsUpdate(BaseModel):
-    provider: Optional[str] = None  # "none", "wled", "dw_leds"
+    provider: Optional[str] = None  # "none", "wled", "board"
     wled_ip: Optional[str] = None
     control_mode: Optional[str] = None  # "manual" or "automated"
-    dw_led: Optional[DwLedSettingsUpdate] = None
+    idle_timeout_enabled: Optional[bool] = None
+    idle_timeout_minutes: Optional[int] = None
 
 class MqttSettingsUpdate(BaseModel):
     enabled: Optional[bool] = None
@@ -553,8 +386,6 @@ class MqttSettingsUpdate(BaseModel):
     device_name: Optional[str] = None
 
 class MachineSettingsUpdate(BaseModel):
-    table_type_override: Optional[str] = None  # Override detected table type, or empty string/"auto" to clear
-    gear_ratio_override: Optional[float] = None  # Override gear ratio, or 0/negative to clear
     timezone: Optional[str] = None  # IANA timezone (e.g., "America/New_York", "UTC")
 
 class SecuritySettingsUpdate(BaseModel):
@@ -567,9 +398,7 @@ class SecurityVerifyRequest(BaseModel):
 class SettingsUpdate(BaseModel):
     """Request model for PATCH /api/settings - all fields optional for partial updates"""
     app: Optional[AppSettingsUpdate] = None
-    connection: Optional[ConnectionSettingsUpdate] = None
     patterns: Optional[PatternSettingsUpdate] = None
-    auto_play: Optional[AutoPlaySettingsUpdate] = None
     scheduled_pause: Optional[ScheduledPauseSettingsUpdate] = None
     homing: Optional[HomingSettingsUpdate] = None
     led: Optional[LedSettingsUpdate] = None
@@ -583,25 +412,20 @@ active_cache_progress_connections = set()
 
 @app.websocket("/ws/status")
 async def websocket_status_endpoint(websocket: WebSocket):
+    """Status stream. The board observer pushes every update via
+    broadcast_status_update; this handler only sends the cached snapshot on
+    connect and then holds the socket open."""
     await websocket.accept()
     active_status_connections.add(websocket)
     try:
+        await websocket.send_json({
+            "type": "status_update",
+            "data": execution.get_cached_status()
+        })
         while True:
-            status = pattern_manager.get_status()
-            try:
-                await websocket.send_json({
-                    "type": "status_update",
-                    "data": status
-                })
-            except RuntimeError as e:
-                if "close message has been sent" in str(e):
-                    break
-                raise
-            # Use longer interval during pattern execution to reduce asyncio overhead
-            # This helps prevent timing-related serial corruption on Pi 3B+
-            interval = 2.0 if state.current_playing_file else 1.0
-            await asyncio.sleep(interval)
-    except WebSocketDisconnect:
+            # Drain any client messages (none are expected) until disconnect.
+            await websocket.receive_text()
+    except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
         active_status_connections.discard(websocket)
@@ -765,21 +589,10 @@ async def get_all_settings():
             "name": state.app_name,
             "custom_logo": state.custom_logo
         },
-        "connection": {
-            "preferred_port": state.preferred_port
-        },
         "patterns": {
             "clear_pattern_speed": state.clear_pattern_speed,
             "custom_clear_from_in": state.custom_clear_from_in,
             "custom_clear_from_out": state.custom_clear_from_out
-        },
-        "auto_play": {
-            "enabled": state.auto_play_enabled,
-            "playlist": state.auto_play_playlist,
-            "run_mode": state.auto_play_run_mode,
-            "pause_time": state.auto_play_pause_time,
-            "clear_pattern": state.auto_play_clear_pattern,
-            "shuffle": state.auto_play_shuffle
         },
         "scheduled_pause": {
             "enabled": state.scheduled_pause_enabled,
@@ -801,18 +614,8 @@ async def get_all_settings():
             "provider": state.led_provider,
             "wled_ip": state.wled_ip,
             "control_mode": state.dw_led_control_mode,
-            "dw_led": {
-                "num_leds": state.dw_led_num_leds,
-                "gpio_pin": state.dw_led_gpio_pin,
-                "pixel_order": state.dw_led_pixel_order,
-                "brightness": state.dw_led_brightness,
-                "speed": state.dw_led_speed,
-                "intensity": state.dw_led_intensity,
-                "idle_effect": state.dw_led_idle_effect,
-                "playing_effect": state.dw_led_playing_effect,
-                "idle_timeout_enabled": state.dw_led_idle_timeout_enabled,
-                "idle_timeout_minutes": state.dw_led_idle_timeout_minutes
-            }
+            "idle_timeout_enabled": state.dw_led_idle_timeout_enabled,
+            "idle_timeout_minutes": state.dw_led_idle_timeout_minutes
         },
         "mqtt": {
             "enabled": state.mqtt_enabled,
@@ -826,22 +629,8 @@ async def get_all_settings():
             "device_name": state.mqtt_device_name
         },
         "machine": {
-            "detected_table_type": state.table_type,
-            "table_type_override": state.table_type_override,
-            "effective_table_type": state.table_type_override or state.table_type,
-            "gear_ratio": state.gear_ratio,
-            "gear_ratio_override": state.gear_ratio_override,
-            "x_steps_per_mm": state.x_steps_per_mm,
-            "y_steps_per_mm": state.y_steps_per_mm,
+            # Kinematics live in the board's config.yaml; the host only keeps a timezone.
             "timezone": state.timezone,
-            "available_table_types": [
-                {"value": "dune_weaver_mini", "label": "Dune Weaver Mini"},
-                {"value": "dune_weaver_mini_pro", "label": "Dune Weaver Mini Pro"},
-                {"value": "dune_weaver_mini_pro_byj", "label": "Dune Weaver Mini Pro (BYJ)"},
-                {"value": "dune_weaver_gold", "label": "Dune Weaver Gold"},
-                {"value": "dune_weaver", "label": "Dune Weaver"},
-                {"value": "dune_weaver_pro", "label": "Dune Weaver Pro"}
-            ]
         },
         "security": {
             "mode": state.security_mode,
@@ -928,13 +717,6 @@ async def update_settings(settings_update: SettingsUpdate):
             state.custom_logo = settings_update.app.custom_logo or None
         updated_categories.append("app")
 
-    # Connection settings
-    if settings_update.connection:
-        if settings_update.connection.preferred_port is not None:
-            # Store exactly what frontend sends: "__auto__", "__none__", or specific port
-            state.preferred_port = settings_update.connection.preferred_port
-        updated_categories.append("connection")
-
     # Pattern settings
     if settings_update.patterns:
         p = settings_update.patterns
@@ -944,24 +726,10 @@ async def update_settings(settings_update: SettingsUpdate):
             state.custom_clear_from_in = p.custom_clear_from_in or None
         if p.custom_clear_from_out is not None:
             state.custom_clear_from_out = p.custom_clear_from_out or None
+        # The firmware runs its own clear files; mirror custom choices onto them.
+        if p.custom_clear_from_in is not None or p.custom_clear_from_out is not None:
+            board_settings.push_custom_clears_async()
         updated_categories.append("patterns")
-
-    # Auto-play settings
-    if settings_update.auto_play:
-        ap = settings_update.auto_play
-        if ap.enabled is not None:
-            state.auto_play_enabled = ap.enabled
-        if ap.playlist is not None:
-            state.auto_play_playlist = ap.playlist or None
-        if ap.run_mode is not None:
-            state.auto_play_run_mode = ap.run_mode
-        if ap.pause_time is not None:
-            state.auto_play_pause_time = ap.pause_time
-        if ap.clear_pattern is not None:
-            state.auto_play_clear_pattern = ap.clear_pattern
-        if ap.shuffle is not None:
-            state.auto_play_shuffle = ap.shuffle
-        updated_categories.append("auto_play")
 
     # Scheduled pause (Still Sands) settings
     if settings_update.scheduled_pause:
@@ -982,6 +750,17 @@ async def update_settings(settings_update: SettingsUpdate):
         if sp.time_slots is not None:
             state.scheduled_pause_time_slots = [slot.model_dump() for slot in sp.time_slots]
         updated_categories.append("scheduled_pause")
+        # Board NVS is canonical for Still Sands (the mobile apps edit it there);
+        # push the new values, plus the timezone so board-local schedules match.
+        if state.conn:
+            def _push_sands():
+                try:
+                    board_settings.push_still_sands()
+                    if sp.timezone is not None:
+                        board_settings.sync_board_time()
+                except Exception as e:
+                    logger.warning(f"Could not push Still Sands settings to board: {e}")
+            asyncio.create_task(asyncio.to_thread(_push_sands))
 
     # Homing settings
     if settings_update.homing:
@@ -1000,6 +779,20 @@ async def update_settings(settings_update: SettingsUpdate):
         if h.hard_reset_theta is not None:
             state.hard_reset_theta = h.hard_reset_theta
         updated_categories.append("homing")
+        # Mirror to the board: mode/offset now (idle-gated NVS; also re-pushed on
+        # every home), and the auto-home cadence for firmware-sequenced playlists.
+        if state.conn:
+            def _push_homing():
+                try:
+                    if h.mode is not None:
+                        state.conn.set_homing_mode("crash" if state.homing == 0 else "sensor")
+                    if h.angular_offset_degrees is not None:
+                        state.conn.set_theta_offset(state.angular_homing_offset_degrees)
+                    if h.auto_home_enabled is not None or h.auto_home_after_patterns is not None:
+                        board_settings.push_auto_home()
+                except Exception as e:
+                    logger.warning(f"Could not push homing settings to board: {e}")
+            asyncio.create_task(asyncio.to_thread(_push_homing))
 
     # LED settings
     if settings_update.led:
@@ -1012,28 +805,10 @@ async def update_settings(settings_update: SettingsUpdate):
             state.wled_ip = led.wled_ip or None
         if led.control_mode is not None:
             state.dw_led_control_mode = led.control_mode
-        if led.dw_led:
-            dw = led.dw_led
-            if dw.num_leds is not None:
-                state.dw_led_num_leds = dw.num_leds
-            if dw.gpio_pin is not None:
-                state.dw_led_gpio_pin = dw.gpio_pin
-            if dw.pixel_order is not None:
-                state.dw_led_pixel_order = dw.pixel_order
-            if dw.brightness is not None:
-                state.dw_led_brightness = dw.brightness
-            if dw.speed is not None:
-                state.dw_led_speed = dw.speed
-            if dw.intensity is not None:
-                state.dw_led_intensity = dw.intensity
-            if dw.idle_effect is not None:
-                state.dw_led_idle_effect = dw.idle_effect
-            if dw.playing_effect is not None:
-                state.dw_led_playing_effect = dw.playing_effect
-            if dw.idle_timeout_enabled is not None:
-                state.dw_led_idle_timeout_enabled = dw.idle_timeout_enabled
-            if dw.idle_timeout_minutes is not None:
-                state.dw_led_idle_timeout_minutes = dw.idle_timeout_minutes
+        if led.idle_timeout_enabled is not None:
+            state.dw_led_idle_timeout_enabled = led.idle_timeout_enabled
+        if led.idle_timeout_minutes is not None:
+            state.dw_led_idle_timeout_minutes = led.idle_timeout_minutes
         updated_categories.append("led")
 
     # MQTT settings
@@ -1060,29 +835,10 @@ async def update_settings(settings_update: SettingsUpdate):
         updated_categories.append("mqtt")
         requires_restart = True
 
-    # Machine settings
+    # Machine settings (kinematics live in the board's config.yaml; only the
+    # host timezone remains)
     if settings_update.machine:
         m = settings_update.machine
-        if m.table_type_override is not None:
-            # Empty string or "auto" clears the override
-            state.table_type_override = None if m.table_type_override in ("", "auto") else m.table_type_override
-        if m.gear_ratio_override is not None:
-            # Zero or negative clears the override; positive value sets it
-            state.gear_ratio_override = None if m.gear_ratio_override <= 0 else m.gear_ratio_override
-            # Apply immediately to current gear_ratio
-            if state.gear_ratio_override is not None:
-                state.gear_ratio = state.gear_ratio_override
-            else:
-                # Cleared — revert to auto-detected value (table type, then env var)
-                effective_table_type = state.table_type_override or state.table_type
-                mini_types = ['dune_weaver_mini', 'dune_weaver_mini_pro', 'dune_weaver_mini_pro_byj', 'dune_weaver_gold']
-                state.gear_ratio = 6.25 if effective_table_type in mini_types else 10
-                env_gr = os.getenv('GEAR_RATIO')
-                if env_gr is not None:
-                    try:
-                        state.gear_ratio = float(env_gr)
-                    except ValueError:
-                        pass
         if m.timezone is not None:
             # Validate timezone by trying to create a ZoneInfo object
             try:
@@ -1140,6 +896,97 @@ async def verify_security_password(request: SecurityVerifyRequest):
         return {"valid": False}
     input_hash = hashlib.sha256(request.password.encode('utf-8')).hexdigest()
     return {"valid": input_hash == state.security_password_hash}
+
+# ============================================================================
+# Board-owned settings (FluidNC NVS) — proxied for the web UI
+# ============================================================================
+
+class AutostartSettingsUpdate(BaseModel):
+    playlist: Optional[str] = None  # empty string disables auto-play on boot
+    run_mode: Optional[str] = None  # "single" | "loop"
+    shuffle: Optional[bool] = None
+    pause_seconds: Optional[int] = None
+    pause_from_start: Optional[bool] = None
+    clear_pattern: Optional[str] = None  # none|adaptive|in|out|sideway|random
+
+class BoardSettingsUpdate(BaseModel):
+    autostart: Optional[AutostartSettingsUpdate] = None
+
+@app.get("/api/board/settings", tags=["settings"])
+async def get_board_settings():
+    """
+    Read the board-owned settings (auto-play on boot, homing, clock) straight
+    from the FluidNC board's NVS. These fire on table power-on, independent of
+    this backend, and are shared with the native mobile apps.
+    """
+    if not state.conn:
+        return {"reachable": False}
+    try:
+        return await asyncio.to_thread(board_settings.get_board_settings)
+    except Exception as e:
+        logger.warning(f"Could not read board settings: {e}")
+        return {"reachable": False}
+
+@app.patch("/api/board/settings", tags=["settings"])
+async def update_board_settings(update: BoardSettingsUpdate):
+    """Write board-owned settings ($Playlist/Autostart* family) to the board."""
+    if not state.conn:
+        raise HTTPException(status_code=409, detail="Not connected to the board")
+    try:
+        if update.autostart:
+            autostart = update.autostart.model_dump(exclude_none=True)
+            await asyncio.to_thread(board_settings.apply_autostart, autostart)
+            # A newly selected boot playlist must exist on the board SD, with
+            # all of its patterns, before the next power-on.
+            playlist_name = autostart.get("playlist")
+            if playlist_name:
+                playlist = playlist_manager.get_playlist(playlist_name)
+                if playlist:
+                    asyncio.create_task(asyncio.to_thread(
+                        board_settings.mirror_playlist,
+                        playlist_name, playlist["files"], None, True,
+                    ))
+        return {"success": True}
+    except Exception as e:
+        logger.warning(f"Could not write board settings: {e}")
+        raise HTTPException(status_code=502, detail=f"Board rejected the update: {e}")
+
+class BoardCommandRequest(BaseModel):
+    command: str
+
+@app.post("/api/board/command", tags=["settings"])
+async def board_command(request: BoardCommandRequest):
+    """Advanced console: send a $-command to the board and return the recent
+    session log (the board streams command output to its log, not HTTP)."""
+    if not state.conn:
+        raise HTTPException(status_code=409, detail="Not connected to the board")
+    command = request.command.strip()
+    if not command:
+        raise HTTPException(status_code=400, detail="Empty command")
+    try:
+        response = await asyncio.to_thread(state.conn.run_command, command)
+        log_tail = ""
+        try:
+            log_text = await asyncio.to_thread(
+                lambda: state.conn._get("/sand_log").text)
+            log_tail = "\n".join(log_text.strip().splitlines()[-15:])
+        except Exception:
+            pass
+        responses = [line for line in (response or "").strip().splitlines() if line]
+        return {"success": True, "responses": responses, "log": log_tail}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Board command failed: {e}")
+
+@app.post("/api/board/sync_time", tags=["settings"])
+async def sync_board_time():
+    """Push the host's clock and timezone to the board (quiet hours need it)."""
+    if not state.conn:
+        raise HTTPException(status_code=409, detail="Not connected to the board")
+    try:
+        result = await asyncio.to_thread(board_settings.sync_board_time)
+        return {"success": True, "time": result}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Clock sync failed: {e}")
 
 # ============================================================================
 # Multi-Table Identity Endpoints
@@ -1284,37 +1131,6 @@ async def update_known_table(table_id: str, update: KnownTableUpdate):
 # Individual Settings Endpoints (Deprecated - use /api/settings instead)
 # ============================================================================
 
-@app.get("/api/auto_play-mode", deprecated=True, tags=["settings-deprecated"])
-async def get_auto_play_mode():
-    """DEPRECATED: Use GET /api/settings instead. Get current auto_play mode settings."""
-    return {
-        "enabled": state.auto_play_enabled,
-        "playlist": state.auto_play_playlist,
-        "run_mode": state.auto_play_run_mode,
-        "pause_time": state.auto_play_pause_time,
-        "clear_pattern": state.auto_play_clear_pattern,
-        "shuffle": state.auto_play_shuffle
-    }
-
-@app.post("/api/auto_play-mode", deprecated=True, tags=["settings-deprecated"])
-async def set_auto_play_mode(request: auto_playModeRequest):
-    """DEPRECATED: Use PATCH /api/settings instead. Update auto_play mode settings."""
-    state.auto_play_enabled = request.enabled
-    if request.playlist is not None:
-        state.auto_play_playlist = request.playlist
-    if request.run_mode is not None:
-        state.auto_play_run_mode = request.run_mode
-    if request.pause_time is not None:
-        state.auto_play_pause_time = request.pause_time
-    if request.clear_pattern is not None:
-        state.auto_play_clear_pattern = request.clear_pattern
-    if request.shuffle is not None:
-        state.auto_play_shuffle = request.shuffle
-    state.save()
-    
-    logger.info(f"auto_play mode {'enabled' if request.enabled else 'disabled'}, playlist: {request.playlist}")
-    return {"success": True, "message": "auto_play mode settings updated"}
-
 @app.get("/api/scheduled-pause", deprecated=True, tags=["settings-deprecated"])
 async def get_scheduled_pause():
     """DEPRECATED: Use GET /api/settings instead. Get current Still Sands settings."""
@@ -1452,6 +1268,7 @@ async def connect(request: ConnectRequest):
     try:
         url = connection_manager._normalize_board_url(request.port or "") or connection_manager.board_url()
         state.board_url = url
+        state.port = url
         state.save()
         state.conn = FluidNCClient(url)
         if not state.conn.reachable():
@@ -1490,168 +1307,6 @@ async def restart(request: ConnectRequest):
     except Exception as e:
         logger.error(f"Failed to restart serial on port {request.port}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-###############################################################################
-# Debug Serial Terminal - Independent raw serial communication
-###############################################################################
-
-# Store for debug serial connections (separate from main connection)
-_debug_serial_connections: dict = {}
-_debug_serial_lock: Optional[asyncio.Lock] = None
-
-def get_debug_serial_lock() -> asyncio.Lock:
-    """Get or create the debug serial lock in the current event loop."""
-    global _debug_serial_lock
-    if _debug_serial_lock is None:
-        _debug_serial_lock = asyncio.Lock()
-    return _debug_serial_lock
-
-class DebugSerialRequest(BaseModel):
-    port: str
-    baudrate: int = 115200
-    timeout: float = 2.0
-
-class DebugSerialCommand(BaseModel):
-    port: str
-    command: str
-    timeout: float = 2.0
-
-@app.post("/api/debug-serial/open", tags=["debug-serial"])
-async def debug_serial_open(request: DebugSerialRequest):
-    """Open a debug serial connection (independent of main connection)."""
-    import serial
-
-    async with get_debug_serial_lock():
-        # Close existing connection on this port if any
-        if request.port in _debug_serial_connections:
-            try:
-                _debug_serial_connections[request.port].close()
-            except Exception:
-                pass
-            del _debug_serial_connections[request.port]
-
-        try:
-            ser = serial.Serial(
-                request.port,
-                baudrate=request.baudrate,
-                timeout=request.timeout
-            )
-            _debug_serial_connections[request.port] = ser
-            logger.info(f"Debug serial opened on {request.port}")
-            return {"success": True, "port": request.port, "baudrate": request.baudrate}
-        except Exception as e:
-            logger.error(f"Failed to open debug serial on {request.port}: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/debug-serial/close", tags=["debug-serial"])
-async def debug_serial_close(request: ConnectRequest):
-    """Close a debug serial connection."""
-    async with get_debug_serial_lock():
-        if request.port not in _debug_serial_connections:
-            return {"success": True, "message": "Port not open"}
-
-        try:
-            _debug_serial_connections[request.port].close()
-            del _debug_serial_connections[request.port]
-            logger.info(f"Debug serial closed on {request.port}")
-            return {"success": True}
-        except Exception as e:
-            logger.error(f"Failed to close debug serial on {request.port}: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/debug-serial/send", tags=["debug-serial"])
-async def debug_serial_send(request: DebugSerialCommand):
-    """Send a command and receive response on debug serial connection."""
-
-    async with get_debug_serial_lock():
-        if request.port not in _debug_serial_connections:
-            raise HTTPException(status_code=400, detail="Port not open. Open it first.")
-
-        ser = _debug_serial_connections[request.port]
-
-        try:
-            # Clear input buffer
-            ser.reset_input_buffer()
-
-            # Send command with newline
-            command = request.command.strip()
-            if not command.endswith('\n'):
-                command += '\n'
-
-            await asyncio.to_thread(ser.write, command.encode())
-            await asyncio.to_thread(ser.flush)
-
-            # Read response with timeout - use read() for more reliable data capture
-            responses = []
-            start_time = time.time()
-            buffer = ""
-
-            # Small delay to let response arrive
-            await asyncio.sleep(0.05)
-
-            while time.time() - start_time < request.timeout:
-                try:
-                    # Read all available bytes
-                    waiting = ser.in_waiting
-                    if waiting > 0:
-                        data = await asyncio.to_thread(ser.read, waiting)
-                        if data:
-                            buffer += data.decode('utf-8', errors='replace')
-
-                            # Process complete lines from buffer
-                            while '\n' in buffer:
-                                line, buffer = buffer.split('\n', 1)
-                                line = line.strip()
-                                if line:
-                                    responses.append(line)
-                                    # Check for ok/error to know command completed
-                                    if line.lower() in ['ok', 'error'] or line.lower().startswith('error:'):
-                                        # Give a tiny bit more time for any trailing data
-                                        await asyncio.sleep(0.02)
-                                        # Read any remaining data
-                                        if ser.in_waiting > 0:
-                                            extra = await asyncio.to_thread(ser.read, ser.in_waiting)
-                                            if extra:
-                                                for extra_line in extra.decode('utf-8', errors='replace').strip().split('\n'):
-                                                    if extra_line.strip():
-                                                        responses.append(extra_line.strip())
-                                        break
-                    else:
-                        # No data waiting, small delay
-                        await asyncio.sleep(0.02)
-                except Exception as read_error:
-                    logger.warning(f"Read error: {read_error}")
-                    break
-
-            # Add any remaining buffer content
-            if buffer.strip():
-                responses.append(buffer.strip())
-
-            return {
-                "success": True,
-                "command": request.command.strip(),
-                "responses": responses,
-                "raw": '\n'.join(responses)
-            }
-        except Exception as e:
-            logger.error(f"Debug serial send error: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/debug-serial/status", tags=["debug-serial"])
-async def debug_serial_status():
-    """Get status of all debug serial connections."""
-    async with get_debug_serial_lock():
-        status = {}
-        for port, ser in _debug_serial_connections.items():
-            try:
-                status[port] = {
-                    "open": ser.is_open,
-                    "baudrate": ser.baudrate
-                }
-            except Exception:
-                status[port] = {"open": False}
-        return {"connections": status}
 
 
 @app.get("/list_theta_rho_files")
@@ -1892,60 +1547,29 @@ async def get_theta_rho_coordinates(request: GetCoordinatesRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/run_theta_rho")
-async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTasks):
+async def run_theta_rho(request: ThetaRhoRequest):
+    """Run one pattern. The firmware sequences the pre-execution clear
+    ($Sand/Run clear=<mode>) and aborts any current job first."""
     if not request.file_name:
         logger.warning('Run theta-rho request received without file name')
         raise HTTPException(status_code=400, detail="No file name provided")
-    
-    file_path = None
-    if 'clear' in request.file_name:
-        logger.info(f'Clear pattern file: {request.file_name.split(".")[0]}')
-        file_path = pattern_manager.get_clear_pattern_file(request.file_name.split('.')[0])
-        logger.info(f'Clear pattern file: {file_path}')
-    if not file_path:
-        # Normalize file path for cross-platform compatibility
-        normalized_file_name = normalize_file_path(request.file_name)
-        file_path = os.path.join(pattern_manager.THETA_RHO_DIR, normalized_file_name)
+
+    normalized_file_name = normalize_file_path(request.file_name)
+    file_path = os.path.join(pattern_manager.THETA_RHO_DIR, normalized_file_name)
     if not os.path.exists(file_path):
         logger.error(f'Theta-rho file not found: {file_path}')
         raise HTTPException(status_code=404, detail="File not found")
 
+    if not (state.conn.is_connected() if state.conn else False):
+        logger.warning("Attempted to run a pattern without a connection")
+        raise HTTPException(status_code=400, detail="Connection not established")
+    check_homing_in_progress()
+
     try:
-        if not (state.conn.is_connected() if state.conn else False):
-            logger.warning("Attempted to run a pattern without a connection")
-            raise HTTPException(status_code=400, detail="Connection not established")
-
-        check_homing_in_progress()
-
-        if pattern_manager.get_pattern_lock().locked():
-            logger.info("Another pattern is running, stopping it first...")
-            await pattern_manager.stop_actions()
-
-        # Clear any stale playlist state before starting a new single pattern.
-        # This prevents a bug where loading state.json after server restart could
-        # cause the old playlist to be used instead of the newly selected pattern.
-        state.current_playlist = None
-        state.current_playlist_index = None
-        state.playlist_mode = None
-
-        files_to_run = [file_path]
-        logger.info(f'Running theta-rho file: {request.file_name} with pre_execution={request.pre_execution}')
-        
-        # Only include clear_pattern if it's not "none"
-        kwargs = {}
-        if request.pre_execution != "none":
-            kwargs['clear_pattern'] = request.pre_execution
-        
-        # Pass arguments properly
-        background_tasks.add_task(
-            pattern_manager.run_theta_rho_files,
-            files_to_run,  # First positional argument
-            **kwargs  # Spread keyword arguments
-        )
+        await execution.run_pattern(file_path, request.pre_execution)
         return {"success": True}
-    except HTTPException as http_exc:
-        logger.error(f'Failed to run theta-rho file {request.file_name}: {http_exc.detail}')
-        raise http_exc
+    except execution.ExecutionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         logger.error(f'Failed to run theta-rho file {request.file_name}: {str(e)}')
         raise HTTPException(status_code=500, detail=str(e))
@@ -1955,47 +1579,21 @@ async def stop_execution():
     if not (state.conn.is_connected() if state.conn else False):
         logger.warning("Attempted to stop without a connection")
         raise HTTPException(status_code=400, detail="Connection not established")
-    success = await pattern_manager.stop_actions()
+    try:
+        success = await execution.stop()
+    except execution.ExecutionError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     if not success:
         raise HTTPException(status_code=500, detail="Stop timed out - use force_stop")
     return {"success": True}
 
 @app.post("/force_stop")
 async def force_stop():
-    """Force stop all pattern execution and clear all state. Use when normal stop doesn't work."""
-    logger.info("Force stop requested - clearing all pattern state")
-
-    # Set stop flag first
-    state.stop_requested = True
-    state.pause_requested = False
-
-    # Clear all pattern-related state
-    state.current_playing_file = None
-    state.execution_progress = None
-    state.is_running = False
-    state.is_clearing = False
+    """Best-effort board stop + unconditional host-state reset. Use when the
+    normal stop doesn't come back."""
+    logger.info("Force stop requested - clearing all run state")
+    await execution.stop(force=True)
     state.is_homing = False
-    state.current_playlist = None
-    state.current_playlist_index = None
-    state.playlist_mode = None
-    state.pause_time_remaining = 0
-
-    # Wake up any waiting tasks
-    try:
-        pattern_manager.get_pause_event().set()
-    except Exception:
-        pass
-
-    # Stop motion controller and clear its queue
-    if pattern_manager.motion_controller.running:
-        pattern_manager.motion_controller.command_queue.put(
-            pattern_manager.MotionCommand('stop')
-        )
-
-    # Force release pattern lock by recreating it
-    pattern_manager.pattern_lock = None  # Will be recreated on next use
-
-    logger.info("Force stop completed - all pattern state cleared")
     return {"success": True, "message": "Force stop completed"}
 
 @app.post("/soft_reset")
@@ -2007,7 +1605,7 @@ async def soft_reset():
 
     try:
         # Stop any running patterns first
-        await pattern_manager.stop_actions()
+        await execution.stop(force=True)
 
         # Use the shared soft reset function
         await connection_manager.perform_soft_reset()
@@ -2015,30 +1613,6 @@ async def soft_reset():
         return {"success": True, "message": "Soft reset sent. Position reset to 0."}
     except Exception as e:
         logger.error(f"Error sending soft reset: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/controller_restart")
-async def controller_restart():
-    """Send $System/Control=RESTART to restart the FluidNC controller."""
-    if not (state.conn and state.conn.is_connected()):
-        logger.warning("Attempted to restart controller without a connection")
-        raise HTTPException(status_code=400, detail="Connection not established")
-
-    try:
-        # Stop any running patterns first
-        await pattern_manager.stop_actions()
-
-        # Send the FluidNC restart command
-        restart_cmd = "$System/Control=RESTART\n"
-        state.conn.send(restart_cmd)
-        logger.info(f"Controller restart command sent to {state.port}")
-
-        # Mark as needing homing since position is now unknown
-        state.is_homed = False
-
-        return {"success": True, "message": "Controller restart command sent. Homing required."}
-    except Exception as e:
-        logger.error(f"Error sending controller restart: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/send_home")
@@ -2156,7 +1730,7 @@ async def run_specific_theta_rho_file(file_name: str):
 
     check_homing_in_progress()
 
-    pattern_manager.run_theta_rho_file(file_path)
+    await execution.run_pattern(file_path)
     return {"success": True}
 
 class DeleteFileRequest(BaseModel):
@@ -2205,8 +1779,6 @@ async def move_to_center():
 
         check_homing_in_progress()
 
-        # Clear stop_requested to ensure manual move works after pattern stop
-        state.stop_requested = False
 
         logger.info("Moving device to center position")
         await pattern_manager.reset_theta()
@@ -2233,8 +1805,6 @@ async def move_to_perimeter():
 
         check_homing_in_progress()
 
-        # Clear stop_requested to ensure manual move works after pattern stop
-        state.stop_requested = False
 
         logger.info("Moving device to perimeter position")
         await pattern_manager.reset_theta()
@@ -2421,8 +1991,6 @@ async def send_coordinate(request: CoordinateRequest):
 
     check_homing_in_progress()
 
-    # Clear stop_requested to ensure manual move works after pattern stop
-    state.stop_requested = False
 
     try:
         logger.debug(f"Sending coordinate: theta={request.theta}, rho={request.rho}")
@@ -2447,60 +2015,35 @@ async def download_file(filename: str):
 
 @app.get("/serial_status")
 async def serial_status():
+    """Connection status. `port` is the configured board address (HTTP, not serial)."""
     connected = state.conn.is_connected() if state.conn else False
-    port = state.port
-    logger.debug(f"Serial status check - connected: {connected}, port: {port}")
+    port = connection_manager.board_url()
+    logger.debug(f"Connection status check - connected: {connected}, board: {port}")
     return {
         "connected": connected,
         "port": port,
-        "preferred_port": state.preferred_port
-    }
-
-@app.get("/api/preferred-port", deprecated=True, tags=["settings-deprecated"])
-async def get_preferred_port():
-    """Get the currently configured preferred port for auto-connect."""
-    return {
-        "preferred_port": state.preferred_port
-    }
-
-@app.post("/api/preferred-port", deprecated=True, tags=["settings-deprecated"])
-async def set_preferred_port(request: Request):
-    """Set the preferred port for auto-connect."""
-    data = await request.json()
-    preferred_port = data.get("preferred_port")
-
-    # Allow setting to None to clear the preference
-    if preferred_port == "" or preferred_port == "none":
-        preferred_port = None
-
-    state.preferred_port = preferred_port
-    state.save()
-
-    logger.info(f"Preferred port set to: {preferred_port}")
-    return {
-        "success": True,
-        "preferred_port": state.preferred_port
     }
 
 @app.post("/pause_execution")
 async def pause_execution():
-    # Check if table is actually idle before trying to pause
-    if await pattern_manager.check_table_is_idle():
+    status = execution.get_cached_status()
+    if not (status.get("is_running") or status.get("pause_time_remaining")):
         raise HTTPException(status_code=400, detail="Nothing is currently playing")
-
-    if pattern_manager.pause_execution():
+    try:
+        await execution.pause()
         return {"success": True, "message": "Execution paused"}
-    raise HTTPException(status_code=500, detail="Failed to pause execution")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to pause execution: {e}")
 
 @app.post("/resume_execution")
 async def resume_execution():
-    # Check if execution is actually paused before trying to resume
-    if not state.pause_requested:
+    if not execution.get_cached_status().get("is_paused"):
         raise HTTPException(status_code=400, detail="Execution is not paused")
-
-    if pattern_manager.resume_execution():
+    try:
+        await execution.resume()
         return {"success": True, "message": "Execution resumed"}
-    raise HTTPException(status_code=500, detail="Failed to resume execution")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to resume execution: {e}")
 
 # Playlist endpoints
 @app.get("/list_all_playlists")
@@ -2581,29 +2124,25 @@ async def add_to_playlist(request: AddToPlaylistRequest):
 
 @app.post("/run_playlist")
 async def run_playlist_endpoint(request: PlaylistRequest):
-    """Run a playlist with specified parameters."""
+    """Run a playlist on the board ($Playlist/Run; the firmware sequences it)."""
+    if not (state.conn.is_connected() if state.conn else False):
+        logger.warning("Attempted to run a playlist without a connection")
+        raise HTTPException(status_code=400, detail="Connection not established")
+    check_homing_in_progress()
+
     try:
-        if not (state.conn.is_connected() if state.conn else False):
-            logger.warning("Attempted to run a playlist without a connection")
-            raise HTTPException(status_code=400, detail="Connection not established")
-
-        check_homing_in_progress()
-
-        if not os.path.exists(playlist_manager.PLAYLISTS_FILE):
-            raise HTTPException(status_code=404, detail=f"Playlist '{request.playlist_name}' not found")
-
-        # Start the playlist execution
-        success, message = await playlist_manager.run_playlist(
+        await execution.start_playlist(
             request.playlist_name,
+            run_mode=request.run_mode,
             pause_time=request.pause_time,
             clear_pattern=request.clear_pattern,
-            run_mode=request.run_mode,
-            shuffle=request.shuffle
+            shuffle=request.shuffle,
         )
-        if not success:
-            raise HTTPException(status_code=409, detail=message)
-
         return {"message": f"Started playlist: {request.playlist_name}"}
+    except execution.ExecutionError as e:
+        detail = str(e)
+        status = 404 if "not found" in detail else 409
+        raise HTTPException(status_code=status, detail=detail)
     except Exception as e:
         logger.error(f"Error running playlist: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -2677,9 +2216,9 @@ async def get_wled_ip():
 
 @app.post("/set_led_config", deprecated=True, tags=["settings-deprecated"])
 async def set_led_config(request: LEDConfigRequest):
-    """DEPRECATED: Use PATCH /api/settings instead. Configure LED provider (WLED, DW LEDs, or none)"""
-    if request.provider not in ["wled", "dw_leds", "none"]:
-        raise HTTPException(status_code=400, detail="Invalid provider. Must be 'wled', 'dw_leds', or 'none'")
+    """DEPRECATED: Use PATCH /api/settings instead. Configure LED provider (board, WLED, or none)"""
+    if request.provider not in ["wled", "board", "none"]:
+        raise HTTPException(status_code=400, detail="Invalid provider. Must be 'board', 'wled', or 'none'")
 
     state.led_provider = request.provider
 
@@ -2690,72 +2229,10 @@ async def set_led_config(request: LEDConfigRequest):
         state.led_controller = LEDInterface("wled", request.ip_address)
         logger.info(f"LED provider set to WLED at {request.ip_address}")
 
-    elif request.provider == "dw_leds":
-        # Check if hardware settings changed (requires restart)
-        old_gpio_pin = state.dw_led_gpio_pin
-        old_pixel_order = state.dw_led_pixel_order
-        hardware_changed = (
-            old_gpio_pin != (request.gpio_pin or 18) or
-            old_pixel_order != (request.pixel_order or "RGB")
-        )
-
-        # Stop existing DW LED controller if hardware settings changed
-        if hardware_changed and state.led_controller and state.led_provider == "dw_leds":
-            logger.info("Hardware settings changed, stopping existing LED controller...")
-            controller = state.led_controller.get_controller()
-            if controller and hasattr(controller, 'stop'):
-                try:
-                    controller.stop()
-                    logger.info("LED controller stopped successfully")
-                except Exception as e:
-                    logger.error(f"Error stopping LED controller: {e}")
-            # Clear the reference and give hardware time to release
-            state.led_controller = None
-            await asyncio.sleep(0.5)
-
-        state.dw_led_num_leds = request.num_leds or 60
-        state.dw_led_gpio_pin = request.gpio_pin or 18
-        state.dw_led_pixel_order = request.pixel_order or "RGB"
-        state.dw_led_brightness = request.brightness or 35
-        state.wled_ip = None
-
-        # Create new LED controller with updated settings
-        state.led_controller = LEDInterface(
-            "dw_leds",
-            num_leds=state.dw_led_num_leds,
-            gpio_pin=state.dw_led_gpio_pin,
-            pixel_order=state.dw_led_pixel_order,
-            brightness=state.dw_led_brightness / 100.0,
-            speed=state.dw_led_speed,
-            intensity=state.dw_led_intensity
-        )
-
-        restart_msg = " (restarted)" if hardware_changed else ""
-        logger.info(f"DW LEDs configured{restart_msg}: {state.dw_led_num_leds} LEDs on GPIO{state.dw_led_gpio_pin}, pixel order: {state.dw_led_pixel_order}")
-
-        # Check if initialization succeeded by checking status
-        status = state.led_controller.check_status()
-        if not status.get("connected", False) and status.get("error"):
-            error_msg = status["error"]
-            logger.warning(f"DW LED initialization failed: {error_msg}, but configuration saved for testing")
-            state.led_controller = None
-            # Keep the provider setting for testing purposes
-            # state.led_provider remains "dw_leds" so settings can be saved/tested
-
-            # Save state even with error
-            state.save()
-
-            # Return success with warning instead of error
-            return {
-                "success": True,
-                "warning": error_msg,
-                "hardware_available": False,
-                "provider": state.led_provider,
-                "dw_led_num_leds": state.dw_led_num_leds,
-                "dw_led_gpio_pin": state.dw_led_gpio_pin,
-                "dw_led_pixel_order": state.dw_led_pixel_order,
-                "dw_led_brightness": state.dw_led_brightness
-            }
+    elif request.provider == "board":
+        # The table's own LED ring, driven by the FluidNC firmware.
+        state.led_controller = LEDInterface("board")
+        logger.info("LED provider set to the table's built-in LEDs (firmware-controlled)")
 
     else:  # none
         state.wled_ip = None
@@ -2773,9 +2250,6 @@ async def set_led_config(request: LEDConfigRequest):
         "success": True,
         "provider": state.led_provider,
         "wled_ip": state.wled_ip,
-        "dw_led_num_leds": state.dw_led_num_leds,
-        "dw_led_gpio_pin": state.dw_led_gpio_pin,
-        "dw_led_brightness": state.dw_led_brightness
     }
 
 @app.get("/get_led_config", deprecated=True, tags=["settings-deprecated"])
@@ -2797,114 +2271,17 @@ async def get_led_config():
         "success": True,
         "provider": provider,
         "wled_ip": state.wled_ip,
-        "dw_led_num_leds": state.dw_led_num_leds,
-        "dw_led_gpio_pin": state.dw_led_gpio_pin,
-        "dw_led_pixel_order": state.dw_led_pixel_order,
-        "dw_led_brightness": state.dw_led_brightness,
-        "dw_led_idle_effect": state.dw_led_idle_effect,
-        "dw_led_playing_effect": state.dw_led_playing_effect
     }
 
 @app.post("/skip_pattern")
 async def skip_pattern():
-    if not state.current_playlist:
+    try:
+        skipped = await execution.skip()
+    except execution.ExecutionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not skipped:
         raise HTTPException(status_code=400, detail="No playlist is currently running")
-    state.skip_requested = True
-
-    # If the playlist task isn't running (e.g., cancelled by TestClient),
-    # proactively advance state. Otherwise, let the running task handle it
-    # to avoid race conditions with the task's index management.
-    from modules.core import playlist_manager
-    task = playlist_manager._current_playlist_task
-    task_not_running = task is None or task.done()
-
-    if task_not_running and state.current_playlist_index is not None:
-        next_index = state.current_playlist_index + 1
-        if next_index < len(state.current_playlist):
-            state.current_playlist_index = next_index
-            state.current_playing_file = state.current_playlist[next_index]
-
     return {"success": True}
-
-@app.post("/reorder_playlist")
-async def reorder_playlist(request: dict):
-    """Reorder a pattern in the current playlist queue.
-
-    Since the playlist now contains only main patterns (clear patterns are executed
-    dynamically at runtime), this simply moves the pattern from one position to another.
-    """
-    if not state.current_playlist:
-        raise HTTPException(status_code=400, detail="No playlist is currently running")
-
-    from_index = request.get("from_index")
-    to_index = request.get("to_index")
-
-    if from_index is None or to_index is None:
-        raise HTTPException(status_code=400, detail="from_index and to_index are required")
-
-    playlist = list(state.current_playlist)  # Make a copy to work with
-    current_index = state.current_playlist_index
-
-    # Validate indices
-    if from_index < 0 or from_index >= len(playlist):
-        raise HTTPException(status_code=400, detail="from_index out of range")
-    if to_index < 0 or to_index >= len(playlist):
-        raise HTTPException(status_code=400, detail="to_index out of range")
-
-    # Can't move patterns that have already played (before current_index)
-    # But CAN move the current pattern or swap with it (allows live reordering)
-    if from_index < current_index:
-        raise HTTPException(status_code=400, detail="Cannot move completed pattern")
-    if to_index < current_index:
-        raise HTTPException(status_code=400, detail="Cannot move to completed position")
-
-    # Perform the reorder
-    item = playlist.pop(from_index)
-    # Adjust to_index if moving forward (since we removed an item before it)
-    adjusted_to_index = to_index if to_index < from_index else to_index - 1
-    playlist.insert(adjusted_to_index, item)
-
-    # Update state (this triggers the property setter)
-    state.current_playlist = playlist
-
-    return {"success": True}
-
-@app.post("/add_to_queue")
-async def add_to_queue(request: dict):
-    """Add a pattern to the current playlist queue.
-
-    Args:
-        pattern: The pattern file path to add (e.g., 'circle.thr' or 'subdirectory/pattern.thr')
-        position: 'next' to play after current pattern, 'end' to add to end of queue
-    """
-    if not state.current_playlist:
-        raise HTTPException(status_code=400, detail="No playlist is currently running")
-
-    pattern = request.get("pattern")
-    position = request.get("position", "end")  # 'next' or 'end'
-
-    if not pattern:
-        raise HTTPException(status_code=400, detail="pattern is required")
-
-    # Verify the pattern file exists
-    pattern_path = os.path.join(pattern_manager.THETA_RHO_DIR, pattern)
-    if not os.path.exists(pattern_path):
-        raise HTTPException(status_code=404, detail="Pattern file not found")
-
-    playlist = list(state.current_playlist)
-    current_index = state.current_playlist_index
-
-    if position == "next":
-        # Insert right after the current pattern
-        insert_index = current_index + 1
-    else:
-        # Add to end
-        insert_index = len(playlist)
-
-    playlist.insert(insert_index, pattern)
-    state.current_playlist = playlist
-
-    return {"success": True, "position": insert_index}
 
 @app.get("/api/custom_clear_patterns", deprecated=True, tags=["settings-deprecated"])
 async def get_custom_clear_patterns():
@@ -2937,6 +2314,8 @@ async def set_custom_clear_patterns(request: dict):
             state.custom_clear_from_out = None
         
         state.save()
+        # The firmware runs its own clear files; mirror the choice onto them.
+        board_settings.push_custom_clears_async()
         logger.info(f"Custom clear patterns updated - in: {state.custom_clear_from_in}, out: {state.custom_clear_from_out}")
         return {
             "success": True,
@@ -3541,7 +2920,8 @@ async def preview_thr_batch(request: dict):
                     elif state.current_playlist:
                         # Check if this is the next pattern in playlist
                         playlist = state.current_playlist
-                        idx = state.current_playlist_index
+                        status_pl = execution.get_cached_status().get("playlist") or {}
+                        idx = status_pl.get("current_index")
                         if idx is not None and idx + 1 < len(playlist):
                             next_file = normalize_file_path(playlist[idx + 1])
                             if normalized_file_name == next_file:
@@ -3580,7 +2960,7 @@ async def led_control_page(request: Request):
 @app.get("/api/dw_leds/status")
 async def dw_leds_status():
     """Get DW LED controller status"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
         return {"connected": False, "message": "DW LEDs not configured"}
 
     try:
@@ -3592,7 +2972,7 @@ async def dw_leds_status():
 @app.post("/api/dw_leds/power")
 async def dw_leds_power(request: dict):
     """Control DW LED power (0=off, 1=on, 2=toggle)"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     state_value = request.get("state", 1)
@@ -3616,7 +2996,7 @@ async def dw_leds_power(request: dict):
 @app.post("/api/dw_leds/brightness")
 async def dw_leds_brightness(request: dict):
     """Set DW LED brightness (0-100)"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     value = request.get("value", 50)
@@ -3625,20 +3005,16 @@ async def dw_leds_brightness(request: dict):
 
     try:
         controller = state.led_controller.get_controller()
-        result = controller.set_brightness(value)
-        # Update state if successful
-        if result.get("connected"):
-            state.dw_led_brightness = value
-            state.save()
-        return result
+        # The value persists where it lives (board NVS / WLED) — no host state.
+        return controller.set_brightness(value)
     except Exception as e:
-        logger.error(f"Failed to set DW LED brightness: {str(e)}")
+        logger.error(f"Failed to set LED brightness: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/dw_leds/color")
 async def dw_leds_color(request: dict):
     """Set solid color (manual UI control - always powers on LEDs)"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     # Accept both formats: {"r": 255, "g": 0, "b": 0} or {"color": [255, 0, 0]}
@@ -3669,7 +3045,7 @@ async def dw_leds_color(request: dict):
 @app.post("/api/dw_leds/colors")
 async def dw_leds_colors(request: dict):
     """Set effect colors (color1, color2, color3) - manual UI control - always powers on LEDs"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     # Parse colors from request
@@ -3716,7 +3092,7 @@ async def dw_leds_colors(request: dict):
 @app.get("/api/dw_leds/effects")
 async def dw_leds_effects():
     """Get list of available effects"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     try:
@@ -3724,10 +3100,13 @@ async def dw_leds_effects():
         effects = controller.get_effects()
         # Convert tuples to lists for JSON serialization
         effects_list = [[eid, name] for eid, name in effects]
-        return {
-            "success": True,
-            "effects": effects_list
-        }
+        result = {"success": True, "effects": effects_list}
+        # Board provider: also expose the firmware effect *names* (id -> name),
+        # which the ball tracker's background sub-effect picker needs.
+        if state.led_provider == "board":
+            from modules.led.board_led_controller import BOARD_EFFECTS
+            result["names"] = [[i, name] for i, (name, _label) in enumerate(BOARD_EFFECTS)]
+        return result
     except Exception as e:
         logger.error(f"Failed to get DW LED effects: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -3735,7 +3114,7 @@ async def dw_leds_effects():
 @app.get("/api/dw_leds/palettes")
 async def dw_leds_palettes():
     """Get list of available palettes"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     try:
@@ -3754,7 +3133,7 @@ async def dw_leds_palettes():
 @app.post("/api/dw_leds/effect")
 async def dw_leds_effect(request: dict):
     """Set effect by ID (manual UI control - always powers on LEDs)"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     effect_id = request.get("effect_id", 0)
@@ -3776,7 +3155,7 @@ async def dw_leds_effect(request: dict):
 @app.post("/api/dw_leds/palette")
 async def dw_leds_palette(request: dict):
     """Set palette by ID (manual UI control - always powers on LEDs)"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     palette_id = request.get("palette_id", 0)
@@ -3796,7 +3175,7 @@ async def dw_leds_palette(request: dict):
 @app.post("/api/dw_leds/speed")
 async def dw_leds_speed(request: dict):
     """Set effect speed (0-255)"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     value = request.get("speed", 128)
@@ -3805,19 +3184,33 @@ async def dw_leds_speed(request: dict):
 
     try:
         controller = state.led_controller.get_controller()
-        result = controller.set_speed(value)
-        # Save speed to state
-        state.dw_led_speed = value
-        state.save()
-        return result
+        return controller.set_speed(value)
     except Exception as e:
-        logger.error(f"Failed to set DW LED speed: {str(e)}")
+        logger.error(f"Failed to set LED speed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/dw_leds/ball")
+async def dw_leds_ball(request: dict):
+    """Tune the firmware-native 'ball' tracker effect (board provider only).
+
+    Accepts any of: fgbright, bgbright, size, align (ints), direction ('cw'|'ccw'),
+    bg (background sub-effect name / 'static' / 'off'), color, color2 (RRGGBB hex).
+    Applied live via /sand_led; persisted to the board's NVS at idle.
+    """
+    if not state.led_controller or state.led_provider != "board":
+        raise HTTPException(status_code=400, detail="The ball tracker requires the Table LEDs provider")
+
+    try:
+        controller = state.led_controller.get_controller()
+        return await asyncio.to_thread(controller.set_ball, **request)
+    except Exception as e:
+        logger.error(f"Failed to set ball effect: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/dw_leds/intensity")
 async def dw_leds_intensity(request: dict):
     """Set effect intensity (0-255)"""
-    if not state.led_controller or state.led_provider != "dw_leds":
+    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     value = request.get("intensity", 128)
@@ -3826,13 +3219,9 @@ async def dw_leds_intensity(request: dict):
 
     try:
         controller = state.led_controller.get_controller()
-        result = controller.set_intensity(value)
-        # Save intensity to state
-        state.dw_led_intensity = value
-        state.save()
-        return result
+        return controller.set_intensity(value)
     except Exception as e:
-        logger.error(f"Failed to set DW LED intensity: {str(e)}")
+        logger.error(f"Failed to set LED intensity: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/dw_leds/save_effect_settings")
@@ -3850,42 +3239,68 @@ async def dw_leds_save_effect_settings(request: dict):
         "color3": request.get("color3")
     }
 
-    if effect_type == "idle":
-        state.dw_led_idle_effect = settings
-    elif effect_type == "playing":
-        state.dw_led_playing_effect = settings
-    else:
+    if effect_type not in ("idle", "playing"):
         raise HTTPException(status_code=400, detail="Invalid effect type. Must be 'idle' or 'playing'")
 
-    state.save()
-    logger.info(f"DW LED {effect_type} effect settings saved: {settings}")
+    # Board provider: the firmware switches effects itself — persist the choice
+    # as $LED/IdleEffect / $LED/RunEffect on the board instead of host state.
+    if state.led_provider == "board":
+        from modules.led.board_led_controller import effect_name_for_id
+        name = effect_name_for_id(int(settings.get("effect_id") or 0)) or "none"
+        controller = state.led_controller.get_controller() if state.led_controller else None
+        if not controller:
+            raise HTTPException(status_code=409, detail="Table LEDs not configured")
+        ok = await asyncio.to_thread(
+            controller.set_idle_effect if effect_type == "idle" else controller.set_run_effect, name
+        )
+        if not ok:
+            raise HTTPException(status_code=502, detail="Table rejected the setting (is it idle?)")
+        logger.info(f"Board LED {effect_type} effect set to {name}")
+        return {"success": True, "type": effect_type, "settings": settings}
 
-    return {"success": True, "type": effect_type, "settings": settings}
+    raise HTTPException(status_code=400, detail="Effect automation requires the Table LEDs provider")
 
 @app.post("/api/dw_leds/clear_effect_settings")
 async def dw_leds_clear_effect_settings(request: dict):
     """Clear idle or playing effect settings"""
     effect_type = request.get("type")  # 'idle' or 'playing'
 
-    if effect_type == "idle":
-        state.dw_led_idle_effect = None
-    elif effect_type == "playing":
-        state.dw_led_playing_effect = None
-    else:
+    if effect_type not in ("idle", "playing"):
         raise HTTPException(status_code=400, detail="Invalid effect type. Must be 'idle' or 'playing'")
 
-    state.save()
-    logger.info(f"DW LED {effect_type} effect settings cleared")
+    if state.led_provider == "board":
+        controller = state.led_controller.get_controller() if state.led_controller else None
+        if not controller:
+            raise HTTPException(status_code=409, detail="Table LEDs not configured")
+        ok = await asyncio.to_thread(
+            controller.set_idle_effect if effect_type == "idle" else controller.set_run_effect, "none"
+        )
+        if not ok:
+            raise HTTPException(status_code=502, detail="Table rejected the setting (is it idle?)")
+        logger.info(f"Board LED {effect_type} effect disabled")
+        return {"success": True, "type": effect_type}
 
-    return {"success": True, "type": effect_type}
+    raise HTTPException(status_code=400, detail="Effect automation requires the Table LEDs provider")
 
 @app.get("/api/dw_leds/get_effect_settings")
 async def dw_leds_get_effect_settings():
     """Get saved idle and playing effect settings"""
-    return {
-        "idle_effect": state.dw_led_idle_effect,
-        "playing_effect": state.dw_led_playing_effect
-    }
+    # Board provider: the choices live on the board ($LED/IdleEffect / RunEffect).
+    if state.led_provider == "board" and state.led_controller:
+        from modules.led.board_led_controller import effect_id_for_name
+        status = await asyncio.to_thread(state.led_controller.check_status)
+        if status.get("connected"):
+            def as_settings(name):
+                if not name or name == "none":
+                    return None
+                return {"effect_id": effect_id_for_name(name), "palette_id": None,
+                        "speed": None, "intensity": None,
+                        "color1": None, "color2": None, "color3": None}
+            return {
+                "idle_effect": as_settings(status.get("idle_effect")),
+                "playing_effect": as_settings(status.get("run_effect")),
+            }
+    return {"idle_effect": None, "playing_effect": None}
 
 @app.post("/api/dw_leds/idle_timeout")
 async def dw_leds_set_idle_timeout(request: dict):
@@ -4003,13 +3418,6 @@ def signal_handler(signum, frame):
         # Turn off all LEDs on shutdown
         if state.led_controller:
             state.led_controller.set_power(0)
-
-        # Stop pattern manager motion controller
-        pattern_manager.motion_controller.stop()
-
-        # Set stop flags to halt any running patterns
-        state.stop_requested = True
-        state.pause_requested = False
 
         state.save()
         logger.info("Cleanup completed")
@@ -4136,152 +3544,6 @@ async def restart_system():
 ###############################################################################
 # FluidNC Config Endpoints
 ###############################################################################
-
-class FluidNCCommandRequest(BaseModel):
-    command: str
-    timeout: Optional[float] = 3.0
-
-class FluidNCConfigUpdate(BaseModel):
-    axes: Optional[dict] = None   # { "x": { "steps_per_mm": 320, ... }, "y": {...} }
-    start: Optional[dict] = None  # { "must_home": false }
-
-
-@app.post("/api/fluidnc/command")
-async def fluidnc_command(request: FluidNCCommandRequest):
-    """Send a raw command to FluidNC and return the response lines."""
-    if not state.conn or not state.conn.is_connected():
-        raise HTTPException(status_code=400, detail="Not connected to controller")
-    if state.current_playing_file and not state.pause_requested:
-        raise HTTPException(status_code=409, detail="Cannot send commands while a pattern is running")
-
-    from modules.connection import fluidnc_config
-
-    try:
-        responses = await asyncio.to_thread(
-            fluidnc_config.send_command, request.command, request.timeout or 3.0
-        )
-        return {"success": True, "command": request.command, "responses": responses}
-    except ConnectionError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"FluidNC command error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/fluidnc/config")
-async def fluidnc_config_read():
-    """Read all curated FluidNC settings from the controller."""
-    if not state.conn or not state.conn.is_connected():
-        raise HTTPException(status_code=400, detail="Not connected to controller")
-
-    from modules.connection import fluidnc_config
-
-    try:
-        settings = await asyncio.to_thread(fluidnc_config.read_all_settings)
-        return {"success": True, "settings": settings}
-    except ConnectionError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"FluidNC config read error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# Mapping from UI flat keys back to FluidNC config tree paths.
-# direction_inverted is handled specially (toggles :low on the raw pin).
-_AXIS_KEY_TO_PATH = {
-    "steps_per_mm": "axes/{axis}/steps_per_mm",
-    "max_rate_mm_per_min": "axes/{axis}/max_rate_mm_per_min",
-    "acceleration_mm_per_sec2": "axes/{axis}/acceleration_mm_per_sec2",
-    "homing_cycle": "axes/{axis}/homing/cycle",
-    "homing_positive_direction": "axes/{axis}/homing/positive_direction",
-    "homing_mpos_mm": "axes/{axis}/homing/mpos_mm",
-    "homing_feed_mm_per_min": "axes/{axis}/homing/feed_mm_per_min",
-    "homing_seek_mm_per_min": "axes/{axis}/homing/seek_mm_per_min",
-    "homing_settle_ms": "axes/{axis}/homing/settle_ms",
-    "homing_seek_scaler": "axes/{axis}/homing/seek_scaler",
-    "homing_feed_scaler": "axes/{axis}/homing/feed_scaler",
-    "pulloff_mm": "axes/{axis}/motor0/pulloff_mm",
-}
-
-
-@app.patch("/api/fluidnc/config")
-async def fluidnc_config_write(update: FluidNCConfigUpdate):
-    """Write changed FluidNC settings and persist to flash."""
-    if not state.conn or not state.conn.is_connected():
-        raise HTTPException(status_code=400, detail="Not connected to controller")
-    if state.current_playing_file and not state.pause_requested:
-        raise HTTPException(status_code=409, detail="Cannot modify config while a pattern is running")
-
-    from modules.connection import fluidnc_config
-
-    changes_applied: list[str] = []
-    restart_required = False
-
-    def apply_changes():
-        nonlocal restart_required
-        # Apply axis settings
-        if update.axes:
-            for axis in ("x", "y"):
-                axis_data = update.axes.get(axis)
-                if not axis_data:
-                    continue
-                for key, value in axis_data.items():
-                    if key in ("direction_pin", "direction_inverted_raw"):
-                        # Skip derived/raw keys handled below
-                        continue
-
-                    if key == "direction_inverted":
-                        # Toggle :low on direction pin
-                        success, new_state = fluidnc_config.toggle_direction_pin(axis)
-                        if success:
-                            changes_applied.append(f"{axis}/direction_pin")
-                            restart_required = True
-                        continue
-
-                    path_template = _AXIS_KEY_TO_PATH.get(key)
-                    if path_template:
-                        path = path_template.format(axis=axis)
-                        str_value = str(value).lower() if isinstance(value, bool) else str(value)
-                        if fluidnc_config.write_setting(path, str_value):
-                            changes_applied.append(path)
-
-        # Apply global settings
-        if update.start:
-            for key, value in update.start.items():
-                path = f"start/{key}"
-                str_value = str(value).lower() if isinstance(value, bool) else str(value)
-                if fluidnc_config.write_setting(path, str_value):
-                    changes_applied.append(path)
-
-        # Sync steps_per_mm into app state so Machine Settings reflects changes
-        if update.axes:
-            x_steps = update.axes.get("x", {}).get("steps_per_mm")
-            y_steps = update.axes.get("y", {}).get("steps_per_mm")
-            if x_steps is not None:
-                state.x_steps_per_mm = float(x_steps)
-            if y_steps is not None:
-                state.y_steps_per_mm = float(y_steps)
-            if x_steps is not None or y_steps is not None:
-                state.save()
-
-        # Persist to flash
-        saved = fluidnc_config.save_config() if changes_applied else False
-        return saved
-
-    try:
-        saved = await asyncio.to_thread(apply_changes)
-        return {
-            "success": True,
-            "saved": saved,
-            "changes_applied": changes_applied,
-            "restart_required": restart_required,
-        }
-    except ConnectionError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"FluidNC config write error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 
 def entrypoint():
     import uvicorn

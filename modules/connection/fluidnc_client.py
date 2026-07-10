@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class FluidNCClient:
     """Stateless HTTP handle to one FluidNC sand-table board."""
 
-    def __init__(self, base_url: str, timeout: float = 5.0):
+    def __init__(self, base_url: str, timeout: float = 10.0):
         # base_url like "http://192.168.68.160"
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
@@ -86,11 +86,37 @@ class FluidNCClient:
         except Exception:
             return False
 
+    # -- clock ----------------------------------------------------------------
+
+    def get_time(self) -> dict:
+        """The board's wall clock: {epoch, synced, local, tz}."""
+        return self._get("/sand_time").json()
+
+    def set_time(self, epoch: int | None = None, tz: str | None = None) -> dict:
+        """Push the wall clock (unix epoch) and/or a POSIX timezone to the board."""
+        params: dict = {}
+        if epoch is not None:
+            params["epoch"] = int(epoch)
+        if tz is not None:
+            params["tz"] = tz
+        return self._get("/sand_time", params=params).json()
+
     # -- commands / actions --------------------------------------------------
 
     def run_command(self, plain: str) -> str:
         """Fire a FluidNC command via the /command gateway (fire-and-forget)."""
         return self._get("/command", params={"plain": plain}).text
+
+    def set_setting(self, key: str, value) -> str:
+        """Write one NVS-persisted board setting, e.g. set_setting('Playlist/Autostart', 'evening').
+
+        The command response contains 'error' on rejection (e.g. idle-gated
+        settings while running); raise so callers can surface it.
+        """
+        resp = self.run_command(f"${key}={value}")
+        if "error" in resp.lower():
+            raise RuntimeError(f"Board rejected ${key}={value}: {resp.strip()}")
+        return resp
 
     def run_pattern(self, sd_path: str, clear: str | None = None) -> None:
         """

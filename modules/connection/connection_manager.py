@@ -5,10 +5,10 @@ The board firmware now owns kinematics, `.thr` playback, progress and homing
 (contract: the firmware repo's API.md). This module is the thin seam the backend
 uses to talk to it: it builds a FluidNCClient, exposes the same public functions
 the rest of the app already calls (connect_device, device_init, home,
-check_idle_async, is_machine_idle, get_machine_position, update_machine_position,
-perform_soft_reset, restart_connection, list_serial_ports), and keeps the LED
-hooks intact. The old serial/websocket GRBL transport, coordinate streaming, and
-the $H/$J homing handshake are gone — the firmware does all of that itself.
+check_idle_async, is_machine_idle, update_machine_position, perform_soft_reset,
+restart_connection, list_serial_ports), and keeps the LED hooks intact. The old
+serial/websocket GRBL transport, coordinate streaming, and the $H/$J homing
+handshake are gone — the firmware does all of that itself.
 """
 
 import os
@@ -16,6 +16,7 @@ import time
 import math
 import logging
 import asyncio
+import threading
 
 from modules.core.state import state
 from modules.connection.fluidnc_client import FluidNCClient
@@ -92,12 +93,6 @@ def poll_status_once() -> dict | None:
         return None
 
 
-def get_status_response() -> str:
-    """Back-compat shim: return the board's machine state as a GRBL-like token."""
-    st = poll_status_once()
-    return st.get("state", "") if st else ""
-
-
 ###############################################################################
 # Connection lifecycle
 ###############################################################################
@@ -156,9 +151,17 @@ def device_init(homing=True):
         return False
 
     state.firmware_type = "fluidnc"
-    state.firmware_version = state.firmware_version or "fluidnc"
+    state.firmware_version = st.get("fw") or state.firmware_version or "fluidnc"
     apply_status(st)
     _sync_homing_settings()
+
+    # Reconcile board-owned settings (clock, Still Sands, auto-home cadence) and
+    # mirror playlists in the background — mirroring can be slow and must never
+    # delay connect/homing.
+    from modules.core import board_settings
+    threading.Thread(
+        target=board_settings.sync_on_connect, args=(state.conn,), daemon=True
+    ).start()
 
     if homing and state.home_on_connect:
         home()
@@ -171,19 +174,10 @@ def connect_device(homing=True):
     # Initialize LED interface based on configured provider (unchanged from before).
     if state.led_provider == "wled" and state.wled_ip:
         state.led_controller = LEDInterface(provider="wled", ip_address=state.wled_ip)
-    elif state.led_provider == "dw_leds":
-        # DW LEDs are initialized at startup in main.py; only set up here on reconnect.
+    elif state.led_provider == "board":
         if not state.led_controller or not state.led_controller.is_configured:
-            state.led_controller = LEDInterface(
-                provider="dw_leds",
-                num_leds=state.dw_led_num_leds,
-                gpio_pin=state.dw_led_gpio_pin,
-                pixel_order=state.dw_led_pixel_order,
-                brightness=state.dw_led_brightness / 100.0,
-                speed=state.dw_led_speed,
-                intensity=state.dw_led_intensity,
-            )
-    elif state.led_provider == "none" or not state.led_provider:
+            state.led_controller = LEDInterface(provider="board")
+    else:
         state.led_controller = None
 
     if state.led_controller:
@@ -204,23 +198,8 @@ def connect_device(homing=True):
     if state.led_controller:
         logger.info("Showing LED connected effect (green flash)")
         state.led_controller.effect_connected()
-        logger.info(f"Setting LED to idle effect: {state.dw_led_idle_effect}")
-        state.led_controller.effect_idle(state.dw_led_idle_effect)
+        state.led_controller.effect_idle(None)
         _start_idle_led_timeout()
-
-
-def check_and_unlock_alarm():
-    """
-    Compatibility shim. The firmware manages its own alarm/unlock; if the board
-    reports an Alarm state we ask it to home (which clears it). Returns True when
-    the board is reachable.
-    """
-    st = poll_status_once()
-    if st is None:
-        return False
-    if st.get("state") == "Alarm":
-        logger.info("Board in Alarm state; a home will be required to clear it")
-    return True
 
 
 ###############################################################################
@@ -282,12 +261,9 @@ def home(timeout=120):
 ###############################################################################
 
 async def check_idle_async(timeout: float = 30.0):
-    """Wait until the board reports Idle (or stop requested / timeout)."""
+    """Wait until the board reports Idle (or timeout)."""
     start_time = asyncio.get_event_loop().time()
     while True:
-        if state.stop_requested:
-            logger.debug("Stop requested during idle check, exiting early")
-            return False
         if asyncio.get_event_loop().time() - start_time > timeout:
             logger.warning(f"Timeout ({timeout}s) waiting for board idle state")
             return False
@@ -301,14 +277,6 @@ def is_machine_idle() -> bool:
     """Single, immediate check of whether the board is idle."""
     st = poll_status_once()
     return bool(st and st.get("state") == "Idle")
-
-
-def get_machine_position(timeout=5):
-    """
-    Position is owned by the board now (reported as theta/rho in /sand_status, not
-    cartesian MPos). Return the last-known machine coordinates for persistence.
-    """
-    return state.machine_x, state.machine_y
 
 
 async def update_machine_position():
