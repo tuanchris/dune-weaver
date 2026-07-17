@@ -466,16 +466,20 @@ export function BrowsePage() {
   const lastDrawnIndexRef = useRef<number>(-1)
   const lastThemeRef = useRef<boolean | null>(null)
 
-  // Get theme colors
+  // Get theme colors from the palette tokens (index.css @theme / .dark)
   const getThemeColors = useCallback(() => {
     const isDark = document.documentElement.classList.contains('dark')
+    const styles = getComputedStyle(document.documentElement)
+    const token = (name: string, fallback: string) =>
+      styles.getPropertyValue(name).trim() || fallback
     return {
       isDark,
-      bgOuter: isDark ? '#1a1a1a' : '#f5f5f5',
-      bgInner: isDark ? '#262626' : '#ffffff',
-      borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(128, 128, 128, 0.3)',
-      lineColor: isDark ? '#e5e5e5' : '#333333',
-      markerBorder: isDark ? '#333333' : '#ffffff',
+      bgOuter: token('--color-background', isDark ? '#171310' : '#F5EFE6'),
+      bgInner: token('--color-card', isDark ? '#211C17' : '#FDFAF4'),
+      borderColor: token('--color-border', isDark ? '#352D23' : '#E2D6C2'),
+      lineColor: token('--color-foreground', isDark ? '#F2EAD9' : '#292219'),
+      markerColor: token('--color-live', isDark ? '#7BC4B0' : '#35836F'),
+      markerBorder: token('--color-card', isDark ? '#211C17' : '#FDFAF4'),
     }
   }, [])
 
@@ -580,8 +584,11 @@ export function BrowsePage() {
       const currentPoint = polarToCartesian(coords[upToIndex][0], coords[upToIndex][1], size)
       ctx.beginPath()
       ctx.arc(currentPoint.x, currentPoint.y, 5, 0, Math.PI * 2)
-      ctx.fillStyle = '#0b80ee'
+      ctx.fillStyle = colors.markerColor
+      ctx.shadowColor = colors.markerColor
+      ctx.shadowBlur = 8
       ctx.fill()
+      ctx.shadowBlur = 0
       ctx.strokeStyle = colors.markerBorder
       ctx.lineWidth = 1
       ctx.stroke()

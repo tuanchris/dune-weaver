@@ -556,7 +556,7 @@ export function PlaylistsPage() {
     <div className="flex flex-col w-full max-w-5xl mx-auto gap-4 sm:gap-6 py-3 sm:py-6 px-0 sm:px-4 overflow-hidden" style={{ height: 'calc(100dvh - 14rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))' }}>
       {/* Page Header */}
       <div className="space-y-0.5 sm:space-y-1 shrink-0 pl-1">
-        <h1 className="text-xl font-semibold tracking-tight">Playlists</h1>
+        <h1 className="font-display text-xl font-semibold tracking-tight">Playlists</h1>
         <p className="text-xs text-muted-foreground">
           Create and manage pattern playlists
         </p>
@@ -572,7 +572,7 @@ export function PlaylistsPage() {
         }`}>
           <div className="flex items-center justify-between px-3 py-2.5 border-b shrink-0">
             <div>
-              <h2 className="text-lg font-semibold">My Playlists</h2>
+              <h2 className="font-display text-lg font-semibold">My Playlists</h2>
               <p className="text-sm text-muted-foreground">{playlists.length} playlist{playlists.length !== 1 ? 's' : ''}</p>
             </div>
             {!isPlayOnlyActive && (
@@ -613,7 +613,7 @@ export function PlaylistsPage() {
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="material-icons-outlined text-lg">playlist_play</span>
-                  <span className="truncate text-sm font-medium">{name}</span>
+                  <span className="font-display truncate text-sm font-semibold">{name}</span>
                 </div>
                 {!isPlayOnlyActive && (
                   <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
@@ -670,7 +670,7 @@ export function PlaylistsPage() {
                 <span className="material-icons-outlined">arrow_back</span>
               </Button>
               <div className="min-w-0">
-                <h2 className="text-lg font-semibold truncate">
+                <h2 className="font-display text-lg font-semibold truncate">
                   {selectedPlaylist || 'Select a Playlist'}
                 </h2>
                 {selectedPlaylist && playlistPatterns.length > 0 && (
@@ -747,7 +747,7 @@ export function PlaylistsPage() {
                         </button>
                       )}
                     </div>
-                    <p className="text-[10px] sm:text-xs truncate font-medium w-full text-center">{getPatternName(path)}</p>
+                    <p className="font-display font-bold text-[10px] sm:text-xs truncate w-full text-center">{getPatternName(path)}</p>
                   </div>
                 ))}
               </div>
@@ -1097,7 +1097,7 @@ export function PlaylistsPage() {
                           </div>
                         )}
                       </div>
-                      <p className={`text-xs truncate font-medium w-full text-center ${isSelected ? 'text-primary' : ''}`}>
+                      <p className={`font-display font-bold text-xs truncate w-full text-center ${isSelected ? 'text-primary' : ''}`}>
                         {pattern.name}
                       </p>
                     </div>
