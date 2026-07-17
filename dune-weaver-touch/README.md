@@ -21,8 +21,15 @@ The chosen table is remembered in `touch_settings.json`.
 - **Status** is polled from `GET /sand_status` (~1 Hz) instead of a WebSocket.
 - **Actions** go out as `$...` commands via `/command` and the `/sand_*` routes
   (run/stop/pause/resume/home/goto/feed/LED).
-- **Patterns** come from `GET /sand_patterns`; previews are rendered locally from the
-  raw `.thr` files (`/sd/patterns/...`) and cached under `preview_cache/`.
+- **Patterns** come from `GET /sand_patterns`; previews are rendered locally and cached
+  under `preview_cache/`. The `.thr` source is read from the co-located backend catalog
+  (`../patterns/`, matched by path suffix / unique basename) when available — fetching
+  from the board's SD (`/sd/patterns/...`) is the slow fallback for board-only patterns.
+- **Password-protected boards** are supported: the `$Sand/Password` key is stored
+  (base64) in `touch_settings.json` and sent as `X-Sand-Key` on every request; set it
+  under Control → Table Connection. `503 busy: low memory` responses are retried with
+  backoff, and the clock sync pushes epoch + POSIX timezone (quiet-hours/autostart
+  schedules run on board-local time).
 - **Playlists** are `.txt` files on the SD card — listed via `GET /sand_playlists`,
   read from `/sd/playlists/...`, and created/edited by uploading/deleting files.
 - **LEDs** use the firmware's named effect/palette catalogue (`$LED/*` / `/sand_led`).
@@ -32,13 +39,16 @@ See the firmware's `API.md` for the full contract.
 
 ## Features
 
-- **Modern SwipeView Navigation**: Swipe between Patterns, Playlists, and Control pages
-- **Pattern Browsing**: Beautiful grid view with search and thumbnail previews
-- **Pattern Execution**: Touch-optimized controls with pre-execution options
-- **Table Control**: Dedicated control page with status monitoring and quick actions
-- **Real-time Status**: WebSocket integration for live progress updates
-- **Modern UI**: Material Design inspired interface with animations and shadows
-- **Touch Optimized**: Large buttons, smooth animations, and intuitive gestures
+- **Five pages**: Browse, Playlists, Control, Light (LED ring), and Now Playing
+- **Pattern Browsing**: grid of circular sand-dish previews with search
+- **Now Playing**: progress drawn as an ember arc around the live pattern disc,
+  with the ball as the moving endpoint — plus transport and speed controls
+- **Table Control**: mDNS table discovery, movement, auto-play, screen settings
+- **"Table at night" design system**: warm basalt/bone night palette (default)
+  and a sand day palette, one amber accent, all defined in
+  `qml/components/ThemeManager.qml`; bundled Outfit + Material Icons Round
+  fonts in `fonts/` (registered in `main.py`, no system fonts needed)
+- **Touch Optimized**: 48px+ targets, pill controls, linuxfb-safe (no effects layers)
 
 ## Architecture
 
@@ -114,20 +124,30 @@ Choose from multiple setup options including systemd service, desktop autostart,
 
 ```
 dune-weaver-touch/
-├── main.py                     # Application entry point
-├── backend.py                  # Backend controller with API/WebSocket integration
+├── main.py                     # Application entry point (fonts, QML engine)
+├── backend.py                  # Backend controller (status poll, actions, LEDs)
+├── fonts/                      # Bundled Outfit + Material Icons Round fonts
 ├── models/
-│   ├── pattern_model.py        # Pattern list model with file system access
-│   └── playlist_model.py       # Playlist model reading from JSON
+│   ├── pattern_model.py        # Pattern list model (firmware-backed)
+│   └── playlist_model.py       # Playlist model (firmware-backed)
 ├── qml/
-│   ├── main.qml               # Main window with StackView navigation
+│   ├── main.qml                    # Main window, tab navigation, error dialog
 │   ├── pages/
-│   │   ├── PatternListPage.qml    # Grid view of patterns with search
-│   │   ├── PatternDetailPage.qml  # Pattern details with execution controls
-│   │   ├── PlaylistPage.qml       # Playlist selection and execution
-│   │   └── ExecutionPage.qml      # Current execution status display
+│   │   ├── ModernPatternListPage.qml  # Browse: grid + search
+│   │   ├── PatternDetailPage.qml      # Pattern detail: clear mode + play
+│   │   ├── ModernPlaylistPage.qml     # Playlists: list, detail, settings
+│   │   ├── PatternSelectorPage.qml    # Add-to-playlist pattern picker
+│   │   ├── TableControlPage.qml       # Connection, movement, system settings
+│   │   ├── LedControlPage.qml         # Light: power, effects, ball tracker
+│   │   └── ExecutionPage.qml          # Now Playing: progress ring + transport
 │   └── components/
-│       └── PatternCard.qml        # Pattern thumbnail card
+│       ├── ThemeManager.qml        # Design tokens (palettes, type, spacing)
+│       ├── Icon.qml                # Material icon glyph by name
+│       ├── ModernControlButton.qml # Pill button (filled / outlined)
+│       ├── ChoiceChip.qml          # Selectable option chip
+│       ├── DwSlider.qml / DwSwitch.qml / SectionLabel.qml / SettingsCard.qml
+│       ├── ModernPatternCard.qml   # Pattern card with circular preview
+│       └── BottomNavigation.qml / BottomNavTab.qml / ConnectionStatus.qml
 ├── requirements.txt
 └── README.md
 ```
@@ -135,10 +155,12 @@ dune-weaver-touch/
 ## Usage
 
 ### Navigation
-- **Swipe left/right** to navigate between the three main pages:
-  - **Patterns**: Browse and search through all available patterns
-  - **Playlists**: View and manage pattern playlists
-  - **Control**: Monitor table status and quick control actions
+- **Bottom tabs** switch between the five pages:
+  - **Browse**: search and pick patterns
+  - **Playlists**: create and run playlists
+  - **Control**: connection, movement, and device settings
+  - **Light**: the table's LED ring
+  - **Now Playing**: live progress ring and transport controls
 
 ### Pattern Management
 1. **Browse Patterns**: Swipe to Patterns page to see grid view with thumbnail previews

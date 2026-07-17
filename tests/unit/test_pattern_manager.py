@@ -243,3 +243,57 @@ class TestListThetaRhoFiles:
             files = list_theta_rho_files()
 
         assert files == []
+
+
+class TestSdPathResolution:
+    """_to_sd_path / make_sd_path_resolver: host <-> board SD path mapping."""
+
+    def test_to_sd_path_keeps_custom_patterns_dir(self):
+        from modules.core.pattern_manager import _to_sd_path
+        # The old find('patterns/') logic matched inside 'custom_patterns/'
+        # and dropped that directory from the SD path.
+        assert _to_sd_path("custom_patterns/foo.thr") == "/patterns/custom_patterns/foo.thr"
+        assert _to_sd_path("./patterns/custom_patterns/foo.thr") == "/patterns/custom_patterns/foo.thr"
+        assert _to_sd_path("./patterns/star.thr") == "/patterns/star.thr"
+        assert _to_sd_path("patterns/sub/wave.thr") == "/patterns/sub/wave.thr"
+
+    def test_resolver_reuses_existing_board_suffix(self):
+        from modules.core import pattern_manager
+        conn = MagicMock()
+        conn.list_patterns.return_value = [
+            "sand-patterns/patterns/alligator.thr",
+            "star.thr",
+        ]
+        resolve = pattern_manager.make_sd_path_resolver(conn)
+        # Host copy nested under custom_patterns/ reuses the board's location.
+        assert (
+            resolve("custom_patterns/sand-patterns/patterns/alligator.thr")
+            == "/patterns/sand-patterns/patterns/alligator.thr"
+        )
+        # Exact board match stays canonical.
+        assert resolve("./patterns/star.thr") == "/patterns/star.thr"
+        # Not on the board at all: canonical path (will be uploaded there).
+        assert resolve("custom_patterns/new.thr") == "/patterns/custom_patterns/new.thr"
+        # The listing is fetched once for the whole resolver lifetime.
+        conn.list_patterns.assert_called_once()
+
+    def test_resolver_unique_basename_match(self):
+        from modules.core import pattern_manager
+        conn = MagicMock()
+        conn.list_patterns.return_value = ["library/animals/heart.thr"]
+        resolve = pattern_manager.make_sd_path_resolver(conn)
+        assert resolve("uploads/heart.thr") == "/patterns/library/animals/heart.thr"
+
+    def test_resolver_ambiguous_basename_falls_back(self):
+        from modules.core import pattern_manager
+        conn = MagicMock()
+        conn.list_patterns.return_value = ["a/heart.thr", "b/heart.thr"]
+        resolve = pattern_manager.make_sd_path_resolver(conn)
+        assert resolve("uploads/heart.thr") == "/patterns/uploads/heart.thr"
+
+    def test_resolver_survives_listing_failure(self):
+        from modules.core import pattern_manager
+        conn = MagicMock()
+        conn.list_patterns.side_effect = RuntimeError("board offline")
+        resolve = pattern_manager.make_sd_path_resolver(conn)
+        assert resolve("custom_patterns/foo.thr") == "/patterns/custom_patterns/foo.thr"

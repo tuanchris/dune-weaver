@@ -1,9 +1,13 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
-// import QtQuick.Effects  // Disabled - MultiEffect causes issues on linuxfb
 import "." as Components
 
+// Pattern card: the preview PNG is a circular sand dish (thr_preview.py
+// renders the disc with transparent corners), so it sits directly on the
+// card surface — no boxed frame around round art.
 Rectangle {
+    id: card
+
     property string name: ""
     property alias preview: previewImage.source
 
@@ -20,137 +24,80 @@ Rectangle {
 
     signal clicked()
 
-    color: Components.ThemeManager.surfaceColor
-    radius: 12
+    color: mouseArea.pressed ? Components.ThemeManager.pressedColor
+                             : Components.ThemeManager.surfaceColor
+    radius: Components.ThemeManager.radiusMd
     border.width: 1
     border.color: Components.ThemeManager.borderColor
 
-    // Drop shadow effect - disabled on linuxfb (causes rendering issues)
-    // Using simple border instead for compatibility
-    // layer.enabled: true
-    // layer.effect: MultiEffect {
-    //     shadowEnabled: true
-    //     shadowColor: "#20000000"
-    //     shadowBlur: 0.8
-    //     shadowVerticalOffset: 2
-    //     shadowHorizontalOffset: 0
-    // }
-    
-    // Hover/press animation
-    scale: mouseArea.pressed ? 0.95 : (mouseArea.containsMouse ? 1.02 : 1.0)
-    
+    scale: mouseArea.pressed ? 0.97 : 1.0
     Behavior on scale {
-        NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+        NumberAnimation { duration: 100; easing.type: Easing.OutQuad }
     }
-    
+
     Column {
         anchors.fill: parent
-        anchors.margins: 8
-        spacing: 6
-        
-        // Preview image container
-        Rectangle {
+        anchors.margins: Components.ThemeManager.spaceSm
+        spacing: Components.ThemeManager.spaceXs
+
+        Item {
             width: parent.width
-            height: parent.height - nameLabel.height - 12
-            radius: 8
-            color: Components.ThemeManager.previewBackground
-            clip: true
-            
+            height: parent.height - nameLabel.height - Components.ThemeManager.spaceXs
+
             Image {
                 id: previewImage
                 anchors.fill: parent
                 fillMode: Image.PreserveAspectFit
                 source: preview ? "file:///" + preview : ""
                 smooth: true
-                
-                // Loading animation
+                // Decode off the GUI thread, at grid-cell resolution — a
+                // full 512px decode per tile is what makes flicking stutter.
+                asynchronous: true
+                sourceSize.width: 200
+                sourceSize.height: 200
+
                 opacity: status === Image.Ready ? 1 : 0
                 Behavior on opacity {
                     NumberAnimation { duration: 200 }
                 }
             }
-            
-            // Placeholder when no preview
+
+            // Placeholder dish until the preview is decoded (or on failure)
             Rectangle {
-                anchors.fill: parent
-                color: Components.ThemeManager.placeholderBackground
-                visible: previewImage.status === Image.Error || previewImage.source == ""
-                radius: 8
+                anchors.centerIn: parent
+                width: Math.min(parent.width, parent.height)
+                height: width
+                radius: width / 2
+                color: Components.ThemeManager.cardColor
+                border.width: 1
+                border.color: Components.ThemeManager.borderColor
+                visible: previewImage.status !== Image.Ready
 
-                Column {
+                Components.Icon {
                     anchors.centerIn: parent
-                    spacing: 8
-
-                    Text {
-                        text: "◻"
-                        font.pixelSize: 32
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        color: Components.ThemeManager.placeholderText
-                    }
-
-                    Text {
-                        text: "No Preview"
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        color: Components.ThemeManager.textTertiary
-                        font.pixelSize: 12
-                    }
+                    name: "radio_unchecked"
+                    size: 28
+                    color: Components.ThemeManager.placeholderText
                 }
             }
         }
 
-        // Pattern name
         Label {
             id: nameLabel
             text: cleanName
             width: parent.width
             elide: Label.ElideRight
             horizontalAlignment: Label.AlignHCenter
+            font.family: Components.ThemeManager.fontMedium
             font.pixelSize: 13
-            font.weight: Font.Medium
             color: Components.ThemeManager.textPrimary
-            wrapMode: Text.Wrap
-            maximumLineCount: 2
+            maximumLineCount: 1
         }
     }
-    
-    // Click area
+
     MouseArea {
         id: mouseArea
         anchors.fill: parent
-        hoverEnabled: true
-        onClicked: parent.clicked()
-        
-        // Ripple effect on click
-        Rectangle {
-            id: ripple
-            width: 0
-            height: 0
-            radius: width / 2
-            color: "#20000000"
-            anchors.centerIn: parent
-            
-            NumberAnimation {
-                id: rippleAnimation
-                target: ripple
-                property: "width"
-                from: 0
-                to: mouseArea.width * 1.5
-                duration: 300
-                easing.type: Easing.OutQuad
-                
-                onFinished: {
-                    ripple.width = 0
-                    ripple.height = 0
-                }
-            }
-            
-            Connections {
-                target: mouseArea
-                function onPressed() {
-                    ripple.height = ripple.width
-                    rippleAnimation.start()
-                }
-            }
-        }
+        onClicked: card.clicked()
     }
 }

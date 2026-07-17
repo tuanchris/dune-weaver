@@ -6,7 +6,7 @@ The board firmware now owns kinematics, `.thr` playback, progress and homing
 uses to talk to it: it builds a FluidNCClient, exposes the same public functions
 the rest of the app already calls (connect_device, device_init, home,
 check_idle_async, is_machine_idle, update_machine_position, perform_soft_reset,
-restart_connection, list_serial_ports), and keeps the LED hooks intact. The old
+restart_connection, list_board_urls), and keeps the LED hooks intact. The old
 serial/websocket GRBL transport, coordinate streaming, and the $H/$J homing
 handshake are gone — the firmware does all of that itself.
 """
@@ -78,6 +78,17 @@ def apply_status(st: dict) -> None:
         state.current_rho = st["rho"]
     if st.get("feed"):
         state.speed = st["feed"]
+    # Health telemetry (present on fw that reports it; left unchanged otherwise).
+    for src, dst in (
+        ("heap", "board_heap"),
+        ("heap_min", "board_heap_min"),
+        ("heap_largest", "board_heap_largest"),
+        ("last_reset", "board_last_reset"),
+        ("sd_ok", "board_sd_ok"),
+        ("uptime", "board_uptime"),
+    ):
+        if src in st:
+            setattr(state, dst, st[src])
 
 
 def poll_status_once() -> dict | None:
@@ -97,7 +108,7 @@ def poll_status_once() -> dict | None:
 # Connection lifecycle
 ###############################################################################
 
-def list_serial_ports():
+def list_board_urls():
     """
     There are no serial ports anymore — the board is reached over HTTP. Return
     the board URL as the single selectable "port" so the frontend's connection
@@ -152,6 +163,11 @@ def device_init(homing=True):
 
     state.firmware_type = "fluidnc"
     state.firmware_version = st.get("fw") or state.firmware_version or "fluidnc"
+    state.board_hostname = st.get("hostname") or state.board_hostname
+    mac = (st.get("mac") or "").lower() or None
+    if mac and mac != state.board_mac:
+        state.board_mac = mac
+        state.save_debounced()
     apply_status(st)
     _sync_homing_settings()
 
@@ -185,11 +201,17 @@ def connect_device(homing=True):
 
     url = board_url()
     logger.info(f"Connecting to FluidNC board at {url}")
-    state.conn = FluidNCClient(url)
+    state.user_disconnected = False
+    state.conn = FluidNCClient(url, api_key=state.board_api_key)
     if not state.conn.reachable():
-        logger.error(f"Board not reachable at {url}")
+        state.board_locked = state.conn.locked
+        if state.board_locked:
+            logger.error(f"Board at {url} is password-protected (401) - set its password in Settings")
+        else:
+            logger.error(f"Board not reachable at {url}")
         state.conn = None
     else:
+        state.board_locked = False
         state.port = url
         logger.info(f"Connected to board at {url}")
         device_init(homing)

@@ -17,25 +17,96 @@ Design notes:
 """
 
 import logging
+import random
+import socket
+import time
+from urllib.parse import urlparse
+
 import requests
 
 logger = logging.getLogger(__name__)
+
+# The board's single-threaded web server answers ``503 busy: low memory`` for
+# every route except the status/stop/pause/resume lifeline when free heap drops
+# below ~10 KB (firmware API.md, load-shedding). These transient sheds — often
+# triggered by an app's launch-burst of concurrent reads — resolve in a few
+# seconds, so idempotent GETs back off and retry rather than failing hard.
+_RETRY_503_ATTEMPTS = 3      # total tries (1 initial + 2 retries)
+_RETRY_503_BASE = 0.3        # seconds; base for exponential backoff + jitter
+
+
+def _pin_ipv4(base_url: str) -> str:
+    """Rewrite a hostname base URL to its numeric IPv4 address.
+
+    The boards publish no AAAA record over mDNS, and a dual-stack getaddrinfo
+    for a ``.local`` name stalls ~5s waiting for the IPv6 answer — longer than
+    the 3s status timeout, so every poll would die in name resolution. Resolve
+    the A record once here (milliseconds) and pin it; clients are rebuilt on
+    every connect/relocate, so a DHCP move is still handled by the watchdog.
+    Unresolvable hosts pass through unchanged for reachable() to report.
+    """
+    parsed = urlparse(base_url)
+    host = parsed.hostname or ""
+    if not host:
+        return base_url
+    try:
+        socket.inet_aton(host)
+        return base_url  # already a numeric IPv4 address
+    except OSError:
+        pass
+    try:
+        info = socket.getaddrinfo(host, parsed.port or 80,
+                                  socket.AF_INET, socket.SOCK_STREAM)
+    except OSError:
+        return base_url
+    address = info[0][4][0]
+    port = f":{parsed.port}" if parsed.port else ""
+    return f"{parsed.scheme}://{address}{port}"
 
 
 class FluidNCClient:
     """Stateless HTTP handle to one FluidNC sand-table board."""
 
-    def __init__(self, base_url: str, timeout: float = 10.0):
+    def __init__(self, base_url: str, timeout: float = 10.0, api_key: str | None = None):
         # base_url like "http://192.168.68.160"
-        self.base_url = base_url.rstrip("/")
+        self.base_url = _pin_ipv4(base_url.rstrip("/"))
         self.timeout = timeout
+        # $Sand/Password key (fw >= v0.1.11), sent as X-Sand-Key on every request.
+        self.api_key = api_key or None
         # Mirrors the BaseConnection contract main.py relies on (is_connected/close).
         self._connected = False
+        # True when the board rejected us with 401 (locked, wrong/missing key).
+        self.locked = False
 
     # -- low-level -----------------------------------------------------------
 
+    def _headers(self) -> dict:
+        return {"X-Sand-Key": self.api_key} if self.api_key else {}
+
+    def _send_with_retry(self, method: str, url: str, **kwargs):
+        """Issue an HTTP request, retrying on the firmware's ``503 low memory``.
+
+        Only used for idempotent GETs (never for uploads/OTA/wifi writes, which
+        are non-retryable). Backs off with exponential + jittered delay; the
+        final 503 is returned to the caller like any other response.
+        """
+        send = getattr(requests, method.lower())  # requests.get / requests.post
+        for attempt in range(_RETRY_503_ATTEMPTS):
+            r = send(url, **kwargs)
+            if r.status_code != 503 or attempt == _RETRY_503_ATTEMPTS - 1:
+                return r
+            delay = _RETRY_503_BASE * (2 ** attempt) + random.uniform(0, _RETRY_503_BASE)
+            logger.debug(
+                f"Board 503 (low memory) on {url}; retry {attempt + 1}/"
+                f"{_RETRY_503_ATTEMPTS - 1} in {delay:.2f}s")
+            time.sleep(delay)
+        return r  # unreachable, but keeps type-checkers happy
+
     def _get(self, path: str, params: dict | None = None, timeout: float | None = None):
-        r = requests.get(self.base_url + path, params=params, timeout=timeout or self.timeout)
+        r = self._send_with_retry("GET", self.base_url + path, params=params,
+                                  timeout=timeout or self.timeout, headers=self._headers())
+        if r.status_code == 401:
+            self.locked = True
         r.raise_for_status()
         return r
 
@@ -52,16 +123,51 @@ class FluidNCClient:
         try:
             self._get("/sand_status", timeout=3.0)
             self._connected = True
+            self.locked = False
         except Exception as e:
             logger.debug(f"Board unreachable at {self.base_url}: {e}")
             self._connected = False
         return self._connected
+
+    # -- API password ($Sand/Password, fw >= v0.1.11) --------------------------
+
+    def test_key(self, key: str | None) -> bool:
+        """Probe whether `key` unlocks the board (a cheap $G through /command).
+
+        True = accepted (or the board isn't locked); False = 401 rejected.
+        Other errors (unreachable, etc.) propagate.
+        """
+        headers = {"X-Sand-Key": key} if key else {}
+        r = self._send_with_retry("GET", self.base_url + "/command", params={"plain": "$G"},
+                                  timeout=6.0, headers=headers)
+        if r.status_code == 401:
+            return False
+        r.raise_for_status()
+        return True
+
+    def set_password(self, password: str) -> str:
+        """Set (non-empty) or remove (empty) the board's API password."""
+        return self.run_command(f"$Sand/Password={password or ''}")
 
     # -- reads ---------------------------------------------------------------
 
     def get_status(self) -> dict:
         """The board's /sand_status object (schema in API.md)."""
         return self._get("/sand_status", timeout=3.0).json()
+
+    def get_bootlog(self) -> str:
+        """Plain-text boot log ($SS startup log). After a panic reset it still
+        holds the *previous* boot's log — the on-device crash breadcrumb."""
+        return self._get("/sand_bootlog", timeout=6.0).text
+
+    def get_coredump(self) -> dict:
+        """JSON crash report from the coredump flash partition, written on any
+        panic (incl. task-WDT hang). {present, task, pc, backtrace, ...}."""
+        return self._get("/sand_coredump", timeout=6.0).json()
+
+    def erase_coredump(self) -> None:
+        """Clear the stored coredump (?erase=1)."""
+        self._get("/sand_coredump", params={"erase": "1"}, timeout=6.0)
 
     def get_settings(self) -> dict:
         """Flat string map of board settings (keys like 'Sand/HomingMode')."""
@@ -79,7 +185,8 @@ class FluidNCClient:
 
     def file_exists(self, sd_path: str) -> bool:
         try:
-            r = requests.get(self.base_url + "/sd" + sd_path, stream=True, timeout=5.0)
+            r = self._send_with_retry("GET", self.base_url + "/sd" + sd_path, stream=True,
+                                      timeout=5.0, headers=self._headers())
             ok = r.status_code == 200
             r.close()
             return ok
@@ -179,6 +286,55 @@ class FluidNCClient:
         """Reboot the controller (loses position) — host re-homes afterward."""
         return self.run_command("$Bye")
 
+    # -- board Wi-Fi (fw >= v0.1.8) -------------------------------------------
+
+    def wifi_status(self) -> dict:
+        """{mode: sta|fallback|standalone, sta_ssid, ap_ssid, fail}. Older
+        firmware 404s (propagates as HTTPError)."""
+        return self._get("/wifi_status", timeout=6.0).json()
+
+    def wifi_scan(self, rescan: bool = False) -> dict:
+        """{status:'scanning'} while the async scan runs; then {status:'ok', aps:[...]}"""
+        return self._get("/wifi_scan", params={"rescan": "1"} if rescan else None,
+                         timeout=8.0).json()
+
+    def _post_wifi(self, path: str, form: dict | None = None) -> dict:
+        """Wi-Fi writes are form-urlencoded POSTs answering {status, reboot, message?}.
+        'busy' = idle-gated (boot auto-home / running pattern); on 'ok' with
+        reboot the table restarts ~0.5s later and the link drops."""
+        r = requests.post(self.base_url + path, data=form or {}, timeout=10.0,
+                          headers=self._headers())
+        return r.json()
+
+    def wifi_save(self, ssid: str, password: str) -> dict:
+        return self._post_wifi("/wifi_save", {"ssid": ssid, "password": password})
+
+    def wifi_standalone(self) -> dict:
+        return self._post_wifi("/wifi_standalone")
+
+    # -- firmware OTA (/updatefw) ---------------------------------------------
+
+    def update_probe(self) -> dict:
+        """Is the board willing to take an OTA right now? Returns the parsed
+        JSON on any HTTP status ('ready'/'busy'; legacy firmware returns an
+        older shape = too old for OTA)."""
+        r = self._send_with_retry("GET", self.base_url + "/updatefw", timeout=6.0,
+                                  headers=self._headers())
+        return r.json()
+
+    def upload_firmware(self, image: bytes) -> dict:
+        """Flash an app image over OTA. Same multipart shape as /upload
+        (a 'firmware.binS' size field + the binary part). On 'ok' the board
+        reboots ~1s later; poll get_status() until it's back."""
+        r = requests.post(
+            self.base_url + "/updatefw",
+            data={"firmware.binS": str(len(image))},
+            files={"firmware.bin": ("firmware.bin", image, "application/octet-stream")},
+            timeout=180.0,
+            headers=self._headers(),
+        )
+        return r.json()
+
     # -- SD file management (ESP3D /upload protocol) -------------------------
 
     def upload_file(self, sd_path: str, data: bytes, directory: str) -> dict:
@@ -195,6 +351,7 @@ class FluidNCClient:
             data=form,
             files=files,
             timeout=30.0,
+            headers=self._headers(),
         )
         r.raise_for_status()
         return r.json() if r.text else {}

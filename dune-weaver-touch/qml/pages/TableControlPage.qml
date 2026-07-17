@@ -1,80 +1,76 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
-// import QtQuick.Effects  // Disabled - causes issues on linuxfb
 import "../components"
 import "../components" as Components
 
 Page {
     id: page
     property var backend: null
-    property var serialPorts: []
     property string selectedPort: ""
     property bool isSerialConnected: false
     property bool autoPlayOnBoot: false
-    
+
     // Backend signal connections
     Connections {
         target: backend
-        
-        function onSerialPortsUpdated(ports) {
-            serialPorts = ports
-        }
-        
+
         function onSerialConnectionChanged(connected) {
             isSerialConnected = connected
         }
-        
+
         function onCurrentPortChanged(port) {
             if (port) {
                 selectedPort = port
             }
         }
-        
-        
+
         function onSettingsLoaded() {
             if (backend) {
                 autoPlayOnBoot = backend.autoPlayOnBoot
                 isSerialConnected = backend.serialConnected
-                // Screen timeout is now managed by button selection, no need to convert
                 if (backend.currentPort) {
                     selectedPort = backend.currentPort
                 }
             }
         }
     }
-    
-    // Refresh serial ports on page load
-    Component.onCompleted: {
-        refreshSerialPorts()
-        loadSettings()
+
+    // backend is injected by the Loader after creation, so kick off the
+    // initial mDNS browse (and settings load) when it arrives — at
+    // Component.onCompleted it is still null and these would be no-ops.
+    onBackendChanged: {
+        if (backend) {
+            refreshSerialPorts()
+            loadSettings()
+        }
     }
-    
+
     function refreshSerialPorts() {
         if (backend) {
             backend.refreshSerialPorts()
         }
     }
-    
+
     function loadSettings() {
         if (backend) {
             backend.loadControlSettings()
         }
     }
-    
+
     Rectangle {
         anchors.fill: parent
         color: Components.ThemeManager.backgroundColor
     }
-    
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
-        
+
         // Header
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 50
+            Layout.preferredHeight: Components.ThemeManager.headerHeight
             color: Components.ThemeManager.surfaceColor
 
             Rectangle {
@@ -86,18 +82,18 @@ Page {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 15
-                anchors.rightMargin: 10
+                anchors.leftMargin: Components.ThemeManager.spaceLg
+                anchors.rightMargin: Components.ThemeManager.spaceLg
 
                 ConnectionStatus {
                     backend: page.backend
-                    Layout.rightMargin: 8
+                    Layout.rightMargin: Components.ThemeManager.spaceSm
                 }
 
                 Label {
-                    text: "Table Control"
-                    font.pixelSize: 18
-                    font.bold: true
+                    text: "Control"
+                    font.family: Components.ThemeManager.fontDisplay
+                    font.pixelSize: Components.ThemeManager.fontSizeTitle
                     color: Components.ThemeManager.textPrimary
                 }
 
@@ -106,426 +102,489 @@ Page {
                 }
             }
         }
-        
-        // Main Content
+
+        // Main content — two columns: the landscape panel wastes half its
+        // width on full-page cards, so connection lives left and the
+        // movement/device settings live right; both scroll together.
         ScrollView {
             Layout.fillWidth: true
             Layout.fillHeight: true
             contentWidth: availableWidth
-            
-            ColumnLayout {
+
+            RowLayout {
                 width: parent.width
-                anchors.margins: 5
-                spacing: 2
-                
-                // Serial Connection Section
-                Rectangle {
+                spacing: 0
+
+                // ---- Left column: table connection ----
+                ColumnLayout {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 160
-                    Layout.margins: 5
-                    radius: 8
-                    color: Components.ThemeManager.surfaceColor
+                    Layout.maximumWidth: Math.round(page.width * 0.47)
+                    Layout.alignment: Qt.AlignTop
+                    spacing: 0
 
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 15
-                        spacing: 10
+                    SettingsCard {
+                        Layout.rightMargin: Components.ThemeManager.spaceSm
+                        Layout.bottomMargin: Components.ThemeManager.spaceLg
+                        Layout.preferredHeight: connectionColumn.implicitHeight + 2 * Components.ThemeManager.spaceLg
 
-                        Label {
-                            text: "Serial Connection"
-                            font.pixelSize: 14
-                            font.bold: true
-                            color: Components.ThemeManager.textPrimary
-                        }
-                        
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 10
-                            
-                            Rectangle {
+                        ColumnLayout {
+                            id: connectionColumn
+                            anchors.fill: parent
+                            anchors.margins: Components.ThemeManager.spaceLg
+                            spacing: Components.ThemeManager.spaceMd
+
+                            SectionLabel {
+                                text: "Table connection"
+                            }
+
+                            // Connection status row — info rect + button as
+                            // siblings, so the button column lines up with
+                            // every other row's (Save, Refresh, Connect).
+                            RowLayout {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 40
-                                radius: 6
-                                color: isSerialConnected ? (Components.ThemeManager.darkMode ? "#1b4332" : "#e8f5e8") : Components.ThemeManager.cardColor
-                                border.color: isSerialConnected ? "#4CAF50" : Components.ThemeManager.borderColor
-                                border.width: 1
+                                spacing: Components.ThemeManager.spaceSm
 
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: 8
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 60
+                                    radius: Components.ThemeManager.radiusSm
+                                    color: isSerialConnected ? Components.ThemeManager.okSoft
+                                                             : Components.ThemeManager.cardColor
+                                    border.color: isSerialConnected ? Components.ThemeManager.ok
+                                                                    : Components.ThemeManager.borderColor
+                                    border.width: 1
 
-                                    Label {
-                                        text: isSerialConnected ?
-                                              (selectedPort ? `Connected: ${selectedPort}` : "Connected") :
-                                              (selectedPort || "No port selected")
-                                        color: isSerialConnected ? "#4CAF50" : (selectedPort ? Components.ThemeManager.textPrimary : Components.ThemeManager.textTertiary)
-                                        font.pixelSize: 12
-                                        font.bold: isSerialConnected
+                                    Column {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.leftMargin: Components.ThemeManager.spaceLg
+                                        anchors.rightMargin: Components.ThemeManager.spaceMd
+                                        spacing: 2
+
+                                        Label {
+                                            text: isSerialConnected
+                                                  ? (backend && backend.tableName ? backend.tableName : "Connected")
+                                                  : "Not connected"
+                                            color: isSerialConnected ? Components.ThemeManager.ok
+                                                                     : Components.ThemeManager.textSecondary
+                                            font.family: Components.ThemeManager.fontDisplay
+                                            font.pixelSize: Components.ThemeManager.fontSizeBody
+                                            elide: Text.ElideRight
+                                            width: parent.width
+                                        }
+
+                                        Label {
+                                            text: isSerialConnected
+                                                  ? selectedPort
+                                                  : (backend ? backend.reconnectStatus : "")
+                                            visible: text !== ""
+                                            color: Components.ThemeManager.textSecondary
+                                            font.family: Components.ThemeManager.fontBody
+                                            font.pixelSize: Components.ThemeManager.fontSizeCaption
+                                            elide: Text.ElideRight
+                                            width: parent.width
+                                        }
+                                    }
+                                }
+
+                                ModernControlButton {
+                                    Layout.preferredWidth: 116
+                                    Layout.preferredHeight: 44
+                                    visible: isSerialConnected
+                                    text: "Disconnect"
+                                    outlined: true
+                                    buttonColor: Components.ThemeManager.danger
+                                    fontSize: 12
+
+                                    onClicked: {
+                                        if (backend) backend.disconnectSerial()
+                                    }
+                                }
+                            }
+
+                            // Table password ($Sand/Password, sent as X-Sand-Key).
+                            // Empty + Save clears a stored password.
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Components.ThemeManager.spaceSm
+
+                                TextField {
+                                    id: tablePasswordField
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 44
+                                    echoMode: TextInput.Password
+                                    placeholderText: backend && backend.hasTablePassword
+                                                     ? "Table password (saved)"
+                                                     : "Table password (if set)"
+                                    placeholderTextColor: Components.ThemeManager.textTertiary
+                                    font.family: Components.ThemeManager.fontBody
+                                    font.pixelSize: Components.ThemeManager.fontSizeBody
+                                    color: Components.ThemeManager.textPrimary
+                                    verticalAlignment: TextInput.AlignVCenter
+                                    leftPadding: Components.ThemeManager.spaceLg
+                                    rightPadding: Components.ThemeManager.spaceLg
+
+                                    background: Rectangle {
+                                        color: Components.ThemeManager.backgroundColor
+                                        radius: 22
+                                        border.color: tablePasswordField.activeFocus ? Components.ThemeManager.accent
+                                                                                     : Components.ThemeManager.borderColor
+                                        border.width: 1
+                                    }
+                                }
+
+                                ModernControlButton {
+                                    Layout.preferredWidth: 116
+                                    Layout.preferredHeight: 44
+                                    text: "Save"
+                                    buttonColor: Components.ThemeManager.accent
+                                    fontSize: 12
+
+                                    onClicked: {
+                                        if (backend) {
+                                            backend.setTablePassword(tablePasswordField.text)
+                                            tablePasswordField.text = ""
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Tables found on the network (mDNS)
+                    SettingsCard {
+                        Layout.rightMargin: Components.ThemeManager.spaceSm
+                        Layout.bottomMargin: Components.ThemeManager.spaceLg
+                        Layout.preferredHeight: networkColumn.implicitHeight + 2 * Components.ThemeManager.spaceLg
+
+                        ColumnLayout {
+                            id: networkColumn
+                            anchors.fill: parent
+                            anchors.margins: Components.ThemeManager.spaceLg
+                            spacing: Components.ThemeManager.spaceMd
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Components.ThemeManager.spaceSm
+
+                                SectionLabel {
+                                    text: "Tables on your network"
+                                    Layout.fillWidth: true
+                                }
+
+                                ModernControlButton {
+                                    Layout.preferredWidth: 116
+                                    Layout.preferredHeight: 44
+                                    text: "Refresh"
+                                    icon: "refresh"
+                                    outlined: true
+                                    buttonColor: Components.ThemeManager.textSecondary
+                                    fontSize: 12
+
+                                    onClicked: refreshSerialPorts()
+                                }
+                            }
+
+                            // The connected table already sits in the status
+                            // card above, so it is filtered from this list.
+                            Repeater {
+                                model: backend ? backend.discoveredTables : []
+
+                                delegate: RowLayout {
+                                    required property var modelData
+                                    readonly property bool isCurrent: isSerialConnected && modelData.url === selectedPort
+
+                                    visible: !isCurrent
+                                    Layout.fillWidth: true
+                                    spacing: Components.ThemeManager.spaceSm
+
+                                    Rectangle {
                                         Layout.fillWidth: true
-                                    }
+                                        Layout.preferredHeight: 60
+                                        radius: Components.ThemeManager.radiusSm
+                                        color: Components.ThemeManager.cardColor
+                                        border.color: Components.ThemeManager.borderColor
+                                        border.width: 1
 
-                                    Text {
-                                        text: "▼"
-                                        color: Components.ThemeManager.textSecondary
-                                        font.pixelSize: 10
-                                        visible: !isSerialConnected
-                                    }
-                                }
-                                
-                                MouseArea {
-                                    anchors.fill: parent
-                                    enabled: !isSerialConnected
-                                    onClicked: portMenu.open()
-                                }
-                                
-                                Menu {
-                                    id: portMenu
-                                    y: parent.height
+                                        Column {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            anchors.left: parent.left
+                                            anchors.right: parent.right
+                                            anchors.leftMargin: Components.ThemeManager.spaceLg
+                                            anchors.rightMargin: Components.ThemeManager.spaceMd
+                                            spacing: 2
 
-                                    // Note: Menu rotation for Pi 5 handled differently
-                                    // transform property not well supported on Menu
+                                            Label {
+                                                text: modelData.name || modelData.url
+                                                color: Components.ThemeManager.textPrimary
+                                                font.family: Components.ThemeManager.fontDisplay
+                                                font.pixelSize: Components.ThemeManager.fontSizeBody
+                                                elide: Text.ElideRight
+                                                width: parent.width
+                                            }
 
-                                    Repeater {
-                                        model: serialPorts
-                                        MenuItem {
-                                            text: modelData
-                                            onTriggered: {
-                                                selectedPort = modelData
+                                            Label {
+                                                text: modelData.url
+                                                color: Components.ThemeManager.textSecondary
+                                                font.family: Components.ThemeManager.fontBody
+                                                font.pixelSize: Components.ThemeManager.fontSizeCaption
+                                                elide: Text.ElideRight
+                                                width: parent.width
                                             }
                                         }
                                     }
-                                    
-                                    MenuSeparator {}
-                                    
-                                    MenuItem {
-                                        text: "Refresh Ports"
-                                        onTriggered: refreshSerialPorts()
+
+                                    ModernControlButton {
+                                        Layout.preferredWidth: 116
+                                        Layout.preferredHeight: 44
+                                        text: "Connect"
+                                        buttonColor: Components.ThemeManager.accent
+                                        fontSize: 12
+
+                                        onClicked: {
+                                            if (backend) backend.connectSerial(modelData.url)
+                                        }
                                     }
                                 }
                             }
-                            
-                            ModernControlButton {
-                                Layout.preferredWidth: 150
-                                Layout.preferredHeight: 40
-                                text: isSerialConnected ? "Disconnect" : "Connect"
-                                icon: isSerialConnected ? "◉" : "○"
-                                iconSize: 20
-                                buttonColor: isSerialConnected ? "#dc2626" : "#059669"
-                                fontSize: 11
-                                enabled: isSerialConnected || selectedPort !== ""
-                                
-                                onClicked: {
-                                    if (backend) {
-                                        if (isSerialConnected) {
-                                            backend.disconnectSerial()
-                                        } else {
-                                            backend.connectSerial(selectedPort)
+
+                            Label {
+                                visible: !backend || backend.discoveredTables.length === 0
+                                text: "No tables found. Tap Refresh, or enter the address below."
+                                font.family: Components.ThemeManager.fontBody
+                                font.pixelSize: Components.ThemeManager.fontSizeCaption
+                                color: Components.ThemeManager.textTertiary
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                            }
+
+                            // Manual address entry
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Components.ThemeManager.spaceSm
+
+                                TextField {
+                                    id: manualAddress
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 44
+                                    placeholderText: "IP or host address"
+                                    placeholderTextColor: Components.ThemeManager.textTertiary
+                                    font.family: Components.ThemeManager.fontBody
+                                    font.pixelSize: Components.ThemeManager.fontSizeBody
+                                    color: Components.ThemeManager.textPrimary
+                                    verticalAlignment: TextInput.AlignVCenter
+                                    leftPadding: Components.ThemeManager.spaceLg
+                                    rightPadding: Components.ThemeManager.spaceLg
+                                    inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhPreferLowercase
+
+                                    background: Rectangle {
+                                        color: Components.ThemeManager.backgroundColor
+                                        radius: 22
+                                        border.color: manualAddress.activeFocus ? Components.ThemeManager.accent
+                                                                                : Components.ThemeManager.borderColor
+                                        border.width: 1
+                                    }
+                                }
+
+                                ModernControlButton {
+                                    Layout.preferredWidth: 116
+                                    Layout.preferredHeight: 44
+                                    text: "Connect"
+                                    buttonColor: Components.ThemeManager.accent
+                                    fontSize: 12
+                                    enabled: manualAddress.text.trim() !== ""
+
+                                    onClicked: {
+                                        if (backend) {
+                                            backend.connectSerial(manualAddress.text.trim())
+                                            manualAddress.text = ""
                                         }
                                     }
                                 }
                             }
                         }
-                        
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            visible: !isSerialConnected
-                            
-                            ModernControlButton {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 35
-                                text: "Refresh Ports"
-                                icon: "↻"
-                                iconSize: 18
-                                buttonColor: "#6b7280"
-                                fontSize: 10
-                                
-                                onClicked: refreshSerialPorts()
-                            }
-                        }
                     }
                 }
-                
-                // Hardware Movement Section
-                Rectangle {
+
+                // ---- Right column: movement + device settings ----
+                ColumnLayout {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 100
-                    Layout.margins: 5
-                    radius: 8
-                    color: Components.ThemeManager.surfaceColor
+                    Layout.alignment: Qt.AlignTop
+                    spacing: 0
 
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 15
-                        spacing: 10
+                    // The table itself: movement + auto play
+                    SettingsCard {
+                        Layout.leftMargin: Components.ThemeManager.spaceSm
+                        Layout.preferredHeight: movementColumn.implicitHeight + 2 * Components.ThemeManager.spaceLg
 
-                        Label {
-                            text: "Table Movement"
-                            font.pixelSize: 14
-                            font.bold: true
-                            color: Components.ThemeManager.textPrimary
-                        }
-                        
-                        GridLayout {
-                            Layout.fillWidth: true
-                            columns: 3
-                            rowSpacing: 8
-                            columnSpacing: 8
-                            
-                            ModernControlButton {
+                        ColumnLayout {
+                            id: movementColumn
+                            anchors.fill: parent
+                            anchors.margins: Components.ThemeManager.spaceLg
+                            spacing: Components.ThemeManager.spaceMd
+
+                            SectionLabel {
+                                text: "Table"
+                            }
+
+                            RowLayout {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 45
-                                text: "Home"
-                                icon: "⌂"
-                                iconSize: 20
-                                buttonColor: "#2563eb"
-                                fontSize: 12
-                                enabled: isSerialConnected
-                                
-                                onClicked: {
-                                    if (backend) backend.sendHome()
+                                spacing: Components.ThemeManager.spaceSm
+
+                                ModernControlButton {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: Components.ThemeManager.touchTarget
+                                    text: "Home"
+                                    icon: "home"
+                                    outlined: true
+                                    buttonColor: Components.ThemeManager.accent
+                                    fontSize: 13
+                                    enabled: isSerialConnected
+
+                                    onClicked: {
+                                        if (backend) backend.sendHome()
+                                    }
                                 }
-                            }
-                            
-                            ModernControlButton {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 45
-                                text: "Center"
-                                icon: "◎"
-                                iconSize: 20
-                                buttonColor: "#2563eb"
-                                fontSize: 12
-                                enabled: isSerialConnected
-                                
-                                onClicked: {
-                                    if (backend) backend.moveToCenter()
+
+                                ModernControlButton {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: Components.ThemeManager.touchTarget
+                                    text: "Center"
+                                    icon: "adjust"
+                                    outlined: true
+                                    buttonColor: Components.ThemeManager.accent
+                                    fontSize: 13
+                                    enabled: isSerialConnected
+
+                                    onClicked: {
+                                        if (backend) backend.moveToCenter()
+                                    }
                                 }
-                            }
-                            
-                            ModernControlButton {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 45
-                                text: "Perimeter"
-                                icon: "○"
-                                iconSize: 20
-                                buttonColor: "#2563eb"
-                                fontSize: 12
-                                enabled: isSerialConnected
-                                
-                                onClicked: {
-                                    if (backend) backend.moveToPerimeter()
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                
-                // Auto Play on Boot Section
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 200  // Reduced from 280 for single row layout
-                    Layout.margins: 5
-                    radius: 8
-                    color: Components.ThemeManager.surfaceColor
 
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 15
-                        spacing: 10
+                                ModernControlButton {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: Components.ThemeManager.touchTarget
+                                    text: "Edge"
+                                    icon: "radio_unchecked"
+                                    outlined: true
+                                    buttonColor: Components.ThemeManager.accent
+                                    fontSize: 13
+                                    enabled: isSerialConnected
 
-                        Label {
-                            text: "Auto Play Settings"
-                            font.pixelSize: 14
-                            font.bold: true
-                            color: Components.ThemeManager.textPrimary
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 10
-
-                            Label {
-                                text: "Auto play on boot:"
-                                font.pixelSize: 12
-                                color: Components.ThemeManager.textSecondary
-                                Layout.fillWidth: true
-                            }
-                            
-                            Switch {
-                                id: autoPlaySwitch
-                                checked: autoPlayOnBoot
-                                
-                                onToggled: {
-                                    autoPlayOnBoot = checked
-                                    if (backend) {
-                                        backend.setAutoPlayOnBoot(checked)
+                                    onClicked: {
+                                        if (backend) backend.moveToPerimeter()
                                     }
                                 }
                             }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: Components.ThemeManager.borderLight
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Components.ThemeManager.spaceSm
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+
+                                    Label {
+                                        text: "Auto play"
+                                        font.family: Components.ThemeManager.fontMedium
+                                        font.pixelSize: Components.ThemeManager.fontSizeBody
+                                        color: Components.ThemeManager.textPrimary
+                                    }
+
+                                    Label {
+                                        text: "Start playing when the table powers on"
+                                        font.family: Components.ThemeManager.fontBody
+                                        font.pixelSize: Components.ThemeManager.fontSizeCaption
+                                        color: Components.ThemeManager.textSecondary
+                                        wrapMode: Text.WordWrap
+                                        Layout.fillWidth: true
+                                    }
+                                }
+
+                                DwSwitch {
+                                    id: autoPlaySwitch
+                                    checked: autoPlayOnBoot
+
+                                    onToggled: {
+                                        autoPlayOnBoot = checked
+                                        if (backend) {
+                                            backend.setAutoPlayOnBoot(checked)
+                                        }
+                                    }
+
+                                    // A user toggle breaks the declarative binding;
+                                    // this keeps the switch following loaded settings.
+                                    Binding {
+                                        target: autoPlaySwitch
+                                        property: "checked"
+                                        value: autoPlayOnBoot
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: Components.ThemeManager.borderLight
+                            }
+
+                            // Reboots the FluidNC controller ($Bye soft-reset);
+                            // the board re-homes on the way back up.
+                            ModernControlButton {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: Components.ThemeManager.touchTarget
+                                text: "Restart table"
+                                icon: "restart"
+                                outlined: true
+                                buttonColor: Components.ThemeManager.textSecondary
+                                fontSize: 13
+                                enabled: isSerialConnected
+
+                                onClicked: {
+                                    if (backend) backend.restartBackend()
+                                }
+                            }
                         }
-                        
+                    }
+
+                    // This screen: sleep, theme, power
+                    SettingsCard {
+                        Layout.leftMargin: Components.ThemeManager.spaceSm
+                        Layout.bottomMargin: Components.ThemeManager.spaceLg
+                        Layout.preferredHeight: screenColumn.implicitHeight + 2 * Components.ThemeManager.spaceLg
+
                         ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 15
+                            id: screenColumn
+                            anchors.fill: parent
+                            anchors.margins: Components.ThemeManager.spaceLg
+                            spacing: Components.ThemeManager.spaceMd
+
+                            SectionLabel {
+                                text: "This screen"
+                            }
 
                             Label {
-                                text: "Screen timeout:"
-                                font.pixelSize: 14
-                                font.bold: true
-                                color: Components.ThemeManager.textPrimary
-                                Layout.alignment: Qt.AlignLeft
+                                text: "Sleeps after"
+                                font.family: Components.ThemeManager.fontMedium
+                                font.pixelSize: Components.ThemeManager.fontSizeCaption
+                                color: Components.ThemeManager.textSecondary
                             }
-                            
-                            // Touch-friendly button row for timeout options
+
                             RowLayout {
                                 id: timeoutGrid
                                 Layout.fillWidth: true
-                                spacing: 8
-                                
+                                spacing: Components.ThemeManager.spaceSm
+
                                 property string currentSelection: backend ? backend.getCurrentScreenTimeoutOption() : "5 minutes"
-                                
-                                // 30 seconds button
-                                Rectangle {
-                                    Layout.preferredWidth: 100
-                                    Layout.preferredHeight: 50
-                                    color: timeoutGrid.currentSelection === "30 seconds" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
-                                    border.color: timeoutGrid.currentSelection === "30 seconds" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
-                                    border.width: 2
-                                    radius: 8
 
-                                    Label {
-                                        anchors.centerIn: parent
-                                        text: "30s"
-                                        font.pixelSize: 14
-                                        font.bold: true
-                                        color: timeoutGrid.currentSelection === "30 seconds" ? "white" : Components.ThemeManager.textPrimary
-                                    }
-                                    
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        onClicked: {
-                                            if (backend) {
-                                                backend.setScreenTimeoutByOption("30 seconds")
-                                                timeoutGrid.currentSelection = "30 seconds"
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                // 1 minute button
-                                Rectangle {
-                                    Layout.preferredWidth: 100
-                                    Layout.preferredHeight: 50
-                                    color: timeoutGrid.currentSelection === "1 minute" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
-                                    border.color: timeoutGrid.currentSelection === "1 minute" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
-                                    border.width: 2
-                                    radius: 8
-
-                                    Label {
-                                        anchors.centerIn: parent
-                                        text: "1min"
-                                        font.pixelSize: 14
-                                        font.bold: true
-                                        color: timeoutGrid.currentSelection === "1 minute" ? "white" : Components.ThemeManager.textPrimary
-                                    }
-
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        onClicked: {
-                                            if (backend) {
-                                                backend.setScreenTimeoutByOption("1 minute")
-                                                timeoutGrid.currentSelection = "1 minute"
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // 5 minutes button
-                                Rectangle {
-                                    Layout.preferredWidth: 100
-                                    Layout.preferredHeight: 50
-                                    color: timeoutGrid.currentSelection === "5 minutes" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
-                                    border.color: timeoutGrid.currentSelection === "5 minutes" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
-                                    border.width: 2
-                                    radius: 8
-
-                                    Label {
-                                        anchors.centerIn: parent
-                                        text: "5min"
-                                        font.pixelSize: 14
-                                        font.bold: true
-                                        color: timeoutGrid.currentSelection === "5 minutes" ? "white" : Components.ThemeManager.textPrimary
-                                    }
-
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        onClicked: {
-                                            if (backend) {
-                                                backend.setScreenTimeoutByOption("5 minutes")
-                                                timeoutGrid.currentSelection = "5 minutes"
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // 10 minutes button
-                                Rectangle {
-                                    Layout.preferredWidth: 100
-                                    Layout.preferredHeight: 50
-                                    color: timeoutGrid.currentSelection === "10 minutes" ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
-                                    border.color: timeoutGrid.currentSelection === "10 minutes" ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
-                                    border.width: 2
-                                    radius: 8
-
-                                    Label {
-                                        anchors.centerIn: parent
-                                        text: "10min"
-                                        font.pixelSize: 14
-                                        font.bold: true
-                                        color: timeoutGrid.currentSelection === "10 minutes" ? "white" : Components.ThemeManager.textPrimary
-                                    }
-                                    
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        onClicked: {
-                                            if (backend) {
-                                                backend.setScreenTimeoutByOption("10 minutes")
-                                                timeoutGrid.currentSelection = "10 minutes"
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                // Never button
-                                Rectangle {
-                                    Layout.preferredWidth: 100
-                                    Layout.preferredHeight: 50
-                                    color: timeoutGrid.currentSelection === "Never" ? "#FF9800" : "#f0f0f0"
-                                    border.color: timeoutGrid.currentSelection === "Never" ? "#F57C00" : "#ccc"
-                                    border.width: 2
-                                    radius: 8
-                                    
-                                    Label {
-                                        anchors.centerIn: parent
-                                        text: "Never"
-                                        font.pixelSize: 14
-                                        font.bold: true
-                                        color: timeoutGrid.currentSelection === "Never" ? "white" : "#333"
-                                    }
-                                    
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        onClicked: {
-                                            if (backend) {
-                                                backend.setScreenTimeoutByOption("Never")
-                                                timeoutGrid.currentSelection = "Never"
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                // Update selection when backend changes
                                 Connections {
                                     target: backend
                                     function onScreenTimeoutChanged() {
@@ -534,99 +593,76 @@ Page {
                                         }
                                     }
                                 }
-                            }
-                        }
-                    }
-                }
 
-                // Theme Settings Section
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 100
-                    Layout.margins: 5
-                    radius: 8
-                    color: Components.ThemeManager.surfaceColor
+                                Repeater {
+                                    model: [
+                                        { label: "30 s", value: "30 seconds" },
+                                        { label: "1 m", value: "1 minute" },
+                                        { label: "5 m", value: "5 minutes" },
+                                        { label: "10 m", value: "10 minutes" },
+                                        { label: "Never", value: "Never" }
+                                    ]
 
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 15
-                        spacing: 10
+                                    ChoiceChip {
+                                        required property var modelData
 
-                        Label {
-                            text: "Appearance"
-                            font.pixelSize: 14
-                            font.bold: true
-                            color: Components.ThemeManager.textPrimary
-                        }
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: Components.ThemeManager.touchTarget
+                                        label: modelData.label
+                                        selected: timeoutGrid.currentSelection === modelData.value
 
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 10
-
-                            Label {
-                                text: "Dark mode:"
-                                font.pixelSize: 12
-                                color: Components.ThemeManager.textSecondary
-                                Layout.fillWidth: true
-                            }
-
-                            Switch {
-                                id: darkModeSwitch
-                                checked: Components.ThemeManager.darkMode
-
-                                onToggled: {
-                                    Components.ThemeManager.darkMode = checked
+                                        onClicked: {
+                                            if (backend) {
+                                                backend.setScreenTimeoutByOption(modelData.value)
+                                                timeoutGrid.currentSelection = modelData.value
+                                            }
+                                        }
+                                    }
                                 }
                             }
-                        }
-                    }
-                }
 
-                // System Controls Section
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 100
-                    Layout.margins: 5
-                    radius: 8
-                    color: Components.ThemeManager.surfaceColor
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 15
-                        spacing: 10
-
-                        Label {
-                            text: "System Controls"
-                            font.pixelSize: 14
-                            font.bold: true
-                            color: Components.ThemeManager.textPrimary
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-
-                            ModernControlButton {
+                            Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 45
-                                text: "Restart Backend"
-                                icon: "↻"
-                                iconSize: 20
-                                buttonColor: "#f59e0b"
-                                fontSize: 11
+                                Layout.preferredHeight: 1
+                                color: Components.ThemeManager.borderLight
+                            }
 
-                                onClicked: {
-                                    if (backend) backend.restartBackend()
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Components.ThemeManager.spaceSm
+
+                                Label {
+                                    text: "Night mode"
+                                    font.family: Components.ThemeManager.fontMedium
+                                    font.pixelSize: Components.ThemeManager.fontSizeBody
+                                    color: Components.ThemeManager.textPrimary
+                                    Layout.fillWidth: true
                                 }
+
+                                DwSwitch {
+                                    id: darkModeSwitch
+                                    checked: Components.ThemeManager.darkMode
+
+                                    onToggled: {
+                                        Components.ThemeManager.darkMode = checked
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: Components.ThemeManager.borderLight
                             }
 
                             ModernControlButton {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 45
-                                text: "Shutdown Pi"
-                                icon: ""
-                                buttonColor: "#dc2626"
-                                fontSize: 11
+                                Layout.preferredHeight: Components.ThemeManager.touchTarget
+                                text: "Shut down Pi"
+                                icon: "power"
+                                outlined: true
+                                buttonColor: Components.ThemeManager.danger
+                                fontSize: 13
 
                                 onClicked: {
                                     if (backend) backend.shutdownPi()
@@ -634,11 +670,6 @@ Page {
                             }
                         }
                     }
-                }
-
-                // Add some bottom spacing for better scrolling
-                Item {
-                    Layout.preferredHeight: 20
                 }
             }
         }

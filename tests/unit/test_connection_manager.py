@@ -100,6 +100,30 @@ class TestFluidNCClient:
         assert req.get.call_args[1]["params"]["action"] == "delete"
         assert req.get.call_args[1]["params"]["filename"] == "old.thr"
 
+    def test_get_retries_on_503_then_succeeds(self):
+        """A transient 503 (firmware low-memory shedding) is retried, not raised."""
+        client = FluidNCClient("http://board")
+        with patch("modules.connection.fluidnc_client.requests") as req, \
+                patch("modules.connection.fluidnc_client.time.sleep"):
+            req.get.side_effect = [
+                _resp(status=503),
+                _resp(json_data={"state": "Idle"}, status=200),
+            ]
+            result = client.get_status()
+        assert result == {"state": "Idle"}
+        assert req.get.call_count == 2
+
+    def test_get_gives_up_after_max_503_retries(self):
+        """A persistent 503 exhausts retries and surfaces via raise_for_status."""
+        client = FluidNCClient("http://board")
+        with patch("modules.connection.fluidnc_client.requests") as req, \
+                patch("modules.connection.fluidnc_client.time.sleep"):
+            req.get.return_value = _resp(status=503)
+            client.get_status()
+        # 1 initial + 2 retries = 3 attempts; the final 503 is returned to _get,
+        # whose raise_for_status() (mocked here) would raise against a real board.
+        assert req.get.call_count == 3
+
 
 class TestConnectionManagerHelpers:
     """Helpers in connection_manager that sit on top of the client."""
@@ -110,11 +134,11 @@ class TestConnectionManagerHelpers:
         assert cm._normalize_board_url("http://x/") == "http://x"
         assert cm._normalize_board_url("") == ""
 
-    def test_list_serial_ports_returns_board_url(self, mock_state):
+    def test_list_board_urls_returns_board_url(self, mock_state):
         from modules.connection import connection_manager as cm
         mock_state.board_url = "http://192.168.1.9"
         with patch("modules.connection.connection_manager.state", mock_state):
-            ports = cm.list_serial_ports()
+            ports = cm.list_board_urls()
         assert ports == ["http://192.168.1.9"]
 
     def test_apply_status_maps_fields(self, mock_state):
@@ -124,6 +148,22 @@ class TestConnectionManagerHelpers:
         assert mock_state.current_theta == 1.23
         assert mock_state.current_rho == 0.5
         assert mock_state.speed == 900
+
+    def test_apply_status_mirrors_health_telemetry(self, mock_state):
+        from modules.connection import connection_manager as cm
+        st = {
+            "theta": 0.1, "rho": 0.2, "feed": 500,
+            "heap": 145000, "heap_min": 98000, "heap_largest": 60000,
+            "last_reset": "panic", "sd_ok": False, "uptime": 86400,
+        }
+        with patch("modules.connection.connection_manager.state", mock_state):
+            cm.apply_status(st)
+        assert mock_state.board_heap == 145000
+        assert mock_state.board_heap_min == 98000
+        assert mock_state.board_heap_largest == 60000
+        assert mock_state.board_last_reset == "panic"
+        assert mock_state.board_sd_ok is False
+        assert mock_state.board_uptime == 86400
 
     def test_is_machine_idle_true(self, mock_state):
         from modules.connection import connection_manager as cm

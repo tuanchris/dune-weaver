@@ -50,6 +50,9 @@ class AppState:
         # Firmware info (runtime only, detected on connect, not persisted)
         self.firmware_type = None  # 'fluidnc', 'grbl', or 'unknown'
         self.firmware_version = None  # e.g., "v3.7.2"
+        self.board_hostname = None  # board's network hostname, e.g. "DWMP" (fw > v0.1.7)
+        self.board_locked = False  # board rejected us with 401 (password-protected)
+        self.user_disconnected = False  # explicit /disconnect: suppress auto-reconnect
 
         # Angular homing compass reference point
         # This is the angular offset in degrees where the sensor is placed
@@ -78,6 +81,19 @@ class AppState:
         # Address of the FluidNC board (e.g. "http://192.168.68.160" or a bare IP).
         # None => fall back to the DUNE_BOARD_URL env var or the built-in default.
         self.board_url = None
+        # Board API password ($Sand/Password, fw >= v0.1.11) sent as X-Sand-Key.
+        self.board_api_key = None
+        # Board STA MAC (lowercase, from /sand_status) — stable hardware identity
+        # used to re-find the board when DHCP moves it.
+        self.board_mac = None
+        # Board health telemetry mirrored from /sand_status (firmware API.md).
+        # Not persisted — live diagnostics only, surfaced in Table Control.
+        self.board_heap = None            # free heap bytes now
+        self.board_heap_min = None        # lowest free heap since boot (low-water)
+        self.board_heap_largest = None    # largest allocatable block (fragmentation)
+        self.board_last_reset = None      # power_on|software|panic|task_wdt|brownout|...
+        self.board_sd_ok = None           # boot-time SD readability probe (None=unknown)
+        self.board_uptime = None          # seconds since board boot
         self.wled_ip = None
         self.led_provider = "none"  # "wled", "board", or "none"
         self.led_controller = None
@@ -272,6 +288,9 @@ class AppState:
         mqtt_password_encoded = ""
         if self.mqtt_password:
             mqtt_password_encoded = base64.b64encode(self.mqtt_password.encode('utf-8')).decode('ascii')
+        board_api_key_encoded = ""
+        if self.board_api_key:
+            board_api_key_encoded = base64.b64encode(self.board_api_key.encode('utf-8')).decode('ascii')
 
         return {
             "speed": self._speed,
@@ -290,6 +309,8 @@ class AppState:
             "custom_clear_from_in": self.custom_clear_from_in,
             "custom_clear_from_out": self.custom_clear_from_out,
             "board_url": self.board_url,
+            "board_api_key": board_api_key_encoded,
+            "board_mac": self.board_mac,
             "wled_ip": self.wled_ip,
             "led_provider": self.led_provider,
             "dw_led_idle_timeout_enabled": self.dw_led_idle_timeout_enabled,
@@ -370,6 +391,9 @@ class AppState:
         self.custom_clear_from_in = data.get("custom_clear_from_in", None)
         self.custom_clear_from_out = data.get("custom_clear_from_out", None)
         self.board_url = data.get("board_url", None)
+        # Same storage scheme as the MQTT password (base64, plain-text tolerated)
+        self.board_api_key = self._decode_mqtt_password(data.get("board_api_key", "")) or None
+        self.board_mac = data.get("board_mac", None)
         self.wled_ip = data.get('wled_ip', None)
         self.led_provider = data.get('led_provider', "none")
 
@@ -493,12 +517,6 @@ class AppState:
                 self.from_settings_dict(settings_data)
             except Exception as e:
                 print(f"Error loading settings from {self.SETTINGS_FILE}: {e}")
-
-    def update_steps_per_mm(self, x_steps, y_steps):
-        """Update and save steps per mm values."""
-        self.x_steps_per_mm = x_steps
-        self.y_steps_per_mm = y_steps
-        self.save()
 
     def reset_state(self):
         """Reset all state variables to their default values."""

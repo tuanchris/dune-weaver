@@ -23,6 +23,7 @@ settings save (host enforcement still works without the board's copy).
 """
 
 import logging
+import os
 import threading
 import time
 
@@ -269,29 +270,34 @@ def apply_autostart(update: dict, conn=None) -> None:
 # mirrored (and the selected playlist's patterns are ensured on the board).
 # ---------------------------------------------------------------------------
 
-def _playlist_sd_content(files: list) -> str:
-    from modules.core.pattern_manager import _to_sd_path
-    lines = [_to_sd_path(f) for f in files or []]
+def _playlist_sd_content(files: list, resolve) -> str:
+    lines = [resolve(f) for f in files or []]
     return "\n".join(lines) + "\n"
 
 
-def mirror_playlist(name: str, files: list, conn=None, ensure_patterns: bool = False) -> None:
-    """Write a host playlist to the board as /playlists/<name>.txt (best-effort)."""
+def mirror_playlist(name: str, files: list, conn=None, ensure_patterns: bool = False,
+                    resolve=None) -> None:
+    """Write a host playlist to the board as /playlists/<name>.txt (best-effort).
+
+    `resolve` maps host entries to SD paths (make_sd_path_resolver); pass the
+    caller's resolver when patterns are ensured separately so the playlist
+    lines and the uploads land on the same paths."""
+    from modules.core.pattern_manager import _ensure_on_board, make_sd_path_resolver
     conn = conn or state.conn
     if not conn:
         return
+    resolve = resolve or make_sd_path_resolver(conn)
     try:
         sd_path = f"/playlists/{name}.txt"
-        data = _playlist_sd_content(files).encode("utf-8")
+        data = _playlist_sd_content(files, resolve).encode("utf-8")
         conn.upload_file(sd_path, data, "/playlists")
         logger.info(f"Mirrored playlist '{name}' to board ({len(files or [])} patterns)")
     except Exception as e:
         logger.warning(f"Could not mirror playlist '{name}' to board: {e}")
         return
     if ensure_patterns:
-        from modules.core.pattern_manager import _ensure_on_board, _to_sd_path
         for f in files or []:
-            _ensure_on_board(f, _to_sd_path(f))
+            _ensure_on_board(f, resolve(f))
 
 
 def mirror_playlist_async(name: str, files: list) -> None:
@@ -315,20 +321,125 @@ def unmirror_playlist(name: str, conn=None) -> None:
         logger.debug(f"Could not remove playlist '{name}' from board: {e}")
 
 
-def mirror_all_playlists(conn=None) -> None:
-    """Mirror every host playlist to the board (run on connect, best-effort)."""
+def _from_playlist_sd_line(line: str) -> str:
+    """Invert _to_sd_path for playlist lines: '/patterns/x.thr' -> 'x.thr'
+    (host playlist entries are relative to the patterns/ dir)."""
+    p = line.replace("\\", "/").strip()
+    if p.startswith("/sd/"):
+        p = p[3:]
+    if p.startswith("/patterns/"):
+        return p[len("/patterns/"):]
+    return p.rsplit("/", 1)[-1]
+
+
+def _make_host_path_resolver():
+    """Board SD paths don't always mirror the host patterns/ tree: files can
+    reach the board via the mobile app or a copied SD card while the host holds
+    the same pattern elsewhere (e.g. under custom_patterns/). Adopted playlist
+    entries must point at real host files or previews and play both 404.
+
+    Returns a resolve(rel) -> rel function: exact path if it exists, else a
+    unique catalog suffix match, else a unique basename match, else the raw
+    path unchanged (the pattern genuinely isn't on the host). The catalog is
+    scanned lazily once per adoption pass and results are memoized, so the
+    resolution is deterministic and repeat adoptions stay stable."""
+    from modules.core import pattern_manager
+    cache: dict = {}
+    catalog: list = []
+    scanned = False
+
+    def resolve(rel: str) -> str:
+        nonlocal catalog, scanned
+        if rel in cache:
+            return cache[rel]
+        result = rel
+        if not os.path.exists(os.path.join(pattern_manager.THETA_RHO_DIR, rel)):
+            if not scanned:
+                scanned = True
+                try:
+                    catalog = pattern_manager.list_theta_rho_files()
+                except Exception as e:
+                    logger.warning(f"Could not scan pattern catalog: {e}")
+            suffix = "/" + rel
+            matches = [f for f in catalog if f.endswith(suffix)]
+            if not matches:
+                basename = rel.rsplit("/", 1)[-1]
+                matches = [f for f in catalog if f.rsplit("/", 1)[-1] == basename]
+            if len(matches) == 1:
+                result = matches[0]
+        cache[rel] = result
+        return result
+
+    return resolve
+
+
+def adopt_board_playlists(conn=None) -> None:
+    """Read the board's /playlists/*.txt into the host catalog.
+
+    The board is the source of truth for playlists (mobile apps edit it
+    directly); the host only WRITES on deliberate user actions (playlist CRUD,
+    pressing play, selecting an autostart playlist) — never automatically.
+    Board copies win for names that exist on the board; host-only playlists
+    are kept (they reach the board the next time the user edits or plays
+    them). Reads only — no SD writes, no flash wear.
+    """
     from modules.core import playlist_manager
     conn = conn or state.conn
     if not conn:
         return
     try:
-        playlists = playlist_manager.load_playlists()
+        names = conn.list_playlists()
     except Exception as e:
-        logger.warning(f"Could not load playlists for mirroring: {e}")
+        logger.warning(f"Could not list board playlists: {e}")
         return
-    for name, entry in playlists.items():
-        files = entry.get("files", entry) if isinstance(entry, dict) else entry
-        mirror_playlist(name, files, conn=conn)
+    if not isinstance(names, list):
+        return
+    try:
+        playlists = playlist_manager.load_playlists()
+    except Exception:
+        playlists = {}
+    changed = []
+    resolve_host_path = _make_host_path_resolver()
+    for board_name in names:
+        fname = board_name if board_name.endswith(".txt") else f"{board_name}.txt"
+        name = fname[:-4]
+        if not name:
+            continue
+        try:
+            data = conn.fetch_file(f"/playlists/{fname}")
+        except Exception:
+            continue  # listed but unreadable (e.g. deleted mid-scan) — skip
+        files = [resolve_host_path(_from_playlist_sd_line(l))
+                 for l in data.decode("utf-8", "replace").splitlines() if l.strip()]
+        entry = playlists.get(name)
+        current = entry.get("files", entry) if isinstance(entry, dict) else entry
+        if current != files:
+            playlists[name] = {**entry, "files": files} if isinstance(entry, dict) else files
+            changed.append(name)
+    if changed:
+        playlist_manager.save_playlists(playlists)
+        logger.info(f"Adopted board playlists: {', '.join(changed)}")
+
+
+def adopt_auto_home(settings_map: dict) -> None:
+    """Adopt the board's $Playlist/AutoHome cadence (0 = disabled). The host
+    pushes it only when the user edits the setting in the web UI."""
+    raw = settings_map.get("Playlist/AutoHome")
+    if raw is None:
+        return
+    try:
+        every = int(float(raw))
+    except (TypeError, ValueError):
+        return
+    enabled = every > 0
+    if enabled == state.auto_home_enabled and (
+            not enabled or every == state.auto_home_after_patterns):
+        return
+    state.auto_home_enabled = enabled
+    if enabled:
+        state.auto_home_after_patterns = every
+    state.save_debounced()
+    logger.info(f"Adopted board auto-home cadence: {every or 'disabled'}")
 
 
 # ---------------------------------------------------------------------------
@@ -371,7 +482,13 @@ def push_custom_clears_async() -> None:
 # ---------------------------------------------------------------------------
 
 def sync_on_connect(conn=None) -> None:
-    """Clock push + Still Sands adopt + AutoHome push + playlist mirror."""
+    """Connect-time reconciliation: clock push + adopt board-owned state.
+
+    Read-only toward the board's SD/NVS (except the clock, which is RAM/RTC):
+    Still Sands, auto-home cadence and playlists are ADOPTED from the board.
+    The host never auto-pushes content — uploads happen only on deliberate
+    user actions (play, playlist CRUD, autostart selection, settings edits).
+    """
     conn = conn or state.conn
     if not conn:
         return
@@ -380,11 +497,9 @@ def sync_on_connect(conn=None) -> None:
     except Exception as e:
         logger.warning(f"Board clock sync failed: {e}")
     try:
-        adopt_still_sands(conn.get_settings())
+        settings_map = conn.get_settings()
+        adopt_still_sands(settings_map)
+        adopt_auto_home(settings_map)
     except Exception as e:
-        logger.warning(f"Could not adopt Still Sands settings from board: {e}")
-    try:
-        push_auto_home(conn)
-    except Exception as e:
-        logger.warning(f"Could not push auto-home cadence to board: {e}")
-    mirror_all_playlists(conn)
+        logger.warning(f"Could not adopt board settings: {e}")
+    adopt_board_playlists(conn)

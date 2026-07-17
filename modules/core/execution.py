@@ -32,6 +32,62 @@ from modules.core.state import state
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Board log harvesting (/sand_log)
+#
+# The board keeps only a small RAM ring buffer (~8 KB) that is lost on reboot.
+# The observer periodically pulls it and merges new lines (keyed by the
+# "[+<uptime>]" prefix) into a persistent host-side file, so users get table
+# history that outlives reboots — same idea as the mobile app's table log.
+# ---------------------------------------------------------------------------
+
+BOARD_LOG_FILE = "board_log.txt"
+BOARD_LOG_MAX_LINES = 4000
+BOARD_LOG_HARVEST_EVERY = 300.0  # seconds
+
+
+def _log_uptime(line: str) -> Optional[float]:
+    """'[+1104] [MSG:...]' -> 1104.0; None for lines without the prefix."""
+    if not line.startswith("[+"):
+        return None
+    end = line.find("]")
+    if end < 2:
+        return None
+    try:
+        return float(line[2:end])
+    except ValueError:
+        return None
+
+
+def merge_board_log(fetched: list[str], last_uptime: float, last_count: int) -> tuple[list[str], float, int, bool]:
+    """Return (new_lines, new_last_uptime, new_last_count, restarted).
+
+    Lines strictly newer than last_uptime are new; at exactly last_uptime we
+    skip the `last_count` occurrences already stored (the ring can hold several
+    lines within the same second). A drop in max uptime means the board
+    rebooted — everything is new again.
+    """
+    parsed = [(u, ln) for ln in fetched if ln.strip() and (u := _log_uptime(ln)) is not None]
+    if not parsed:
+        return [], last_uptime, last_count, False
+    max_uptime = max(u for u, _ in parsed)
+    restarted = max_uptime < last_uptime
+    if restarted:
+        last_uptime, last_count = -1.0, 0
+
+    new_lines: list[str] = []
+    seen_at_last = 0
+    for u, ln in parsed:
+        if u > last_uptime:
+            new_lines.append(ln)
+        elif u == last_uptime:
+            seen_at_last += 1
+            if seen_at_last > last_count:
+                new_lines.append(ln)
+    new_count = sum(1 for u, _ in parsed if u == max_uptime)
+    return new_lines, max_uptime, new_count, restarted
+
+
 # Firmware clear modes; legacy host values are mapped onto them.
 CLEAR_MODES = ("none", "adaptive", "in", "out", "sideway", "random")
 _LEGACY_CLEAR = {
@@ -122,9 +178,11 @@ async def run_pattern(file_path: str, clear_pattern: str = "none") -> None:
     aborts any current job first)."""
     global current_run
     conn = _require_conn()
-    from modules.core.pattern_manager import _ensure_on_board, _to_sd_path
+    from modules.core.pattern_manager import _ensure_on_board, make_sd_path_resolver
 
-    sd_path = _to_sd_path(file_path)
+    # Prefer a copy already on the board SD over uploading a duplicate.
+    resolve_sd = make_sd_path_resolver(conn)
+    sd_path = await asyncio.to_thread(resolve_sd, file_path)
     await asyncio.to_thread(_ensure_on_board, file_path, sd_path)
     try:
         await asyncio.to_thread(conn.set_feed, int(state.speed))
@@ -152,7 +210,7 @@ async def start_playlist(playlist_name: str, run_mode: str = "single",
     global current_run
     conn = _require_conn()
     from modules.core import playlist_manager, board_settings
-    from modules.core.pattern_manager import THETA_RHO_DIR, _ensure_on_board, _to_sd_path
+    from modules.core.pattern_manager import THETA_RHO_DIR, _ensure_on_board, make_sd_path_resolver
 
     playlist = playlist_manager.get_playlist(playlist_name)
     if not playlist:
@@ -184,12 +242,17 @@ async def start_playlist(playlist_name: str, run_mode: str = "single",
 
     # The board needs the playlist file before Run; patterns can trail behind
     # (each one plays for minutes) except the first, which is ensured now.
-    await asyncio.to_thread(board_settings.mirror_playlist, playlist_name, files, conn)
-    await asyncio.to_thread(_ensure_on_board, host_paths[0], _to_sd_path(host_paths[0]))
+    # One shared resolver so the playlist lines and the uploads agree on
+    # paths, and existing board copies are reused instead of duplicated.
+    resolve_sd = make_sd_path_resolver(conn)
+    await asyncio.to_thread(
+        board_settings.mirror_playlist, playlist_name, files, conn, False, resolve_sd)
+    first_sd = await asyncio.to_thread(resolve_sd, host_paths[0])
+    await asyncio.to_thread(_ensure_on_board, host_paths[0], first_sd)
 
     def _mirror_rest():
         for p in host_paths[1:]:
-            _ensure_on_board(p, _to_sd_path(p))
+            _ensure_on_board(p, resolve_sd(p))
     import threading
     threading.Thread(target=_mirror_rest, daemon=True).start()
 
@@ -273,6 +336,28 @@ def _reset_run_state() -> None:
 # Status translation: /sand_status -> the frontend's /ws/status contract
 # ---------------------------------------------------------------------------
 
+def _board_health(st: Optional[dict]) -> dict:
+    """Board health telemetry for the /ws/status payload (firmware API.md).
+
+    Prefers the live /sand_status values; falls back to the last-known values
+    mirrored into state so the UI keeps a reading across a dropped poll. Older
+    firmware omits these keys — they surface as null.
+    """
+    def pick(key: str, attr: str):
+        if st and key in st:
+            return st[key]
+        return getattr(state, attr, None)
+
+    return {
+        "heap": pick("heap", "board_heap"),
+        "heap_min": pick("heap_min", "board_heap_min"),
+        "heap_largest": pick("heap_largest", "board_heap_largest"),
+        "last_reset": pick("last_reset", "board_last_reset"),
+        "sd_ok": pick("sd_ok", "board_sd_ok"),
+        "uptime": pick("uptime", "board_uptime"),
+    }
+
+
 def translate_status(st: Optional[dict], obs: Optional["BoardObserver"] = None,
                      now: Optional[float] = None) -> dict:
     """Translate a raw board status into the /ws/status data object.
@@ -289,6 +374,7 @@ def translate_status(st: Optional[dict], obs: Optional["BoardObserver"] = None,
             "current_file": None,
             "is_running": False,
             "is_paused": False,
+            "is_alarm": False,
             "is_homing": state.is_homing,
             "sensor_homing_failed": state.sensor_homing_failed,
             "is_clearing": False,
@@ -301,6 +387,7 @@ def translate_status(st: Optional[dict], obs: Optional["BoardObserver"] = None,
             "current_rho": state.current_rho,
             "firmware_version": state.firmware_version,
             "table_type": None,
+            "health": _board_health(None),
         }
 
     pl = st.get("playlist") or {}
@@ -366,6 +453,7 @@ def translate_status(st: Optional[dict], obs: Optional["BoardObserver"] = None,
         "current_file": current_file,
         "is_running": running,
         "is_paused": machine_state == "Hold",
+        "is_alarm": machine_state == "Alarm",
         "is_homing": machine_state == "Home" or state.is_homing,
         "sensor_homing_failed": state.sensor_homing_failed,
         "is_clearing": clearing,
@@ -378,6 +466,7 @@ def translate_status(st: Optional[dict], obs: Optional["BoardObserver"] = None,
         "current_rho": st.get("rho", state.current_rho),
         "firmware_version": st.get("fw") or state.firmware_version,
         "table_type": None,
+        "health": _board_health(st),
     }
 
 
@@ -391,6 +480,7 @@ class BoardObserver:
     POLL_ACTIVE = 1.0
     POLL_IDLE = 2.0
     OFFLINE_GRACE = 3  # consecutive failures before a run is declared over
+    RECONNECT_EVERY = 15.0  # seconds between reconnect/relocate attempts while offline
 
     def __init__(self):
         self.prev: Optional[dict] = None
@@ -405,7 +495,16 @@ class BoardObserver:
         self._was_quiet_wled_off = False
         self._fail_count = 0
         self._tick = 0
+        self._last_reconnect = 0.0
         self._task: Optional[asyncio.Task] = None
+        # True while a firmware OTA is in flight: the board's web server is
+        # single-threaded, so concurrent polls would wedge the flash upload.
+        self.suspended = False
+        # Board log harvest cursor (see merge_board_log)
+        self._log_last_uptime = -1.0
+        self._log_last_count = 0
+        self._last_log_harvest = 0.0
+        self._log_cursor_loaded = False
         # Set by main.py to fan out to /ws/status clients (avoids circular import).
         self.on_status: Optional[Callable] = None
 
@@ -450,6 +549,8 @@ class BoardObserver:
             await asyncio.sleep(interval)
 
     async def _tick_once(self) -> float:
+        if self.suspended:
+            return self.POLL_IDLE
         st = None
         if state.conn and state.conn.is_connected():
             try:
@@ -457,9 +558,72 @@ class BoardObserver:
             except Exception as e:
                 logger.debug(f"Status poll failed: {e}")
         await self.process(st)
+        if st is None:
+            await self._maybe_reconnect()
         active = bool(st and (st.get("running") or (st.get("playlist") or {}).get("active")
                               or _state(st) in ("Hold", "Home", "Jog")))
         return self.POLL_ACTIVE if active else self.POLL_IDLE
+
+    # -- reconnect / DHCP relocate -------------------------------------------
+
+    async def _maybe_reconnect(self) -> None:
+        """While the board is unreachable, periodically retry the saved address
+        and — when DHCP has moved the board — relocate to the mDNS entry with
+        the same MAC (fallback: same hostname). Never homes; the board kept its
+        own position, only its IP changed."""
+        if state.user_disconnected or state.is_homing or state.board_locked:
+            return
+        if state.conn and state.conn.is_connected() and self._fail_count < self.OFFLINE_GRACE:
+            return
+        now = time.time()
+        if now - self._last_reconnect < self.RECONNECT_EVERY:
+            return
+        self._last_reconnect = now
+        try:
+            await asyncio.to_thread(self._reconnect_sync)
+        except Exception as e:
+            logger.debug(f"Reconnect attempt failed: {e}")
+
+    def _reconnect_sync(self) -> None:
+        from modules.connection.fluidnc_client import FluidNCClient
+        from modules.core.mdns_discovery import discovery
+
+        url = connection_manager.board_url()
+        probe = FluidNCClient(url, api_key=state.board_api_key)
+        if probe.reachable():
+            logger.info(f"Board back online at {url} — reconnecting")
+            state.conn = probe
+            state.board_locked = False
+            state.port = url
+            connection_manager.device_init(False)
+            return
+        if probe.locked:
+            state.board_locked = True
+            logger.warning(f"Board at {url} now rejects us (401) — password required")
+            return
+
+        # Saved address is dead: look for the same hardware elsewhere on the LAN.
+        target = None
+        boards = discovery.get_boards()
+        if state.board_mac:
+            target = next((b for b in boards if b.get("mac") == state.board_mac), None)
+        if target is None and state.board_hostname:
+            hn = state.board_hostname.lower()
+            target = next(
+                (b for b in boards if (b.get("hostname") or "").lower() == hn), None)
+        if target is None or target["url"] == url:
+            return
+        probe = FluidNCClient(target["url"], api_key=state.board_api_key)
+        if not probe.reachable():
+            return
+        logger.info(f"Board moved (DHCP): relocating from {url} to {target['url']} "
+                    f"(matched by {'mac' if state.board_mac else 'hostname'})")
+        state.board_url = target["url"]
+        state.port = target["url"]
+        state.conn = probe
+        state.board_locked = False
+        state.save()
+        connection_manager.device_init(False)
 
     # -- core (sync-friendly for tests; only I/O bits are awaited) ----------
 
@@ -476,6 +640,10 @@ class BoardObserver:
                 _reset_run_state()
                 self.reset()
         else:
+            if self._fail_count >= self.OFFLINE_GRACE:
+                # Just recovered: pull the board log promptly (it may hold the
+                # reboot/crash story we missed while offline).
+                self._last_log_harvest = 0.0
             self._fail_count = 0
             if self.prev is not None and st.get("uptime", 0) < self.prev.get("uptime", 0):
                 logger.warning("Board rebooted mid-observation — resetting run context")
@@ -487,14 +655,23 @@ class BoardObserver:
 
         await self._quiet_hours_wled(now)
 
+        if (st is not None and state.conn and state.conn.is_connected()
+                and now - self._last_log_harvest > BOARD_LOG_HARVEST_EVERY):
+            self._last_log_harvest = now
+            asyncio.ensure_future(asyncio.to_thread(self._harvest_board_log_sync))
+
         self._tick += 1
         if self._tick % 30 == 0 and state.conn and state.conn.is_connected():
+            from modules.core import board_settings
             try:
-                from modules.core import board_settings
                 settings_map = await asyncio.to_thread(state.conn.get_settings)
                 board_settings.adopt_still_sands(settings_map)
+                board_settings.adopt_auto_home(settings_map)
             except Exception as e:
                 logger.debug(f"Board settings adopt failed: {e}")
+            # Playlists change rarely and adopting reads every file — slower cadence.
+            if self._tick % 300 == 0:
+                asyncio.ensure_future(asyncio.to_thread(board_settings.adopt_board_playlists))
 
         self.last_translated = translate_status(st, self, now)
         # Mirror the progress 4-tuple for the MQTT handler, which unpacks it.
@@ -509,6 +686,63 @@ class BoardObserver:
             except Exception as e:
                 logger.debug(f"Status broadcast failed: {e}")
         return self.last_translated
+
+    # -- board log harvest ---------------------------------------------------
+
+    def _load_log_cursor(self) -> None:
+        """Recover the merge cursor from the stored file after a backend
+        restart, so we don't re-append the board's whole ring buffer."""
+        self._log_cursor_loaded = True
+        try:
+            with open(BOARD_LOG_FILE, "r", encoding="utf-8", errors="replace") as f:
+                tail = f.readlines()[-200:]
+        except FileNotFoundError:
+            return
+        last_uptime, count = -1.0, 0
+        for line in tail:
+            # Stored lines look like "2026-07-12 17:00:03 [+1104] [MSG:...]"
+            idx = line.find("[+")
+            u = _log_uptime(line[idx:]) if idx >= 0 else None
+            if u is None:
+                continue
+            if u == last_uptime:
+                count += 1
+            else:
+                # Any change (up OR down — the tail may span a board reboot)
+                # moves the cursor: later lines are newer.
+                last_uptime, count = u, 1
+        self._log_last_uptime, self._log_last_count = last_uptime, count
+
+    def _harvest_board_log_sync(self) -> None:
+        try:
+            if not self._log_cursor_loaded:
+                self._load_log_cursor()
+            text = state.conn._get("/sand_log", timeout=5.0).text
+            new, self._log_last_uptime, self._log_last_count, restarted = merge_board_log(
+                text.splitlines(), self._log_last_uptime, self._log_last_count)
+            if not new:
+                return
+            now = time.time()
+            max_uptime = self._log_last_uptime
+            out = []
+            if restarted:
+                out.append(f"--- table restarted ({time.strftime('%Y-%m-%d %H:%M:%S')}) ---")
+            for ln in new:
+                # Estimated wall-clock time: now minus how long ago the line was
+                # logged (per its uptime prefix).
+                u = _log_uptime(ln) or max_uptime
+                stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now - (max_uptime - u)))
+                out.append(f"{stamp} {ln}")
+            try:
+                with open(BOARD_LOG_FILE, "r", encoding="utf-8", errors="replace") as f:
+                    existing = f.read().splitlines()
+            except FileNotFoundError:
+                existing = []
+            merged = (existing + out)[-BOARD_LOG_MAX_LINES:]
+            with open(BOARD_LOG_FILE, "w", encoding="utf-8") as f:
+                f.write("\n".join(merged) + "\n")
+        except Exception as e:
+            logger.debug(f"Board log harvest failed: {e}")
 
     def _detect_edges(self, st: dict, now: float) -> None:
         prev = self.prev or {}

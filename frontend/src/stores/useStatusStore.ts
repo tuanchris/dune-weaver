@@ -5,6 +5,7 @@ export interface StatusData {
   current_file: string | null
   is_paused: boolean
   is_running: boolean
+  is_alarm: boolean
   is_homing: boolean
   is_clearing: boolean
   sensor_homing_failed: boolean
@@ -39,6 +40,16 @@ export interface StatusData {
   current_rho: number
   firmware_version: string | null
   table_type: string | null
+  // Board health telemetry from /sand_status (firmware API.md). Fields are
+  // null on older firmware that doesn't report them.
+  health?: {
+    heap: number | null
+    heap_min: number | null
+    heap_largest: number | null
+    last_reset: string | null
+    sd_ok: boolean | null
+    uptime: number | null
+  } | null
 }
 
 interface StatusStore {

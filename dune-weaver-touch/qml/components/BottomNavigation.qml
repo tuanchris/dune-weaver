@@ -9,22 +9,20 @@ Rectangle {
     property int currentIndex: 0
     signal tabClicked(int index)
 
-    height: 55
+    height: Components.ThemeManager.navHeight
     color: Components.ThemeManager.navBackground
 
-    // Top border to match web UI
     Rectangle {
         anchors.top: parent.top
         width: parent.width
         height: 1
         color: Components.ThemeManager.navBorder
     }
-    
+
     RowLayout {
         anchors.fill: parent
         spacing: 0
-        
-        // Browse Tab
+
         BottomNavTab {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -33,43 +31,39 @@ Rectangle {
             active: bottomNav.currentIndex === 0
             onClicked: bottomNav.tabClicked(0)
         }
-        
-        // Playlists Tab
+
         BottomNavTab {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            icon: "list_alt"
+            icon: "playlist_play"
             text: "Playlists"
             active: bottomNav.currentIndex === 1
             onClicked: bottomNav.tabClicked(1)
         }
-        
-        // Table Control Tab
+
         BottomNavTab {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            icon: "table_chart"
+            icon: "tune"
             text: "Control"
             active: bottomNav.currentIndex === 2
             onClicked: bottomNav.tabClicked(2)
         }
 
-        // LED Control Tab (index 3)
         BottomNavTab {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            icon: "lightbulb"
-            text: "LED"
+            icon: "light_mode"
+            text: "Light"
             active: bottomNav.currentIndex === 3
             onClicked: bottomNav.tabClicked(3)
         }
 
-        // Execution Tab (index 4)
         BottomNavTab {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            icon: "play_arrow"
-            text: "Execution"
+            icon: "play_circle"
+            text: "Now Playing"
             active: bottomNav.currentIndex === 4
             onClicked: bottomNav.tabClicked(4)
         }

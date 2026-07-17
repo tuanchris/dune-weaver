@@ -1,7 +1,6 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
-import QtQuick.Dialogs
 import QtQuick.VirtualKeyboard 2.15
 import DuneWeaver 1.0
 import "components"
@@ -51,27 +50,23 @@ ApplicationWindow {
             // Navigate to Execution tab (index 3) instead of pushing page
             shouldNavigateToExecution = true
         }
+
+        // Preview rendered after the pattern started (it wasn't cached yet)
+        onPatternPreviewReady: function(patternName, preview) {
+            if (patternName === window.currentPatternName) {
+                window.currentPatternPreview = preview
+            }
+        }
         
         onErrorOccurred: function(error) {
-            // Use custom dialog on Pi 5 for proper rotation
-            if (typeof rotateDisplay !== 'undefined' && rotateDisplay) {
-                customErrorDialog.errorText = error
-                customErrorDialog.open()
-            } else {
-                errorDialog.text = error
-                errorDialog.open()
-            }
+            // Always the in-scene themed dialog: the native MessageDialog
+            // renders as an unreadable empty box on some platforms and can't
+            // follow the Pi 5's 180° rotation.
+            customErrorDialog.errorText = error
+            customErrorDialog.open()
         }
         
         onScreenStateChanged: function(isOn) {
-        }
-        
-        onBackendConnectionChanged: function(connected) {
-            if (connected && stackView.currentItem.toString().indexOf("ConnectionSplash") !== -1) {
-                stackView.replace(mainSwipeView)
-            } else if (!connected && stackView.currentItem.toString().indexOf("ConnectionSplash") === -1) {
-                stackView.replace(connectionSplash)
-            }
         }
     }
     
@@ -109,21 +104,11 @@ ApplicationWindow {
     StackView {
         id: stackView
         anchors.fill: parent
-        initialItem: backend.backendConnected ? mainSwipeView : connectionSplash
-        
-        Component {
-            id: connectionSplash
-            
-            ConnectionSplash {
-                statusText: backend.reconnectStatus
-                showRetryButton: backend.reconnectStatus === "Cannot connect to backend"
-                
-                onRetryConnection: {
-                    backend.retryConnection()
-                }
-            }
-        }
-        
+        // The UI is always usable regardless of table reachability; the
+        // per-page ConnectionStatus dot (green/red) reflects the link state
+        // and Table Control handles picking/reconnecting a table.
+        initialItem: mainSwipeView
+
         Component {
             id: mainSwipeView
             
@@ -241,30 +226,22 @@ ApplicationWindow {
         }
     }
 
-    // Error dialog - note: MessageDialog is a system dialog, rotation may not work
-    // If rotation doesn't work, we'll need to replace with a custom Dialog
-    MessageDialog {
-        id: errorDialog
-        title: "Error"
-        buttons: MessageDialog.Ok
-    }
-
-    // Custom error dialog as fallback for Pi 5 rotation
+    // Error dialog (in-scene so it themes and rotates with the UI)
     Popup {
         id: customErrorDialog
         modal: true
         x: (window.width - width) / 2
         y: (window.height - height) / 2
-        width: 320
-        height: 180
+        width: 380
+        height: Math.max(190, errorColumn.implicitHeight + 50)
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
         property string errorText: ""
 
         background: Rectangle {
-            color: "#2d2d2d"
-            radius: 12
-            border.color: "#404040"
+            color: Components.ThemeManager.surfaceColor
+            radius: Components.ThemeManager.radiusMd
+            border.color: Components.ThemeManager.borderColor
             border.width: 1
 
             // Rotate the entire dialog content for Pi 5
@@ -277,15 +254,16 @@ ApplicationWindow {
             transformOrigin: Item.Center
 
             Column {
+                id: errorColumn
                 anchors.fill: parent
                 anchors.margins: 20
                 spacing: 15
 
                 Label {
-                    text: "Error"
-                    font.pixelSize: 18
-                    font.bold: true
-                    color: "#ff6b6b"
+                    text: "Something went wrong"
+                    font.family: Components.ThemeManager.fontDisplay
+                    font.pixelSize: Components.ThemeManager.fontSizeTitle
+                    color: Components.ThemeManager.danger
                     anchors.horizontalCenter: parent.horizontalCenter
                 }
 
@@ -294,12 +272,15 @@ ApplicationWindow {
                     wrapMode: Text.WordWrap
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
-                    color: "#ffffff"
-                    font.pixelSize: 14
+                    color: Components.ThemeManager.textPrimary
+                    font.family: Components.ThemeManager.fontBody
+                    font.pixelSize: Components.ThemeManager.fontSizeBody
                 }
 
-                Button {
+                Components.ModernControlButton {
                     text: "OK"
+                    width: 120
+                    height: Components.ThemeManager.touchTarget
                     anchors.horizontalCenter: parent.horizontalCenter
                     onClicked: customErrorDialog.close()
                 }

@@ -2,66 +2,106 @@ pragma Singleton
 import QtQuick 2.15
 import Qt.labs.settings 1.0
 
+// Design tokens for the touch UI — "the table at night".
+// Night: warm basalt ground, bone text, one amber accent (the LED glow).
+// Day: warm sand ground instead of inverted gray. Same ember accent family.
+// Every color, size, and spacing in the QML goes through this singleton.
 QtObject {
     id: themeManager
 
     // Theme state - loaded from settings
     property bool darkMode: settings.darkMode
 
-    // Background colors
-    property color backgroundColor: darkMode ? "#1a1a1a" : "#f5f5f5"
-    property color surfaceColor: darkMode ? "#2d2d2d" : "#ffffff"
-    property color cardColor: darkMode ? "#3d3d3d" : "#f8f9fa"
+    // ---- Typography (bundled in fonts/, registered in main.py) ----
+    // Static instances carry legacy family names, hence three families.
+    readonly property string fontBody: "Outfit"
+    readonly property string fontMedium: "Outfit Medium"
+    readonly property string fontDisplay: "Outfit SemiBold"
+    readonly property string fontIcon: "Material Icons Round"
 
-    // Text colors
-    property color textPrimary: darkMode ? "#ffffff" : "#333333"
-    property color textSecondary: darkMode ? "#b0b0b0" : "#666666"
-    property color textTertiary: darkMode ? "#808080" : "#999999"
+    // Type scale — the panel is read at arm's length, so nothing under 12.
+    readonly property int fontSizeCaption: 12   // eyebrows, meta, counts
+    readonly property int fontSizeBody: 14      // controls, list rows
+    readonly property int fontSizeTitle: 17     // page titles, card titles
+    readonly property int fontSizeDisplay: 24   // the one big thing per page
 
-    // Border colors
-    property color borderColor: darkMode ? "#4d4d4d" : "#e5e7eb"
-    property color borderLight: darkMode ? "#3d3d3d" : "#f0f0f0"
+    // ---- Layout ----
+    readonly property int spaceXs: 4
+    readonly property int spaceSm: 8
+    readonly property int spaceMd: 12
+    readonly property int spaceLg: 16
+    readonly property int spaceXl: 24
+    readonly property int radiusSm: 10
+    readonly property int radiusMd: 14
+    readonly property int radiusPill: 999       // circles/pills: the table's geometry
+    readonly property int touchTarget: 48       // minimum hit size, fingertips + sand
+    readonly property int controlHeight: 56     // primary transport controls
+    readonly property int headerHeight: 60
+    readonly property int navHeight: 64
 
-    // Accent colors (consistent in both themes)
-    property color accentBlue: "#2563eb"
-    property color accentBlueHover: "#1e40af"
-    property color accentRed: "#dc2626"
-    property color accentRedHover: "#b91c1c"
-    property color accentGray: "#6b7280"
-    property color accentGrayHover: "#525252"
-    property color accentGrayDisabled: "#9ca3af"
+    // ---- Surfaces ----
+    property color backgroundColor: darkMode ? "#171310" : "#ece5d6"   // basalt / dune
+    property color surfaceColor: darkMode ? "#201b16" : "#f5f0e5"
+    property color cardColor: darkMode ? "#2a241d" : "#e4dcca"
+    property color pressedColor: darkMode ? "#332c24" : "#d9cfba"
 
-    // Control colors
-    property color buttonBackground: darkMode ? "#3d3d3d" : "#f0f0f0"
-    property color buttonBackgroundHover: darkMode ? "#4d4d4d" : "#e0e0e0"
-    property color buttonBorder: darkMode ? "#5d5d5d" : "#cccccc"
+    // ---- Text ----
+    property color textPrimary: darkMode ? "#ece4d3" : "#332c22"       // bone / ink
+    property color textSecondary: darkMode ? "#a39885" : "#7c7161"
+    property color textTertiary: darkMode ? "#6e6455" : "#a89d8a"
 
-    // Selected/Active colors
-    property color selectedBackground: "#2196F3"
-    property color selectedBorder: "#1976D2"
+    // ---- Borders ----
+    property color borderColor: darkMode ? "#362f26" : "#d6ccb7"
+    property color borderLight: darkMode ? "#2b2620" : "#e0d8c6"
 
-    // Placeholder colors
-    property color placeholderBackground: darkMode ? "#2d2d2d" : "#f0f0f0"
-    property color placeholderText: darkMode ? "#9a9a9a" : "#999999"
+    // ---- Accent: ember (the LED ring's glow) ----
+    property color accent: darkMode ? "#e2a860" : "#b0791f"
+    property color accentPressed: darkMode ? "#c98f49" : "#8f6014"
+    property color onAccent: darkMode ? "#241a0c" : "#fdf8ee"
+    // Subtle amber-tinted fill for selected chips/rows
+    property color accentSoft: darkMode ? "#3a2f1e" : "#eadfc2"
 
-    // Preview background - lighter in dark mode for better pattern visibility
-    property color previewBackground: darkMode ? "#707070" : "#f8f9fa"
+    // ---- Semantic ----
+    property color ok: darkMode ? "#9db07f" : "#5f7a3f"                 // connected, running
+    property color okSoft: darkMode ? "#28301f" : "#e2e6d2"
+    property color danger: darkMode ? "#c65a33" : "#b0431d"             // stop, delete, alarm
+    property color dangerPressed: darkMode ? "#a84a28" : "#8f3517"
 
-    // Shadow colors
+    // ---- Legacy aliases (older call sites; prefer the tokens above) ----
+    property color accentBlue: accent
+    property color accentBlueHover: accentPressed
+    property color accentRed: danger
+    property color accentRedHover: dangerPressed
+    property color accentGray: textSecondary
+    property color accentGrayHover: textPrimary
+    property color accentGrayDisabled: textTertiary
+    property color buttonBackground: cardColor
+    property color buttonBackgroundHover: pressedColor
+    property color buttonBorder: borderColor
+    property color selectedBackground: accent
+    property color selectedBorder: accentPressed
+
+    // Placeholder / preview
+    property color placeholderBackground: cardColor
+    property color placeholderText: textTertiary
+    // Previews carry their own dark circular dish (thr_preview.py) and sit
+    // directly on the page surface — no boxed backdrop.
+    property color previewBackground: backgroundColor
+
     property color shadowColor: darkMode ? "#000000" : "#00000020"
 
-    // Navigation colors
-    property color navBackground: darkMode ? "#1f1f1f" : "#ffffff"
-    property color navBorder: darkMode ? "#3d3d3d" : "#e5e7eb"
-    property color navIconActive: "#2196F3"
-    property color navIconInactive: darkMode ? "#808080" : "#9ca3af"
-    property color navTextActive: darkMode ? "#ffffff" : "#333333"
-    property color navTextInactive: darkMode ? "#808080" : "#666666"
+    // Navigation
+    property color navBackground: surfaceColor
+    property color navBorder: borderColor
+    property color navIconActive: accent
+    property color navIconInactive: textSecondary
+    property color navTextActive: accent
+    property color navTextInactive: textSecondary
 
     // Persistent settings
     property Settings settings: Settings {
         category: "Appearance"
-        property bool darkMode: false  // Default to light mode
+        property bool darkMode: true  // night is the default: this screen lives on furniture
     }
 
     onDarkModeChanged: {

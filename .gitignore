@@ -36,3 +36,6 @@ static/custom/*
 frontend/coverage/
 frontend/playwright-report/
 frontend/test-results/
+
+# Runtime artifacts
+board_log.txt

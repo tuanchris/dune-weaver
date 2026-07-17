@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
+import socket
 from typing import Optional
 from urllib.parse import quote
 
@@ -53,7 +55,32 @@ CLEAR_MODE_MAP = {
 }
 
 DEFAULT_HTTP_TIMEOUT = 6      # seconds, for normal requests
-STATUS_TIMEOUT = 3           # seconds, for the ~1 Hz status poll
+# 503 low-memory load-shedding retry, mirroring the backend's FluidNCClient.
+_RETRY_503_ATTEMPTS = 3       # total tries (1 initial + 2 retries)
+_RETRY_503_BASE = 0.3         # seconds; base for exponential backoff + jitter
+# The board's web server serializes requests, so a request behind a big file
+# transfer can legitimately time out once and succeed a moment later.
+_TRANSIENT_RETRY_DELAY = 0.5  # seconds between transient-error retries
+# Status poll budget. The board's web server serializes requests, so a status
+# read legitimately waits several seconds behind a file transfer — a tight
+# timeout here makes a busy board look dead.
+STATUS_TIMEOUT = 5           # seconds, for the ~1 Hz status poll
+
+
+def friendly_error(exc: BaseException) -> str:
+    """Human-readable message for a request failure.
+
+    ``str(asyncio.TimeoutError())`` is an EMPTY string — surfacing raw
+    exceptions produced blank error dialogs. Every user-facing error goes
+    through here instead.
+    """
+    if isinstance(exc, asyncio.TimeoutError):
+        return "The table didn't respond in time — it may be busy. Try again."
+    if isinstance(exc, aiohttp.ClientResponseError) and exc.status == 401:
+        return "The table rejected the password. Set it under Table connection."
+    if isinstance(exc, (aiohttp.ClientConnectionError, aiohttp.ClientError)):
+        return "Can't reach the table. Check that it's powered on and on your network."
+    return str(exc) or type(exc).__name__
 
 
 def _raise_file_error(status: int, body) -> None:
@@ -67,6 +94,29 @@ def _raise_file_error(status: int, body) -> None:
             detail = err.get("message", "")
         detail = detail or body.get("status", "")
     raise RuntimeError(detail or f"HTTP {status}")
+
+
+def posix_tz() -> Optional[str]:
+    """POSIX TZ rule for the system zone (from the TZif v2+ footer line).
+
+    Same derivation as the backend's board_settings.posix_tz(): modern TZif
+    files end with a footer holding exactly the rule string the firmware's
+    $Time/Zone wants (e.g. 'EST5EDT,M3.2.0,M11.1.0'). None if unreadable.
+    """
+    try:
+        with open("/etc/localtime", "rb") as f:
+            data = f.read()
+        if not data.startswith(b"TZif"):
+            return None
+        end = data.rfind(b"\n")
+        if end <= 0:
+            return None
+        begin = data.rfind(b"\n", 0, end)
+        footer = data[begin + 1:end].decode("ascii").strip()
+        return footer or None
+    except Exception as exc:
+        logger.debug(f"Could not derive POSIX tz: {exc}")
+        return None
 
 
 def normalize_base_url(value: str) -> str:
@@ -100,6 +150,18 @@ class FirmwareClient(QObject):
         self._base_url = ""
         self._session: Optional[aiohttp.ClientSession] = None
         self._reachable = False
+        # $Sand/Password key (fw >= v0.1.11), sent as X-Sand-Key on every
+        # request — same contract as the backend's FluidNCClient.
+        self._api_key: Optional[str] = None
+        # True when the board rejected us with 401 (locked, wrong/missing key).
+        self.locked = False
+
+    def set_api_key(self, key: Optional[str]) -> None:
+        self._api_key = key or None
+        self.locked = False
+
+    def _headers(self) -> dict:
+        return {"X-Sand-Key": self._api_key} if self._api_key else {}
 
     # ------------------------------------------------------------------ target
     @property
@@ -127,7 +189,12 @@ class FirmwareClient(QObject):
     # ----------------------------------------------------------------- session
     async def _ensure_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
-            connector = aiohttp.TCPConnector(ssl=False, limit=8)
+            # IPv4 only: the boards publish no AAAA record over mDNS, and a
+            # dual-stack getaddrinfo stalls ~5s waiting for it (longer than the
+            # 3s status timeout, so every poll would die in name resolution).
+            connector = aiohttp.TCPConnector(
+                ssl=False, limit=8, family=socket.AF_INET, ttl_dns_cache=300
+            )
             self._session = aiohttp.ClientSession(connector=connector)
         return self._session
 
@@ -136,35 +203,69 @@ class FirmwareClient(QObject):
             await self._session.close()
 
     # ------------------------------------------------------------- HTTP helpers
-    async def _get(self, path: str, *, timeout: float = DEFAULT_HTTP_TIMEOUT):
-        """GET ``path`` (leading-slash relative). Returns the aiohttp response
-        inside a context manager caller. Raises on transport error."""
+    async def _fetch(self, path: str, parse: str, *, timeout: float,
+                     transient_retries: int = 1):
+        """GET ``path`` and return the parsed body ("json" | "text" | "bytes").
+
+        Retries the firmware's ``503 busy: low memory`` load-shedding with
+        exponential backoff, like the backend's FluidNCClient (the board sheds
+        every route except the status/stop/pause/resume lifeline when free
+        heap drops below ~10 KB; these resolve in a few seconds). Tracks 401s
+        in ``self.locked`` so the UI can prompt for the table password.
+
+        ``transient_retries`` additionally retries timeouts and connection
+        errors (the board's serialized web server queues requests behind file
+        transfers, so a one-off timeout is normal). Callers whose requests are
+        NOT safe to re-send (``$...`` commands) pass 0.
+        """
         if not self._base_url:
             raise RuntimeError("No table selected")
         session = await self._ensure_session()
         client_timeout = aiohttp.ClientTimeout(total=timeout)
-        return session.get(f"{self._base_url}{path}", timeout=client_timeout)
+        url = f"{self._base_url}{path}"
+        attempt_503 = 0
+        transient_left = transient_retries
+        while True:
+            try:
+                async with session.get(url, timeout=client_timeout,
+                                       headers=self._headers()) as resp:
+                    if resp.status == 503 and attempt_503 < _RETRY_503_ATTEMPTS - 1:
+                        attempt_503 += 1
+                        delay = _RETRY_503_BASE * (2 ** attempt_503) + random.uniform(0, _RETRY_503_BASE)
+                        logger.debug(f"Board 503 (low memory) on {path}; retrying in {delay:.2f}s")
+                        await asyncio.sleep(delay)
+                        continue
+                    self.locked = resp.status == 401
+                    resp.raise_for_status()
+                    if parse == "json":
+                        data = await resp.json(content_type=None)
+                    elif parse == "text":
+                        data = await resp.text()
+                    else:
+                        data = await resp.read()
+                    self._set_reachable(True)
+                    return data
+            except (asyncio.TimeoutError, aiohttp.ClientConnectionError) as exc:
+                if transient_left <= 0:
+                    raise
+                transient_left -= 1
+                logger.debug(f"Transient failure on {path} ({exc!r}); retrying")
+                await asyncio.sleep(_TRANSIENT_RETRY_DELAY)
 
-    async def get_json(self, path: str, *, timeout: float = DEFAULT_HTTP_TIMEOUT):
-        async with await self._get(path, timeout=timeout) as resp:
-            resp.raise_for_status()
-            data = await resp.json(content_type=None)
-            self._set_reachable(True)
-            return data
+    async def get_json(self, path: str, *, timeout: float = DEFAULT_HTTP_TIMEOUT,
+                       transient_retries: int = 1):
+        return await self._fetch(path, "json", timeout=timeout,
+                                 transient_retries=transient_retries)
 
-    async def get_text(self, path: str, *, timeout: float = DEFAULT_HTTP_TIMEOUT) -> str:
-        async with await self._get(path, timeout=timeout) as resp:
-            resp.raise_for_status()
-            text = await resp.text()
-            self._set_reachable(True)
-            return text
+    async def get_text(self, path: str, *, timeout: float = DEFAULT_HTTP_TIMEOUT,
+                       transient_retries: int = 1) -> str:
+        return await self._fetch(path, "text", timeout=timeout,
+                                 transient_retries=transient_retries)
 
-    async def get_bytes(self, path: str, *, timeout: float = DEFAULT_HTTP_TIMEOUT) -> bytes:
-        async with await self._get(path, timeout=timeout) as resp:
-            resp.raise_for_status()
-            data = await resp.read()
-            self._set_reachable(True)
-            return data
+    async def get_bytes(self, path: str, *, timeout: float = DEFAULT_HTTP_TIMEOUT,
+                        transient_retries: int = 1) -> bytes:
+        return await self._fetch(path, "bytes", timeout=timeout,
+                                 transient_retries=transient_retries)
 
     # -------------------------------------------------------------- status/read
     async def status(self) -> dict:
@@ -186,10 +287,15 @@ class FirmwareClient(QObject):
         data = await self.get_json("/sand_settings")
         return data if isinstance(data, dict) else {}
 
-    async def fetch_sd_file(self, sd_path: str) -> bytes:
-        """Fetch a file from the SD card, e.g. ``/patterns/star.thr``."""
+    async def fetch_sd_file(self, sd_path: str, *, timeout: float = 45) -> bytes:
+        """Fetch a file from the SD card, e.g. ``/patterns/star.thr``.
+
+        Default timeout is generous: the board serves large .thr files slowly
+        (measured up to ~26s for 500KB when it is busy), and the default 6s
+        budget made every big pattern's preview fetch fail.
+        """
         sd_path = "/" + sd_path.lstrip("/")
-        return await self.get_bytes(f"/sd{sd_path}")
+        return await self.get_bytes(f"/sd{sd_path}", timeout=timeout)
 
     # ------------------------------------------------------------------ actions
     async def command(self, cmd: str, *, timeout: float = DEFAULT_HTTP_TIMEOUT) -> str:
@@ -197,8 +303,12 @@ class FirmwareClient(QObject):
 
         Output routing over ``/command`` is racy for anything but ``$/`` reads,
         so callers that need a value should poll a ``/sand_*`` route instead.
+        No transient retry: a timed-out command may still execute on the board
+        once its queue drains, and re-sending e.g. ``$Playlist/Run`` or ``$Bye``
+        would double-fire it.
         """
-        return await self.get_text(f"/command?plain={quote(cmd)}", timeout=timeout)
+        return await self.get_text(f"/command?plain={quote(cmd)}",
+                                   timeout=timeout, transient_retries=0)
 
     async def run_pattern(self, rel_path: str, clear: str = "none") -> None:
         """Run ``/patterns/<rel_path>`` with an optional pre-execution clear."""
@@ -209,9 +319,37 @@ class FirmwareClient(QObject):
         else:
             await self.command(f"$Sand/Run={path} clear={mode}")
 
+    async def _wait_for_idle(self, timeout_s: float) -> bool:
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + timeout_s
+        while loop.time() < deadline:
+            try:
+                st = await self.status()
+                state = (st.get("state") or "").split(":", 1)[0]
+                if state == "Idle" and not st.get("running"):
+                    return True
+            except Exception as exc:
+                logger.debug(f"Idle wait poll failed: {exc}")
+            await asyncio.sleep(0.5)
+        return False
+
     async def run_playlist(self, name: str, *, pause_time=None, clear_pattern=None,
                            run_mode=None, shuffle=None) -> None:
-        """Apply the run parameters (NVS) then start the playlist."""
+        """Apply the run parameters (NVS) then start the playlist.
+
+        NVS writes are idle-gated on the firmware (rejected mid-motion), so a
+        run-while-running stops the board first — same as the backend's
+        execution.start_playlist.
+        """
+        try:
+            st = await self.status()
+        except Exception:
+            st = None
+        state = ((st or {}).get("state") or "").split(":", 1)[0]
+        if st and (st.get("running") or state not in ("Idle", "Alarm")):
+            await self.stop()
+            if not await self._wait_for_idle(15.0):
+                raise RuntimeError("Table is busy and did not stop in time")
         if run_mode in ("single", "loop"):
             await self.command(f"$Playlist/Mode={run_mode}")
         if shuffle is not None:
@@ -267,8 +405,16 @@ class FirmwareClient(QObject):
     async def reboot(self) -> None:
         await self.command("$Bye")
 
-    async def sync_time(self, epoch: int) -> None:
-        await self.get_text(f"/sand_time?epoch={int(epoch)}")
+    async def sync_time(self, epoch: int, tz: Optional[str] = None) -> None:
+        """Push the wall clock and (optionally) a POSIX timezone rule.
+
+        The tz matters: board-side quiet-hours/autostart schedules run on the
+        board's local time. The backend always sends both; so do we.
+        """
+        query = f"epoch={int(epoch)}"
+        if tz:
+            query += f"&tz={quote(tz)}"
+        await self.get_text(f"/sand_time?{query}")
 
     # --------------------------------------------------------------- file ops
     async def upload_file(self, name: str, data: bytes, path: str = "/patterns") -> dict:
@@ -282,7 +428,8 @@ class FirmwareClient(QObject):
                        content_type="application/octet-stream")
         url = f"{self._base_url}/upload?path={quote(path)}"
         timeout = aiohttp.ClientTimeout(total=60)
-        async with session.post(url, data=form, timeout=timeout) as resp:
+        async with session.post(url, data=form, timeout=timeout,
+                                headers=self._headers()) as resp:
             body = await resp.json(content_type=None)
             self._set_reachable(True)
             _raise_file_error(resp.status, body)
@@ -297,7 +444,8 @@ class FirmwareClient(QObject):
         query = "&".join(f"{k}={quote(str(v))}" for k, v in params.items())
         url = f"{self._base_url}/upload?{query}"
         timeout = aiohttp.ClientTimeout(total=DEFAULT_HTTP_TIMEOUT)
-        async with session.get(url, timeout=timeout) as resp:
+        async with session.get(url, timeout=timeout,
+                               headers=self._headers()) as resp:
             body = await resp.json(content_type=None)
             self._set_reachable(True)
             _raise_file_error(resp.status, body)

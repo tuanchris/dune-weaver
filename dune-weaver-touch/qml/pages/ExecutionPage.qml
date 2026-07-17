@@ -1,47 +1,51 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
-import Qt.labs.folderlistmodel 2.15
 import "../components"
 import "../components" as Components
 
+// Now Playing — the signature screen. Progress is not a percent bar: it is
+// an ember arc traced around the live pattern disc, with the ball as the
+// moving endpoint — the interface shows progress the way the machine makes
+// it. Plain Canvas drawing only (no effects layers; linuxfb-safe).
 Page {
     id: page
     property var backend: null
     property var stackView: null
     property string patternName: ""
     property string patternPreview: ""  // Backend provides this via executionStarted signal
-    
-    // Debug backend connection
-    onBackendChanged: {
-        if (backend) {
-        }
+
+    readonly property bool hasPattern: (backend && backend.currentFile !== "") || patternName !== ""
+    readonly property real progressRatio: backend ? backend.progress / 100 : 0
+    readonly property bool inPause: backend && backend.pauseRemaining >= 0
+
+    property string displayName: {
+        var name = ""
+        if (backend && backend.currentFile) name = backend.currentFile
+        else if (patternName) name = patternName
+        if (!name) return ""
+        var parts = name.split('/')
+        return parts[parts.length - 1].replace('.thr', '')
     }
-    
-    Component.onCompleted: {
-        if (backend) {
-        }
+
+    function formatDuration(s) {
+        if (s < 0) return ""
+        var h = Math.floor(s / 3600)
+        var m = Math.floor((s % 3600) / 60)
+        var sec = s % 60
+        function pad(n) { return (n < 10 ? "0" : "") + n }
+        return h > 0 ? h + ":" + pad(m) + ":" + pad(sec) : m + ":" + pad(sec)
     }
-    
+
     // Direct connection to backend signals
     Connections {
         target: backend
 
-        function onSerialConnectionChanged(connected) {
-        }
-
-        function onConnectionChanged() {
-            if (backend) {
-            }
-        }
-
         function onExecutionStarted(fileName, preview) {
-            // Update preview directly from backend signal
             patternName = fileName
             patternPreview = preview
         }
     }
-    
 
     Rectangle {
         anchors.fill: parent
@@ -52,13 +56,12 @@ Page {
         anchors.fill: parent
         spacing: 0
 
-        // Header (consistent with other pages)
+        // Header
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 50
+            Layout.preferredHeight: Components.ThemeManager.headerHeight
             color: Components.ThemeManager.surfaceColor
 
-            // Bottom border
             Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
@@ -68,18 +71,18 @@ Page {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 15
-                anchors.rightMargin: 10
+                anchors.leftMargin: Components.ThemeManager.spaceLg
+                anchors.rightMargin: Components.ThemeManager.spaceLg
 
                 ConnectionStatus {
                     backend: page.backend
-                    Layout.rightMargin: 8
+                    Layout.rightMargin: Components.ThemeManager.spaceSm
                 }
 
                 Label {
-                    text: "Pattern Execution"
-                    font.pixelSize: 18
-                    font.bold: true
+                    text: "Now Playing"
+                    font.family: Components.ThemeManager.fontDisplay
+                    font.pixelSize: Components.ThemeManager.fontSizeTitle
                     color: Components.ThemeManager.textPrimary
                 }
 
@@ -88,374 +91,346 @@ Page {
                 }
             }
         }
-        
-        // Content - Side by side layout
-        Item {
+
+        // Content
+        RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            
-            Row {
-                anchors.fill: parent
-                spacing: 0
-                
-                // Left side - Pattern Preview (60% of width)
-                Rectangle {
-                    width: parent.width * 0.6
-                    height: parent.height
-                    color: Components.ThemeManager.previewBackground
-                    
-                    Image {
+            spacing: 0
+
+            // ---- Left: the disc and its progress ring ----
+            Item {
+                id: stage
+                Layout.fillHeight: true
+                Layout.preferredWidth: page.width * 0.55
+
+                Item {
+                    id: ringWrap
+                    anchors.centerIn: parent
+                    width: Math.min(stage.width, stage.height) - 2 * Components.ThemeManager.spaceXl
+                    height: width
+
+                    // Track + progress arc, redrawn only when progress moves
+                    Canvas {
+                        id: arcCanvas
                         anchors.fill: parent
-                        anchors.margins: 10
-                        source: {
-                            var finalSource = ""
 
-                            // Trust the backend's preview path - it already has recursive search
-                            if (patternPreview) {
-                                // Backend returns absolute path, just add file:// prefix
-                                finalSource = "file://" + patternPreview
-                            } else {
-                            }
-
-                            return finalSource
+                        // While weaving: fraction of the pattern drawn.
+                        // Between patterns: the countdown to the next one.
+                        property real ratio: {
+                            if (inPause)
+                                return backend && backend.pauseTotal > 0
+                                       ? 1 - backend.pauseRemaining / backend.pauseTotal : 0
+                            return hasPattern ? progressRatio : 0
                         }
-                        fillMode: Image.PreserveAspectFit
-
-                        onStatusChanged: {
-                            if (status === Image.Error) {
-                            } else if (status === Image.Ready) {
-                            } else if (status === Image.Loading) {
-                            }
+                        onRatioChanged: requestPaint()
+                        Connections {
+                            target: Components.ThemeManager
+                            function onDarkModeChanged() { arcCanvas.requestPaint() }
                         }
 
-                        onSourceChanged: {
-                        }
-                        
-                        Rectangle {
-                            anchors.fill: parent
-                            color: Components.ThemeManager.placeholderBackground
-                            visible: parent.status === Image.Error || parent.source == ""
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            var w = width, h = height
+                            ctx.clearRect(0, 0, w, h)
+                            var cx = w / 2, cy = h / 2
+                            var lineW = 5
+                            var r = Math.min(w, h) / 2 - lineW / 2
+                            if (r <= 0)
+                                return  // layout not settled yet
 
-                            Column {
-                                anchors.centerIn: parent
-                                spacing: 10
+                            ctx.lineWidth = lineW
+                            ctx.lineCap = "round"
 
-                                Text {
-                                    text: "⚙"
-                                    font.pixelSize: 48
-                                    color: Components.ThemeManager.placeholderText
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                }
+                            // Track
+                            ctx.beginPath()
+                            ctx.strokeStyle = String(Components.ThemeManager.cardColor)
+                            ctx.arc(cx, cy, r, 0, 2 * Math.PI)
+                            ctx.stroke()
 
-                                Text {
-                                    text: "Pattern Preview"
-                                    color: Components.ThemeManager.textTertiary
-                                    font.pixelSize: 14
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                }
+                            // Progress, from 12 o'clock
+                            if (ratio > 0) {
+                                ctx.beginPath()
+                                ctx.strokeStyle = String(Components.ThemeManager.accent)
+                                ctx.arc(cx, cy, r, -Math.PI / 2,
+                                        -Math.PI / 2 + ratio * 2 * Math.PI)
+                                ctx.stroke()
                             }
                         }
                     }
-                }
-                
-                // Divider
-                Rectangle {
-                    width: 1
-                    height: parent.height
-                    color: Components.ThemeManager.borderColor
-                }
 
-                // Right side - Controls (40% of width)
-                Rectangle {
-                    width: parent.width * 0.4 - 1
-                    height: parent.height
-                    color: Components.ThemeManager.surfaceColor
-                    
-                    ScrollView {
+                    // The ball: endpoint of the arc (two stacked dots stand in
+                    // for a glow — no shadow effects on linuxfb)
+                    Item {
                         anchors.fill: parent
-                        anchors.margins: 10
-                        clip: true
-                        contentWidth: availableWidth
-                        
+                        rotation: arcCanvas.ratio * 360
+                        visible: (hasPattern || inPause) && arcCanvas.ratio > 0
+
+                        Rectangle {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            y: -7
+                            width: 19
+                            height: 19
+                            radius: 9.5
+                            color: Components.ThemeManager.accent
+                            opacity: 0.3
+                        }
+                        Rectangle {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            y: -3
+                            width: 11
+                            height: 11
+                            radius: 5.5
+                            color: Components.ThemeManager.accent
+                        }
+                    }
+
+                    // Live pattern disc (the preview PNG is itself a round dish)
+                    Image {
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        source: patternPreview ? "file://" + patternPreview : ""
+                        fillMode: Image.PreserveAspectFit
+                        asynchronous: true
+                        visible: hasPattern && status === Image.Ready
+                    }
+
+                    // Resting dish when idle (or while the preview renders)
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        radius: width / 2
+                        color: Components.ThemeManager.surfaceColor
+                        border.width: 1
+                        border.color: Components.ThemeManager.borderColor
+                        visible: !hasPattern || patternPreview === ""
+
                         Column {
-                            width: parent.width
-                            spacing: 8
-                        
-                        // Pattern Name
-                        Rectangle {
-                            width: parent.width
-                            height: 50
-                            radius: 8
-                            color: Components.ThemeManager.cardColor
-                            border.color: Components.ThemeManager.borderColor
-                            border.width: 1
+                            anchors.centerIn: parent
+                            spacing: Components.ThemeManager.spaceSm
 
-                            Column {
-                                anchors.centerIn: parent
-                                spacing: 4
-
-                                Label {
-                                    text: "Current Pattern"
-                                    font.pixelSize: 10
-                                    color: Components.ThemeManager.textSecondary
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                }
-
-                                Label {
-                                    text: {
-                                        // Use WebSocket current pattern first, then fallback to passed parameter
-                                        var displayName = ""
-                                        if (backend && backend.currentFile) displayName = backend.currentFile
-                                        else if (patternName) displayName = patternName
-                                        else return "No pattern running"
-
-                                        // Clean up the name for display
-                                        var parts = displayName.split('/')
-                                        displayName = parts[parts.length - 1]
-                                        displayName = displayName.replace('.thr', '')
-                                        return displayName
-                                    }
-                                    font.pixelSize: 12
-                                    font.bold: true
-                                    color: Components.ThemeManager.textPrimary
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    width: parent.parent.width - 20
-                                    elide: Text.ElideMiddle
-                                    horizontalAlignment: Text.AlignHCenter
-                                }
+                            Components.Icon {
+                                name: "radio_unchecked"
+                                size: 34
+                                color: Components.ThemeManager.textTertiary
+                                anchors.horizontalCenter: parent.horizontalCenter
                             }
-                        }
-                        
-                        // Progress
-                        Rectangle {
-                            width: parent.width
-                            height: 70
-                            radius: 8
-                            color: Components.ThemeManager.cardColor
-                            border.color: Components.ThemeManager.borderColor
-                            border.width: 1
 
-                            Column {
-                                anchors.fill: parent
-                                anchors.margins: 10
-                                spacing: 8
-
-                                Label {
-                                    text: "Progress"
-                                    font.pixelSize: 12
-                                    font.bold: true
-                                    color: Components.ThemeManager.textPrimary
+                            Label {
+                                text: {
+                                    if (inPause) return "Resting between patterns"
+                                    return hasPattern ? "Rendering preview" : "The table is resting"
                                 }
-                                
-                                ProgressBar {
-                                    width: parent.width
-                                    height: 8
-                                    value: backend ? backend.progress / 100 : 0
-                                }
-                                
-                                Label {
-                                    text: backend ? Math.round(backend.progress) + "%" : "0%"
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    font.pixelSize: 14
-                                    font.bold: true
-                                    color: Components.ThemeManager.textPrimary
-                                }
-                            }
-                        }
-
-                        // Control Buttons
-                        Rectangle {
-                            width: parent.width
-                            height: 90
-                            radius: 8
-                            color: Components.ThemeManager.cardColor
-                            border.color: Components.ThemeManager.borderColor
-                            border.width: 1
-
-                            Column {
-                                anchors.fill: parent
-                                anchors.margins: 10
-                                spacing: 10
-
-                                Label {
-                                    text: "Controls"
-                                    font.pixelSize: 12
-                                    font.bold: true
-                                    color: Components.ThemeManager.textPrimary
-                                }
-                                
-                                // Control buttons row
-                                Row {
-                                    width: parent.width
-                                    height: 35
-                                    spacing: 8
-                                    
-                                    // Pause/Resume button
-                                    Rectangle {
-                                        width: (parent.width - 16) / 3  // Divide width evenly with spacing
-                                        height: parent.height
-                                        radius: 6
-                                        color: pauseMouseArea.pressed ? "#1e40af" : (backend && backend.currentFile !== "" ? "#2563eb" : "#9ca3af")
-
-                                        Text {
-                                            anchors.centerIn: parent
-                                            // Show pause icon when running and not paused, play icon when paused
-                                            text: (backend && backend.isRunning && !backend.isPaused) ? "||" : "▶"
-                                            color: "white"
-                                            font.pixelSize: 14
-                                            font.bold: true
-                                        }
-
-                                        MouseArea {
-                                            id: pauseMouseArea
-                                            anchors.fill: parent
-                                            enabled: backend && backend.currentFile !== ""
-                                            onClicked: {
-                                                if (backend) {
-                                                    // If paused, resume; otherwise pause
-                                                    if (backend.isPaused) {
-                                                        backend.resumeExecution()
-                                                    } else {
-                                                        backend.pauseExecution()
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    
-                                    // Stop button
-                                    Rectangle {
-                                        width: (parent.width - 16) / 3
-                                        height: parent.height
-                                        radius: 6
-                                        color: stopMouseArea.pressed ? "#b91c1c" : (backend && backend.currentFile !== "" ? "#dc2626" : "#9ca3af")
-                                        
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: "■"
-                                            color: "white"
-                                            font.pixelSize: 14
-                                            font.bold: true
-                                        }
-                                        
-                                        MouseArea {
-                                            id: stopMouseArea
-                                            anchors.fill: parent
-                                            enabled: backend
-                                            onClicked: {
-                                                if (backend) {
-                                                    backend.stopExecution()
-                                                }
-                                            }
-                                        }
-                                    }
-                                    
-                                    // Skip button
-                                    Rectangle {
-                                        width: (parent.width - 16) / 3
-                                        height: parent.height
-                                        radius: 6
-                                        color: skipMouseArea.pressed ? "#525252" : (backend && backend.currentFile !== "" ? "#6b7280" : "#9ca3af")
-                                        
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: "▶▶"
-                                            color: "white"
-                                            font.pixelSize: 14
-                                            font.bold: true
-                                        }
-                                        
-                                        MouseArea {
-                                            id: skipMouseArea
-                                            anchors.fill: parent
-                                            enabled: backend
-                                            onClicked: {
-                                                if (backend) {
-                                                    backend.skipPattern()
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Speed Control Section
-                        Rectangle {
-                            width: parent.width
-                            height: 120
-                            radius: 8
-                            color: Components.ThemeManager.cardColor
-                            border.color: Components.ThemeManager.borderColor
-                            border.width: 1
-
-                            Column {
-                                anchors.fill: parent
-                                anchors.margins: 10
-                                spacing: 10
-
-                                Label {
-                                    text: "Speed"
-                                    font.pixelSize: 12
-                                    font.bold: true
-                                    color: Components.ThemeManager.textPrimary
-                                }
-                                
-                                // Touch-friendly button row for speed options
-                                Row {
-                                    id: speedControlRow
-                                    width: parent.width
-                                    spacing: 8
-                                    
-                                    property string currentSelection: backend ? backend.getCurrentSpeedOption() : "200"
-                                    
-                                    // Speed buttons
-                                    Repeater {
-                                        model: ["50", "100", "150", "200", "300", "500"]
-
-                                        Rectangle {
-                                            width: (speedControlRow.width - 40) / 6  // Distribute evenly with spacing
-                                            height: 50
-                                            color: speedControlRow.currentSelection === modelData ? Components.ThemeManager.selectedBackground : Components.ThemeManager.buttonBackground
-                                            border.color: speedControlRow.currentSelection === modelData ? Components.ThemeManager.selectedBorder : Components.ThemeManager.buttonBorder
-                                            border.width: 2
-                                            radius: 8
-
-                                            Label {
-                                                anchors.centerIn: parent
-                                                text: modelData
-                                                font.pixelSize: 12
-                                                font.bold: true
-                                                color: speedControlRow.currentSelection === modelData ? "white" : Components.ThemeManager.textPrimary
-                                            }
-                                            
-                                            MouseArea {
-                                                anchors.fill: parent
-                                                onClicked: {
-                                                    if (backend) {
-                                                        backend.setSpeedByOption(modelData)
-                                                        speedControlRow.currentSelection = modelData
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    
-                                    // Update selection when backend changes
-                                    Connections {
-                                        target: backend
-                                        function onSpeedChanged(speed) {
-                                            if (backend) {
-                                                speedControlRow.currentSelection = backend.getCurrentSpeedOption()
-                                            }
-                                        }
-                                    }
-                                }
+                                font.family: Components.ThemeManager.fontMedium
+                                font.pixelSize: Components.ThemeManager.fontSizeBody
+                                color: Components.ThemeManager.textSecondary
+                                anchors.horizontalCenter: parent.horizontalCenter
                             }
                         }
                     }
                 }
             }
+
+            // ---- Right: name, state, transport, speed ----
+            Rectangle {
+                Layout.fillHeight: true
+                Layout.fillWidth: true
+                color: Components.ThemeManager.surfaceColor
+
+                Rectangle {
+                    anchors.left: parent.left
+                    width: 1
+                    height: parent.height
+                    color: Components.ThemeManager.borderColor
+                }
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: Components.ThemeManager.spaceXl
+                    spacing: 0
+
+                    Label {
+                        text: inPause ? "Up next" : "Now weaving"
+                        font.family: Components.ThemeManager.fontDisplay
+                        font.pixelSize: 11
+                        font.letterSpacing: 1.6
+                        font.capitalization: Font.AllUppercase
+                        color: Components.ThemeManager.accent
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        Layout.topMargin: Components.ThemeManager.spaceSm
+                        text: {
+                            if (inPause && backend && backend.nextPattern)
+                                return backend.nextPattern
+                            return displayName || "Nothing playing"
+                        }
+                        font.family: Components.ThemeManager.fontDisplay
+                        font.pixelSize: Components.ThemeManager.fontSizeDisplay
+                        color: hasPattern || inPause ? Components.ThemeManager.textPrimary
+                                                     : Components.ThemeManager.textTertiary
+                        elide: Text.ElideRight
+                        maximumLineCount: 2
+                        wrapMode: Text.Wrap
+                    }
+
+                    // Playlist position
+                    Label {
+                        Layout.fillWidth: true
+                        Layout.topMargin: Components.ThemeManager.spaceXs
+                        visible: backend && backend.playlistActive && backend.playlistTotal > 0
+                        text: {
+                            if (!backend) return ""
+                            var s = (backend.playlistName ? backend.playlistName + " · " : "")
+                                    + (backend.playlistIndex + 1) + " of " + backend.playlistTotal
+                            if (backend.playlistClearing) s += " · clearing"
+                            return s
+                        }
+                        font.family: Components.ThemeManager.fontBody
+                        font.pixelSize: Components.ThemeManager.fontSizeCaption
+                        color: Components.ThemeManager.textSecondary
+                        elide: Text.ElideMiddle
+                    }
+
+                    // Progress / pause countdown line
+                    Label {
+                        Layout.fillWidth: true
+                        Layout.topMargin: Components.ThemeManager.spaceLg
+                        visible: hasPattern || inPause
+                        textFormat: Text.StyledText
+                        text: {
+                            if (!backend) return ""
+                            if (inPause)
+                                return "<b>" + formatDuration(backend.pauseRemaining)
+                                       + "</b> until the next pattern"
+                            var pct = Math.round(backend.progress)
+                            var s = "<b>" + pct + "%</b> woven"
+                            if (backend.isPaused) s += " · paused"
+                            return s
+                        }
+                        font.family: Components.ThemeManager.fontBody
+                        font.pixelSize: Components.ThemeManager.fontSizeBody
+                        color: Components.ThemeManager.textSecondary
+                    }
+
+                    Item { Layout.fillHeight: true }
+
+                    // Transport
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Components.ThemeManager.spaceSm
+
+                        ModernControlButton {
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 3
+                            Layout.preferredHeight: Components.ThemeManager.controlHeight
+                            icon: (backend && backend.isRunning && !backend.isPaused) ? "pause" : "play_arrow"
+                            text: (backend && backend.isRunning && !backend.isPaused) ? "Pause" : "Resume"
+                            buttonColor: Components.ThemeManager.accent
+                            enabled: backend && backend.currentFile !== ""
+                            onClicked: {
+                                if (!backend) return
+                                if (backend.isPaused) backend.resumeExecution()
+                                else backend.pauseExecution()
+                            }
+                        }
+
+                        ModernControlButton {
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 2
+                            Layout.preferredHeight: Components.ThemeManager.controlHeight
+                            icon: "stop"
+                            text: "Stop"
+                            outlined: true
+                            buttonColor: Components.ThemeManager.danger
+                            enabled: backend !== null
+                            onClicked: if (backend) backend.stopExecution()
+                        }
+
+                        ModernControlButton {
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 2
+                            Layout.preferredHeight: Components.ThemeManager.controlHeight
+                            icon: "skip_next"
+                            text: "Skip"
+                            buttonColor: Components.ThemeManager.cardColor
+                            enabled: backend !== null
+                            onClicked: if (backend) backend.skipPattern()
+                        }
+                    }
+
+                    // Speed
+                    Label {
+                        Layout.topMargin: Components.ThemeManager.spaceLg
+                        text: "Speed · mm/s"
+                        font.family: Components.ThemeManager.fontDisplay
+                        font.pixelSize: 11
+                        font.letterSpacing: 1.4
+                        font.capitalization: Font.AllUppercase
+                        color: Components.ThemeManager.textTertiary
+                    }
+
+                    // Segmented control
+                    Rectangle {
+                        id: speedSeg
+                        Layout.fillWidth: true
+                        Layout.topMargin: Components.ThemeManager.spaceSm
+                        Layout.preferredHeight: 48
+                        radius: height / 2
+                        color: Components.ThemeManager.cardColor
+
+                        property string currentSelection: backend ? backend.getCurrentSpeedOption() : "200"
+
+                        Connections {
+                            target: backend
+                            function onSpeedChanged(speed) {
+                                if (backend)
+                                    speedSeg.currentSelection = backend.getCurrentSpeedOption()
+                            }
+                        }
+
+                        Row {
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            spacing: 2
+
+                            Repeater {
+                                model: ["50", "100", "150", "200", "300", "500"]
+
+                                Rectangle {
+                                    property bool selected: speedSeg.currentSelection === modelData
+
+                                    width: (parent.width - 10) / 6
+                                    height: parent.height
+                                    radius: height / 2
+                                    color: selected ? Components.ThemeManager.backgroundColor : "transparent"
+                                    border.width: selected ? 1 : 0
+                                    border.color: Components.ThemeManager.borderColor
+
+                                    Label {
+                                        anchors.centerIn: parent
+                                        text: modelData
+                                        font.family: Components.ThemeManager.fontMedium
+                                        font.pixelSize: 13
+                                        color: parent.selected ? Components.ThemeManager.accent
+                                                               : Components.ThemeManager.textSecondary
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        onClicked: {
+                                            if (backend) {
+                                                backend.setSpeedByOption(modelData)
+                                                speedSeg.currentSelection = modelData
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

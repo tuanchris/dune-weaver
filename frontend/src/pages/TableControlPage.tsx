@@ -30,6 +30,36 @@ import {
 import { apiClient } from '@/lib/apiClient'
 import { useStatusStore } from '@/stores/useStatusStore'
 
+// Reset causes that mean the board crashed (vs. a clean power/software reset).
+const CRASH_RESETS = ['panic', 'int_wdt', 'task_wdt', 'wdt', 'brownout']
+
+const formatKB = (n: number | null | undefined): string =>
+  n === null || n === undefined ? '—' : `${Math.round(n / 1024)} KB`
+
+const formatUptime = (s: number | null | undefined): string => {
+  if (s === null || s === undefined) return '—'
+  const d = Math.floor(s / 86400)
+  const h = Math.floor((s % 86400) / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  if (d > 0) return `${d}d ${h}h`
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
+}
+
+// Human-readable label for a last_reset cause.
+const RESET_LABELS: Record<string, string> = {
+  power_on: 'Power on',
+  software: 'Software',
+  panic: 'Panic (crash)',
+  int_wdt: 'Interrupt watchdog',
+  task_wdt: 'Task watchdog',
+  wdt: 'Watchdog',
+  brownout: 'Brownout',
+  external: 'External',
+  deepsleep: 'Deep sleep',
+  unknown: 'Unknown',
+}
+
 export function TableControlPage() {
   const [speedInput, setSpeedInput] = useState('')
   const [currentSpeed, setCurrentSpeed] = useState<number | null>(null)
@@ -41,15 +71,21 @@ export function TableControlPage() {
   const isPatternRunning = useStatusStore((s) =>
     (s.status?.is_running || s.status?.is_paused) ?? false
   )
+  // Board health telemetry (heap/last_reset/sd_ok) rides the /ws/status payload.
+  const health = useStatusStore((s) => s.status?.health ?? null)
 
   // Sync speed from store into local state (for the badge display)
   useEffect(() => {
     if (speed !== null) setCurrentSpeed(speed)
   }, [speed])
 
-  // Serial terminal state
+  // Command console state
   const [consoleCommand, setConsoleCommand] = useState('')
   const [consoleHistory, setConsoleHistory] = useState<Array<{ type: 'cmd' | 'resp' | 'error'; text: string; time: string }>>([])
+
+  // Table Log and Boot Log now live in the shared "View Logs" drawer (Layout),
+  // so they can sit next to the application logs. See Layout.tsx.
+
   const [consoleLoading, setConsoleLoading] = useState(false)
   const consoleOutputRef = useRef<HTMLDivElement>(null)
   const consoleInputRef = useRef<HTMLInputElement>(null)
@@ -240,7 +276,7 @@ export function TableControlPage() {
       <div className="flex flex-col w-full max-w-5xl mx-auto gap-6 py-3 sm:py-6 px-0 sm:px-4">
         {/* Page Header */}
         <div className="space-y-0.5 sm:space-y-1 pl-1">
-          <h1 className="text-xl font-semibold tracking-tight">Table Control</h1>
+          <h1 className="text-xl font-semibold tracking-tight font-display">Table Control</h1>
           <p className="text-xs text-muted-foreground">
             Manual controls for your sand table
           </p>
@@ -323,9 +359,9 @@ export function TableControlPage() {
                         This will send a soft reset to the controller.
                       </DialogDescription>
                     </DialogHeader>
-                    <Alert className="flex items-center border-amber-500/50">
-                      <span className="material-icons-outlined text-amber-500 text-base mr-2 shrink-0">warning</span>
-                      <AlertDescription className="text-amber-600 dark:text-amber-400">
+                    <Alert className="flex items-center border-primary/40">
+                      <span className="material-icons-outlined text-primary text-base mr-2 shrink-0">warning</span>
+                      <AlertDescription className="text-primary">
                         Homing is required after resetting. The table will lose its position reference.
                       </AlertDescription>
                     </Alert>
@@ -476,11 +512,11 @@ export function TableControlPage() {
 
                     <Separator />
 
-                    <Alert className="flex items-start border-amber-500/50">
-                      <span className="material-icons-outlined text-amber-500 text-base mr-2 shrink-0">
+                    <Alert className="flex items-start border-primary/40">
+                      <span className="material-icons-outlined text-primary text-base mr-2 shrink-0">
                         warning
                       </span>
-                      <AlertDescription className="text-amber-600 dark:text-amber-400">
+                      <AlertDescription className="text-primary">
                         Only perform this when you want to change the orientation reference.
                       </AlertDescription>
                     </Alert>
@@ -590,6 +626,95 @@ export function TableControlPage() {
           </Card>
         </div>
 
+        {/* Board Diagnostics — health telemetry + on-device crash breadcrumbs */}
+        <Card className="transition-all duration-200 hover:shadow-md hover:border-primary/20">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <span className="material-icons-outlined text-xl">monitor_heart</span>
+              Diagnostics
+            </CardTitle>
+            <CardDescription>
+              Board health and crash breadcrumbs reported by the firmware.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!health ? (
+              <p className="text-sm text-muted-foreground">
+                No telemetry yet — connect to a table running firmware that reports health.
+              </p>
+            ) : (
+              <>
+                {/* Crash / SD / fragmentation banners */}
+                {health.last_reset && CRASH_RESETS.includes(health.last_reset) && (
+                  <Alert variant="destructive">
+                    <AlertDescription>
+                      The table last rebooted from a{' '}
+                      <strong>{RESET_LABELS[health.last_reset] ?? health.last_reset}</strong>.
+                      Open the menu → View Logs → Boot Log for the cause.
+                    </AlertDescription>
+                  </Alert>
+                )}
+                {health.sd_ok === false && (
+                  <Alert className="border-primary/40 text-primary">
+                    <AlertDescription>
+                      SD card unreadable at boot — patterns and playlists may be unavailable.
+                      Re-seat the card and reboot the table.
+                    </AlertDescription>
+                  </Alert>
+                )}
+                {health.heap_largest !== null && health.heap_largest !== undefined &&
+                  health.heap_largest < 12000 && (
+                  <Alert className="border-primary/40 text-primary">
+                    <AlertDescription>
+                      Low memory: largest free block is {formatKB(health.heap_largest)}. Heap
+                      fragmentation is trending toward an out-of-memory reboot.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Stat grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <div className="text-xs text-muted-foreground">Last reset</div>
+                    <Badge variant={health.last_reset && CRASH_RESETS.includes(health.last_reset)
+                      ? 'destructive' : 'secondary'}>
+                      {health.last_reset
+                        ? (RESET_LABELS[health.last_reset] ?? health.last_reset)
+                        : '—'}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs text-muted-foreground">SD card</div>
+                    <Badge variant={health.sd_ok === false ? 'destructive' : 'secondary'}>
+                      {health.sd_ok === true ? 'OK' : health.sd_ok === false ? 'Error' : '—'}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs text-muted-foreground">Uptime</div>
+                    <div className="text-sm font-medium font-mono">{formatUptime(health.uptime)}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs text-muted-foreground">Free heap</div>
+                    <div className="text-sm font-medium font-mono">{formatKB(health.heap)}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs text-muted-foreground">Min heap</div>
+                    <div className="text-sm font-medium font-mono">{formatKB(health.heap_min)}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs text-muted-foreground">Largest block</div>
+                    <div className="text-sm font-medium font-mono">{formatKB(health.heap_largest)}</div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <p className="text-xs text-muted-foreground pt-1">
+              The boot log and the table's full history live in the menu → View Logs drawer.
+            </p>
+          </CardContent>
+        </Card>
+
         {/* Board Command Console */}
         <Card className="transition-all duration-200 hover:shadow-md hover:border-primary/20">
           <CardHeader className="pb-3 space-y-3">
@@ -602,9 +727,9 @@ export function TableControlPage() {
                 <CardDescription className="hidden sm:block">
                   Send $-commands to the table's firmware (e.g. $Sand/HomingMode, $LED/Effect=fire)
                 </CardDescription>
-                <Alert className="flex items-center border-amber-500/50 py-2">
-                  <span className="material-icons-outlined text-amber-500 text-base mr-2 shrink-0">warning</span>
-                  <AlertDescription className="text-xs text-amber-600 dark:text-amber-400">
+                <Alert className="flex items-center border-primary/40 py-2">
+                  <span className="material-icons-outlined text-primary text-base mr-2 shrink-0">warning</span>
+                  <AlertDescription className="text-xs text-primary">
                     For advanced use. Motion commands sent here can interfere with a running pattern.
                   </AlertDescription>
                 </Alert>
@@ -633,19 +758,19 @@ export function TableControlPage() {
                     key={i}
                     className={`${
                       entry.type === 'cmd'
-                        ? 'text-cyan-400'
+                        ? 'text-live'
                         : entry.type === 'error'
-                          ? 'text-red-400'
-                          : 'text-green-400'
+                          ? 'text-destructive'
+                          : 'text-success'
                     }`}
                   >
-                    <span className="text-gray-500 text-xs mr-2">{entry.time}</span>
+                    <span className="text-muted-foreground text-xs mr-2">{entry.time}</span>
                     {entry.type === 'cmd' ? '> ' : ''}
                     {entry.text}
                   </div>
                 ))
               ) : (
-                <div className="text-gray-500 italic">
+                <div className="text-muted-foreground italic">
                   Ready. Enter a firmware command (e.g. $Sand/HomingMode, $Playlist/List)
                 </div>
               )}

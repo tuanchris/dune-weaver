@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { ColorPicker } from '@/components/ui/color-picker'
+import { LedRingPreview } from '@/components/LedRingPreview'
 
 // Types
 interface LedConfig {
@@ -66,6 +67,51 @@ interface EffectSettings {
   color3: string
 }
 
+// Which inputs each firmware effect actually uses, keyed by raw effect name.
+// Mirrors dune-weaver-mobile's LED_EFFECTS table (src/api/board.ts) so the
+// web page shows/hides the same controls as the app.
+const EFFECT_INPUTS: Record<string, { color?: boolean; color2?: boolean; palette?: boolean }> = {
+  off: {},
+  static: { color: true },
+  rainbow: { palette: true },
+  breathe: { color: true },
+  colorloop: { palette: true },
+  theater: { color: true },
+  scan: { color: true },
+  running: { color: true },
+  sine: { color: true },
+  gradient: { color: true, color2: true },
+  sinelon: { palette: true },
+  twinkle: { palette: true },
+  sparkle: { color: true },
+  fire: { palette: true },
+  candle: { color: true },
+  meteor: { color: true },
+  bouncing: { color: true },
+  wipe: { color: true, color2: true },
+  dualscan: { color: true, color2: true },
+  juggle: { palette: true },
+  multicomet: { palette: true },
+  glitter: { palette: true },
+  dissolve: { color: true, color2: true },
+  ripple: { palette: true },
+  drip: { color: true },
+  lightning: {},
+  fireworks: { palette: true },
+  plasma: { palette: true },
+  heartbeat: { color: true },
+  strobe: { color: true },
+  police: {},
+  chase: { color: true, color2: true },
+  railway: { color: true, color2: true },
+  pacifica: {},
+  aurora: {},
+  pride: {},
+  colorwaves: { palette: true },
+  bpm: { palette: true },
+  ball: { color: true, color2: true },
+}
+
 export function LEDPage() {
   const [ledConfig, setLedConfig] = useState<LedConfig | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -96,6 +142,9 @@ export function LEDPage() {
 
   // Ref for debouncing color picker API calls
   const colorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Last non-ball effect id, so the ball-tracker toggle can restore it
+  const lastNonBallEffect = useRef('')
 
   // LED control mode
   const [controlMode, setControlMode] = useState<'manual' | 'automated'>('automated')
@@ -143,6 +192,14 @@ export function LEDPage() {
       fetchEffectSettings()
     }
   }, [ledConfig])
+
+  // Remember the selected effect whenever it isn't the ball tracker
+  useEffect(() => {
+    const name = effectNames.find(([id]) => String(id) === selectedEffect)?.[1]
+    if (name && name !== 'ball') {
+      lastNonBallEffect.current = selectedEffect
+    }
+  }, [selectedEffect, effectNames])
 
   const fetchDWLedsStatus = async () => {
     try {
@@ -421,7 +478,7 @@ export function LEDPage() {
           </span>
         </div>
         <div className="space-y-2">
-          <h1 className="text-xl sm:text-2xl font-bold">LED Controller Not Configured</h1>
+          <h1 className="text-xl sm:text-2xl font-bold font-display">LED Controller Not Configured</h1>
           <p className="text-sm sm:text-base text-muted-foreground max-w-md">
             Configure your LED controller (the table's built-in LEDs or WLED) in the Settings page to control your lights.
           </p>
@@ -505,8 +562,33 @@ export function LEDPage() {
 
   // LED control panel (board = the table's ring via firmware; dw_leds = legacy host GPIO)
   const isBoard = ledConfig.provider === 'board'
-  // The firmware-native 'ball' tracker: detected by the selected effect's label.
-  const isBallEffect = effects.find(([id]) => String(id) === selectedEffect)?.[1] === 'Ball'
+  // Raw firmware effect name -> id (effectNames comes from the board contract)
+  const idByName: Record<string, number> = Object.fromEntries(
+    effectNames.map(([id, name]) => [name, id])
+  )
+  const ballId: number | undefined = idByName['ball']
+  const isBallEffect = ballId !== undefined && selectedEffect === String(ballId)
+  const handleBallToggle = (on: boolean) => {
+    if (ballId === undefined) return
+    if (on) {
+      handleEffectChange(String(ballId))
+      return
+    }
+    const fallback = effects.find(([id]) => id !== ballId)?.[0]
+    handleEffectChange(lastNonBallEffect.current || String(fallback ?? 2))
+  }
+  // Per-effect control visibility, like the mobile app: only board effects are
+  // in EFFECT_INPUTS; dw_leds (legacy WLED-style ids) keeps everything visible.
+  const selectedEffectName = effectNames.find(([id]) => String(id) === selectedEffect)?.[1]
+  const effectInputs =
+    isBoard && selectedEffectName
+      ? EFFECT_INPUTS[selectedEffectName] ?? { color: true, color2: true, palette: true }
+      : { color: true, color2: true, palette: true }
+  const showColor1 = isBallEffect || !!effectInputs.color
+  // For the ball, the secondary color is the solid background — only relevant
+  // when the background style is 'static'.
+  const showColor2 = isBallEffect ? ballBg === 'static' : !!effectInputs.color2
+  const showPalette = !isBallEffect && !!effectInputs.palette
   // Background sub-effect choices for the ball (firmware effect names, + static/off).
   const ballBgOptions = [
     { value: 'static', label: 'Solid color' },
@@ -519,11 +601,12 @@ export function LEDPage() {
       }))
       .sort((a, b) => a.label.localeCompare(b.label)),
   ]
+  const powerOn = !!dwStatus?.power_on
   return (
-    <div className="flex flex-col w-full max-w-5xl mx-auto gap-6 py-3 sm:py-6 px-0 sm:px-4">
+    <div className="flex flex-col w-full max-w-4xl mx-auto gap-6 py-3 sm:py-6 px-0 sm:px-4">
       {/* Page Header */}
       <div className="space-y-0.5 sm:space-y-1 pl-1">
-        <h1 className="text-xl font-semibold tracking-tight">LED Control</h1>
+        <h1 className="text-xl font-semibold tracking-tight font-display">LED Control</h1>
         <p className="text-xs text-muted-foreground">
           {isBoard ? "Table's built-in LED ring, controlled by the firmware" : 'DW LEDs - GPIO controlled LED strip'}
         </p>
@@ -533,409 +616,463 @@ export function LEDPage() {
 
       {!isBoard && modeSelector}
 
-      {/* Main Control Grid - 2 columns on large screens */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column - Primary Controls */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Power & Status Card */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-col sm:flex-row items-center gap-6">
-                {/* Power Button - Large and prominent */}
-                <div className="flex flex-col items-center gap-3">
-                  <button
-                    onClick={handlePowerToggle}
-                    className={`w-24 h-24 rounded-full flex items-center justify-center transition-all shadow-lg ${
-                      dwStatus?.power_on
-                        ? 'bg-green-500 hover:bg-green-600 shadow-green-500/30'
-                        : 'bg-muted hover:bg-muted/80'
-                    }`}
-                  >
-                    <span className={`material-icons text-4xl ${dwStatus?.power_on ? 'text-white' : 'text-muted-foreground'}`}>
-                      power_settings_new
-                    </span>
-                  </button>
-                  <span className={`text-sm font-medium ${dwStatus?.power_on ? 'text-green-600' : 'text-muted-foreground'}`}>
-                    {dwStatus?.power_on ? 'ON' : 'OFF'}
-                  </span>
-                </div>
+      {/* Ring card: power, brightness and colors, previewed on a live LED ring */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-col sm:flex-row items-center gap-8">
+            {/* Live preview of the selected effect (firmware engine port),
+                with the power button in the ring's center */}
+            <div className="relative h-40 w-40 shrink-0">
+              <LedRingPreview
+                className="absolute inset-0 h-full w-full"
+                effectId={isBoard && selectedEffect !== '' ? parseInt(selectedEffect) : 9}
+                paletteId={parseInt(selectedPalette) || 0}
+                color1={color1}
+                color2={color2}
+                brightness={brightness}
+                speed={speed}
+                powerOn={powerOn}
+                ball={{
+                  size: ballSize,
+                  direction: ballDirection,
+                  align: ballAlign,
+                  fgbright: ballFgBright,
+                  bgbright: ballBgBright,
+                  bgEffectId: idByName[ballBg] ?? 1,
+                }}
+              />
+              <button
+                onClick={handlePowerToggle}
+                aria-pressed={powerOn}
+                aria-label={powerOn ? 'Turn LEDs off' : 'Turn LEDs on'}
+                className="absolute inset-0 m-auto flex h-20 w-20 items-center justify-center rounded-full border bg-card shadow-md transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+              >
+                <span
+                  className={`material-icons text-3xl transition-colors ${
+                    powerOn ? 'text-success' : 'text-muted-foreground'
+                  }`}
+                >
+                  power_settings_new
+                </span>
+              </button>
+            </div>
 
-                {/* Status & Brightness */}
-                <div className="flex-1 w-full space-y-4">
-                  {/* Connection Status */}
-                  <div className={`flex items-center gap-2 text-sm ${dwStatus?.connected ? 'text-green-600' : 'text-destructive'}`}>
-                    <span className="material-icons-outlined text-base">
-                      {dwStatus?.connected ? 'check_circle' : 'error'}
-                    </span>
-                    {dwStatus?.connected
-                      ? (isBoard ? 'Table LEDs connected' : `${dwStatus.num_leds} LEDs on GPIO ${dwStatus.gpio_pin}`)
-                      : 'Not connected'}
-                  </div>
-
-                  {/* Brightness Slider */}
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <Label>
-                        <span className="material-icons-outlined text-sm mr-2 align-[-6px] text-muted-foreground">brightness_6</span>
-                        Brightness
-                      </Label>
-                      <span className="text-sm font-medium">{brightness}%</span>
-                    </div>
-                    <Slider
-                      value={[brightness]}
-                      onValueChange={handleBrightnessChange}
-                      onValueCommit={handleBrightnessCommit}
-                      max={100}
-                      step={1}
-                    />
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Effects Card */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <span className="material-icons-outlined text-muted-foreground">auto_awesome</span>
-                Effects & Palettes
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Effect & Palette Selects */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Effect</Label>
-                  <Select value={selectedEffect} onValueChange={handleEffectChange}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select effect..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {effects.map(([id, name]) => (
-                        <SelectItem key={id} value={String(id)}>
-                          {name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Palette</Label>
-                  <Select value={selectedPalette} onValueChange={handlePaletteChange}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select palette..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {palettes.map(([id, name]) => (
-                        <SelectItem key={id} value={String(id)}>
-                          {name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Speed and Intensity in styled boxes */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-4 rounded-lg border space-y-3">
-                  <div className="flex justify-between items-center">
-                    <Label>
-                      <span className="material-icons-outlined text-sm mr-2 align-[-6px] text-muted-foreground">speed</span>
-                      Speed
-                    </Label>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      value={speedInput}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/[^0-9]/g, '')
-                        setSpeedInput(val)
-                      }}
-                      onBlur={() => {
-                        const num = Math.min(255, Math.max(0, parseInt(speedInput) || 0))
-                        setSpeed(num)
-                        setSpeedInput(String(num))
-                        handleSpeedCommit([num])
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          const num = Math.min(255, Math.max(0, parseInt(speedInput) || 0))
-                          setSpeed(num)
-                          setSpeedInput(String(num))
-                          handleSpeedCommit([num])
-                        }
-                      }}
-                      className="w-16 h-7 text-center text-sm font-medium px-2"
-                    />
-                  </div>
-                  <Slider
-                    value={[speed]}
-                    onValueChange={handleSpeedChange}
-                    onValueCommit={handleSpeedCommit}
-                    max={255}
-                    step={1}
-                  />
-                </div>
-                {/* The firmware has no intensity control — dw_leds only */}
-                {!isBoard && (
-                <div className="p-4 rounded-lg border space-y-3">
-                  <div className="flex justify-between items-center">
-                    <Label>
-                      <span className="material-icons-outlined text-sm mr-2 align-[-6px] text-muted-foreground">tungsten</span>
-                      Intensity
-                    </Label>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      value={intensityInput}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/[^0-9]/g, '')
-                        setIntensityInput(val)
-                      }}
-                      onBlur={() => {
-                        const num = Math.min(255, Math.max(0, parseInt(intensityInput) || 0))
-                        setIntensity(num)
-                        setIntensityInput(String(num))
-                        handleIntensityCommit([num])
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          const num = Math.min(255, Math.max(0, parseInt(intensityInput) || 0))
-                          setIntensity(num)
-                          setIntensityInput(String(num))
-                          handleIntensityCommit([num])
-                        }
-                      }}
-                      className="w-16 h-7 text-center text-sm font-medium px-2"
-                    />
-                  </div>
-                  <Slider
-                    value={[intensity]}
-                    onValueChange={handleIntensityChange}
-                    onValueCommit={handleIntensityCommit}
-                    max={255}
-                    step={1}
-                  />
-                </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Ball Tracker Card — firmware-native effect that follows the sand
-              ball. Shown when the 'Ball' effect is selected on the board. */}
-          {isBoard && isBallEffect && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <span className="material-icons-outlined text-muted-foreground">sports_baseball</span>
-                  Ball Tracker
-                </CardTitle>
-                <CardDescription>A glowing dot that follows the sand ball around the ring.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Blob controls */}
-                <div className="space-y-4">
-                  <p className="text-sm font-medium text-muted-foreground">Blob (the dot that tracks the ball)</p>
-                  <div className="flex items-center justify-between gap-4">
-                    <Label>Blob color</Label>
-                    <ColorPicker value={color1} onChange={(color) => handleColorChange(1, color)} />
-                  </div>
-                  <div className="p-4 rounded-lg border space-y-3">
-                    <div className="flex justify-between items-center">
-                      <Label>Blob brightness</Label>
-                      <span className="text-sm font-medium">{ballFgBright}</span>
-                    </div>
-                    <Slider
-                      value={[ballFgBright]}
-                      onValueChange={(v) => setBallFgBright(v[0])}
-                      onValueCommit={(v) => { setBallFgBright(v[0]); sendBall({ fgbright: v[0] }) }}
-                      max={255}
-                      step={1}
-                    />
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Direction</Label>
-                      <Select
-                        value={ballDirection}
-                        onValueChange={(v) => { const d = v as 'cw' | 'ccw'; setBallDirection(d); sendBall({ direction: d }) }}
-                      >
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="cw">Clockwise</SelectItem>
-                          <SelectItem value="ccw">Counter-clockwise</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="p-4 rounded-lg border space-y-3">
-                      <div className="flex justify-between items-center">
-                        <Label>Glow size</Label>
-                        <span className="text-sm font-medium">{ballSize}</span>
-                      </div>
-                      <Slider
-                        value={[ballSize]}
-                        onValueChange={(v) => setBallSize(v[0])}
-                        onValueCommit={(v) => { setBallSize(v[0]); sendBall({ size: v[0] }) }}
-                        min={1}
-                        max={30}
-                        step={1}
-                      />
-                    </div>
-                  </div>
-                  <div className="p-4 rounded-lg border space-y-3">
-                    <div className="flex justify-between items-center">
-                      <Label>Alignment (°)</Label>
-                      <span className="text-sm font-medium">{ballAlign}</span>
-                    </div>
-                    <Slider
-                      value={[ballAlign]}
-                      onValueChange={(v) => setBallAlign(v[0])}
-                      onValueCommit={(v) => { setBallAlign(v[0]); sendBall({ align: v[0] }) }}
-                      max={359}
-                      step={1}
-                    />
-                    <p className="text-xs text-muted-foreground">Rotate the blob so it sits on the ball.</p>
-                  </div>
-                </div>
-
-                {/* Background controls */}
-                <div className="space-y-4 pt-2 border-t">
-                  <p className="text-sm font-medium text-muted-foreground">Background (behind the blob)</p>
-                  <div className="space-y-2">
-                    <Label>Background</Label>
-                    <Select value={ballBg} onValueChange={(v) => { setBallBg(v); sendBall({ bg: v }) }}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {ballBgOptions.map((o) => (
-                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {ballBg === 'static' && (
-                    <div className="flex items-center justify-between gap-4">
-                      <Label>Background color</Label>
-                      <ColorPicker value={color2} onChange={(color) => handleColorChange(2, color)} />
-                    </div>
-                  )}
-                  {ballBg !== 'off' && (
-                    <div className="p-4 rounded-lg border space-y-3">
-                      <div className="flex justify-between items-center">
-                        <Label>Background brightness</Label>
-                        <span className="text-sm font-medium">{ballBgBright}</span>
-                      </div>
-                      <Slider
-                        value={[ballBgBright]}
-                        onValueChange={(v) => setBallBgBright(v[0])}
-                        onValueCommit={(v) => { setBallBgBright(v[0]); sendBall({ bgbright: v[0] }) }}
-                        max={255}
-                        step={1}
-                      />
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        {/* Right Column - Colors & Quick Settings */}
-        <div className="flex flex-col gap-6">
-          {/* Colors Card */}
-          <Card className="flex-1 flex flex-col">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <span className="material-icons-outlined text-muted-foreground">palette</span>
-                Colors
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 flex items-center justify-center">
-              <div className="flex justify-around w-full">
-                <div className="flex flex-col items-center gap-2">
-                  <ColorPicker
-                    value={color1}
-                    onChange={(color) => handleColorChange(1, color)}
-                  />
-                  <span className="text-xs text-muted-foreground">Primary</span>
-                </div>
-                <div className="flex flex-col items-center gap-2">
-                  <ColorPicker
-                    value={color2}
-                    onChange={(color) => handleColorChange(2, color)}
-                  />
-                  <span className="text-xs text-muted-foreground">Secondary</span>
-                </div>
-                {/* The firmware only has two colors (Color/Color2) — dw_leds only */}
-                {!isBoard && (
-                <div className="flex flex-col items-center gap-2">
-                  <ColorPicker
-                    value={color3}
-                    onChange={(color) => handleColorChange(3, color)}
-                  />
-                  <span className="text-xs text-muted-foreground">Accent</span>
-                </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Auto Turn Off - host-side idle timeout, dw_leds only (the board's
-              own Still Sands / IdleEffect cover this for built-in LEDs) */}
-          {!isBoard && controlMode === 'automated' && (
-          <Card className="flex-1 flex flex-col">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <span className="material-icons-outlined text-muted-foreground">schedule</span>
-                Auto Turn Off
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 flex flex-col justify-center space-y-4">
+            {/* Status, brightness and colors */}
+            <div className="w-full flex-1 space-y-5">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Enable timeout</span>
-                <Switch
-                  checked={idleTimeoutEnabled}
-                  onCheckedChange={handleIdleTimeoutToggle}
+                <div className={`flex items-center gap-2 text-sm ${dwStatus?.connected ? 'text-success' : 'text-destructive'}`}>
+                  <span className="material-icons-outlined text-base">
+                    {dwStatus?.connected ? 'check_circle' : 'error'}
+                  </span>
+                  {dwStatus?.connected
+                    ? (isBoard ? 'Table LEDs connected' : `${dwStatus.num_leds} LEDs on GPIO ${dwStatus.gpio_pin}`)
+                    : 'Not connected'}
+                </div>
+                <span
+                  className={`text-xs font-semibold uppercase tracking-wider font-display ${
+                    powerOn ? 'text-success' : 'text-muted-foreground'
+                  }`}
+                >
+                  {powerOn ? 'On' : 'Off'}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <Label>
+                    <span className="material-icons-outlined text-sm mr-2 align-[-6px] text-muted-foreground">brightness_6</span>
+                    Brightness
+                  </Label>
+                  <span className="text-sm font-medium">{brightness}%</span>
+                </div>
+                <Slider
+                  value={[brightness]}
+                  onValueChange={handleBrightnessChange}
+                  onValueCommit={handleBrightnessCommit}
+                  max={100}
+                  step={1}
                 />
               </div>
-              {idleTimeoutEnabled && (
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="text"
-                    inputMode="numeric"
-                    value={idleTimeoutInput}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/[^0-9]/g, '')
-                      setIdleTimeoutInput(val)
-                    }}
-                    onBlur={() => {
-                      const num = Math.min(1440, Math.max(1, parseInt(idleTimeoutInput) || 30))
-                      setIdleTimeoutMinutes(num)
-                      setIdleTimeoutInput(String(num))
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        const num = Math.min(1440, Math.max(1, parseInt(idleTimeoutInput) || 30))
-                        setIdleTimeoutMinutes(num)
-                        setIdleTimeoutInput(String(num))
-                        saveIdleTimeout(idleTimeoutEnabled, num)
-                      }
-                    }}
-                    className="w-20"
+
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Effects Card */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <span className="material-icons-outlined text-muted-foreground">auto_awesome</span>
+            Effects & Palettes
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Effect & Palette Selects */}
+          <div className={`grid grid-cols-1 gap-4 ${showPalette ? 'sm:grid-cols-2' : ''}`}>
+            <div className="space-y-2">
+              <Label>Effect</Label>
+              {/* Disabled while the ball tracker owns the ring; 'Ball' is only
+                  selectable via its toggle below, not from this list */}
+              <Select value={selectedEffect} onValueChange={handleEffectChange} disabled={isBallEffect}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select effect..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {effects
+                    .filter(([id]) => id !== ballId || isBallEffect)
+                    .map(([id, name]) => (
+                      <SelectItem key={id} value={String(id)}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              {isBallEffect && (
+                <p className="text-xs text-muted-foreground">
+                  Ball tracker is on — turn it off to pick an effect.
+                </p>
+              )}
+            </div>
+            {/* Only effects that color from a palette get the palette picker */}
+            {showPalette && (
+              <div className="space-y-2">
+                <Label>Palette</Label>
+                <Select value={selectedPalette} onValueChange={handlePaletteChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select palette..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {palettes.map(([id, name]) => (
+                      <SelectItem key={id} value={String(id)}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+
+          {/* Only the swatches the selected effect actually uses (app parity) */}
+          {(showColor1 || showColor2) && (
+            <div>
+              <Label>
+                <span className="material-icons-outlined text-sm mr-2 align-[-6px] text-muted-foreground">palette</span>
+                {showColor1 && !showColor2 && !isBallEffect ? 'Color' : 'Colors'}
+              </Label>
+              <div className="flex items-start gap-5">
+                {showColor1 && (
+                  <div className="flex flex-col items-center gap-1.5">
+                    <ColorPicker
+                      value={color1}
+                      onChange={(color) => handleColorChange(1, color)}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {isBallEffect ? 'Blob' : showColor2 ? 'Primary' : 'Color'}
+                    </span>
+                  </div>
+                )}
+                {showColor2 && (
+                  <div className="flex flex-col items-center gap-1.5">
+                    <ColorPicker
+                      value={color2}
+                      onChange={(color) => handleColorChange(2, color)}
+                    />
+                    <span className="text-xs text-muted-foreground">{isBallEffect ? 'Background' : 'Secondary'}</span>
+                  </div>
+                )}
+                {/* The firmware only has two colors (Color/Color2) — dw_leds only */}
+                {!isBoard && (
+                  <div className="flex flex-col items-center gap-1.5">
+                    <ColorPicker
+                      value={color3}
+                      onChange={(color) => handleColorChange(3, color)}
+                    />
+                    <span className="text-xs text-muted-foreground">Accent</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Speed full-width for the board; Speed + Intensity side by side for dw_leds */}
+          <div className={`grid grid-cols-1 gap-x-8 gap-y-6 ${isBoard ? '' : 'sm:grid-cols-2'}`}>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <Label>
+                  <span className="material-icons-outlined text-sm mr-2 align-[-6px] text-muted-foreground">speed</span>
+                  Speed
+                </Label>
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  value={speedInput}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9]/g, '')
+                    setSpeedInput(val)
+                  }}
+                  onBlur={() => {
+                    const num = Math.min(255, Math.max(0, parseInt(speedInput) || 0))
+                    setSpeed(num)
+                    setSpeedInput(String(num))
+                    handleSpeedCommit([num])
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const num = Math.min(255, Math.max(0, parseInt(speedInput) || 0))
+                      setSpeed(num)
+                      setSpeedInput(String(num))
+                      handleSpeedCommit([num])
+                    }
+                  }}
+                  className="w-16 h-7 text-center text-sm font-medium px-2"
+                />
+              </div>
+              <Slider
+                value={[speed]}
+                onValueChange={handleSpeedChange}
+                onValueCommit={handleSpeedCommit}
+                max={255}
+                step={1}
+              />
+            </div>
+            {/* The firmware has no intensity control — dw_leds only */}
+            {!isBoard && (
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <Label>
+                  <span className="material-icons-outlined text-sm mr-2 align-[-6px] text-muted-foreground">tungsten</span>
+                  Intensity
+                </Label>
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  value={intensityInput}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9]/g, '')
+                    setIntensityInput(val)
+                  }}
+                  onBlur={() => {
+                    const num = Math.min(255, Math.max(0, parseInt(intensityInput) || 0))
+                    setIntensity(num)
+                    setIntensityInput(String(num))
+                    handleIntensityCommit([num])
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const num = Math.min(255, Math.max(0, parseInt(intensityInput) || 0))
+                      setIntensity(num)
+                      setIntensityInput(String(num))
+                      handleIntensityCommit([num])
+                    }
+                  }}
+                  className="w-16 h-7 text-center text-sm font-medium px-2"
+                />
+              </div>
+              <Slider
+                value={[intensity]}
+                onValueChange={handleIntensityChange}
+                onValueCommit={handleIntensityCommit}
+                max={255}
+                step={1}
+              />
+            </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Auto Turn Off - host-side idle timeout, dw_leds only (the board's
+          own Still Sands / IdleEffect cover this for built-in LEDs) */}
+      {!isBoard && controlMode === 'automated' && (
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <span className="material-icons-outlined text-muted-foreground">schedule</span>
+            Auto Turn Off
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Enable timeout</span>
+            <Switch
+              checked={idleTimeoutEnabled}
+              onCheckedChange={handleIdleTimeoutToggle}
+            />
+          </div>
+          {idleTimeoutEnabled && (
+            <div className="flex items-center gap-2">
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={idleTimeoutInput}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^0-9]/g, '')
+                  setIdleTimeoutInput(val)
+                }}
+                onBlur={() => {
+                  const num = Math.min(1440, Math.max(1, parseInt(idleTimeoutInput) || 30))
+                  setIdleTimeoutMinutes(num)
+                  setIdleTimeoutInput(String(num))
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const num = Math.min(1440, Math.max(1, parseInt(idleTimeoutInput) || 30))
+                    setIdleTimeoutMinutes(num)
+                    setIdleTimeoutInput(String(num))
+                    saveIdleTimeout(idleTimeoutEnabled, num)
+                  }
+                }}
+                className="w-20"
+              />
+              <span className="text-sm text-muted-foreground flex-1">minutes</span>
+              <Button size="sm" onClick={() => saveIdleTimeout()}>
+                Save
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      )}
+
+      {/* Ball Tracker - firmware-native effect that follows the sand ball.
+          Its own toggle (not an entry in the Effect list); when on it takes
+          over the ring and the Effect select is disabled. */}
+      {isBoard && ballId !== undefined && (
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1.5">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <span className="material-icons-outlined text-muted-foreground">sports_baseball</span>
+                Ball Tracker
+              </CardTitle>
+              <CardDescription>
+                A glowing dot that follows the sand ball around the ring. While on, the Colors above set the blob and background.
+              </CardDescription>
+            </div>
+            <Switch
+              checked={isBallEffect}
+              onCheckedChange={handleBallToggle}
+              aria-label="Ball tracker"
+            />
+          </div>
+        </CardHeader>
+        {isBallEffect && (
+        <CardContent>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-6">
+            {/* Blob column */}
+            <div className="space-y-4">
+              <p className="text-sm font-medium flex items-center gap-2">
+                <span className="material-icons-outlined text-base text-muted-foreground">circle</span>
+                Blob
+                <span className="text-xs font-normal text-muted-foreground">the dot that tracks the ball</span>
+              </p>
+              <div className="p-4 rounded-lg border space-y-3">
+                <div className="flex justify-between items-center">
+                  <Label>Brightness</Label>
+                  <span className="text-sm font-medium">{ballFgBright}</span>
+                </div>
+                <Slider
+                  value={[ballFgBright]}
+                  onValueChange={(v) => setBallFgBright(v[0])}
+                  onValueCommit={(v) => { setBallFgBright(v[0]); sendBall({ fgbright: v[0] }) }}
+                  max={255}
+                  step={1}
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Direction</Label>
+                  <Select
+                    value={ballDirection}
+                    onValueChange={(v) => { const d = v as 'cw' | 'ccw'; setBallDirection(d); sendBall({ direction: d }) }}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cw">Clockwise</SelectItem>
+                      <SelectItem value="ccw">Counter-clockwise</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="p-4 rounded-lg border space-y-3">
+                  <div className="flex justify-between items-center">
+                    <Label>Glow size</Label>
+                    <span className="text-sm font-medium">{ballSize}</span>
+                  </div>
+                  <Slider
+                    value={[ballSize]}
+                    onValueChange={(v) => setBallSize(v[0])}
+                    onValueCommit={(v) => { setBallSize(v[0]); sendBall({ size: v[0] }) }}
+                    min={1}
+                    max={30}
+                    step={1}
                   />
-                  <span className="text-sm text-muted-foreground flex-1">minutes</span>
-                  <Button size="sm" onClick={() => saveIdleTimeout()}>
-                    Save
-                  </Button>
+                </div>
+              </div>
+              <div className="p-4 rounded-lg border space-y-3">
+                <div className="flex justify-between items-center">
+                  <Label>Alignment (°)</Label>
+                  <span className="text-sm font-medium">{ballAlign}</span>
+                </div>
+                <Slider
+                  value={[ballAlign]}
+                  onValueChange={(v) => setBallAlign(v[0])}
+                  onValueCommit={(v) => { setBallAlign(v[0]); sendBall({ align: v[0] }) }}
+                  max={359}
+                  step={1}
+                />
+                <p className="text-xs text-muted-foreground">Rotate the blob so it sits on the ball.</p>
+              </div>
+            </div>
+
+            {/* Background column */}
+            <div className="space-y-4 lg:border-l lg:pl-8">
+              <p className="text-sm font-medium flex items-center gap-2">
+                <span className="material-icons-outlined text-base text-muted-foreground">gradient</span>
+                Background
+                <span className="text-xs font-normal text-muted-foreground">behind the blob</span>
+              </p>
+              <div className="space-y-2">
+                <Label>Style</Label>
+                <Select value={ballBg} onValueChange={(v) => { setBallBg(v); sendBall({ bg: v }) }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ballBgOptions.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {ballBg === 'static'
+                    ? 'Solid fill using the Background color from the Colors panel above.'
+                    : ballBg === 'off'
+                      ? 'The ring stays dark behind the blob.'
+                      : 'Runs another effect behind the blob.'}
+                </p>
+              </div>
+              {ballBg !== 'off' && (
+                <div className="p-4 rounded-lg border space-y-3">
+                  <div className="flex justify-between items-center">
+                    <Label>Background brightness</Label>
+                    <span className="text-sm font-medium">{ballBgBright}</span>
+                  </div>
+                  <Slider
+                    value={[ballBgBright]}
+                    onValueChange={(v) => setBallBgBright(v[0])}
+                    onValueCommit={(v) => { setBallBgBright(v[0]); sendBall({ bgbright: v[0] }) }}
+                    max={255}
+                    step={1}
+                  />
                 </div>
               )}
-            </CardContent>
-          </Card>
-          )}
-        </div>
-      </div>
+            </div>
+          </div>
+        </CardContent>
+        )}
+      </Card>
+      )}
 
       {/* Automation Settings - Full Width - hidden in manual mode.
           For board LEDs the switching happens on the table itself
@@ -959,13 +1096,19 @@ export function LEDPage() {
             <div className="p-4 rounded-lg border space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="material-icons text-green-600">play_circle</span>
+                  <span className="material-icons text-live">play_circle</span>
                   <span className="font-medium">While Playing</span>
                 </div>
               </div>
-              <div className="text-xs text-muted-foreground p-2 bg-muted/50 rounded border min-h-[40px]">
-                {formatEffectSettings(playingEffect)}
-              </div>
+              {playingEffect ? (
+                <div className="text-xs p-2 bg-muted/50 rounded border min-h-[40px]">
+                  {formatEffectSettings(playingEffect)}
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground italic p-2 rounded border border-dashed min-h-[40px]">
+                  Not configured — save the current effect to use it here
+                </div>
+              )}
               <div className="flex gap-2">
                 <Button
                   size="sm"
@@ -989,13 +1132,19 @@ export function LEDPage() {
             <div className="p-4 rounded-lg border space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="material-icons text-blue-600">bedtime</span>
+                  <span className="material-icons text-primary">bedtime</span>
                   <span className="font-medium">When Idle</span>
                 </div>
               </div>
-              <div className="text-xs text-muted-foreground p-2 bg-muted/50 rounded border min-h-[40px]">
-                {formatEffectSettings(idleEffect)}
-              </div>
+              {idleEffect ? (
+                <div className="text-xs p-2 bg-muted/50 rounded border min-h-[40px]">
+                  {formatEffectSettings(idleEffect)}
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground italic p-2 rounded border border-dashed min-h-[40px]">
+                  Not configured — save the current effect to use it here
+                </div>
+              )}
               <div className="flex gap-2">
                 <Button
                   size="sm"

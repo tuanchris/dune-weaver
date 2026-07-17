@@ -81,9 +81,7 @@ def mock_state_unit():
     mock.scheduled_pause_finish_pattern = False
     mock.scheduled_pause_timezone = None
 
-    # Steps and gear ratio
-    mock.x_steps_per_mm = 200.0
-    mock.y_steps_per_mm = 287.0
+    # Gear ratio
     mock.gear_ratio = 10.0
 
     # Auto-home settings

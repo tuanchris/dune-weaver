@@ -324,6 +324,23 @@ export const handlers = [
     return HttpResponse.json(['/dev/ttyUSB0', '/dev/ttyUSB1'])
   }),
 
+  // Board diagnostics
+  http.get('/api/board/logs', () => {
+    return HttpResponse.json({ lines: [] })
+  }),
+
+  http.get('/api/board/bootlog', () => {
+    return HttpResponse.json({ text: '[+0] boot ok\n' })
+  }),
+
+  http.get('/api/board/coredump', () => {
+    return HttpResponse.json({ present: false })
+  }),
+
+  http.post('/api/board/restart', () => {
+    return HttpResponse.json({ success: true, rebooting: true })
+  }),
+
   // Debug serial endpoints
   http.post('/api/debug-serial/open', () => {
     return HttpResponse.json({ success: true })

@@ -85,7 +85,7 @@ function QueueItem({ file, index, previewUrl, requestPreview }: QueueItemProps) 
 
       {/* Pattern name */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm truncate">{formatPatternName(file)}</p>
+        <p className="text-sm font-display font-medium truncate">{formatPatternName(file)}</p>
         <p className="text-xs text-muted-foreground">#{index + 1}</p>
       </div>
     </div>
@@ -133,16 +133,18 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
     touchStartY.current = null
   }
 
-  // Prevent background scroll when Now Playing bar is visible
+  // Lock background scroll only when the bar is EXPANDED (full-screen modal
+  // state with a fixed inset-0 backdrop). In the collapsed mini-bar state the
+  // page must stay scrollable — Layout's <main> already reserves bottom padding
+  // for the bar, and locking scroll there hides content permanently behind it.
   useEffect(() => {
-    if (isVisible) {
-      // Lock body scroll when bar is visible on mobile
+    if (isVisible && isExpanded) {
       document.body.style.overflow = 'hidden'
       return () => {
         document.body.style.overflow = ''
       }
     }
-  }, [isVisible])
+  }, [isVisible, isExpanded])
 
   // Use native event listener for touchmove to prevent background scroll on the bar itself
   useEffect(() => {
@@ -273,13 +275,17 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
 
   const getThemeColors = useCallback(() => {
     const isDark = document.documentElement.classList.contains('dark')
+    const styles = getComputedStyle(document.documentElement)
+    const token = (name: string, fallback: string) =>
+      styles.getPropertyValue(name).trim() || fallback
     return {
       isDark,
-      bgOuter: isDark ? '#1a1a1a' : '#f5f5f5',
-      bgInner: isDark ? '#262626' : '#ffffff',
-      borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(128, 128, 128, 0.3)',
-      lineColor: isDark ? '#e5e5e5' : '#333333',
-      markerBorder: isDark ? '#333333' : '#ffffff',
+      bgOuter: token('--color-background', isDark ? '#171310' : '#F5EFE6'),
+      bgInner: token('--color-card', isDark ? '#211C17' : '#FDFAF4'),
+      borderColor: token('--color-border', isDark ? '#352D23' : '#E2D6C2'),
+      lineColor: token('--color-foreground', isDark ? '#F2EAD9' : '#292219'),
+      markerColor: token('--color-live', isDark ? '#7BC4B0' : '#35836F'),
+      markerBorder: token('--color-card', isDark ? '#211C17' : '#FDFAF4'),
     }
   }, [])
 
@@ -384,20 +390,28 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
       const interpRho = currentCoord[1] + (nextCoord[1] - currentCoord[1]) * fraction
 
       const currentPoint = polarToCartesian(interpTheta, interpRho, size)
+      ctx.save()
       ctx.beginPath()
       ctx.arc(currentPoint.x, currentPoint.y, 8, 0, Math.PI * 2)
-      ctx.fillStyle = '#0b80ee'
+      ctx.shadowColor = colors.markerColor
+      ctx.shadowBlur = 8
+      ctx.fillStyle = colors.markerColor
       ctx.fill()
+      ctx.restore()
       ctx.strokeStyle = colors.markerBorder
       ctx.lineWidth = 2
       ctx.stroke()
     } else if (coords.length > 0 && adjustedIndex < coords.length) {
       // At the last coordinate, just draw without interpolation
       const currentPoint = polarToCartesian(coords[adjustedIndex][0], coords[adjustedIndex][1], size)
+      ctx.save()
       ctx.beginPath()
       ctx.arc(currentPoint.x, currentPoint.y, 8, 0, Math.PI * 2)
-      ctx.fillStyle = '#0b80ee'
+      ctx.shadowColor = colors.markerColor
+      ctx.shadowBlur = 8
+      ctx.fillStyle = colors.markerColor
       ctx.fill()
+      ctx.restore()
       ctx.strokeStyle = colors.markerBorder
       ctx.lineWidth = 2
       ctx.stroke()
@@ -778,7 +792,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                             </>
                           ) : (
                             <>
-                              <p className="text-sm md:text-base font-semibold truncate">
+                              <p className="text-sm md:text-base font-display font-semibold truncate">
                                 {patternName}
                               </p>
                               {status.playlist && (
@@ -801,7 +815,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                       ) : (
                         <div className="hidden md:flex items-center gap-3">
                           <span className="text-sm text-muted-foreground w-12 font-mono">{formatTime(elapsedTime)}</span>
-                          <Progress value={progressPercent} className="h-2 flex-1" />
+                          <Progress value={progressPercent} className="h-2 flex-1 bg-live/20 [&>div]:bg-live" />
                           <span
                             className={`text-sm text-muted-foreground text-right font-mono flex items-center justify-end gap-1.5 shrink-0 ${usingHistoricalEta ? 'w-24' : 'w-14'}`}
                             title={usingHistoricalEta ? 'ETA based on last completed run' : 'Estimated time remaining'}
@@ -909,7 +923,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                 ) : (
                   <div className="flex md:hidden items-center gap-3 px-6 pb-16">
                     <span className="text-sm text-muted-foreground w-12 font-mono">{formatTime(elapsedTime)}</span>
-                    <Progress value={progressPercent} className="h-2 flex-1" />
+                    <Progress value={progressPercent} className="h-2 flex-1 bg-live/20 [&>div]:bg-live" />
                     <span className={`text-sm text-muted-foreground text-right font-mono flex items-center justify-end gap-1.5 shrink-0 ${usingHistoricalEta ? 'w-24' : 'w-14'}`}>
                       {usingHistoricalEta && <span className="material-icons-outlined text-sm">history</span>}
                       -{formatTime(remainingTime)}
@@ -970,7 +984,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                       </>
                     ) : (
                       <>
-                        <h2 className="text-lg md:text-xl font-semibold truncate">{patternName}</h2>
+                        <h2 className="text-lg md:text-xl font-display font-semibold truncate">{patternName}</h2>
                         {status?.playlist && (
                           <p className="text-sm text-muted-foreground">
                             Pattern {status.playlist.current_index + 1} of {status.playlist.total_files}
@@ -992,7 +1006,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                   </div>
                 ) : (
                   <div className="space-y-1 md:space-y-2">
-                    <Progress value={progressPercent} className="h-1.5 md:h-2" />
+                    <Progress value={progressPercent} className="h-1.5 md:h-2 bg-live/20 [&>div]:bg-live" />
                     <div className="flex justify-between text-xs md:text-sm text-muted-foreground font-mono">
                       <span className="w-16">{formatTime(elapsedTime)}</span>
                       <span>{progressPercent.toFixed(0)}%</span>
@@ -1074,7 +1088,7 @@ export function NowPlayingBar({ isLogsOpen = false, logsDrawerHeight = 256, isVi
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs text-muted-foreground">Up Next</p>
-                      <p className="text-sm font-medium truncate">
+                      <p className="text-sm font-display font-medium truncate">
                         {formatPatternName(status.playlist.next_file)}
                       </p>
                     </div>

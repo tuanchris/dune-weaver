@@ -72,20 +72,28 @@ export function Layout() {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('theme')
       if (saved) return saved === 'dark'
-      return window.matchMedia('(prefers-color-scheme: dark)').matches
+      // "Table at night" is the signature look — default to night mode
+      return true
     }
-    return false
+    return true
   })
 
   // App customization
   const [appName, setAppName] = useState(DEFAULT_APP_NAME)
   const [customLogo, setCustomLogo] = useState<string | null>(null)
+  // The connected controller board's network hostname (e.g. "DWMP") — the
+  // table's real identity in the firmware-delegated model. Drives the header
+  // name so connecting a different board updates it.
+  const [boardHostname, setBoardHostname] = useState<string | null>(null)
+  // Bumped when the connected board changes; keys the <Outlet> so the current
+  // page remounts and refetches everything from the newly connected board.
+  const [boardEpoch, setBoardEpoch] = useState(0)
 
   // Display name: when multiple tables exist, use the active table's name; otherwise use app settings
   // Get the table from the tables array (most up-to-date source) to ensure we have current data
   const activeTableData = tables.find(t => t.id === activeTable?.id)
   const tableName = activeTableData?.name || activeTable?.name
-  const displayName = hasMultipleTables && tableName ? tableName : appName
+  const displayName = boardHostname || (hasMultipleTables && tableName ? tableName : appName)
 
   // Connection & status from shared store
   const isBackendConnected = useStatusStore((s) => s.isBackendConnected)
@@ -93,8 +101,7 @@ export function Layout() {
   const isConnected = useStatusStore((s) => s.status?.connection_status ?? false)
   const isHoming = useStatusStore((s) => s.status?.is_homing ?? false)
   const sensorHomingFailed = useStatusStore((s) => s.status?.sensor_homing_failed ?? false)
-  const firmwareVersion = useStatusStore((s) => s.status?.firmware_version ?? null)
-  const tableType = useStatusStore((s) => s.status?.table_type ?? null)
+  const isAlarm = useStatusStore((s) => s.status?.is_alarm ?? false)
   const statusCurrentFile = useStatusStore((s) => s.status?.current_file ?? null)
   const statusIsRunning = useStatusStore((s) => s.status?.is_running ?? false)
   const statusIsPaused = useStatusStore((s) => s.status?.is_paused ?? false)
@@ -123,12 +130,13 @@ export function Layout() {
   const [passwordInput, setPasswordInput] = useState('')
   const [passwordError, setPasswordError] = useState(false)
 
-  // FluidNC version warning — each table type has an expected version
-  const expectedFirmwareVersion = tableType === 'dune_weaver_mini' ? 'v3.8.3' : 'v3.9.5'
-  const showFirmwareWarning = useMemo(() => {
-    if (!firmwareVersion) return false
-    return firmwareVersion !== expectedFirmwareVersion
-  }, [firmwareVersion, expectedFirmwareVersion])
+  // Read the connected board's hostname from /serial_status (it isn't carried
+  // on the status WebSocket). Cleared to null when no board is connected.
+  const fetchBoardName = () => {
+    apiClient.get<{ connected?: boolean; hostname?: string }>('/serial_status')
+      .then((s) => setBoardHostname(s.connected && s.hostname ? s.hostname : null))
+      .catch(() => setBoardHostname(null))
+  }
 
   // Fetch app settings
   const fetchAppSettings = () => {
@@ -150,6 +158,7 @@ export function Layout() {
 
   useEffect(() => {
     fetchAppSettings()
+    fetchBoardName()
 
     // Listen for branding/security updates from Settings page
     const handleBrandingUpdate = () => {
@@ -158,15 +167,33 @@ export function Layout() {
     const handleSecurityUpdate = () => {
       fetchAppSettings()
     }
+    // A board was (dis)connected elsewhere (e.g. the table selector) — refresh
+    // the header name and remount the routed page so whatever the user is
+    // looking at (LED, Table Control, …) reloads from the new board. Settings
+    // opts out via detail.source: it refreshes itself, and a remount would
+    // collapse the section the connect button lives in.
+    const handleBoardConnected = (e: Event) => {
+      fetchBoardName()
+      if ((e as CustomEvent).detail?.source !== 'settings') {
+        setBoardEpoch((n) => n + 1)
+      }
+    }
     window.addEventListener('branding-updated', handleBrandingUpdate)
     window.addEventListener('security-updated', handleSecurityUpdate)
+    window.addEventListener('board-connected', handleBoardConnected)
 
     return () => {
       window.removeEventListener('branding-updated', handleBrandingUpdate)
       window.removeEventListener('security-updated', handleSecurityUpdate)
+      window.removeEventListener('board-connected', handleBoardConnected)
     }
     // Refetch when active table changes
   }, [activeTable?.id])
+
+  // Keep the header name in sync when the live connection flips.
+  useEffect(() => {
+    fetchBoardName()
+  }, [isConnected])
 
   // Check for software updates on mount
   useEffect(() => {
@@ -327,6 +354,47 @@ export function Layout() {
   const logsWsRef = useRef<WebSocket | null>(null)
   const logsContainerRef = useRef<HTMLDivElement>(null)
   const logsLoadedCountRef = useRef(0) // Track how many logs we've loaded (for offset)
+
+  // Which log the drawer is showing. 'app' = live host backend logs (WebSocket),
+  // 'table'/'boot' = board logs pulled on demand from the FluidNC controller.
+  const [logTab, setLogTab] = useState<'app' | 'table' | 'boot'>('app')
+  const [tableLog, setTableLog] = useState<string[]>([])
+  const [tableLogLoading, setTableLogLoading] = useState(false)
+  const [bootLog, setBootLog] = useState<string | null>(null)
+  const [bootLogLoading, setBootLogLoading] = useState(false)
+
+  const fetchTableLog = useCallback(async () => {
+    setTableLogLoading(true)
+    try {
+      const data = await apiClient.get<{ lines: string[] }>('/api/board/logs?limit=1000')
+      setTableLog(data.lines || [])
+    } catch {
+      // History is best-effort — the board may be disconnected.
+    } finally {
+      setTableLogLoading(false)
+    }
+  }, [])
+
+  const fetchBootLog = useCallback(async () => {
+    setBootLogLoading(true)
+    try {
+      const data = await apiClient.get<{ text: string }>('/api/board/bootlog')
+      setBootLog(data.text ?? '')
+    } catch {
+      toast.error('Could not read the boot log')
+    } finally {
+      setBootLogLoading(false)
+    }
+  }, [])
+
+  // Lazily load the board logs the first time their tab is opened. The Refresh
+  // button re-fetches; there's no live stream for these (no board WebSocket).
+  useEffect(() => {
+    if (!isLogsOpen) return
+    if (logTab === 'table' && tableLog.length === 0 && !tableLogLoading) fetchTableLog()
+    if (logTab === 'boot' && bootLog === null && !bootLogLoading) fetchBootLog()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLogsOpen, logTab])
 
   // Connect to logs WebSocket when drawer opens
   useEffect(() => {
@@ -551,12 +619,18 @@ export function Layout() {
     }
   }
 
-  // Copy logs to clipboard (with fallback for non-HTTPS)
-  const handleCopyLogs = () => {
-    const text = filteredLogs
+  // Plain text of whichever log tab is active — used by copy + download.
+  const activeLogText = () => {
+    if (logTab === 'table') return tableLog.join('\n')
+    if (logTab === 'boot') return bootLog ?? ''
+    return filteredLogs
       .map((log) => `${formatTimestamp(log.timestamp)} [${log.level}] ${log.message}`)
       .join('\n')
-    copyToClipboard(text)
+  }
+
+  // Copy logs to clipboard (with fallback for non-HTTPS)
+  const handleCopyLogs = () => {
+    copyToClipboard(activeLogText())
   }
 
   // Helper to copy text with fallback for non-secure contexts
@@ -587,26 +661,29 @@ export function Layout() {
 
   // Download logs as file
   const handleDownloadLogs = () => {
-    const text = filteredLogs
-      .map((log) => `${log.timestamp} [${log.level}] [${log.logger}] ${log.message}`)
-      .join('\n')
+    const text = logTab === 'app'
+      ? filteredLogs
+          .map((log) => `${log.timestamp} [${log.level}] [${log.logger}] ${log.message}`)
+          .join('\n')
+      : activeLogText()
+    const name = logTab === 'app' ? 'logs' : logTab === 'table' ? 'table-log' : 'boot-log'
     const blob = new Blob([text], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `dune-weaver-logs-${new Date().toISOString().split('T')[0]}.txt`
+    a.download = `dune-weaver-${name}-${new Date().toISOString().split('T')[0]}.txt`
     a.click()
     URL.revokeObjectURL(url)
   }
 
   const handleRestart = async () => {
-    if (!confirm('Are you sure you want to restart Dune Weaver?')) return
+    if (!confirm('Restart the table? The controller (DLC32) will reboot and re-home — any running pattern stops.')) return
 
     try {
-      await apiClient.post('/api/system/restart')
-      toast.success('Dune Weaver is restarting...')
+      await apiClient.post('/api/board/restart')
+      toast.success('Table is restarting…')
     } catch {
-      toast.error('Failed to restart Dune Weaver')
+      toast.error('Failed to restart the table')
     }
   }
 
@@ -1087,7 +1164,7 @@ export function Layout() {
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-2">
               <span className="material-icons-outlined text-4xl text-primary">lock</span>
             </div>
-            <h2 className="text-2xl font-bold">{displayName}</h2>
+            <h2 className="text-2xl font-display font-bold">{displayName}</h2>
             <p className="text-muted-foreground">This table is locked. Enter the password to continue.</p>
             <form onSubmit={handlePasswordSubmit} className="space-y-3">
               <Input
@@ -1115,7 +1192,7 @@ export function Layout() {
                 <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-2">
                   <span className="material-icons-outlined text-2xl text-primary">lock</span>
                 </div>
-                <h3 className="text-lg font-semibold">Settings Locked</h3>
+                <h3 className="text-lg font-display font-semibold">Settings Locked</h3>
                 <p className="text-sm text-muted-foreground">Enter the password to access settings.</p>
               </div>
               <form onSubmit={handlePasswordSubmit} className="space-y-3">
@@ -1157,16 +1234,16 @@ export function Layout() {
                     error_outline
                   </span>
                 </div>
-                <h2 className="text-xl font-semibold">Sensor Homing Failed</h2>
+                <h2 className="text-xl font-display font-semibold">Sensor Homing Failed</h2>
                 <p className="text-muted-foreground text-sm">
                   The sensor homing process could not complete. The limit sensors may not be positioned correctly or may be malfunctioning.
                 </p>
 
-                <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-lg text-sm text-left">
-                  <p className="text-amber-600 dark:text-amber-400 font-medium mb-2">
+                <div className="bg-primary/10 border border-primary/20 p-3 rounded-lg text-sm text-left">
+                  <p className="text-primary font-medium mb-2">
                     Troubleshooting steps:
                   </p>
-                  <ul className="text-amber-600 dark:text-amber-400 space-y-1 list-disc list-inside">
+                  <ul className="text-primary space-y-1 list-disc list-inside">
                     <li>Check that the limit sensors are properly connected</li>
                     <li>Verify the sensor positions are correct</li>
                     <li>Ensure nothing is blocking the sensor path</li>
@@ -1222,7 +1299,7 @@ export function Layout() {
                   cached
                 </span>
               </div>
-              <h2 className="text-2xl font-bold">Initializing Pattern Cache</h2>
+              <h2 className="text-2xl font-display font-bold">Initializing Pattern Cache</h2>
               <p className="text-muted-foreground">
                 Preparing your pattern previews...
               </p>
@@ -1273,13 +1350,13 @@ export function Layout() {
                     download_for_offline
                   </span>
                 </div>
-                <h2 className="text-xl font-semibold">Cache All Pattern Previews?</h2>
+                <h2 className="text-xl font-display font-semibold">Cache All Pattern Previews?</h2>
                 <p className="text-muted-foreground text-sm">
                   Would you like to cache all pattern previews for faster browsing? This will download and store preview images in your browser for instant loading.
                 </p>
 
-                <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-lg text-sm">
-                  <p className="text-amber-600 dark:text-amber-400">
+                <div className="bg-primary/10 border border-primary/20 p-3 rounded-lg text-sm">
+                  <p className="text-primary">
                     <strong>Note:</strong> This cache is browser-specific. You'll need to repeat this for each browser you use.
                   </p>
                 </div>
@@ -1318,7 +1395,7 @@ export function Layout() {
                 {/* Completion message */}
                 {cacheAllProgress?.done && (
                   <div className="space-y-4">
-                    <p className="text-green-600 dark:text-green-400 flex items-center justify-center gap-2">
+                    <p className="text-success flex items-center justify-center gap-2">
                       <span className="material-icons text-base">check_circle</span>
                       All {cacheAllProgress.total} previews cached successfully!
                     </p>
@@ -1343,22 +1420,22 @@ export function Layout() {
             <div className="text-center space-y-4">
               <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-2 ${
                 homingJustCompleted
-                  ? 'bg-green-500/10'
+                  ? 'bg-success/10'
                   : isHoming
                     ? 'bg-primary/10'
-                    : 'bg-amber-500/10'
+                    : 'bg-primary/10'
               }`}>
                 <span className={`material-icons-outlined text-4xl ${
                   homingJustCompleted
-                    ? 'text-green-500'
+                    ? 'text-success'
                     : isHoming
                       ? 'text-primary animate-spin'
-                      : 'text-amber-500 animate-pulse'
+                      : 'text-primary animate-pulse'
                 }`}>
                   {homingJustCompleted ? 'check_circle' : 'sync'}
                 </span>
               </div>
-              <h2 className="text-2xl font-bold">
+              <h2 className="text-2xl font-display font-bold">
                 {homingJustCompleted
                   ? 'Homing Complete'
                   : isHoming
@@ -1379,10 +1456,10 @@ export function Layout() {
               <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
                 <span className={`w-2 h-2 rounded-full ${
                   homingJustCompleted
-                    ? 'bg-green-500'
+                    ? 'bg-success'
                     : isHoming
                       ? 'bg-primary animate-pulse'
-                      : 'bg-amber-500 animate-pulse'
+                      : 'bg-primary animate-pulse'
                 }`} />
                 <span>
                   {homingJustCompleted
@@ -1435,8 +1512,8 @@ export function Layout() {
                       {formatTimestamp(log.timestamp)}
                     </span>
                     <span className={`shrink-0 font-semibold ${
-                      log.level === 'ERROR' ? 'text-red-500' :
-                      log.level === 'WARNING' ? 'text-amber-500' :
+                      log.level === 'ERROR' ? 'text-destructive' :
+                      log.level === 'WARNING' ? 'text-primary' :
                       log.level === 'DEBUG' ? 'text-muted-foreground' :
                       'text-foreground'
                     }`}>
@@ -1535,10 +1612,10 @@ export function Layout() {
               <button className="flex items-center gap-1.5 hover:opacity-80 transition-opacity group">
                 <ShinyText
                   text={displayName}
-                  className="font-semibold text-lg"
+                  className="font-display font-semibold text-lg"
                   speed={4}
-                  color={isDark ? '#a8a8a8' : '#555555'}
-                  shineColor={isDark ? '#ffffff' : '#999999'}
+                  color={isDark ? '#A08F77' : '#8A7A63'}
+                  shineColor={isDark ? '#D9B98A' : '#A87F45'}
                   spread={75}
                 />
                 <span className="material-icons-outlined text-muted-foreground text-sm group-hover:text-foreground transition-colors">
@@ -1547,10 +1624,10 @@ export function Layout() {
                 <span
                   className={`w-2 h-2 rounded-full ${
                     !isBackendConnected
-                      ? 'bg-gray-400'
+                      ? 'bg-muted-foreground'
                       : isConnected
-                        ? 'bg-green-500 animate-pulse'
-                        : 'bg-red-500'
+                        ? 'bg-success animate-pulse'
+                        : 'bg-destructive'
                   }`}
                   title={
                     !isBackendConnected
@@ -1564,12 +1641,26 @@ export function Layout() {
             </TableSelector>
           </div>
 
-          {showFirmwareWarning && (
-            <div className="flex items-center gap-1.5 min-w-0 mx-2 text-amber-500">
+          {/* Alarm state: the board refuses motion until unlocked ($X) */}
+          {isAlarm && (
+            <div className="flex items-center gap-2 min-w-0 mx-2 text-primary">
               <span className="material-icons-outlined text-base shrink-0">warning</span>
-              <span className="text-xs truncate">
-                FluidNC {firmwareVersion} — change to {expectedFirmwareVersion}
-              </span>
+              <span className="text-xs truncate hidden sm:inline">Table alarm</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs border-primary text-primary hover:bg-primary/10"
+                onClick={async () => {
+                  try {
+                    await apiClient.post('/api/board/unlock')
+                    toast.success('Table unlocked')
+                  } catch {
+                    toast.error('Could not unlock the table')
+                  }
+                }}
+              >
+                Unlock
+              </Button>
             </div>
           )}
 
@@ -1590,7 +1681,7 @@ export function Layout() {
               <Link to="/settings?section=version" title="Software update available">
                 <span className="relative flex items-center justify-center w-8 h-8 rounded-full hover:bg-accent transition-colors">
                   <span className="material-icons-outlined text-xl">download</span>
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-live animate-pulse" />
                 </span>
               </Link>
             )}
@@ -1636,14 +1727,14 @@ export function Layout() {
                   <Separator className="my-1" />
                   <button
                     onClick={handleRestart}
-                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-amber-500"
+                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-primary"
                   >
                     <span className="material-icons-outlined text-xl">restart_alt</span>
                     Restart
                   </button>
                   <button
                     onClick={handleShutdown}
-                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-red-500"
+                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-destructive"
                   >
                     <span className="material-icons-outlined text-xl">power_settings_new</span>
                     Shutdown
@@ -1670,7 +1761,7 @@ export function Layout() {
               <Link to="/settings?section=version" title="Software update available">
                 <span className="relative flex items-center justify-center w-8 h-8 rounded-full hover:bg-accent transition-colors">
                   <span className="material-icons-outlined text-xl">download</span>
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-live animate-pulse" />
                 </span>
               </Link>
             )}
@@ -1727,7 +1818,7 @@ export function Layout() {
                       handleRestart()
                       setIsMobileMenuOpen(false)
                     }}
-                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-amber-500"
+                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-primary"
                   >
                     <span className="material-icons-outlined text-xl">restart_alt</span>
                     Restart
@@ -1737,7 +1828,7 @@ export function Layout() {
                       handleShutdown()
                       setIsMobileMenuOpen(false)
                     }}
-                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-red-500"
+                    className="flex items-center gap-3 w-full px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-destructive"
                   >
                     <span className="material-icons-outlined text-xl">power_settings_new</span>
                     Shutdown
@@ -1765,7 +1856,7 @@ export function Layout() {
               : 'calc(8rem + env(safe-area-inset-bottom, 0px))' // floating pill + nav + safe area
         }}
       >
-        <Outlet context={{ isPlayOnlyActive }} />
+        <Outlet key={boardEpoch} context={{ isPlayOnlyActive }} />
       </main>
 
       {/* Now Playing Bar */}
@@ -1802,18 +1893,41 @@ export function Layout() {
             {/* Logs Header */}
             <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/50 gap-2">
               <div className="flex items-center gap-2 sm:gap-3 flex-wrap min-w-0">
-                <span className="text-sm font-medium whitespace-nowrap">Application Logs</span>
-                <select
-                  value={logLevelFilter}
-                  onChange={(e) => setLogLevelFilter(e.target.value)}
-                  className="text-xs bg-background border rounded px-2 py-1"
-                >
-                  <option value="ALL">All Levels</option>
-                  <option value="DEBUG">Debug</option>
-                  <option value="INFO">Info</option>
-                  <option value="WARNING">Warning</option>
-                  <option value="ERROR">Error</option>
-                </select>
+                {/* Tab switcher: host app logs vs. the board's own logs */}
+                <div className="flex items-center rounded-md bg-background border p-0.5">
+                  {([
+                    { id: 'app', label: 'Application' },
+                    { id: 'table', label: 'Table Log' },
+                    { id: 'boot', label: 'Boot Log' },
+                  ] as const).map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setLogTab(tab.id)}
+                      className={`text-xs px-2 py-1 rounded transition-colors whitespace-nowrap ${
+                        logTab === tab.id
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Level filter is meaningful only for the structured app logs */}
+                {logTab === 'app' && (
+                  <select
+                    value={logLevelFilter}
+                    onChange={(e) => setLogLevelFilter(e.target.value)}
+                    className="text-xs bg-background border rounded px-2 py-1"
+                  >
+                    <option value="ALL">All Levels</option>
+                    <option value="DEBUG">Debug</option>
+                    <option value="INFO">Info</option>
+                    <option value="WARNING">Warning</option>
+                    <option value="ERROR">Error</option>
+                  </select>
+                )}
                 <input
                   type="text"
                   value={logSearchQuery}
@@ -1826,10 +1940,27 @@ export function Layout() {
                     <span className="material-icons-outlined text-sm">close</span>
                   </Button>
                 )}
-                <span className="text-xs text-muted-foreground">
-                  {filteredLogs.length}{logsTotal > 0 ? ` of ${logsTotal}` : ''} entries
-                  {logsHasMore && <span className="text-primary ml-1">↑ scroll for more</span>}
-                </span>
+                {/* Board logs have no live stream — offer a manual refresh instead */}
+                {logTab !== 'app' && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={logTab === 'table' ? fetchTableLog : fetchBootLog}
+                    disabled={logTab === 'table' ? tableLogLoading : bootLogLoading}
+                    className="rounded-full"
+                    title="Refresh"
+                  >
+                    <span className={`material-icons-outlined text-base ${
+                      (logTab === 'table' ? tableLogLoading : bootLogLoading) ? 'animate-spin' : ''
+                    }`}>refresh</span>
+                  </Button>
+                )}
+                {logTab === 'app' && (
+                  <span className="text-xs text-muted-foreground">
+                    {filteredLogs.length}{logsTotal > 0 ? ` of ${logsTotal}` : ''} entries
+                    {logsHasMore && <span className="text-primary ml-1">↑ scroll for more</span>}
+                  </span>
+                )}
               </div>
 
               <div className="flex items-center gap-1 shrink-0">
@@ -1868,39 +1999,91 @@ export function Layout() {
               ref={logsContainerRef}
               className="h-[calc(100%-40px)] overflow-auto overscroll-contain p-3 font-mono text-xs space-y-0.5"
             >
-              {/* Loading indicator for older logs */}
-              {isLoadingMoreLogs && (
-                <div className="flex items-center justify-center gap-2 py-2 text-muted-foreground">
-                  <span className="material-icons-outlined text-sm animate-spin">sync</span>
-                  <span>Loading older logs...</span>
-                </div>
+              {logTab === 'app' && (
+                <>
+                  {/* Loading indicator for older logs */}
+                  {isLoadingMoreLogs && (
+                    <div className="flex items-center justify-center gap-2 py-2 text-muted-foreground">
+                      <span className="material-icons-outlined text-sm animate-spin">sync</span>
+                      <span>Loading older logs...</span>
+                    </div>
+                  )}
+                  {/* Load more hint */}
+                  {logsHasMore && !isLoadingMoreLogs && (
+                    <div className="text-center py-2 text-muted-foreground text-xs">
+                      ↑ Scroll up to load older logs
+                    </div>
+                  )}
+                  {filteredLogs.length > 0 ? (
+                    filteredLogs.map((log, i) => (
+                      <div key={i} className="py-0.5 flex gap-2">
+                        <span className="text-muted-foreground shrink-0">
+                          {formatTimestamp(log.timestamp)}
+                        </span>
+                        <span className={`shrink-0 font-semibold ${
+                          log.level === 'ERROR' ? 'text-destructive' :
+                          log.level === 'WARNING' ? 'text-primary' :
+                          log.level === 'DEBUG' ? 'text-muted-foreground' :
+                          'text-foreground'
+                        }`}>
+                          [{log.level || 'LOG'}]
+                        </span>
+                        <span className="break-all">{log.message || ''}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-muted-foreground text-center py-4">No logs available</p>
+                  )}
+                </>
               )}
-              {/* Load more hint */}
-              {logsHasMore && !isLoadingMoreLogs && (
-                <div className="text-center py-2 text-muted-foreground text-xs">
-                  ↑ Scroll up to load older logs
-                </div>
-              )}
-              {filteredLogs.length > 0 ? (
-                filteredLogs.map((log, i) => (
-                  <div key={i} className="py-0.5 flex gap-2">
-                    <span className="text-muted-foreground shrink-0">
-                      {formatTimestamp(log.timestamp)}
-                    </span>
-                    <span className={`shrink-0 font-semibold ${
-                      log.level === 'ERROR' ? 'text-red-500' :
-                      log.level === 'WARNING' ? 'text-amber-500' :
-                      log.level === 'DEBUG' ? 'text-muted-foreground' :
-                      'text-foreground'
-                    }`}>
-                      [{log.level || 'LOG'}]
-                    </span>
-                    <span className="break-all">{log.message || ''}</span>
+
+              {/* Table Log: the board's own history, harvested so it survives reboots */}
+              {logTab === 'table' && (() => {
+                const q = logSearchQuery.toLowerCase()
+                const lines = q ? tableLog.filter((l) => l.toLowerCase().includes(q)) : tableLog
+                if (lines.length > 0) {
+                  return lines.map((line, i) => (
+                    <div key={i} className="py-0.5 text-muted-foreground break-all whitespace-pre-wrap">
+                      {line}
+                    </div>
+                  ))
+                }
+                return (
+                  <p className="text-muted-foreground text-center py-4">
+                    {tableLogLoading
+                      ? 'Loading…'
+                      : tableLog.length === 0
+                        ? 'No table log collected yet — press refresh. History builds up while the table is connected.'
+                        : 'No lines match your search.'}
+                  </p>
+                )
+              })()}
+
+              {/* Boot Log: the board's on-device crash breadcrumb (survives a panic) */}
+              {logTab === 'boot' && (() => {
+                if (bootLog === null) {
+                  return (
+                    <p className="text-muted-foreground text-center py-4">
+                      {bootLogLoading ? 'Reading…' : 'Press refresh to read the boot log.'}
+                    </p>
+                  )
+                }
+                const q = logSearchQuery.toLowerCase()
+                const text = bootLog.trim()
+                if (!text) {
+                  return <p className="text-muted-foreground text-center py-4">(empty)</p>
+                }
+                const lines = text.split('\n')
+                const shown = q ? lines.filter((l) => l.toLowerCase().includes(q)) : lines
+                if (shown.length === 0) {
+                  return <p className="text-muted-foreground text-center py-4">No lines match your search.</p>
+                }
+                return shown.map((line, i) => (
+                  <div key={i} className="py-0.5 text-success break-all whitespace-pre-wrap">
+                    {line}
                   </div>
                 ))
-              ) : (
-                <p className="text-muted-foreground text-center py-4">No logs available</p>
-              )}
+              })()}
             </div>
           </>
         )}

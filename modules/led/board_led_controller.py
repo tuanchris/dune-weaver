@@ -94,9 +94,24 @@ class BoardLEDController:
         if led is None:
             return {"connected": False, "error": "Table not connected"}
         effect = (led.get("Effect") or "off").lower()
+        brightness_255 = int(led.get("Brightness", 128) or 0)
+        # While a pattern is running, /sand_led writes are live overrides that
+        # $LED/* (NVS) doesn't reflect until the run ends — so overlay the
+        # *effective* state from /sand_status's "led" object (fw >= v0.1.x).
+        # Without this, power/effect changes made mid-run read back stale and
+        # the power toggle can never turn the ring off during playback.
+        conn = self._conn()
+        if conn:
+            try:
+                live = (conn.get_status() or {}).get("led") or {}
+                if live.get("effect"):
+                    effect = str(live["effect"]).lower()
+                if live.get("brightness") is not None:
+                    brightness_255 = int(live["brightness"])
+            except Exception as e:
+                logger.debug(f"No live LED state from /sand_status: {e}")
         if effect != "off":
             self._last_effect = effect
-        brightness_255 = int(led.get("Brightness", 128) or 0)
         palette = (led.get("Palette") or "rainbow").lower()
         return {
             "connected": True,

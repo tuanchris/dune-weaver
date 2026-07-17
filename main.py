@@ -33,6 +33,7 @@ import base64
 import hashlib
 import time
 import subprocess
+import requests
 
 # Get log level from environment variable, default to INFO
 log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -162,11 +163,6 @@ async def lifespan(app: FastAPI):
             state.led_controller = LEDInterface("board")
             logger.info("LED controller initialized: table's built-in LEDs (firmware-controlled)")
         else:
-            if state.led_provider == "dw_leds":
-                # Host GPIO NeoPixels were removed — the table's own ring
-                # (firmware-controlled) replaced them.
-                logger.warning("LED provider 'dw_leds' no longer exists; "
-                               "select 'Table LEDs' in Settings")
             state.led_controller = None
             logger.info("LED controller not configured")
 
@@ -267,6 +263,8 @@ def get_preview_semaphore() -> asyncio.Semaphore:
 # Pydantic models for request/response validation
 class ConnectRequest(BaseModel):
     port: Optional[str] = None
+    # Board API password ($Sand/Password); stored and sent as X-Sand-Key.
+    password: Optional[str] = None
 
 class auto_playModeRequest(BaseModel):
     enabled: bool
@@ -317,7 +315,7 @@ class WLEDRequest(BaseModel):
     wled_ip: Optional[str] = None
 
 class LEDConfigRequest(BaseModel):
-    provider: str  # "wled", "dw_leds", or "none"
+    provider: str  # "wled", "board", or "none"
     ip_address: Optional[str] = None  # For WLED only
     # DW LED specific fields
     num_leds: Optional[int] = None
@@ -954,6 +952,286 @@ async def update_board_settings(update: BoardSettingsUpdate):
 class BoardCommandRequest(BaseModel):
     command: str
 
+@app.get("/api/firmware/version", tags=["settings"])
+async def firmware_version():
+    """Board firmware version + latest published release (GitHub, cached)."""
+    from modules.update import firmware_updater
+    release = await asyncio.to_thread(firmware_updater.get_latest_release)
+    current = state.firmware_version
+    latest = release["version"] if release else None
+    return {
+        "current": current,
+        "latest": latest,
+        "update_available": bool(release and firmware_updater.is_newer(latest, current)),
+        "release_url": release["release_url"] if release else None,
+    }
+
+@app.post("/api/firmware/update", tags=["settings"])
+async def firmware_update():
+    """Flash the latest firmware release onto the board over OTA and wait for
+    it to reboot. A failed/interrupted upload leaves the old image running."""
+    from modules.update import firmware_updater
+    if not state.conn or not state.conn.is_connected():
+        raise HTTPException(status_code=409, detail="Not connected to the board")
+    if execution.get_cached_status().get("is_running"):
+        raise HTTPException(status_code=409, detail="Stop the current pattern first")
+
+    probe = await asyncio.to_thread(state.conn.update_probe)
+    if probe.get("status") == "busy":
+        raise HTTPException(status_code=409, detail="The table is busy - stop the current pattern first")
+    if probe.get("status") != "ready":
+        raise HTTPException(
+            status_code=400,
+            detail="This firmware is too old for OTA updates - update it once via the web installer")
+
+    release = await asyncio.to_thread(firmware_updater.get_latest_release, True)
+    if not release:
+        raise HTTPException(status_code=502, detail="Could not fetch the latest firmware release")
+    try:
+        image = await asyncio.to_thread(firmware_updater.download_image, release["download_url"])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Firmware download failed: {e}")
+
+    # The board's web server is single-threaded: suspend the status poller for
+    # the whole flash + reboot window.
+    execution.observer.suspended = True
+    try:
+        logger.info(f"Flashing firmware {release['version']} ({len(image)} bytes) to the board")
+        result = await asyncio.to_thread(state.conn.upload_firmware, image)
+        if result.get("status") != "ok":
+            detail = ("The table is busy - stop the current pattern first"
+                      if result.get("status") == "busy" else "The table rejected the update")
+            raise HTTPException(status_code=502, detail=detail)
+
+        # Board reboots ~1s after "ok"; give it a head start, then poll.
+        await asyncio.sleep(8)
+        deadline = time.time() + 120
+        while True:
+            try:
+                st = await asyncio.to_thread(state.conn.get_status)
+                state.firmware_version = st.get("fw") or state.firmware_version
+                logger.info(f"Firmware update complete - board reports {state.firmware_version}")
+                return {"success": True, "version": state.firmware_version}
+            except Exception:
+                if time.time() > deadline:
+                    raise HTTPException(
+                        status_code=504,
+                        detail="Update sent, but the table has not come back online - check it in a minute")
+                await asyncio.sleep(3)
+    finally:
+        execution.observer.suspended = False
+
+# --- Table (board) Wi-Fi management — fw >= v0.1.8 --------------------------
+# Distinct from /api/wifi/* (the host Pi's Wi-Fi): these reconfigure the
+# FluidNC board's own network. Writes can reboot the board; the observer's
+# reconnect/relocate watchdog re-finds it afterwards (by MAC via mDNS).
+
+def _require_board():
+    if not state.conn or not state.conn.is_connected():
+        raise HTTPException(status_code=409, detail="Not connected to the board")
+
+@app.get("/api/board/wifi/status", tags=["settings"])
+async def board_wifi_status():
+    _require_board()
+    try:
+        status = await asyncio.to_thread(state.conn.wifi_status)
+        return {"supported": True, **status}
+    except requests.HTTPError as e:
+        if e.response is not None and e.response.status_code == 404:
+            return {"supported": False}
+        raise HTTPException(status_code=502, detail=f"Wi-Fi status failed: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Wi-Fi status failed: {e}")
+
+@app.get("/api/board/wifi/scan", tags=["settings"])
+async def board_wifi_scan(rescan: bool = False):
+    """Async scan: returns {status:'scanning'} until results are ready - poll."""
+    _require_board()
+    try:
+        return await asyncio.to_thread(state.conn.wifi_scan, rescan)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Wi-Fi scan failed: {e}")
+
+class BoardWifiSaveRequest(BaseModel):
+    ssid: str
+    password: str
+
+@app.post("/api/board/wifi/save", tags=["settings"])
+async def board_wifi_save(request: BoardWifiSaveRequest):
+    """Point the table at a home Wi-Fi network. The table reboots; a lost
+    reply means the reboot raced the response and is treated as success
+    (same as the mobile app / captive portal)."""
+    _require_board()
+    if not request.ssid.strip():
+        raise HTTPException(status_code=400, detail="SSID is required")
+    if not (8 <= len(request.password) <= 64):
+        raise HTTPException(status_code=400, detail="Password must be 8-64 characters")
+    try:
+        result = await asyncio.to_thread(
+            state.conn.wifi_save, request.ssid.strip(), request.password)
+    except Exception:
+        # Reboot raced the reply - the write almost certainly landed.
+        return {"success": True, "rebooting": True}
+    if result.get("status") == "busy":
+        raise HTTPException(status_code=409, detail="The table is busy - stop the current pattern first")
+    if result.get("status") == "error":
+        raise HTTPException(status_code=502, detail=result.get("message") or "The table rejected those credentials")
+    return {"success": True, "rebooting": bool(result.get("reboot"))}
+
+@app.post("/api/board/wifi/standalone", tags=["settings"])
+async def board_wifi_standalone():
+    """Switch the table to standalone hotspot mode ($WiFi/Mode=AP). From home
+    Wi-Fi the table reboots and leaves this network."""
+    _require_board()
+    try:
+        result = await asyncio.to_thread(state.conn.wifi_standalone)
+    except Exception:
+        return {"success": True, "rebooting": True}
+    if result.get("status") == "busy":
+        raise HTTPException(status_code=409, detail="The table is busy - stop the current pattern first")
+    if result.get("status") == "error":
+        raise HTTPException(status_code=502, detail=result.get("message") or "Could not switch to standalone mode")
+    return {"success": True, "rebooting": bool(result.get("reboot"))}
+
+class RotateRequest(BaseModel):
+    theta: float  # absolute target, radians
+
+@app.post("/api/board/rotate", tags=["settings"])
+async def board_rotate(request: RotateRequest):
+    """Jog the arm to an absolute theta at the perimeter (crash-homing
+    orientation alignment). The firmware answers 409 while a previous jog is
+    still finishing — the client retries."""
+    if not state.conn or not state.conn.is_connected():
+        raise HTTPException(status_code=409, detail="Not connected to the board")
+    try:
+        await asyncio.to_thread(state.conn.goto, request.theta, 1.0)
+        return {"success": True}
+    except requests.HTTPError as e:
+        code = e.response.status_code if e.response is not None else 502
+        raise HTTPException(status_code=code if code in (401, 409) else 502,
+                            detail=f"Rotate rejected: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Rotate failed: {e}")
+
+@app.get("/api/board/logs", tags=["settings"])
+async def board_logs(limit: int = 500):
+    """Persistent table log history harvested from the board's /sand_log ring
+    buffer by the observer (outlives board reboots, unlike the ring itself)."""
+    try:
+        with open(execution.BOARD_LOG_FILE, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+    except FileNotFoundError:
+        lines = []
+    return {"lines": lines[-max(1, min(limit, execution.BOARD_LOG_MAX_LINES)):]}
+
+@app.get("/api/board/bootlog", tags=["settings"])
+async def board_bootlog():
+    """The board's boot log ($SS startup log). After a panic it preserves the
+    *previous* boot's log — the on-device crash breadcrumb. Read live."""
+    if not state.conn or not state.conn.is_connected():
+        raise HTTPException(status_code=409, detail="Not connected to the board")
+    try:
+        text = await asyncio.to_thread(state.conn.get_bootlog)
+        return {"text": text}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not read boot log: {e}")
+
+@app.get("/api/board/coredump", tags=["settings"])
+async def board_coredump():
+    """JSON crash report from the coredump partition, written on any panic
+    (incl. task-WDT hang). {present, task, pc, backtrace, ...}. Read live."""
+    if not state.conn or not state.conn.is_connected():
+        raise HTTPException(status_code=409, detail="Not connected to the board")
+    try:
+        return await asyncio.to_thread(state.conn.get_coredump)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not read coredump: {e}")
+
+@app.post("/api/board/coredump/erase", tags=["settings"])
+async def board_coredump_erase():
+    """Clear the stored coredump so a fresh crash is unambiguous."""
+    if not state.conn or not state.conn.is_connected():
+        raise HTTPException(status_code=409, detail="Not connected to the board")
+    try:
+        await asyncio.to_thread(state.conn.erase_coredump)
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not erase coredump: {e}")
+
+@app.post("/api/board/unlock", tags=["settings"])
+async def board_unlock():
+    """Clear a GRBL Alarm state ($X) so the table accepts commands again."""
+    if not state.conn or not state.conn.is_connected():
+        raise HTTPException(status_code=409, detail="Not connected to the board")
+    try:
+        await asyncio.to_thread(state.conn.run_command, "$X")
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Unlock failed: {e}")
+
+@app.post("/api/board/restart", tags=["settings"])
+async def board_restart():
+    """Reboot the DLC32 controller (FluidNC) via $Bye. Position is lost, so the
+    table re-homes on the way back up. The observer's reconnect watchdog picks
+    the board back up once it's finished rebooting."""
+    if not state.conn or not state.conn.is_connected():
+        raise HTTPException(status_code=409, detail="Not connected to the board")
+    # A lost reply just means the reboot raced the "ok" response — the board is
+    # restarting either way, so (like the Wi-Fi endpoints) we treat it as success.
+    await connection_manager.perform_soft_reset()
+    return {"success": True, "rebooting": True}
+
+class BoardPasswordRequest(BaseModel):
+    # 'set' writes $Sand/Password on the board and stores it locally;
+    # 'remove' clears it on the board and locally;
+    # 'save_local' only verifies + stores an existing password on this backend.
+    action: str
+    password: Optional[str] = None
+
+@app.post("/api/board/password", tags=["settings"])
+async def board_password(request: BoardPasswordRequest):
+    """Manage the table's API password ($Sand/Password, fw >= v0.1.11)."""
+    action = request.action
+    password = (request.password or "").strip()
+    if action not in ("set", "remove", "save_local"):
+        raise HTTPException(status_code=400, detail="Unknown action")
+    if action in ("set", "save_local") and not (4 <= len(password) <= 64):
+        raise HTTPException(status_code=400, detail="Password must be 4-64 characters")
+
+    if action == "save_local":
+        # Verify against the board (which may currently be rejecting us).
+        from modules.connection.fluidnc_client import FluidNCClient
+        probe = state.conn or FluidNCClient(connection_manager.board_url())
+        try:
+            ok = await asyncio.to_thread(probe.test_key, password)
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Could not reach the table: {e}")
+        if not ok:
+            raise HTTPException(status_code=401, detail="Wrong password")
+        state.board_api_key = password
+        state.board_locked = False
+        if state.conn:
+            state.conn.api_key = password
+        state.save()
+        return {"success": True}
+
+    if not state.conn or not state.conn.is_connected():
+        raise HTTPException(status_code=409, detail="Not connected to the board")
+    try:
+        resp = await asyncio.to_thread(state.conn.set_password,
+                                       password if action == "set" else "")
+        if "error" in (resp or "").lower():
+            raise HTTPException(status_code=502, detail=f"Board rejected the change: {resp.strip()}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to update the table password: {e}")
+    state.board_api_key = password if action == "set" else None
+    state.conn.api_key = state.board_api_key
+    state.board_locked = False
+    state.save()
+    return {"success": True}
+
 @app.post("/api/board/command", tags=["settings"])
 async def board_command(request: BoardCommandRequest):
     """Advanced console: send a $-command to the board and return the recent
@@ -1049,6 +1327,16 @@ async def get_discovered_tables():
     list when mDNS is unavailable (e.g. zeroconf not installed).
     """
     return {"tables": mdns_discovery.get_tables()}
+
+@app.get("/api/discovered-boards", tags=["multi-table"])
+async def get_discovered_boards():
+    """
+    Get FluidNC controller boards auto-discovered via mDNS (_http._tcp with
+    the firmware's sandtable TXT records) - candidates for /connect. Unlike
+    /api/discovered-tables (peer backends), these are the boards themselves.
+    Returns an empty list when mDNS is unavailable.
+    """
+    return {"boards": mdns_discovery.get_boards()}
 
 @app.get("/api/known-tables", tags=["multi-table"])
 async def get_known_tables():
@@ -1257,8 +1545,10 @@ async def set_homing_config(request: HomingConfigRequest):
 
 @app.get("/list_serial_ports")
 async def list_ports():
-    logger.debug("Listing available serial ports")
-    return await asyncio.to_thread(connection_manager.list_serial_ports)
+    # Legacy route name kept for the frontend/touch-app contract; there are no
+    # serial ports — it returns the board's HTTP URL as the single "port".
+    logger.debug("Listing board URLs")
+    return await asyncio.to_thread(connection_manager.list_board_urls)
 
 @app.post("/connect")
 async def connect(request: ConnectRequest):
@@ -1269,11 +1559,20 @@ async def connect(request: ConnectRequest):
         url = connection_manager._normalize_board_url(request.port or "") or connection_manager.board_url()
         state.board_url = url
         state.port = url
+        state.user_disconnected = False
+        if request.password is not None:
+            state.board_api_key = request.password.strip() or None
         state.save()
-        state.conn = FluidNCClient(url)
+        state.conn = FluidNCClient(url, api_key=state.board_api_key)
         if not state.conn.reachable():
+            state.board_locked = state.conn.locked
             state.conn = None
+            if state.board_locked:
+                raise HTTPException(
+                    status_code=401,
+                    detail="The table is password-protected - enter its password to connect")
             raise HTTPException(status_code=500, detail=f"Board not reachable at {url}")
+        state.board_locked = False
         if not await asyncio.to_thread(connection_manager.device_init, False):
             raise HTTPException(status_code=500, detail="Failed to initialize board")
         logger.info(f"Successfully connected to board at {url}")
@@ -1287,25 +1586,26 @@ async def connect(request: ConnectRequest):
 @app.post("/disconnect")
 async def disconnect():
     try:
+        state.user_disconnected = True  # suppress the observer's auto-reconnect
         state.conn.close()
-        logger.info('Successfully disconnected from serial port')
+        logger.info('Successfully disconnected from board')
         return {"success": True}
     except Exception as e:
-        logger.error(f'Failed to disconnect serial: {str(e)}')
+        logger.error(f'Failed to disconnect from board: {str(e)}')
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/restart_connection")
 async def restart(request: ConnectRequest):
     if not request.port:
-        logger.warning("Restart serial request received without port")
+        logger.warning("Restart connection request received without a board address")
         raise HTTPException(status_code=400, detail="No port provided")
 
     try:
-        logger.info(f"Restarting connection on port {request.port}")
+        logger.info(f"Restarting connection to board {request.port}")
         connection_manager.restart_connection()
         return {"success": True}
     except Exception as e:
-        logger.error(f"Failed to restart serial on port {request.port}: {str(e)}")
+        logger.error(f"Failed to restart connection to board {request.port}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2022,6 +2322,12 @@ async def serial_status():
     return {
         "connected": connected,
         "port": port,
+        # Board's network hostname (e.g. "DWMP") - the table's display name.
+        "hostname": state.board_hostname,
+        # True when the board rejects us with 401 (password-protected).
+        "locked": (state.conn.locked if state.conn else False) or state.board_locked,
+        # Whether a board password is saved on this backend.
+        "has_key": bool(state.board_api_key),
     }
 
 @app.post("/pause_execution")
@@ -2960,7 +3266,7 @@ async def led_control_page(request: Request):
 @app.get("/api/dw_leds/status")
 async def dw_leds_status():
     """Get DW LED controller status"""
-    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
+    if not state.led_controller or state.led_provider != "board":
         return {"connected": False, "message": "DW LEDs not configured"}
 
     try:
@@ -2972,7 +3278,7 @@ async def dw_leds_status():
 @app.post("/api/dw_leds/power")
 async def dw_leds_power(request: dict):
     """Control DW LED power (0=off, 1=on, 2=toggle)"""
-    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
+    if not state.led_controller or state.led_provider != "board":
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     state_value = request.get("state", 1)
@@ -2996,7 +3302,7 @@ async def dw_leds_power(request: dict):
 @app.post("/api/dw_leds/brightness")
 async def dw_leds_brightness(request: dict):
     """Set DW LED brightness (0-100)"""
-    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
+    if not state.led_controller or state.led_provider != "board":
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     value = request.get("value", 50)
@@ -3014,7 +3320,7 @@ async def dw_leds_brightness(request: dict):
 @app.post("/api/dw_leds/color")
 async def dw_leds_color(request: dict):
     """Set solid color (manual UI control - always powers on LEDs)"""
-    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
+    if not state.led_controller or state.led_provider != "board":
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     # Accept both formats: {"r": 255, "g": 0, "b": 0} or {"color": [255, 0, 0]}
@@ -3045,7 +3351,7 @@ async def dw_leds_color(request: dict):
 @app.post("/api/dw_leds/colors")
 async def dw_leds_colors(request: dict):
     """Set effect colors (color1, color2, color3) - manual UI control - always powers on LEDs"""
-    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
+    if not state.led_controller or state.led_provider != "board":
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     # Parse colors from request
@@ -3092,7 +3398,7 @@ async def dw_leds_colors(request: dict):
 @app.get("/api/dw_leds/effects")
 async def dw_leds_effects():
     """Get list of available effects"""
-    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
+    if not state.led_controller or state.led_provider != "board":
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     try:
@@ -3114,7 +3420,7 @@ async def dw_leds_effects():
 @app.get("/api/dw_leds/palettes")
 async def dw_leds_palettes():
     """Get list of available palettes"""
-    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
+    if not state.led_controller or state.led_provider != "board":
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     try:
@@ -3133,7 +3439,7 @@ async def dw_leds_palettes():
 @app.post("/api/dw_leds/effect")
 async def dw_leds_effect(request: dict):
     """Set effect by ID (manual UI control - always powers on LEDs)"""
-    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
+    if not state.led_controller or state.led_provider != "board":
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     effect_id = request.get("effect_id", 0)
@@ -3155,7 +3461,7 @@ async def dw_leds_effect(request: dict):
 @app.post("/api/dw_leds/palette")
 async def dw_leds_palette(request: dict):
     """Set palette by ID (manual UI control - always powers on LEDs)"""
-    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
+    if not state.led_controller or state.led_provider != "board":
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     palette_id = request.get("palette_id", 0)
@@ -3175,7 +3481,7 @@ async def dw_leds_palette(request: dict):
 @app.post("/api/dw_leds/speed")
 async def dw_leds_speed(request: dict):
     """Set effect speed (0-255)"""
-    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
+    if not state.led_controller or state.led_provider != "board":
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     value = request.get("speed", 128)
@@ -3210,7 +3516,7 @@ async def dw_leds_ball(request: dict):
 @app.post("/api/dw_leds/intensity")
 async def dw_leds_intensity(request: dict):
     """Set effect intensity (0-255)"""
-    if not state.led_controller or state.led_provider not in ("dw_leds", "board"):
+    if not state.led_controller or state.led_provider != "board":
         raise HTTPException(status_code=400, detail="DW LEDs not configured")
 
     value = request.get("intensity", 128)

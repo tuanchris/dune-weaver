@@ -1,6 +1,7 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQml import QmlElement
 import asyncio
+import base64
 import json
 import logging
 import subprocess
@@ -9,7 +10,8 @@ import time
 from pathlib import Path
 import os
 
-from firmware_client import FirmwareClient, LED_EFFECTS, LED_PALETTES
+from firmware_client import (FirmwareClient, LED_EFFECTS, LED_PALETTES,
+                             friendly_error, posix_tz)
 import discovery
 
 # Configure logging
@@ -39,6 +41,14 @@ def _run(coro):
         logger.warning("No running event loop to schedule task")
 
 
+def _clamp_int(value, default, lo, hi):
+    """Coerce ``value`` to an int within [lo, hi], falling back to ``default``."""
+    try:
+        return max(lo, min(hi, int(value)))
+    except (TypeError, ValueError):
+        return default
+
+
 @QmlElement
 class Backend(QObject):
     """Backend controller: drives a headless FluidNC sand table over HTTP."""
@@ -47,6 +57,12 @@ class Backend(QObject):
     SETTINGS_FILE = "touch_settings.json"
     DEFAULT_SCREEN_TIMEOUT = 300  # 5 minutes in seconds
     STATUS_POLL_MS = 1000         # /sand_status poll interval
+    # Consecutive poll failures before the UI flips to "disconnected". The
+    # board's single-threaded web server stalls status reads for seconds while
+    # it serves file transfers, so one slow/failed poll means "busy", not
+    # "gone". A hard-down board fails fast (connection refused), so real
+    # disconnects are still detected within a few seconds.
+    STATUS_FAIL_THRESHOLD = 3
 
     # Predefined timeout options (in seconds)
     TIMEOUT_OPTIONS = {
@@ -79,9 +95,11 @@ class Backend(QObject):
     progressChanged = Signal()
     connectionChanged = Signal()
     executionStarted = Signal(str, str)  # patternName, patternPreview
+    patternPreviewReady = Signal(str, str)  # patternName, preview rendered late
     executionStopped = Signal()
     errorOccurred = Signal(str)
     serialPortsUpdated = Signal(list)          # now: list of discovered table URLs
+    discoveredTablesUpdated = Signal(list)     # [{name, url}] from mDNS discovery
     serialConnectionChanged = Signal(bool)     # now: table reachable
     currentPortChanged = Signal(str)           # now: current table URL
     speedChanged = Signal(int)
@@ -155,6 +173,17 @@ class Backend(QObject):
         self._led_color = "#ffffff"
         self._led_last_effect = 2         # remembered on power-off (default rainbow)
 
+        # 'ball' tracker state (firmware-native effect id 38; the blob follows
+        # the sand ball). Mirrors the board's NVS; written live via /sand_led.
+        self._led_color2 = "#000000"      # background colour when bg == "static"
+        self._led_ball_fgbright = 255     # blob brightness (0..255)
+        self._led_ball_bgbright = 255     # background brightness (0..255)
+        self._led_ball_size = 3           # glow size in LEDs (1..30 in the UI)
+        self._led_ball_bg = "static"      # "static" | "off" | any effect name
+        self._led_ball_direction = "cw"   # "cw" | "ccw"
+        self._led_ball_align = 0          # rotate the blob onto the ball (0..359)
+        self._led_last_non_ball_effect = 2  # restored when the ball toggle is off
+
         # Screen management
         self._screen_on = True
         self._screen_timeout = self.DEFAULT_SCREEN_TIMEOUT
@@ -169,6 +198,9 @@ class Backend(QObject):
         self._load_local_settings()
         self._detect_backlight()
 
+        # Apply the saved table password ($Sand/Password key) to the client.
+        self.client.set_api_key(self._decode_password(self._table_password_b64))
+
         # Point the shared client at the saved / env-configured table.
         env_url = os.environ.get("DUNE_WEAVER_URL", "")
         initial_url = env_url or self._saved_table_url
@@ -180,6 +212,23 @@ class Backend(QObject):
         self._status_timer = QTimer()
         self._status_timer.timeout.connect(self._tick_status)
         self._time_synced = False
+        self._poll_inflight = False   # never stack polls on the busy board
+        self._poll_failures = 0       # consecutive failures (see threshold)
+        self._discovered_tables = []  # [{name, url}] from the last mDNS browse
+        self._table_name = ""         # firmware hostname from /sand_status
+        self._table_password_b64 = "" # $Sand/Password, base64 like the backend
+
+        # Playlist run state from /sand_status's playlist object (firmware
+        # sequences playlists; this is read-only telemetry, like the
+        # backend's translate_status).
+        self._playlist_active = False
+        self._playlist_index = 0      # 0-based position in the playlist
+        self._playlist_total = 0
+        self._playlist_name = ""
+        self._next_pattern = ""       # next pattern (display name, no path/.thr)
+        self._playlist_clearing = False
+        self._pause_remaining = -1    # seconds until next pattern; -1 = not pausing
+        self._pause_total = -1
 
         # Kick everything off once the event loop is running.
         QTimer.singleShot(200, self._start)
@@ -189,9 +238,15 @@ class Backend(QObject):
         self._status_timer.start(self.STATUS_POLL_MS)
         if not self.client.base_url:
             # No configured table -> try to discover one automatically.
-            _run(self._auto_discover())
+            _run(self._discover(auto_connect=True))
 
-    async def _auto_discover(self):
+    async def _discover(self, auto_connect=False):
+        """mDNS-browse for tables; auto_connect picks one on startup.
+
+        Preference order: the last-connected table (saved URL) if it's on the
+        network, otherwise the first table found — the touch panel should
+        come up connected without being asked.
+        """
         self._set_reconnect_status("Searching for tables (mDNS)...")
         try:
             tables = await discovery.discover_tables(timeout=3.0)
@@ -199,14 +254,19 @@ class Backend(QObject):
             logger.warning(f"Discovery failed: {exc}")
             tables = []
         self._serial_ports = [t.base_url for t in tables]
+        self._discovered_tables = [{"name": t.name, "url": t.base_url} for t in tables]
         self.serialPortsUpdated.emit(self._serial_ports)
-        if len(tables) == 1:
-            logger.info(f"Auto-connecting to the only discovered table: {tables[0].base_url}")
-            self._connect_to(tables[0].base_url)
-        elif not tables:
+        self.discoveredTablesUpdated.emit(self._discovered_tables)
+        if not auto_connect:
+            return
+        if not tables:
             self._set_reconnect_status("No table found. Enter the table address.")
-        else:
-            self._set_reconnect_status(f"{len(tables)} tables found. Pick one.")
+            return
+        target = next((t for t in tables if t.base_url == self._saved_table_url),
+                      tables[0])
+        which = "last-connected" if target.base_url == self._saved_table_url else "first discovered"
+        logger.info(f"Auto-connecting to the {which} table: {target.base_url}")
+        self._connect_to(target.base_url)
 
     # ==================== Status polling ====================
     @Slot()
@@ -214,13 +274,29 @@ class Backend(QObject):
         _run(self._poll_status())
 
     async def _poll_status(self):
-        if not self.client.base_url:
+        if not self.client.base_url or self._poll_inflight:
             return
+        self._poll_inflight = True
         try:
             data = await self.client.status()
         except Exception as exc:
-            self._on_unreachable(str(exc))
+            self._poll_failures += 1
+            reason = str(exc) or type(exc).__name__
+            # 401 = board is password-locked; deterministic, so say so
+            # instead of the generic "retrying" message.
+            if getattr(exc, "status", None) == 401:
+                self._on_unreachable(reason)
+                self._set_reconnect_status(
+                    "Table requires a password — set it below.")
+            elif self._poll_failures >= self.STATUS_FAIL_THRESHOLD:
+                self._on_unreachable(reason)
+            else:
+                logger.debug(f"Status poll failed ({self._poll_failures}/"
+                             f"{self.STATUS_FAIL_THRESHOLD}): {reason}")
             return
+        finally:
+            self._poll_inflight = False
+        self._poll_failures = 0
         self._on_status(data)
 
     def _on_status(self, status):
@@ -241,7 +317,10 @@ class Backend(QObject):
             self.loadLedConfig()
             _run(self._sync_time_once())
 
-        state = status.get("state", "")
+        # GRBL states can carry a substate suffix ("Hold:0") — strip it, like
+        # the backend's execution._state() does, or pause is never detected.
+        state = (status.get("state") or "").split(":", 1)[0]
+        self._table_name = status.get("hostname", "") or self._table_name
 
         # Current pattern / execution start detection
         raw_file = status.get("file", "") or ""
@@ -252,10 +331,28 @@ class Backend(QObject):
                 break
         if new_file and new_file != self._current_file:
             logger.info(f"Pattern changed to '{new_file}'")
-            self.executionStarted.emit(new_file, self._preview_path(new_file))
+            preview = self._preview_path(new_file)
+            self.executionStarted.emit(new_file, preview)
+            if not preview:
+                _run(self._render_preview_late(new_file))
         self._current_file = new_file
 
         self._is_running = bool(status.get("running", False))
+
+        # Playlist telemetry (between-patterns pause countdown + position)
+        pl = status.get("playlist") or {}
+        self._playlist_active = bool(pl.get("active"))
+        self._playlist_index = int(pl.get("index", 0) or 0)
+        self._playlist_total = int(pl.get("total", 0) or 0)
+        self._playlist_name = str(pl.get("name") or "")
+        nxt = str(pl.get("next") or "").rsplit("/", 1)[-1]
+        self._next_pattern = nxt[:-4] if nxt.endswith(".thr") else nxt
+        self._playlist_clearing = bool(pl.get("clearing"))
+
+        def _secs(v):
+            return int(v) if isinstance(v, (int, float)) and v >= 0 else -1
+        self._pause_remaining = _secs(pl.get("pause_remaining", -1))
+        self._pause_total = _secs(pl.get("pause_total", -1))
 
         new_paused = (state == "Hold")
         if new_paused != self._is_paused:
@@ -300,10 +397,38 @@ class Backend(QObject):
         if self._time_synced:
             return
         try:
-            await self.client.sync_time(int(time.time()))
+            # epoch + POSIX tz, like the backend — board-side quiet-hours and
+            # autostart schedules run on the board's local time.
+            await self.client.sync_time(int(time.time()), tz=posix_tz())
             self._time_synced = True
         except Exception as exc:
             logger.debug(f"time sync failed: {exc}")
+
+    # ==================== Table password ($Sand/Password) ====================
+    @staticmethod
+    def _decode_password(b64: str):
+        if not b64:
+            return None
+        try:
+            return base64.b64decode(b64).decode("utf-8")
+        except Exception:
+            return None
+
+    @Slot(str)
+    def setTablePassword(self, password):
+        """Store the table's API password (empty string clears it)."""
+        password = (password or "").strip()
+        self._table_password_b64 = (
+            base64.b64encode(password.encode("utf-8")).decode("ascii")
+            if password else "")
+        self.client.set_api_key(password or None)
+        self._save_local_settings()
+        logger.info("Table password %s", "set" if password else "cleared")
+        _run(self._poll_status())
+
+    @Property(bool, notify=settingsLoaded)
+    def hasTablePassword(self):
+        return bool(self._table_password_b64)
 
     def _preview_path(self, rel_name):
         """Best-effort cached preview path for a pattern (may be empty)."""
@@ -312,6 +437,21 @@ class Backend(QObject):
             return thr_preview.cached_preview(self.client.base_url, rel_name)
         except Exception:
             return ""
+
+    async def _render_preview_late(self, rel_name):
+        """Render an uncached preview for the executing pattern, then notify.
+
+        The Execution page otherwise only ever sees whatever was cached at
+        the moment the pattern started."""
+        try:
+            import thr_preview
+            path = await thr_preview.render_preview(
+                self.client, self.client.base_url, rel_name)
+        except Exception as exc:
+            logger.debug(f"late preview render failed for {rel_name}: {exc}")
+            return
+        if path:
+            self.patternPreviewReady.emit(rel_name, path)
 
     # ==================== Properties ====================
     @Property(str, notify=statusChanged)
@@ -333,6 +473,46 @@ class Backend(QObject):
     @Property(bool, notify=connectionChanged)
     def isConnected(self):
         return self._is_connected
+
+    @Property(str, notify=statusChanged)
+    def tableName(self):
+        return self._table_name
+
+    @Property(bool, notify=statusChanged)
+    def playlistActive(self):
+        return self._playlist_active
+
+    @Property(int, notify=statusChanged)
+    def playlistIndex(self):
+        return self._playlist_index
+
+    @Property(int, notify=statusChanged)
+    def playlistTotal(self):
+        return self._playlist_total
+
+    @Property(str, notify=statusChanged)
+    def playlistName(self):
+        return self._playlist_name
+
+    @Property(str, notify=statusChanged)
+    def nextPattern(self):
+        return self._next_pattern
+
+    @Property(bool, notify=statusChanged)
+    def playlistClearing(self):
+        return self._playlist_clearing
+
+    @Property(int, notify=statusChanged)
+    def pauseRemaining(self):
+        return self._pause_remaining
+
+    @Property(int, notify=statusChanged)
+    def pauseTotal(self):
+        return self._pause_total
+
+    @Property(list, notify=discoveredTablesUpdated)
+    def discoveredTables(self):
+        return self._discovered_tables
 
     @Property(list, notify=serialPortsUpdated)
     def serialPorts(self):
@@ -369,13 +549,14 @@ class Backend(QObject):
         if self.client.base_url:
             _run(self._poll_status())
         else:
-            _run(self._auto_discover())
+            _run(self._discover(auto_connect=True))
 
     @Slot()
     def refreshSerialPorts(self):
-        """Re-run mDNS discovery to populate the table picker."""
+        """Re-run mDNS discovery to populate the table picker (list only —
+        never switches tables; connecting is an explicit user tap)."""
         logger.info("Discovering tables...")
-        _run(self._auto_discover())
+        _run(self._discover())
 
     @Slot(str)
     def connectSerial(self, port):
@@ -388,6 +569,7 @@ class Backend(QObject):
         self._current_port = self.client.base_url
         self._saved_table_url = self.client.base_url
         self._time_synced = False
+        self._poll_failures = 0  # fresh table, fresh streak
         self._save_local_settings()
         self.currentPortChanged.emit(self._current_port)
         self._set_reconnect_status(f"Connecting to {self._current_port}...")
@@ -398,6 +580,7 @@ class Backend(QObject):
         logger.info("Disconnecting from table...")
         self.client.set_base_url("")
         self._current_port = ""
+        self._table_name = ""
         self._serial_connected = False
         self._backend_connected = False
         self._is_connected = False
@@ -415,10 +598,13 @@ class Backend(QObject):
     async def _execute_pattern(self, fileName, preExecution):
         try:
             await self.client.run_pattern(fileName, preExecution)
-            self.executionStarted.emit(fileName, self._preview_path(fileName))
+            preview = self._preview_path(fileName)
+            self.executionStarted.emit(fileName, preview)
+            if not preview:
+                _run(self._render_preview_late(fileName))
         except Exception as exc:
             logger.error(f"executePattern failed: {exc}")
-            self.errorOccurred.emit(str(exc))
+            self.errorOccurred.emit("Couldn't start the pattern. " + friendly_error(exc))
 
     @Slot()
     def stopExecution(self):
@@ -447,7 +633,7 @@ class Backend(QObject):
                 on_ok()
         except Exception as exc:
             logger.error(f"{label} failed: {exc}")
-            self.errorOccurred.emit(f"{label} failed: {exc}")
+            self.errorOccurred.emit(f"Couldn't {label}. " + friendly_error(exc))
 
     @Slot(str, float, str, str, bool)
     def executePlaylist(self, playlistName, pauseTime=0.0, clearPattern="adaptive",
@@ -463,7 +649,7 @@ class Backend(QObject):
                 run_mode=runMode, shuffle=shuffle)
         except Exception as exc:
             logger.error(f"executePlaylist failed: {exc}")
-            self.errorOccurred.emit(str(exc))
+            self.errorOccurred.emit("Couldn't start the playlist. " + friendly_error(exc))
 
     # ==================== Hardware movement ====================
     @Slot()
@@ -494,7 +680,7 @@ class Backend(QObject):
             self.speedChanged.emit(speed)
         except Exception as exc:
             logger.error(f"set speed failed: {exc}")
-            self.errorOccurred.emit(str(exc))
+            self.errorOccurred.emit("Couldn't change the speed. " + friendly_error(exc))
 
     @Slot(result='QStringList')
     def getSpeedOptions(self):
@@ -719,6 +905,7 @@ class Backend(QObject):
                 self._playlist_run_mode = settings.get('playlist_run_mode', "loop")
                 self._playlist_clear_pattern = settings.get('playlist_clear_pattern', "adaptive")
                 self._saved_table_url = settings.get('table_url', "")
+                self._table_password_b64 = settings.get('table_password', "")
             else:
                 self._save_local_settings()
         except Exception as e:
@@ -737,6 +924,7 @@ class Backend(QObject):
                 'playlist_run_mode': self._playlist_run_mode,
                 'playlist_clear_pattern': self._playlist_clear_pattern,
                 'table_url': self._saved_table_url,
+                'table_password': self._table_password_b64,
                 'version': '2.0'
             }
             with open(self.SETTINGS_FILE, 'w') as f:
@@ -865,6 +1053,35 @@ class Backend(QObject):
     def ledColor(self):
         return self._led_color
 
+    # -- 'ball' tracker properties (firmware effect id 38) -----------------
+    @Property(str, notify=ledStatusChanged)
+    def ledColor2(self):
+        return self._led_color2
+
+    @Property(int, notify=ledStatusChanged)
+    def ledBallFgBright(self):
+        return self._led_ball_fgbright
+
+    @Property(int, notify=ledStatusChanged)
+    def ledBallBgBright(self):
+        return self._led_ball_bgbright
+
+    @Property(int, notify=ledStatusChanged)
+    def ledBallSize(self):
+        return self._led_ball_size
+
+    @Property(str, notify=ledStatusChanged)
+    def ledBallBg(self):
+        return self._led_ball_bg
+
+    @Property(str, notify=ledStatusChanged)
+    def ledBallDirection(self):
+        return self._led_ball_direction
+
+    @Property(int, notify=ledStatusChanged)
+    def ledBallAlign(self):
+        return self._led_ball_align
+
     @Slot()
     def loadLedConfig(self):
         logger.debug("Loading LED configuration...")
@@ -904,6 +1121,19 @@ class Backend(QObject):
             color = settings.get("LED/Color", "ffffff")
             self._led_color = f"#{color.lstrip('#')}"
 
+            # 'ball' tracker params (read NVS names, written live via /sand_led).
+            color2 = settings.get("LED/Color2", "000000")
+            self._led_color2 = f"#{color2.lstrip('#')}"
+            self._led_ball_fgbright = _clamp_int(settings.get("LED/BallBright"), 255, 0, 255)
+            self._led_ball_bgbright = _clamp_int(settings.get("LED/BallBgBright"), 255, 0, 255)
+            self._led_ball_size = _clamp_int(settings.get("LED/BallSize"), 3, 1, 200)
+            self._led_ball_align = _clamp_int(settings.get("LED/Align"), 0, 0, 359)
+            self._led_ball_bg = (settings.get("LED/BallBg") or "static").lower()
+            direction = (settings.get("LED/Direction") or "cw").lower()
+            self._led_ball_direction = direction if direction in ("cw", "ccw") else "cw"
+            if effect != "ball":
+                self._led_last_non_ball_effect = self._led_current_effect
+
         self.ledStatusChanged.emit()
 
     def _ingest_led_status(self, led):
@@ -921,6 +1151,8 @@ class Backend(QObject):
                 changed = True
             if power:
                 self._led_last_effect = idx
+            if effect not in ("ball", "off"):
+                self._led_last_non_ball_effect = idx
         b = led.get("brightness")
         if b is not None:
             scaled = round(int(b) * 100 / 255)
@@ -961,7 +1193,7 @@ class Backend(QObject):
             await self.client.set_led(**kwargs)
         except Exception as exc:
             logger.error(f"LED update failed: {exc}")
-            self.errorOccurred.emit(str(exc))
+            self.errorOccurred.emit("Couldn't update the light. " + friendly_error(exc))
 
     @Slot(int)
     def setLedBrightness(self, value):
@@ -994,6 +1226,8 @@ class Backend(QObject):
             self._led_power_on = (name != "off")
             if self._led_power_on:
                 self._led_last_effect = effectId
+            if name not in ("ball", "off"):
+                self._led_last_non_ball_effect = effectId
             _run(self._apply_led(effect=name))
             self.ledStatusChanged.emit()
 
@@ -1004,6 +1238,73 @@ class Backend(QObject):
             self._led_current_palette = paletteId
             _run(self._apply_led(palette=LED_PALETTES[paletteId]))
             self.ledStatusChanged.emit()
+
+    # -- 'ball' tracker control (firmware-native effect id 38) -------------
+    BALL_EFFECT_ID = LED_EFFECTS.index("ball")
+
+    @Slot(bool)
+    def setBallTracker(self, on):
+        """Enable/disable the ball tracker by toggling the 'ball' effect.
+        Mirrors the mobile app's ball switch: remembers the previous non-ball
+        effect and restores it when turned off."""
+        if on:
+            if self._led_current_effect != self.BALL_EFFECT_ID:
+                self._led_last_non_ball_effect = self._led_current_effect
+            self.setLedEffect(self.BALL_EFFECT_ID)
+        else:
+            restore = self._led_last_non_ball_effect or LED_EFFECTS.index("rainbow")
+            self.setLedEffect(restore)
+
+    @Slot(str)
+    def setLedColor2Hex(self, hexColor):
+        """Background colour for the ball tracker (used when bg == 'static')."""
+        hexColor = hexColor.lstrip('#')
+        if len(hexColor) != 6:
+            logger.warning(f"Invalid hex color2: {hexColor}")
+            return
+        self._led_color2 = f"#{hexColor}"
+        _run(self._apply_led(color2=hexColor))
+        self.ledStatusChanged.emit()
+
+    @Slot(int)
+    def setLedBallFgBright(self, value):
+        self._led_ball_fgbright = _clamp_int(value, 255, 0, 255)
+        _run(self._apply_led(fgbright=self._led_ball_fgbright))
+        self.ledStatusChanged.emit()
+
+    @Slot(int)
+    def setLedBallBgBright(self, value):
+        self._led_ball_bgbright = _clamp_int(value, 255, 0, 255)
+        _run(self._apply_led(bgbright=self._led_ball_bgbright))
+        self.ledStatusChanged.emit()
+
+    @Slot(int)
+    def setLedBallSize(self, value):
+        self._led_ball_size = _clamp_int(value, 3, 1, 200)
+        _run(self._apply_led(size=self._led_ball_size))
+        self.ledStatusChanged.emit()
+
+    @Slot(int)
+    def setLedBallAlign(self, value):
+        self._led_ball_align = _clamp_int(value, 0, 0, 359)
+        _run(self._apply_led(align=self._led_ball_align))
+        self.ledStatusChanged.emit()
+
+    @Slot(str)
+    def setLedBallDirection(self, direction):
+        if direction not in ("cw", "ccw"):
+            return
+        self._led_ball_direction = direction
+        _run(self._apply_led(direction=direction))
+        self.ledStatusChanged.emit()
+
+    @Slot(str)
+    def setLedBallBg(self, bg):
+        if not bg:
+            return
+        self._led_ball_bg = str(bg)
+        _run(self._apply_led(bg=self._led_ball_bg))
+        self.ledStatusChanged.emit()
 
     # ==================== LCD brightness ====================
     def _detect_backlight(self):
@@ -1088,7 +1389,7 @@ class Backend(QObject):
             subprocess.run(['sudo', 'shutdown', '-h', 'now'], check=False, timeout=5)
         except Exception as e:
             logger.error(f"Shutdown failed: {e}")
-            self.errorOccurred.emit(str(e))
+            self.errorOccurred.emit("Couldn't shut down the Pi. " + friendly_error(e))
 
     # ==================== Playlist management ====================
     @Slot(str)

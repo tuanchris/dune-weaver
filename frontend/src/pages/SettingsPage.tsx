@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { apiClient } from '@/lib/apiClient'
 import { useOnBackendConnected } from '@/hooks/useBackendConnection'
@@ -25,6 +25,8 @@ import {
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import { UpdateDialog } from '@/components/UpdateDialog'
+import { AlignOrientationDialog } from '@/components/AlignOrientationDialog'
+import { TableWifiCard } from '@/components/TableWifiCard'
 
 // Types
 
@@ -79,6 +81,17 @@ interface BoardTime {
   tz: string
 }
 
+// A FluidNC board found on the LAN via mDNS (same records the mobile app
+// browses for). `name` is the firmware hostname, e.g. "DWMP".
+interface DiscoveredBoard {
+  name: string
+  hostname: string | null
+  host: string
+  port: number
+  url: string
+  mac: string | null
+}
+
 interface LedConfig {
   provider: 'none' | 'wled' | 'board'
   wled_ip?: string
@@ -98,7 +111,6 @@ interface MqttConfig {
 
 export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const navigate = useNavigate()
   const sectionParam = searchParams.get('section')
 
   // Connection state — the board is reached over HTTP (FluidNC firmware),
@@ -106,6 +118,17 @@ export function SettingsPage() {
   const [boardAddress, setBoardAddress] = useState('')
   const [isConnected, setIsConnected] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState('Disconnected')
+  // Table name = the board's network hostname (e.g. "DWMP"), reported by the firmware
+  const [tableName, setTableName] = useState<string | null>(null)
+  // The address we're actually connected to (vs. whatever is typed in the input)
+  const [connectedUrl, setConnectedUrl] = useState<string | null>(null)
+  const [discoveredBoards, setDiscoveredBoards] = useState<DiscoveredBoard[]>([])
+  // Board API password ($Sand/Password): boardLocked = board rejected us with
+  // 401; hasBoardKey = a password is saved on this backend.
+  const [boardLocked, setBoardLocked] = useState(false)
+  const [hasBoardKey, setHasBoardKey] = useState(false)
+  const [boardPassword, setBoardPassword] = useState('')
+  const [tablePasswordInput, setTablePasswordInput] = useState('')
 
   // Settings state
   const [settings, setSettings] = useState<Settings>({})
@@ -185,6 +208,14 @@ export function SettingsPage() {
     update_available: boolean
   } | null>(null)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
+
+  // Board firmware version state (OTA via the backend)
+  const [firmwareInfo, setFirmwareInfo] = useState<{
+    current: string | null
+    latest: string | null
+    update_available: boolean
+    release_url: string | null
+  } | null>(null)
 
   // Helper to scroll to element with header offset
   const scrollToSection = (sectionId: string) => {
@@ -273,6 +304,39 @@ export function SettingsPage() {
     } catch (error) {
       console.error('Failed to fetch version info:', error)
     }
+    try {
+      const fw = await apiClient.get<{
+        current: string | null
+        latest: string | null
+        update_available: boolean
+        release_url: string | null
+      }>('/api/firmware/version')
+      setFirmwareInfo(fw)
+    } catch (error) {
+      console.error('Failed to fetch firmware info:', error)
+    }
+  }
+
+  const handleFirmwareUpdate = async () => {
+    setIsLoading('firmwareUpdate')
+    toast.info('Updating the table firmware - this takes a few minutes. Keep the table powered.')
+    try {
+      const data = await apiClient.post<{ success?: boolean; version?: string }>('/api/firmware/update')
+      toast.success(`Firmware updated - table now runs ${data.version || 'the latest version'}`)
+      fetchVersionInfo()
+      fetchConnection()
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : ''
+      if (msg.includes('busy') || msg.includes('Stop the current')) {
+        toast.error('The table is busy - stop the current pattern first')
+      } else if (msg.includes('too old')) {
+        toast.error('This firmware is too old for OTA - update once via the web installer')
+      } else {
+        toast.error('Firmware update failed - the table keeps its old firmware')
+      }
+    } finally {
+      setIsLoading(null)
+    }
   }
 
   // Handle accordion open/close and trigger data loading
@@ -306,9 +370,20 @@ export function SettingsPage() {
 
   const fetchConnection = async () => {
     try {
-      // The backend reports the configured board URL as the single "port".
-      const statusData = await apiClient.get<{ connected: boolean; port?: string }>('/serial_status')
+      // The backend reports the configured board URL as the single "port",
+      // plus the board's network hostname (the table's display name).
+      const statusData = await apiClient.get<{
+        connected: boolean
+        port?: string
+        hostname?: string
+        locked?: boolean
+        has_key?: boolean
+      }>('/serial_status')
       setIsConnected(statusData.connected || false)
+      setBoardLocked(!!statusData.locked)
+      setHasBoardKey(!!statusData.has_key)
+      setTableName(statusData.hostname || null)
+      setConnectedUrl(statusData.connected ? statusData.port || null : null)
       setConnectionStatus(
         statusData.connected ? `Connected to ${statusData.port || 'board'}` : 'Disconnected'
       )
@@ -323,15 +398,40 @@ export function SettingsPage() {
     }
   }
 
+  // Boards the backend has spotted on the LAN via mDNS (browsing runs
+  // continuously server-side, so this is a cheap cache read).
+  const fetchDiscoveredBoards = async () => {
+    try {
+      const data = await apiClient.get<{ boards: DiscoveredBoard[] }>('/api/discovered-boards')
+      setDiscoveredBoards(data.boards || [])
+    } catch {
+      // mDNS is best-effort; the manual address input always works
+    }
+  }
+
   // Always fetch connection state on mount since connection is the default section
   useEffect(() => {
     fetchConnection()
+    fetchDiscoveredBoards()
   }, [])
 
   // Refetch when backend reconnects
   useOnBackendConnected(() => {
     fetchConnection()
+    fetchDiscoveredBoards()
   })
+
+  // Refetch when the connected board changes from elsewhere (header selector,
+  // or the server-side reconnect/relocate watchdog) so this panel never shows a
+  // stale "Connected" board relative to the rest of the UI.
+  useEffect(() => {
+    const handler = () => {
+      fetchConnection()
+      fetchDiscoveredBoards()
+    }
+    window.addEventListener('board-connected', handler)
+    return () => window.removeEventListener('board-connected', handler)
+  }, [])
 
   const fetchSettings = async () => {
     try {
@@ -439,23 +539,42 @@ export function SettingsPage() {
     }
   }
 
-  const handleConnect = async () => {
-    if (!boardAddress.trim()) {
+  const handleConnect = async (overrideAddress?: string) => {
+    const target = (overrideAddress ?? boardAddress).trim()
+    if (!target) {
       toast.error('Enter the table IP or hostname')
       return
     }
+    if (overrideAddress) setBoardAddress(overrideAddress)
     setIsLoading('connect')
     try {
-      const data = await apiClient.post<{ success?: boolean; message?: string }>('/connect', { port: boardAddress.trim() })
+      const data = await apiClient.post<{ success?: boolean; message?: string }>('/connect', {
+        port: target,
+        ...(boardPassword.trim() ? { password: boardPassword.trim() } : {}),
+      })
       if (data.success) {
         setIsConnected(true)
-        setConnectionStatus(`Connected to ${boardAddress.trim()}`)
+        setConnectedUrl(target)
+        setBoardLocked(false)
+        setBoardPassword('')
+        setConnectionStatus(`Connected to ${target}`)
         toast.success('Connected to the table')
+        // Re-read status to pick up the board's hostname for the name display
+        fetchConnection()
+        // Notify other surfaces (header selector, Layout) that the connected
+        // board changed, so they refresh instead of showing a stale winner.
+        // source: 'settings' tells Layout not to remount this page for it.
+        window.dispatchEvent(new CustomEvent('board-connected', { detail: { source: 'settings' } }))
       } else {
         throw new Error(data.message || 'Connection failed')
       }
     } catch (error) {
-      toast.error('Could not reach the table at that address')
+      if (error instanceof Error && error.message.startsWith('HTTP 401')) {
+        setBoardLocked(true)
+        toast.error('This table is password-protected - enter its password below')
+      } else {
+        toast.error('Could not reach the table at that address')
+      }
     } finally {
       setIsLoading(null)
     }
@@ -467,8 +586,11 @@ export function SettingsPage() {
       const data = await apiClient.post<{ success?: boolean }>('/disconnect')
       if (data.success) {
         setIsConnected(false)
+        setConnectedUrl(null)
         setConnectionStatus('Disconnected')
         toast.success('Disconnected')
+        // Same signal on disconnect — the "connected" board is now none.
+        window.dispatchEvent(new CustomEvent('board-connected', { detail: { source: 'settings' } }))
       }
     } catch (error) {
       toast.error('Failed to disconnect')
@@ -731,7 +853,7 @@ export function SettingsPage() {
     <div className="flex flex-col w-full max-w-5xl mx-auto gap-6 py-3 sm:py-6 px-0 sm:px-4">
       {/* Page Header */}
       <div className="space-y-0.5 sm:space-y-1 pl-1">
-        <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
+        <h1 className="text-xl font-semibold tracking-tight font-display">Settings</h1>
         <p className="text-xs text-muted-foreground">
           Configure your sand table
         </p>
@@ -764,14 +886,15 @@ export function SettingsPage() {
             {/* Connection Status */}
             <div className="flex items-center justify-between p-4 rounded-lg border">
               <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 flex items-center justify-center rounded-lg ${isConnected ? 'bg-green-100 dark:bg-green-900' : 'bg-muted'}`}>
-                  <span className={`material-icons ${isConnected ? 'text-green-600' : 'text-muted-foreground'}`}>
+                <div className={`w-10 h-10 flex items-center justify-center rounded-lg ${isConnected ? 'bg-success/15' : 'bg-muted'}`}>
+                  <span className={`material-icons ${isConnected ? 'text-success' : 'text-muted-foreground'}`}>
                     {isConnected ? 'wifi' : 'wifi_off'}
                   </span>
                 </div>
                 <div>
-                  <p className="font-medium">Status</p>
-                  <p className={`text-sm ${isConnected ? 'text-green-600' : 'text-destructive'}`}>
+                  {/* Table name = the board's hostname (e.g. "DWMP"), like the mobile app */}
+                  <p className="font-medium">{isConnected && tableName ? tableName : 'Status'}</p>
+                  <p className={`text-sm ${isConnected ? 'text-success' : 'text-destructive'}`}>
                     {connectionStatus}
                   </p>
                 </div>
@@ -788,6 +911,68 @@ export function SettingsPage() {
               )}
             </div>
 
+            {/* Tables found on the network (mDNS, like the mobile app) */}
+            {discoveredBoards.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Tables on your network</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1.5 text-muted-foreground"
+                    onClick={fetchDiscoveredBoards}
+                  >
+                    <span className="material-icons-outlined text-base">refresh</span>
+                    Refresh
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {discoveredBoards.map((board) => {
+                    const isCurrent =
+                      isConnected &&
+                      !!connectedUrl &&
+                      (connectedUrl.includes(board.host) ||
+                        (!!board.hostname &&
+                          connectedUrl.toLowerCase().includes(board.hostname.toLowerCase())))
+                    return (
+                      <div
+                        key={board.mac || board.url}
+                        className="flex items-center justify-between gap-3 p-3 rounded-lg border"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="material-icons-outlined text-muted-foreground">
+                            wifi_find
+                          </span>
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{board.name}</p>
+                            <p className="text-xs text-muted-foreground truncate">{board.url}</p>
+                          </div>
+                        </div>
+                        {isCurrent ? (
+                          <span className="text-xs font-medium text-success shrink-0">
+                            Connected
+                          </span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={isLoading === 'connect'}
+                            onClick={() => handleConnect(board.url)}
+                          >
+                            Connect
+                          </Button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Found automatically on your Wi-Fi via mDNS.
+                </p>
+              </div>
+            )}
+
             {/* Board address */}
             <div className="space-y-3">
               <Label htmlFor="board-address">Table address</Label>
@@ -802,7 +987,7 @@ export function SettingsPage() {
                   className="flex-1"
                 />
                 <Button
-                  onClick={handleConnect}
+                  onClick={() => handleConnect()}
                   disabled={isLoading === 'connect' || !boardAddress.trim()}
                   className="gap-2"
                 >
@@ -814,11 +999,33 @@ export function SettingsPage() {
                   Connect
                 </Button>
               </div>
+              {(boardLocked || boardPassword) && (
+                <div className="flex gap-3">
+                  <Input
+                    type="password"
+                    value={boardPassword}
+                    onChange={(e) => setBoardPassword(e.target.value)}
+                    placeholder="Table password"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    className="flex-1"
+                  />
+                </div>
+              )}
+              {boardLocked && (
+                <p className="text-xs text-primary">
+                  This table is password-protected. Enter its password (set from the mobile
+                  app) and press Connect - it will be remembered on this server.
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
                 The FluidNC controller inside the table, on the same network as this server.
                 The address is saved and reconnected automatically on startup.
               </p>
             </div>
+
+            {/* Table Wi-Fi (the board's own network; distinct from host Wi-Fi setup) */}
+            <TableWifiCard isConnected={isConnected} />
 
             {/* Home on Connect */}
             <div className="p-4 rounded-lg border space-y-3">
@@ -902,6 +1109,18 @@ export function SettingsPage() {
               </RadioGroup>
             </div>
 
+            {/* Crash-mode orientation alignment: with crash homing, the arm's
+                physical direction at home time becomes theta=0 */}
+            {(settings.homing_mode ?? 0) === 0 && (
+              <div className="space-y-2">
+                <AlignOrientationDialog />
+                <p className="text-xs text-muted-foreground">
+                  Crash homing keeps whatever direction the arm points as the pattern
+                  reference. Align it once so patterns match their previews.
+                </p>
+              </div>
+            )}
+
             {/* Sensor Offset (only visible for sensor mode) */}
             {settings.homing_mode === 1 && (
               <div className="space-y-3">
@@ -968,31 +1187,6 @@ export function SettingsPage() {
                   </p>
                 </div>
               )}
-            </div>
-
-            {/* Machine Reset on Theta Normalization */}
-            <div className="p-4 rounded-lg border space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium flex items-center gap-2">
-                    <span className="material-icons-outlined text-base">restart_alt</span>
-                    Reset Machine on Theta Normalization
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Also reset the machine controller when normalizing theta
-                  </p>
-                </div>
-                <Switch
-                  checked={settings.hard_reset_theta || false}
-                  onCheckedChange={(checked) =>
-                    setSettings({ ...settings, hard_reset_theta: checked })
-                  }
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                When disabled (default), theta normalization only adjusts the angle mathematically.
-                When enabled, also resets the machine controller to clear position counters.
-              </p>
             </div>
 
             <Button
@@ -2185,36 +2379,85 @@ export function SettingsPage() {
               )}
               Save Security Settings
             </Button>
-          </AccordionContent>
-        </AccordionItem>
 
-        {/* WiFi */}
-        <AccordionItem value="wifi" id="section-wifi" className="border rounded-lg px-4 overflow-visible bg-card">
-          <AccordionTrigger className="hover:no-underline">
-            <div className="flex items-center gap-3">
-              <span className="material-icons-outlined text-muted-foreground">
-                wifi
-              </span>
-              <div className="text-left">
-                <div className="font-semibold">WiFi</div>
-                <div className="text-sm text-muted-foreground font-normal">
-                  Network connection settings
-                </div>
+            {/* Table API password ($Sand/Password) — locks the board itself, so
+                every client (this server, mobile apps) must present the key */}
+            <div className="p-4 rounded-lg border space-y-3">
+              <div>
+                <p className="font-medium flex items-center gap-2">
+                  <span className="material-icons-outlined text-base">key</span>
+                  Table Password
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Locks the table's own API so only clients with the password can control
+                  it (needs firmware v0.1.11+). This server{' '}
+                  {hasBoardKey ? 'has the password saved.' : 'has no password saved.'}
+                </p>
               </div>
+              {isConnected ? (
+                <div className="flex gap-3">
+                  <Input
+                    type="password"
+                    value={tablePasswordInput}
+                    onChange={(e) => setTablePasswordInput(e.target.value)}
+                    placeholder={hasBoardKey ? 'New password (4-64 chars)' : 'Password (4-64 chars)'}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    className="flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    disabled={isLoading === 'tablePassword' || tablePasswordInput.trim().length < 4}
+                    onClick={async () => {
+                      setIsLoading('tablePassword')
+                      try {
+                        await apiClient.post('/api/board/password', {
+                          action: 'set',
+                          password: tablePasswordInput.trim(),
+                        })
+                        setHasBoardKey(true)
+                        setTablePasswordInput('')
+                        toast.success('Table password set')
+                      } catch {
+                        toast.error('Failed to set the table password')
+                      } finally {
+                        setIsLoading(null)
+                      }
+                    }}
+                  >
+                    {hasBoardKey ? 'Change' : 'Set'}
+                  </Button>
+                  {hasBoardKey && (
+                    <Button
+                      variant="destructive"
+                      disabled={isLoading === 'tablePassword'}
+                      onClick={async () => {
+                        setIsLoading('tablePassword')
+                        try {
+                          await apiClient.post('/api/board/password', { action: 'remove' })
+                          setHasBoardKey(false)
+                          toast.success('Table password removed')
+                        } catch {
+                          toast.error('Failed to remove the table password')
+                        } finally {
+                          setIsLoading(null)
+                        }
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Connect to the table to manage its password.
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                If you lose the password, it can be cleared over USB serial with{' '}
+                <code className="font-mono">$Sand/Password=</code>.
+              </p>
             </div>
-          </AccordionTrigger>
-          <AccordionContent className="pt-4 pb-6 space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Manage WiFi connections, scan for networks, and configure hotspot mode.
-            </p>
-            <Button
-              variant="outline"
-              className="w-full gap-2"
-              onClick={() => navigate('/wifi-setup')}
-            >
-              <span className="material-icons-outlined">settings</span>
-              Open WiFi Setup
-            </Button>
           </AccordionContent>
         </AccordionItem>
 
@@ -2234,35 +2477,29 @@ export function SettingsPage() {
             </div>
           </AccordionTrigger>
           <AccordionContent className="pt-4 pb-6 space-y-3">
+            {/* App version — current + latest in one row (mirrors the Table
+                Firmware row below). */}
             <div className="flex items-center gap-4 p-4 rounded-lg bg-muted/50">
               <div className="w-10 h-10 flex items-center justify-center bg-background rounded-lg">
                 <span className="material-icons text-muted-foreground">terminal</span>
               </div>
               <div className="flex-1">
-                <p className="font-medium">Current Version</p>
-                <p className="text-sm text-muted-foreground">
-                  {versionInfo?.current ? `v${versionInfo.current}` : 'Loading...'}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4 p-4 rounded-lg bg-muted/50">
-              <div className="w-10 h-10 flex items-center justify-center bg-background rounded-lg">
-                <span className="material-icons text-muted-foreground">system_update</span>
-              </div>
-              <div className="flex-1">
-                <p className="font-medium">Latest Version</p>
-                <p className={`text-sm ${versionInfo?.update_available ? 'text-green-600 dark:text-green-400 font-medium' : 'text-muted-foreground'}`}>
-                  {versionInfo?.latest ? (
-                    <a
-                      href={`https://github.com/tuanchris/dune-weaver/releases/tag/v${versionInfo.latest}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline underline-offset-2 hover:opacity-80 transition-opacity"
-                    >
-                      v{versionInfo.latest}
-                    </a>
-                  ) : 'Checking...'}
+                <p className="font-medium">App Version</p>
+                <p className={`text-sm ${versionInfo?.update_available ? 'text-success font-medium' : 'text-muted-foreground'}`}>
+                  <span className="font-mono">{versionInfo?.current ? `v${versionInfo.current}` : 'Loading...'}</span>
+                  {versionInfo?.latest && (
+                    <>
+                      {' · latest '}
+                      <a
+                        href={`https://github.com/tuanchris/dune-weaver/releases/tag/v${versionInfo.latest}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-mono underline underline-offset-2 hover:opacity-80 transition-opacity"
+                      >
+                        v{versionInfo.latest}
+                      </a>
+                    </>
+                  )}
                   {versionInfo?.update_available && ' (Update available!)'}
                 </p>
               </div>
@@ -2273,6 +2510,61 @@ export function SettingsPage() {
                 <span className="material-icons text-base mr-2">system_update</span>
                 Update Now
               </Button>
+            )}
+
+            {/* Table firmware (the board's own software, updated over OTA) */}
+            <div className="flex items-center gap-4 p-4 rounded-lg bg-muted/50">
+              <div className="w-10 h-10 flex items-center justify-center bg-background rounded-lg">
+                <span className="material-icons text-muted-foreground">memory</span>
+              </div>
+              <div className="flex-1">
+                <p className="font-medium">Table Firmware</p>
+                <p className={`text-sm ${firmwareInfo?.update_available ? 'text-success font-medium' : 'text-muted-foreground'}`}>
+                  <span className="font-mono">{firmwareInfo?.current || 'Unknown (connect to the table)'}</span>
+                  {firmwareInfo?.latest && (
+                    <>
+                      {' · latest '}
+                      {firmwareInfo.release_url ? (
+                        <a
+                          href={firmwareInfo.release_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-mono underline underline-offset-2 hover:opacity-80 transition-opacity"
+                        >
+                          {firmwareInfo.latest}
+                        </a>
+                      ) : (
+                        <span className="font-mono">{firmwareInfo.latest}</span>
+                      )}
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {firmwareInfo?.update_available && (
+              <>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleFirmwareUpdate}
+                  disabled={isLoading === 'firmwareUpdate' || !isConnected}
+                >
+                  {isLoading === 'firmwareUpdate' ? (
+                    <span className="material-icons text-base mr-2 animate-spin">sync</span>
+                  ) : (
+                    <span className="material-icons text-base mr-2">memory</span>
+                  )}
+                  {isLoading === 'firmwareUpdate'
+                    ? 'Updating table firmware…'
+                    : `Update Table Firmware to ${firmwareInfo.latest}`}
+                </Button>
+                {isLoading === 'firmwareUpdate' && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    Flashing and rebooting the table - do not power it off. This takes a few minutes.
+                  </p>
+                )}
+              </>
             )}
 
             <UpdateDialog

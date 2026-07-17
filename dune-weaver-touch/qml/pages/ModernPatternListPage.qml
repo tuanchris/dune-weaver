@@ -45,10 +45,9 @@ Page {
         // Header with integrated search
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 50
+            Layout.preferredHeight: Components.ThemeManager.headerHeight
             color: Components.ThemeManager.surfaceColor
 
-            // Bottom border
             Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
@@ -58,46 +57,46 @@ Page {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 15
-                anchors.rightMargin: 10
+                anchors.leftMargin: Components.ThemeManager.spaceLg
+                anchors.rightMargin: Components.ThemeManager.spaceMd
+                spacing: Components.ThemeManager.spaceSm
 
                 ConnectionStatus {
                     backend: page.backend
-                    Layout.rightMargin: 8
                     visible: !searchExpanded
                 }
 
                 Label {
-                    text: "Browse Patterns"
-                    font.pixelSize: 18
-                    font.bold: true
+                    text: "Browse"
+                    font.family: Components.ThemeManager.fontDisplay
+                    font.pixelSize: Components.ThemeManager.fontSizeTitle
                     color: Components.ThemeManager.textPrimary
                     visible: !searchExpanded
                 }
 
-                // Pattern count
                 Label {
                     text: patternCount + " patterns"
-                    font.pixelSize: 12
+                    font.family: Components.ThemeManager.fontBody
+                    font.pixelSize: Components.ThemeManager.fontSizeCaption
                     color: Components.ThemeManager.textTertiary
                     visible: !searchExpanded
                 }
 
                 // Refresh button
                 Rectangle {
-                    Layout.preferredWidth: 32
-                    Layout.preferredHeight: 32
-                    radius: 16
-                    color: refreshMouseArea.pressed ? Components.ThemeManager.buttonBackgroundHover :
-                           (refreshMouseArea.containsMouse ? Components.ThemeManager.cardColor : "transparent")
+                    Layout.preferredWidth: 40
+                    Layout.preferredHeight: 40
+                    radius: 20
+                    color: refreshMouseArea.pressed ? Components.ThemeManager.pressedColor : "transparent"
                     visible: !searchExpanded
 
-                    Text {
+                    Components.Icon {
                         id: refreshIcon
                         anchors.centerIn: parent
-                        text: "↻"
-                        font.pixelSize: 16
-                        color: isRefreshing ? Components.ThemeManager.accentBlue : Components.ThemeManager.textSecondary
+                        name: "refresh"
+                        size: 20
+                        color: isRefreshing ? Components.ThemeManager.accent
+                                            : Components.ThemeManager.textSecondary
 
                         SequentialAnimation on opacity {
                             running: isRefreshing
@@ -110,7 +109,6 @@ Page {
                     MouseArea {
                         id: refreshMouseArea
                         anchors.fill: parent
-                        hoverEnabled: true
                         enabled: !isRefreshing
                         onClicked: {
                             if (backend) {
@@ -125,15 +123,17 @@ Page {
                     Layout.fillWidth: true
                     visible: !searchExpanded
                 }
-                
-                // Expandable search
+
+                // Expandable search pill
                 Rectangle {
                     Layout.fillWidth: searchExpanded
-                    Layout.preferredWidth: searchExpanded ? parent.width - 60 : 120
-                    Layout.preferredHeight: 32
-                    radius: 16
-                    color: searchExpanded ? Components.ThemeManager.surfaceColor : Components.ThemeManager.cardColor
-                    border.color: searchExpanded ? "#2563eb" : Components.ThemeManager.borderColor
+                    Layout.preferredWidth: searchExpanded ? parent.width - 60 : 130
+                    Layout.preferredHeight: 40
+                    radius: 20
+                    color: Components.ThemeManager.backgroundColor
+                    border.color: searchExpanded || searchField.hasUnappliedSearch
+                                  ? Components.ThemeManager.accent
+                                  : Components.ThemeManager.borderColor
                     border.width: 1
 
                     Behavior on Layout.preferredWidth {
@@ -142,39 +142,34 @@ Page {
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 10
-                        anchors.rightMargin: 10
-                        spacing: 5
+                        anchors.leftMargin: Components.ThemeManager.spaceMd
+                        anchors.rightMargin: Components.ThemeManager.spaceMd
+                        spacing: Components.ThemeManager.spaceSm
 
-                        Text {
-                            text: "⌕"
-                            font.pixelSize: 16
-                            font.family: "sans-serif"
-                            color: searchExpanded ? "#2563eb" : Components.ThemeManager.textSecondary
+                        Components.Icon {
+                            name: "search"
+                            size: 17
+                            color: searchExpanded ? Components.ThemeManager.accent
+                                                  : Components.ThemeManager.textSecondary
                         }
-                        
+
                         TextField {
                             id: searchField
                             Layout.fillWidth: true
-                            placeholderText: searchExpanded ? "Search patterns... (press Enter)" : "Search"
+                            placeholderText: searchExpanded ? "Search patterns, then press Enter" : "Search"
                             placeholderTextColor: Components.ThemeManager.textTertiary
-                            font.pixelSize: 14
+                            font.family: Components.ThemeManager.fontBody
+                            font.pixelSize: Components.ThemeManager.fontSizeBody
                             color: Components.ThemeManager.textPrimary
                             visible: searchExpanded || text.length > 0
-                            
+
                             property string lastSearchText: ""
                             property bool hasUnappliedSearch: text !== lastSearchText && text.length > 0
-                            
-                            background: Rectangle { 
+
+                            background: Rectangle {
                                 color: "transparent"
-                                border.color: searchField.hasUnappliedSearch ? "#f59e0b" : "transparent"
-                                border.width: searchField.hasUnappliedSearch ? 1 : 0
-                                radius: 4
                             }
-                            
-                            // Remove automatic filtering on text change
-                            // onTextChanged: patternModel.filter(text)
-                            
+
                             // Only filter when user presses Enter or field loses focus
                             onAccepted: {
                                 patternModel.filter(text)
@@ -182,12 +177,12 @@ Page {
                                 Qt.inputMethod.hide()
                                 focus = false
                             }
-                            
+
                             // Enable virtual keyboard
                             activeFocusOnPress: true
                             selectByMouse: true
                             inputMethodHints: Qt.ImhNoPredictiveText
-                            
+
                             // Direct MouseArea for touch events
                             MouseArea {
                                 anchors.fill: parent
@@ -197,7 +192,7 @@ Page {
                                     mouse.accepted = false // Pass through to TextField
                                 }
                             }
-                            
+
                             onActiveFocusChanged: {
                                 if (activeFocus) {
                                     searchExpanded = true
@@ -211,17 +206,14 @@ Page {
                                     }
                                 }
                             }
-                            
-                            // Handle Enter key - triggers onAccepted
+
                             Keys.onReturnPressed: {
-                                // onAccepted will be called automatically
-                                // Just hide keyboard and unfocus
+                                // onAccepted runs; just hide keyboard and unfocus
                                 Qt.inputMethod.hide()
                                 focus = false
                             }
-                            
+
                             Keys.onEscapePressed: {
-                                // Clear search and hide keyboard
                                 text = ""
                                 lastSearchText = ""
                                 patternModel.filter("")
@@ -229,15 +221,16 @@ Page {
                                 focus = false
                             }
                         }
-                        
+
                         Text {
-                            text: searchExpanded || searchField.text.length > 0 ? "Search" : ""
-                            font.pixelSize: 12
+                            text: "Search"
+                            font.family: Components.ThemeManager.fontBody
+                            font.pixelSize: Components.ThemeManager.fontSizeCaption
                             color: Components.ThemeManager.textTertiary
                             visible: !searchExpanded && searchField.text.length === 0
                         }
                     }
-                    
+
                     MouseArea {
                         anchors.fill: parent
                         enabled: !searchExpanded
@@ -248,37 +241,37 @@ Page {
                         }
                     }
                 }
-                
+
                 // Close button when expanded
-                Button {
-                    id: searchCloseBtn
-                    flat: true
+                Rectangle {
+                    Layout.preferredWidth: 40
+                    Layout.preferredHeight: 40
+                    radius: 20
                     visible: searchExpanded
-                    Layout.preferredWidth: 32
-                    Layout.preferredHeight: 32
-                    onClicked: {
-                        searchExpanded = false
-                        searchField.text = ""
-                        searchField.lastSearchText = ""
-                        searchField.focus = false
-                        // Clear the filter when closing search
-                        patternModel.filter("")
-                    }
-                    contentItem: Text {
-                        text: "✕"
-                        font.pixelSize: 18
+                    color: searchCloseArea.pressed ? Components.ThemeManager.pressedColor : "transparent"
+
+                    Components.Icon {
+                        anchors.centerIn: parent
+                        name: "close"
+                        size: 20
                         color: Components.ThemeManager.textSecondary
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
                     }
-                    background: Rectangle {
-                        color: searchCloseBtn.pressed ? Components.ThemeManager.buttonBackgroundHover : "transparent"
-                        radius: 4
+
+                    MouseArea {
+                        id: searchCloseArea
+                        anchors.fill: parent
+                        onClicked: {
+                            searchExpanded = false
+                            searchField.text = ""
+                            searchField.lastSearchText = ""
+                            searchField.focus = false
+                            patternModel.filter("")
+                        }
                     }
                 }
             }
         }
-        
+
         // Content - Pattern Grid
         GridView {
             id: gridView
@@ -288,67 +281,83 @@ Page {
             cellHeight: 220
             model: patternModel
             clip: true
-            
-            // Add smooth scrolling
+            visible: patternCount > 0
+            // Recycle delegates and pre-build the next rows: creating a card
+            // mid-flick is the other half of the scroll stutter.
+            reuseItems: true
+            cacheBuffer: 440
+
             ScrollBar.vertical: ScrollBar {
                 active: true
                 policy: ScrollBar.AsNeeded
             }
-            
-            delegate: ModernPatternCard {
-                width: gridView.cellWidth - 10
-                height: gridView.cellHeight - 10
-                name: model.name
-                preview: model.preview
-                
-                onClicked: {
-                    if (stackView && backend) {
-                        stackView.push("PatternDetailPage.qml", {
-                            patternName: model.name,
-                            patternPath: model.path,
-                            patternPreview: model.preview,
-                            backend: backend
-                        })
+
+            delegate: Item {
+                width: gridView.cellWidth
+                height: gridView.cellHeight
+
+                ModernPatternCard {
+                    anchors.centerIn: parent
+                    width: gridView.cellWidth - 10
+                    height: gridView.cellHeight - 10
+                    name: model.name
+                    preview: model.preview
+
+                    onClicked: {
+                        if (stackView && backend) {
+                            stackView.push("PatternDetailPage.qml", {
+                                patternName: model.name,
+                                patternPath: model.path,
+                                patternPreview: model.preview,
+                                backend: backend
+                            })
+                        }
                     }
                 }
             }
-            
-            // Add scroll animations
+
             add: Transition {
                 NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 300 }
                 NumberAnimation { property: "scale"; from: 0.8; to: 1; duration: 300 }
             }
         }
-        
-        // Empty state
+
+        // Empty state — no search results, or no patterns at all
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: patternCount === 0 && searchField.text !== ""
+            visible: patternCount === 0
+
+            property bool searching: searchField.text !== ""
 
             Column {
                 anchors.centerIn: parent
-                spacing: 20
+                spacing: Components.ThemeManager.spaceLg
 
-                Text {
-                    text: "⌕"
-                    font.pixelSize: 48
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    color: Components.ThemeManager.placeholderText
-                }
-
-                Label {
-                    text: "No patterns found"
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    color: Components.ThemeManager.textSecondary
-                    font.pixelSize: 18
-                }
-
-                Label {
-                    text: "Try a different search term"
+                Components.Icon {
+                    name: parent.parent.searching ? "search" : "radio_unchecked"
+                    size: 44
                     anchors.horizontalCenter: parent.horizontalCenter
                     color: Components.ThemeManager.textTertiary
-                    font.pixelSize: 14
+                }
+
+                Label {
+                    text: parent.parent.searching ? "No patterns found" : "No patterns yet"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    color: Components.ThemeManager.textSecondary
+                    font.family: Components.ThemeManager.fontDisplay
+                    font.pixelSize: Components.ThemeManager.fontSizeTitle
+                }
+
+                Label {
+                    text: parent.parent.searching
+                          ? "Try a different search term"
+                          : "Connect to a table on the Control page to load its patterns"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    color: Components.ThemeManager.textTertiary
+                    font.family: Components.ThemeManager.fontBody
+                    font.pixelSize: Components.ThemeManager.fontSizeBody
+                    horizontalAlignment: Text.AlignHCenter
                 }
             }
         }

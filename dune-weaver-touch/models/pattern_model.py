@@ -33,8 +33,10 @@ class PatternModel(QAbstractListModel):
         self._patterns = []           # all patterns [{name, path}]
         self._filtered_patterns = []  # current view
         self._search_text = ""
-        self._previews = {}           # rel_path -> cached png path ("" = pending)
+        self._previews = {}           # rel_path -> cached png path ("" = none)
         self._rendering = set()       # rel_paths with an in-flight render
+        self._render_attempts = {}    # rel_path -> transient-failure count
+        self._warm_task = None        # background cache-warmer task
 
         self._client = FirmwareClient.instance()
         self._client.baseUrlChanged.connect(self._on_table_changed)
@@ -67,15 +69,15 @@ class PatternModel(QAbstractListModel):
 
     # ------------------------------------------------------------- previews
     def _preview_for(self, rel_path):
-        """Return a cached preview path, kicking off a render if needed."""
+        """Return a cached preview path, kicking off a render if needed.
+
+        Runs on the GUI thread for every row the grid materializes, so it
+        must not touch the disk: the on-disk cache is folded into
+        ``self._previews`` in one scan per refresh (see ``_fetch_patterns``).
+        """
         cached = self._previews.get(rel_path)
         if cached is not None:
             return cached
-        # Fast synchronous cache lookup on disk.
-        on_disk = thr_preview.cached_preview(self._client.base_url, rel_path)
-        if on_disk:
-            self._previews[rel_path] = on_disk
-            return on_disk
         # Not cached yet - render asynchronously and update the row later.
         self._schedule_render(rel_path)
         return ""
@@ -89,6 +91,13 @@ class PatternModel(QAbstractListModel):
         except RuntimeError:
             self._rendering.discard(rel_path)
 
+    # Transient fetch failures (timeouts, board busy) are retried with a
+    # delay; only a real result — a PNG path or a definitive "" (pattern has
+    # nothing to render) — is cached. Caching "" on a timeout used to leave
+    # tiles on "No Preview" forever.
+    _MAX_RENDER_ATTEMPTS = 3
+    _RETRY_DELAY_S = 10
+
     async def _render(self, rel_path):
         base_url = self._client.base_url
         try:
@@ -97,6 +106,18 @@ class PatternModel(QAbstractListModel):
             self._rendering.discard(rel_path)
         if base_url != self._client.base_url:
             return  # table changed under us; drop stale result
+        if path is None:
+            attempts = self._render_attempts.get(rel_path, 0) + 1
+            self._render_attempts[rel_path] = attempts
+            if attempts < self._MAX_RENDER_ATTEMPTS:
+                await asyncio.sleep(self._RETRY_DELAY_S)
+                if base_url == self._client.base_url:
+                    self._schedule_render(rel_path)
+            # else: leave uncached — scrolling back to the tile retries fresh
+            else:
+                self._render_attempts.pop(rel_path, None)
+            return
+        self._render_attempts.pop(rel_path, None)
         self._previews[rel_path] = path
         self._emit_preview_changed(rel_path)
 
@@ -109,8 +130,12 @@ class PatternModel(QAbstractListModel):
 
     # -------------------------------------------------------------- fetching
     def _on_table_changed(self, _base_url):
+        if self._warm_task is not None:
+            self._warm_task.cancel()
+            self._warm_task = None
         self._previews.clear()
         self._rendering.clear()
+        self._render_attempts.clear()
         self.refresh()
 
     @Slot()
@@ -137,7 +162,58 @@ class PatternModel(QAbstractListModel):
                 rel = rel[len("patterns/"):]
             patterns.append({"name": rel, "path": rel})
         patterns.sort(key=lambda x: x["name"].lower())
+
+        # Fold the on-disk preview cache into _previews with a single
+        # directory scan, off the GUI thread — data() must never hit the disk.
+        base_url = self._client.base_url
+        index = await asyncio.to_thread(thr_preview.preview_index, base_url)
+        if base_url != self._client.base_url:
+            return  # table changed under us; drop stale result
+        for pattern in patterns:
+            rel = pattern["name"]
+            if rel not in self._previews:
+                on_disk = index.get(thr_preview.safe_name(rel))
+                if on_disk:
+                    self._previews[rel] = on_disk
+
         self._apply_patterns(patterns)
+        self._start_warmer()
+
+    # ------------------------------------------------------------ cache warm
+    def _start_warmer(self):
+        """Render the still-missing previews in the background, one at a time.
+
+        Without this, a fresh install shows placeholder dishes for the whole
+        first pass over the library. Only patterns with a local .thr are
+        warmed (no board I/O); board-only patterns stay lazy. Visible tiles
+        still render on demand and win the CPU cap's other slot.
+        """
+        if self._warm_task is not None:
+            self._warm_task.cancel()
+            self._warm_task = None
+        try:
+            self._warm_task = asyncio.get_event_loop().create_task(self._warm_previews())
+        except RuntimeError:
+            pass
+
+    async def _warm_previews(self):
+        base_url = self._client.base_url
+        warmed = 0
+        for pattern in list(self._patterns):
+            if base_url != self._client.base_url:
+                return  # table changed; the new fetch starts a fresh warmer
+            rel = pattern["name"]
+            if rel in self._previews or rel in self._rendering:
+                continue
+            if not await asyncio.to_thread(thr_preview.has_local_source, rel):
+                continue
+            self._rendering.add(rel)
+            await self._render(rel)
+            warmed += 1
+            # Breathe between renders so the warmer never monopolizes the pool.
+            await asyncio.sleep(0.1)
+        if warmed:
+            logger.info(f"Preview cache warmed: {warmed} patterns rendered")
 
     def _apply_patterns(self, patterns):
         self.beginResetModel()

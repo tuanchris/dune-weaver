@@ -164,15 +164,17 @@ body {
 }
 
 /* Tint pattern previews (black ink on transparent, from the backend renderer)
-   to the theme foreground — the web equivalent of the mobile app's tintColor
-   on its webp thumbnails. Chains are numerically solved to land exactly on
-   the foreground tokens: #292219 (day ink) / #F2EAD9 (lit sand, night). */
+   to the sand accent — the golden hue the touch app renders its previews in.
+   Foreground-tinted lines averaged out to near-white/gray at grid size; the
+   primary tokens keep them reading as sand under warm light. Chains are
+   numerically solved to land exactly on the primary tokens:
+   #A87F45 (deep sand, day) / #D9B98A (dune sand, night). */
 .pattern-preview {
-  filter: brightness(0) saturate(100%) invert(9%) sepia(11%) saturate(1771%) hue-rotate(354deg) brightness(98%) contrast(88%);
+  filter: brightness(0) saturate(100%) invert(32%) sepia(100%) saturate(349%) hue-rotate(356deg) brightness(134%) contrast(61%);
 }
 
 .dark .pattern-preview {
-  filter: brightness(0) saturate(100%) invert(89%) sepia(29%) saturate(179%) hue-rotate(335deg) brightness(104%) contrast(90%);
+  filter: brightness(0) saturate(100%) invert(86%) sepia(20%) saturate(1860%) hue-rotate(309deg) brightness(127%) contrast(70%);
 }
 
 /* Marquee animation for scrolling text */

@@ -167,8 +167,9 @@ class TestApplyAutostart:
 
 class TestPlaylistMirroring:
     def test_playlist_content_uses_sd_paths(self):
+        from modules.core.pattern_manager import _to_sd_path
         content = board_settings._playlist_sd_content(
-            ["./patterns/star.thr", "patterns/sub/wave.thr"]
+            ["./patterns/star.thr", "patterns/sub/wave.thr"], _to_sd_path
         )
         assert content == "/patterns/star.thr\n/patterns/sub/wave.thr\n"
 

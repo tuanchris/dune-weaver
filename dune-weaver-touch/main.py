@@ -6,8 +6,9 @@ import time
 import signal
 from pathlib import Path
 from PySide6.QtCore import QUrl, QTimer, QObject, QEvent
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QGuiApplication, QFont, QFontDatabase
 from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterType
+from PySide6.QtQuickControls2 import QQuickStyle
 from qasync import QEventLoop
 from dotenv import load_dotenv
 
@@ -101,6 +102,19 @@ def main():
     os.environ['QT_IM_MODULE'] = 'qtvirtualkeyboard'
 
     app = QGuiApplication(sys.argv)
+
+    # Basic style everywhere: the custom control styling (DwSlider, DwSwitch,
+    # TextField pills) is ignored by native styles (e.g. macOS in dev runs).
+    QQuickStyle.setStyle("Basic")
+
+    # Bundled fonts: Outfit (UI text) + Material Icons Round (icon glyphs).
+    # The Pi image has no reliable emoji/symbol fonts, so all icons in QML go
+    # through components/Icon.qml against this icon font.
+    fonts_dir = Path(__file__).parent / "fonts"
+    for font_file in sorted(fonts_dir.glob("*.ttf")) + sorted(fonts_dir.glob("*.otf")):
+        if QFontDatabase.addApplicationFont(str(font_file)) == -1:
+            logger.warning(f"Failed to load font {font_file.name}")
+    app.setFont(QFont("Outfit", 10))
 
     # Install first-touch filter to ignore wake-up touches
     # Ignores the first touch after 2 seconds of inactivity

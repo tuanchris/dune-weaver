@@ -67,7 +67,7 @@ class TestListSerialPorts:
         """Test list_serial_ports returns a list of available ports."""
         mock_ports = ["/dev/ttyUSB0", "/dev/ttyACM0"]
 
-        with patch("main.connection_manager.list_serial_ports", return_value=mock_ports):
+        with patch("main.connection_manager.list_board_urls", return_value=mock_ports):
             response = await async_client.get("/list_serial_ports")
 
         assert response.status_code == 200
@@ -79,7 +79,7 @@ class TestListSerialPorts:
     @pytest.mark.asyncio
     async def test_list_serial_ports_empty(self, async_client):
         """Test list_serial_ports returns empty list when no ports."""
-        with patch("main.connection_manager.list_serial_ports", return_value=[]):
+        with patch("main.connection_manager.list_board_urls", return_value=[]):
             response = await async_client.get("/list_serial_ports")
 
         assert response.status_code == 200

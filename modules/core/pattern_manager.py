@@ -361,13 +361,73 @@ def parse_theta_rho_file(file_path):
     return coordinates
 
 
+def _host_rel_path(file_path):
+    """Normalize any pattern reference — './patterns/x.thr', 'patterns/x.thr'
+    or a catalog-relative entry like 'custom_patterns/x.thr' — to the path
+    relative to the patterns/ dir."""
+    p = str(file_path).replace("\\", "/")
+    if p.startswith("./"):
+        p = p[2:]
+    p = p.lstrip("/")
+    if p.startswith("patterns/"):
+        p = p[len("patterns/"):]
+    return p
+
+
 def _to_sd_path(file_path):
-    """Map a host pattern path (e.g. './patterns/star.thr') to its board SD path
-    ('/patterns/star.thr'). The board SD mirrors the host's patterns/ tree."""
-    p = file_path.replace("\\", "/").lstrip(".").lstrip("/")
-    idx = p.find("patterns/")
-    rel = p[idx:] if idx >= 0 else ("patterns/" + os.path.basename(p))
-    return "/" + rel
+    """Canonical board SD path for a host pattern: '/patterns/<host-rel>'.
+    (The old find('patterns/') version matched inside 'custom_patterns/',
+    silently dropping that directory from playlist lines.)"""
+    return "/patterns/" + _host_rel_path(file_path)
+
+
+def make_sd_path_resolver(conn=None):
+    """Build a resolve(file_path) -> board SD path function that prefers a
+    copy already on the board's SD (per /sand_patterns) over the canonical
+    host-derived path. Patterns can reach the board through other routes
+    (mobile app, a copied SD card) under a different directory layout —
+    without this, playing an adopted playlist re-uploads every pattern to a
+    duplicate location. The board listing is fetched lazily once per resolver
+    and results are memoized; when the listing is unavailable the canonical
+    path is used (upload proceeds as before)."""
+    listing = None
+    cache = {}
+
+    def resolve(file_path):
+        nonlocal listing
+        rel = _host_rel_path(file_path)
+        if rel in cache:
+            return cache[rel]
+        if listing is None:
+            c = conn or state.conn
+            try:
+                raw = c.list_patterns() if c else []
+                listing = {str(p).replace("\\", "/").lstrip("/") for p in raw or []}
+            except Exception as e:
+                logger.debug(f"Could not list board patterns: {e}")
+                listing = set()
+        result = "/patterns/" + rel
+        if listing and rel not in listing:
+            # Longest suffix of the host path that already exists on the SD
+            # wins (e.g. host 'custom_patterns/sand-patterns/patterns/x.thr'
+            # reuses board 'sand-patterns/patterns/x.thr').
+            parts = rel.split("/")
+            for i in range(1, len(parts)):
+                cand = "/".join(parts[i:])
+                if cand in listing:
+                    result = "/patterns/" + cand
+                    break
+            else:
+                # Same file under an unrelated directory: only a UNIQUE
+                # basename match is safe — ambiguity falls back to canonical.
+                base = parts[-1]
+                matches = [p for p in listing if p.rsplit("/", 1)[-1] == base]
+                if len(matches) == 1:
+                    result = "/patterns/" + matches[0]
+        cache[rel] = result
+        return result
+
+    return resolve
 
 
 def _ensure_on_board(file_path, sd_path):
@@ -375,6 +435,12 @@ def _ensure_on_board(file_path, sd_path):
     try:
         if not state.conn:
             return
+        if not os.path.exists(file_path):
+            # Callers pass either full './patterns/...' paths or catalog-
+            # relative entries; resolve the latter against the patterns dir.
+            alt = os.path.join(THETA_RHO_DIR, _host_rel_path(file_path))
+            if os.path.exists(alt):
+                file_path = alt
         if state.conn.file_exists(sd_path):
             return
         with open(file_path, "rb") as f:

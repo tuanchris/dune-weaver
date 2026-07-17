@@ -32,10 +32,39 @@ def _get_metadata_cache_lock() -> asyncio.Lock:
 
 # Constants
 CACHE_DIR = os.path.join(THETA_RHO_DIR, "cached_images")
-METADATA_CACHE_FILE = "metadata_cache.json"  # Now in root directory
+
+# Anchor the metadata cache to the project root (this module lives at
+# modules/core/, so parents[2] is the repo root), NOT the process CWD.
+# A bare relative path meant a service launched from a different working
+# directory would read an empty cache and needlessly regenerate every
+# ~1080-pattern metadata entry on each boot.
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+METADATA_CACHE_FILE = str(_PROJECT_ROOT / "metadata_cache.json")
 
 # Cache schema version - increment when structure changes
 CACHE_SCHEMA_VERSION = 1
+
+
+def _detect_low_power() -> bool:
+    """True on resource-constrained hosts (Raspberry Pi), where cache
+    generation is throttled to avoid starving the motion loop.
+
+    Override with the LOW_POWER env var (1/0). Otherwise auto-detect a Pi via
+    /proc/device-tree/model — deliberately NOT platform.machine(), because
+    Apple-Silicon Macs also report 'arm64' and must not be throttled.
+    """
+    override = os.environ.get("LOW_POWER")
+    if override is not None:
+        return override.strip().lower() in ("1", "true", "yes", "on")
+    try:
+        with open("/proc/device-tree/model", "rb") as f:
+            return b"raspberry pi" in f.read().lower()
+    except OSError:
+        return False
+
+
+# Evaluated once at import; throttles metadata generation only on a Pi.
+LOW_POWER = _detect_low_power()
 
 # Expected cache schema structure
 EXPECTED_CACHE_SCHEMA = {
@@ -644,10 +673,11 @@ async def generate_metadata_cache():
             "error": None
         })
         
-        logger.info(f"Generating metadata cache for {total_files} new files ({skipped_files} files already cached)...")
-        
-        # Process in smaller batches for Pi Zero 2 W
-        batch_size = 3  # Reduced from 5
+        # On a Pi, small batches + inter-batch sleeps keep the motion loop
+        # responsive; on a normal host they only make a full pass take a
+        # needless minute, so a session that stops early leaves the cache
+        # partial and re-shows the overlay next boot. Skip the throttle there.
+        batch_size = 3 if LOW_POWER else 50
         successful = 0
         for i in range(0, total_files, batch_size):
             batch = files_to_process[i:i + batch_size]
@@ -671,8 +701,9 @@ async def generate_metadata_cache():
                         successful += 1
                         logger.debug(f"Generated metadata for {file_name}")
 
-                    # Small delay to reduce I/O pressure
-                    await asyncio.sleep(0.05)
+                    # Small delay to reduce I/O pressure on the Pi only.
+                    if LOW_POWER:
+                        await asyncio.sleep(0.05)
 
                 except Exception as e:
                     logger.error(f"Failed to generate metadata for {file_name}: {str(e)}")
@@ -680,16 +711,16 @@ async def generate_metadata_cache():
             # One cache-file rewrite per batch, so progress survives restarts
             # without hammering the disk once per pattern.
             await cache_pattern_metadata_batch(batch_entries)
-            
+
             # Update progress
             cache_progress["processed_files"] = min(i + batch_size, total_files)
-            
+
             # Log progress
             progress = min(i + batch_size, total_files)
             logger.info(f"Metadata cache generation progress: {progress}/{total_files} files processed")
-            
-            # Delay between batches for system recovery
-            if i + batch_size < total_files:
+
+            # Delay between batches for system recovery (Pi only).
+            if LOW_POWER and i + batch_size < total_files:
                 await asyncio.sleep(0.3)
         
         logger.info(f"Metadata cache generation completed: {successful}/{total_files} patterns cached successfully, {skipped_files} patterns skipped (already cached)")

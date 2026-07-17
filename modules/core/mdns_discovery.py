@@ -18,6 +18,9 @@ from typing import Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 SERVICE_TYPE = "_dune-weaver._tcp.local."
+# FluidNC boards advertise `_http._tcp` with TXT `api=sandtable/1`,
+# `model=dune-weaver` (same records dune-weaver-mobile browses for).
+HTTP_SERVICE_TYPE = "_http._tcp.local."
 RESOLVE_TIMEOUT_MS = 3000
 
 try:
@@ -78,16 +81,60 @@ def service_info_to_table(info) -> Optional[dict]:
     }
 
 
+def _looks_like_board(label: str, server: str, props: Dict[str, str]) -> bool:
+    """Does a resolved _http._tcp service look like a Dune Weaver board?"""
+    model = (props.get("model") or "").lower()
+    api = (props.get("api") or "").lower()
+    if model == "dune-weaver" or "sandtable" in api:
+        return True
+    # Fallback for firmware builds without TXT records: match the firmware's
+    # default hostname / service name (same heuristic as the mobile app).
+    hay = f"{label} {server}".lower()
+    return bool(re.search(r"fluidnc|dune[-\s]?weaver|sand[-\s]?table", hay))
+
+
+def service_info_to_board(info) -> Optional[dict]:
+    """Convert a resolved _http._tcp ServiceInfo into a board dict for the API.
+
+    Returns None for services that don't look like a Dune Weaver board or
+    that lack an IPv4 address.
+    """
+    props = _decode_properties(info.properties)
+    # "DWMP._http._tcp.local." -> "DWMP" (the firmware hostname = table name)
+    label = info.name.split("._")[0] if "._" in info.name else info.name
+    server = (info.server or "").rstrip(".")
+    if not _looks_like_board(label, server, props):
+        return None
+    addresses = [a for a in info.parsed_addresses() if ":" not in a]  # IPv4 only
+    if not addresses or not info.port:
+        return None
+
+    host = addresses[0]
+    port = info.port
+    hostname = server[: -len(".local")] if server.endswith(".local") else server
+    return {
+        "name": label or hostname or host,
+        "hostname": hostname or None,
+        "host": host,
+        "port": port,
+        "url": f"http://{host}" if port == 80 else f"http://{host}:{port}",
+        # Stable hardware identity (fw > v0.1.7); None on older firmware.
+        "mac": (props.get("mac") or "").lower() or None,
+    }
+
+
 class TableDiscovery:
     """Advertises this table via mDNS and tracks peer tables on the LAN."""
 
     def __init__(self):
         self._aiozc = None
         self._browser = None
+        self._board_browser = None
         self._service_info = None
         self._own_id: Optional[str] = None
         # Keyed by mDNS service name so Removed events can evict entries
         self._discovered: Dict[str, dict] = {}
+        self._boards: Dict[str, dict] = {}
 
     @property
     def is_running(self) -> bool:
@@ -96,6 +143,10 @@ class TableDiscovery:
     def get_tables(self) -> List[dict]:
         """Currently visible peer tables (excludes this table)."""
         return list(self._discovered.values())
+
+    def get_boards(self) -> List[dict]:
+        """Currently visible FluidNC controller boards (candidates for /connect)."""
+        return list(self._boards.values())
 
     async def start(self, table_id: str, table_name: str, port: int, version: Optional[str] = None):
         if not ZEROCONF_AVAILABLE:
@@ -129,7 +180,10 @@ class TableDiscovery:
             self._browser = AsyncServiceBrowser(
                 self._aiozc.zeroconf, SERVICE_TYPE, handlers=[self._on_service_state_change]
             )
-            logger.info(f"mDNS: advertising '{table_name}' at {local_ip}:{port} and browsing for peer tables")
+            self._board_browser = AsyncServiceBrowser(
+                self._aiozc.zeroconf, HTTP_SERVICE_TYPE, handlers=[self._on_board_state_change]
+            )
+            logger.info(f"mDNS: advertising '{table_name}' at {local_ip}:{port} and browsing for peer tables and boards")
         except Exception as e:
             logger.warning(f"mDNS discovery failed to start: {e}")
             await self.stop()
@@ -158,6 +212,8 @@ class TableDiscovery:
         try:
             if self._browser:
                 await self._browser.async_cancel()
+            if self._board_browser:
+                await self._board_browser.async_cancel()
             if self._service_info:
                 await self._aiozc.async_unregister_service(self._service_info)
             await self._aiozc.async_close()
@@ -166,8 +222,10 @@ class TableDiscovery:
         finally:
             self._aiozc = None
             self._browser = None
+            self._board_browser = None
             self._service_info = None
             self._discovered.clear()
+            self._boards.clear()
 
     @staticmethod
     def _properties(table_id: str, table_name: str, version: Optional[str]) -> Dict[str, str]:
@@ -208,6 +266,30 @@ class TableDiscovery:
                 logger.info(f"mDNS: discovered table '{table['name']}' at {table['url']}")
         except Exception as e:
             logger.debug(f"mDNS: failed to resolve {name}: {e}")
+
+    def _on_board_state_change(self, zeroconf, service_type, name, state_change):
+        """Browser callback for _http._tcp (FluidNC controller boards)."""
+        if state_change is ServiceStateChange.Removed:
+            removed = self._boards.pop(name, None)
+            if removed:
+                logger.info(f"mDNS: board '{removed['name']}' left the network")
+            return
+        asyncio.ensure_future(self._resolve_board(zeroconf, service_type, name))
+
+    async def _resolve_board(self, zeroconf, service_type, name):
+        try:
+            info = AsyncServiceInfo(service_type, name)
+            if not await info.async_request(zeroconf, RESOLVE_TIMEOUT_MS):
+                return
+            board = service_info_to_board(info)
+            if not board:
+                return
+            is_new = name not in self._boards
+            self._boards[name] = board
+            if is_new:
+                logger.info(f"mDNS: discovered board '{board['name']}' at {board['url']}")
+        except Exception as e:
+            logger.debug(f"mDNS: failed to resolve board {name}: {e}")
 
 
 # Module-level singleton, mirroring how other core services are exposed

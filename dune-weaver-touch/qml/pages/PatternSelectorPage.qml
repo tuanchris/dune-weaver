@@ -35,15 +35,23 @@ Page {
 
     // Check if a pattern is already in the playlist
     function isPatternInPlaylist(patternName) {
-        // Check original existing patterns
         if (existingPatterns.indexOf(patternName) !== -1) {
             return true
         }
-        // Check patterns added during this session
         if (sessionAddedPatterns.indexOf(patternName) !== -1) {
             return true
         }
         return false
+    }
+
+    // Add pattern and track it for instant visual feedback
+    function addPatternToPlaylist(patternName) {
+        if (!isPatternInPlaylist(patternName) && backend) {
+            backend.addPatternToPlaylist(playlistName, patternName)
+            var temp = sessionAddedPatterns.slice()
+            temp.push(patternName)
+            sessionAddedPatterns = temp
+        }
     }
 
     Rectangle {
@@ -55,13 +63,12 @@ Page {
         anchors.fill: parent
         spacing: 0
 
-        // Header with back button
+        // Header with back button + search
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 50
+            Layout.preferredHeight: Components.ThemeManager.headerHeight
             color: Components.ThemeManager.surfaceColor
 
-            // Bottom border
             Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
@@ -71,59 +78,60 @@ Page {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 15
-                anchors.rightMargin: 10
-                spacing: 10
+                anchors.leftMargin: Components.ThemeManager.spaceSm
+                anchors.rightMargin: Components.ThemeManager.spaceMd
+                spacing: Components.ThemeManager.spaceSm
 
                 // Back button
-                Button {
-                    text: "← Back"
-                    font.pixelSize: 14
-                    flat: true
+                Rectangle {
+                    Layout.preferredWidth: 44
+                    Layout.preferredHeight: 44
+                    radius: 22
+                    color: backArea.pressed ? Components.ThemeManager.pressedColor : "transparent"
                     visible: !searchExpanded
-                    onClicked: stackView.pop()
 
-                    contentItem: Text {
-                        text: parent.text
-                        font: parent.font
+                    Components.Icon {
+                        anchors.centerIn: parent
+                        name: "arrow_back"
+                        size: 20
                         color: Components.ThemeManager.textPrimary
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
+                    }
+
+                    MouseArea {
+                        id: backArea
+                        anchors.fill: parent
+                        onClicked: stackView.pop()
                     }
                 }
 
-                // Title
                 Label {
                     text: "Add to \"" + playlistName + "\""
-                    font.pixelSize: 16
-                    font.bold: true
+                    font.family: Components.ThemeManager.fontDisplay
+                    font.pixelSize: Components.ThemeManager.fontSizeTitle
                     color: Components.ThemeManager.textPrimary
                     Layout.fillWidth: true
                     elide: Text.ElideRight
                     visible: !searchExpanded
                 }
 
-                // Pattern count
                 Label {
                     text: patternCount + " patterns"
-                    font.pixelSize: 12
+                    font.family: Components.ThemeManager.fontBody
+                    font.pixelSize: Components.ThemeManager.fontSizeCaption
                     color: Components.ThemeManager.textTertiary
                     visible: !searchExpanded
                 }
 
-                Item {
-                    Layout.fillWidth: true
-                    visible: !searchExpanded
-                }
-
-                // Expandable search (matching ModernPatternListPage)
+                // Expandable search pill (matching ModernPatternListPage)
                 Rectangle {
                     Layout.fillWidth: searchExpanded
-                    Layout.preferredWidth: searchExpanded ? parent.width - 60 : 120
-                    Layout.preferredHeight: 32
-                    radius: 16
-                    color: searchExpanded ? Components.ThemeManager.surfaceColor : Components.ThemeManager.cardColor
-                    border.color: searchExpanded ? "#2563eb" : Components.ThemeManager.borderColor
+                    Layout.preferredWidth: searchExpanded ? parent.width - 60 : 130
+                    Layout.preferredHeight: 40
+                    radius: 20
+                    color: Components.ThemeManager.backgroundColor
+                    border.color: searchExpanded || searchField.hasUnappliedSearch
+                                  ? Components.ThemeManager.accent
+                                  : Components.ThemeManager.borderColor
                     border.width: 1
 
                     Behavior on Layout.preferredWidth {
@@ -132,23 +140,24 @@ Page {
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 10
-                        anchors.rightMargin: 10
-                        spacing: 5
+                        anchors.leftMargin: Components.ThemeManager.spaceMd
+                        anchors.rightMargin: Components.ThemeManager.spaceMd
+                        spacing: Components.ThemeManager.spaceSm
 
-                        Text {
-                            text: "⌕"
-                            font.pixelSize: 16
-                            font.family: "sans-serif"
-                            color: searchExpanded ? "#2563eb" : Components.ThemeManager.textSecondary
+                        Components.Icon {
+                            name: "search"
+                            size: 17
+                            color: searchExpanded ? Components.ThemeManager.accent
+                                                  : Components.ThemeManager.textSecondary
                         }
 
                         TextField {
                             id: searchField
                             Layout.fillWidth: true
-                            placeholderText: searchExpanded ? "Search patterns... (press Enter)" : "Search"
+                            placeholderText: searchExpanded ? "Search patterns, then press Enter" : "Search"
                             placeholderTextColor: Components.ThemeManager.textTertiary
-                            font.pixelSize: 14
+                            font.family: Components.ThemeManager.fontBody
+                            font.pixelSize: Components.ThemeManager.fontSizeBody
                             color: Components.ThemeManager.textPrimary
                             visible: searchExpanded || text.length > 0
 
@@ -157,9 +166,6 @@ Page {
 
                             background: Rectangle {
                                 color: "transparent"
-                                border.color: searchField.hasUnappliedSearch ? "#f59e0b" : "transparent"
-                                border.width: searchField.hasUnappliedSearch ? 1 : 0
-                                radius: 4
                             }
 
                             onAccepted: {
@@ -209,8 +215,9 @@ Page {
                         }
 
                         Text {
-                            text: searchExpanded || searchField.text.length > 0 ? "Search" : ""
-                            font.pixelSize: 12
+                            text: "Search"
+                            font.family: Components.ThemeManager.fontBody
+                            font.pixelSize: Components.ThemeManager.fontSizeCaption
                             color: Components.ThemeManager.textTertiary
                             visible: !searchExpanded && searchField.text.length === 0
                         }
@@ -228,29 +235,30 @@ Page {
                 }
 
                 // Close button when search expanded
-                Button {
-                    id: searchCloseBtn
-                    flat: true
+                Rectangle {
+                    Layout.preferredWidth: 40
+                    Layout.preferredHeight: 40
+                    radius: 20
                     visible: searchExpanded
-                    Layout.preferredWidth: 32
-                    Layout.preferredHeight: 32
-                    onClicked: {
-                        searchExpanded = false
-                        searchField.text = ""
-                        searchField.lastSearchText = ""
-                        searchField.focus = false
-                        patternModel.filter("")
-                    }
-                    contentItem: Text {
-                        text: "✕"
-                        font.pixelSize: 18
+                    color: searchCloseArea.pressed ? Components.ThemeManager.pressedColor : "transparent"
+
+                    Components.Icon {
+                        anchors.centerIn: parent
+                        name: "close"
+                        size: 20
                         color: Components.ThemeManager.textSecondary
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
                     }
-                    background: Rectangle {
-                        color: searchCloseBtn.pressed ? Components.ThemeManager.buttonBackgroundHover : "transparent"
-                        radius: 4
+
+                    MouseArea {
+                        id: searchCloseArea
+                        anchors.fill: parent
+                        onClicked: {
+                            searchExpanded = false
+                            searchField.text = ""
+                            searchField.lastSearchText = ""
+                            searchField.focus = false
+                            patternModel.filter("")
+                        }
                     }
                 }
             }
@@ -265,6 +273,9 @@ Page {
             cellHeight: 220
             model: patternModel
             clip: true
+            visible: patternCount > 0
+            reuseItems: true
+            cacheBuffer: 440
 
             ScrollBar.vertical: ScrollBar {
                 active: true
@@ -272,56 +283,54 @@ Page {
             }
 
             delegate: Item {
-                width: gridView.cellWidth - 10
-                height: gridView.cellHeight - 10
+                width: gridView.cellWidth
+                height: gridView.cellHeight
 
                 // Check if pattern is already in playlist
                 property bool isInPlaylist: isPatternInPlaylist(model.name)
 
                 ModernPatternCard {
                     id: patternCard
-                    anchors.fill: parent
+                    anchors.centerIn: parent
+                    width: gridView.cellWidth - 10
+                    height: gridView.cellHeight - 10
                     name: model.name
                     preview: model.preview
 
                     onClicked: {
-                        // Use the tracking function for immediate visual feedback
                         page.addPatternToPlaylist(model.name)
                     }
                 }
 
-                // Selection overlay for patterns already in playlist
+                // Selection ring + badge for patterns already in the playlist
                 Rectangle {
-                    anchors.fill: parent
+                    anchors.fill: patternCard
                     color: "transparent"
-                    border.color: isInPlaylist ? "#2563eb" : "transparent"
-                    border.width: isInPlaylist ? 3 : 0
-                    radius: 12
+                    border.color: isInPlaylist ? Components.ThemeManager.accent : "transparent"
+                    border.width: isInPlaylist ? 2 : 0
+                    radius: Components.ThemeManager.radiusMd
 
-                    // Checkmark badge for selected patterns
                     Rectangle {
                         visible: isInPlaylist
                         anchors.top: parent.top
                         anchors.right: parent.right
-                        anchors.topMargin: 12
-                        anchors.rightMargin: 12
+                        anchors.topMargin: Components.ThemeManager.spaceSm
+                        anchors.rightMargin: Components.ThemeManager.spaceSm
                         width: 28
                         height: 28
                         radius: 14
-                        color: "#2563eb"
+                        color: Components.ThemeManager.accent
 
-                        Text {
+                        Components.Icon {
                             anchors.centerIn: parent
-                            text: "✓"
-                            font.pixelSize: 16
-                            font.bold: true
-                            color: "white"
+                            name: "check"
+                            size: 16
+                            color: Components.ThemeManager.onAccent
                         }
                     }
                 }
             }
 
-            // Add scroll animations
             add: Transition {
                 NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 300 }
                 NumberAnimation { property: "scale"; from: 0.8; to: 1; duration: 300 }
@@ -332,70 +341,35 @@ Page {
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: patternCount === 0 && searchField.text !== ""
+            visible: patternCount === 0
 
             Column {
                 anchors.centerIn: parent
-                spacing: 20
+                spacing: Components.ThemeManager.spaceLg
 
-                Text {
-                    text: "⌕"
-                    font.pixelSize: 48
+                Components.Icon {
+                    name: "search"
+                    size: 44
                     anchors.horizontalCenter: parent.horizontalCenter
-                    color: Components.ThemeManager.placeholderText
+                    color: Components.ThemeManager.textTertiary
                 }
 
                 Label {
                     text: "No patterns found"
                     anchors.horizontalCenter: parent.horizontalCenter
                     color: Components.ThemeManager.textSecondary
-                    font.pixelSize: 18
+                    font.family: Components.ThemeManager.fontDisplay
+                    font.pixelSize: Components.ThemeManager.fontSizeTitle
                 }
 
                 Label {
                     text: "Try a different search term"
                     anchors.horizontalCenter: parent.horizontalCenter
                     color: Components.ThemeManager.textTertiary
-                    font.pixelSize: 14
+                    font.family: Components.ThemeManager.fontBody
+                    font.pixelSize: Components.ThemeManager.fontSizeBody
                 }
             }
-        }
-    }
-
-    // Handle pattern added signal for live updates
-    Connections {
-        target: backend
-
-        function onPatternAddedToPlaylist(success, message) {
-            if (success) {
-                // Extract the pattern name from the message if possible
-                // The message format is typically "Pattern added to playlist"
-                // We'll track additions in sessionAddedPatterns instead
-
-                // Re-trigger binding evaluation by updating the array reference
-                var temp = sessionAddedPatterns.slice()
-                // Try to extract pattern name from recent action
-                // Since we don't get the pattern name directly, we need another approach
-                sessionAddedPatterns = temp
-            }
-        }
-    }
-
-    // Track which pattern was last clicked for visual feedback
-    property string lastClickedPattern: ""
-
-    // Override the click handler to track additions
-    Component.onCompleted: {
-    }
-
-    // Function to add pattern and track it
-    function addPatternToPlaylist(patternName) {
-        if (!isPatternInPlaylist(patternName) && backend) {
-            backend.addPatternToPlaylist(playlistName, patternName)
-            // Immediately add to session tracking for instant visual feedback
-            var temp = sessionAddedPatterns.slice()
-            temp.push(patternName)
-            sessionAddedPatterns = temp
         }
     }
 }
