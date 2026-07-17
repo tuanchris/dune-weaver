@@ -163,10 +163,16 @@ body {
   font-family: 'Material Icons Outlined';
 }
 
-/* Invert pattern previews in dark mode, warmed toward the Bone foreground
-   so strokes sit on basalt like sand, not stark white on black */
+/* Tint pattern previews (black ink on transparent, from the backend renderer)
+   to the theme foreground — the web equivalent of the mobile app's tintColor
+   on its webp thumbnails. Chains are numerically solved to land exactly on
+   the foreground tokens: #292219 (day ink) / #F2EAD9 (lit sand, night). */
+.pattern-preview {
+  filter: brightness(0) saturate(100%) invert(9%) sepia(11%) saturate(1771%) hue-rotate(354deg) brightness(98%) contrast(88%);
+}
+
 .dark .pattern-preview {
-  filter: invert(1) sepia(0.25) brightness(0.95);
+  filter: brightness(0) saturate(100%) invert(89%) sepia(29%) saturate(179%) hue-rotate(335deg) brightness(104%) contrast(90%);
 }
 
 /* Marquee animation for scrolling text */
