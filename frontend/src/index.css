@@ -2,74 +2,94 @@
 
 /* Fonts imported in main.tsx (self-hosted, no CDN dependency) */
 
-/* Theme configuration using CSS variables */
+/* Theme configuration using CSS variables.
+ * "Table at night" palette shared with dune-weaver-mobile —
+ * token source: dune-weaver-mobile/src/theme/index.ts.
+ * Light = day (fine-sand paper), dark = night (basalt ground). */
 @theme {
-  --color-border: hsl(214.3 31.8% 91.4%);
-  --color-input: hsl(214.3 31.8% 91.4%);
-  --color-ring: hsl(207 90% 50%);
-  --color-background: hsl(220 14% 98%);
-  --color-foreground: hsl(222.2 84% 4.9%);
+  --color-border: #E2D6C2;
+  --color-input: #E2D6C2;
+  --color-ring: #A87F45;
+  --color-background: #F5EFE6;
+  --color-foreground: #292219;
 
-  --color-primary: hsl(207 90% 50%);
-  --color-primary-foreground: hsl(210 40% 98%);
+  --color-primary: #A87F45;
+  --color-primary-foreground: #FFF9EE;
 
-  --color-secondary: hsl(210 40% 96.1%);
-  --color-secondary-foreground: hsl(222.2 47.4% 11.2%);
+  --color-secondary: #EDE4D4;
+  --color-secondary-foreground: #292219;
 
-  --color-muted: hsl(220 14% 92%);
-  --color-muted-foreground: hsl(215.4 16.3% 46.9%);
+  --color-muted: #EDE4D4;
+  --color-muted-foreground: #8A7A63;
 
-  --color-accent: hsl(210 40% 96.1%);
-  --color-accent-foreground: hsl(222.2 47.4% 11.2%);
+  --color-accent: #EDE4D4;
+  --color-accent-foreground: #292219;
 
-  --color-destructive: hsl(0 84.2% 60.2%);
-  --color-destructive-foreground: hsl(210 40% 98%);
+  --color-destructive: #BC5843;
+  --color-destructive-foreground: #FFF9EE;
 
-  --color-card: hsl(0 0% 100%);
-  --color-card-foreground: hsl(222.2 84% 4.9%);
+  --color-card: #FDFAF4;
+  --color-card-foreground: #292219;
+  --color-card-elevated: #EDE4D4;
 
-  --color-popover: hsl(0 0% 100%);
-  --color-popover-foreground: hsl(222.2 84% 4.9%);
+  --color-popover: #FDFAF4;
+  --color-popover-foreground: #292219;
+
+  --color-input-background: #EDE4D4;
+  --color-success: #5E9950;
+  /* Things actually happening on the table right now (progress fills, the
+   * live ball, connect pulse). Distinct from primary so "go do this" (sand)
+   * never reads the same as "this is running" (patina). */
+  --color-live: #35836F;
 
   --radius: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
 
-  --font-family-sans: 'Plus Jakarta Sans', 'Noto Sans', sans-serif;
+  /* Type roles (mirrors the app): body stays the system face so controls
+   * keep a native feel; display for titles/pattern names/the state word;
+   * mono for telemetry — elapsed/%, feed rate, θ/ρ, IPs, versions, logs. */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-display: 'Bricolage Grotesque', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-family-sans: var(--font-sans);
 }
 
-/* Dark mode */
+/* Dark mode — night: basalt ground, walnut cards, lit-sand ink, dune accent */
 .dark {
   color-scheme: dark;
-  --color-border: hsl(0 0% 32%);
-  --color-input: hsl(0 0% 32%);
-  --color-ring: hsl(207 90% 50%);
-  --color-background: hsl(0 0% 10%);
-  --color-foreground: hsl(210 40% 98%);
+  --color-border: #352D23;
+  --color-input: #352D23;
+  --color-ring: #D9B98A;
+  --color-background: #171310;
+  --color-foreground: #F2EAD9;
 
-  --color-primary: hsl(207 90% 50%);
-  --color-primary-foreground: hsl(210 40% 98%);
+  --color-primary: #D9B98A;
+  --color-primary-foreground: #221A0F;
 
-  --color-secondary: hsl(0 0% 25%);
-  --color-secondary-foreground: hsl(210 40% 98%);
+  --color-secondary: #2B241D;
+  --color-secondary-foreground: #F2EAD9;
 
-  --color-muted: hsl(0 0% 25%);
-  --color-muted-foreground: hsl(215 20.2% 65.1%);
+  --color-muted: #2B241D;
+  --color-muted-foreground: #A08F77;
 
-  --color-accent: hsl(0 0% 25%);
-  --color-accent-foreground: hsl(210 40% 98%);
+  --color-accent: #2B241D;
+  --color-accent-foreground: #F2EAD9;
 
-  --color-destructive: hsl(0 62.8% 50.6%);
-  --color-destructive-foreground: hsl(210 40% 98%);
+  --color-destructive: #D97A66;
+  --color-destructive-foreground: #221A0F;
 
-  --color-card: hsl(0 0% 18%);
-  --color-card-foreground: hsl(210 40% 98%);
+  --color-card: #211C17;
+  --color-card-foreground: #F2EAD9;
+  --color-card-elevated: #2B241D;
 
-  --color-input-background: hsl(0 0% 28%);
+  --color-input-background: #2B241D;
+  --color-success: #8FBF7F;
+  --color-live: #7BC4B0;
 
-  --color-popover: hsl(0 0% 15%);
-  --color-popover-foreground: hsl(210 40% 98%);
+  --color-popover: #211C17;
+  --color-popover-foreground: #F2EAD9;
 }
 
 /* Base styles */

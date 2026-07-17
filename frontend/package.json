@@ -17,6 +17,8 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
+    "@fontsource/bricolage-grotesque": "^5.2.10",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
     "@fontsource/noto-sans": "^5.2.10",
     "@fontsource/plus-jakarta-sans": "^5.2.8",
     "@radix-ui/react-accordion": "^1.2.12",
