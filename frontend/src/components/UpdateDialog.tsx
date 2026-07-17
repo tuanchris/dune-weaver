@@ -156,8 +156,8 @@ export function UpdateDialog({ open, onOpenChange, currentVersion, latestVersion
 
         {state === 'complete' && (
           <div className="flex flex-col items-center py-8 gap-4">
-            <div className="w-16 h-16 flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-              <span className="material-icons text-green-600 dark:text-green-400 text-4xl">check_circle</span>
+            <div className="w-16 h-16 flex items-center justify-center rounded-full bg-success/15">
+              <span className="material-icons text-success text-4xl">check_circle</span>
             </div>
             <div className="text-center space-y-1">
               <p className="text-lg font-medium">Update complete!</p>

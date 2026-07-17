@@ -163,9 +163,10 @@ body {
   font-family: 'Material Icons Outlined';
 }
 
-/* Invert pattern previews in dark mode */
+/* Invert pattern previews in dark mode, warmed toward the Bone foreground
+   so strokes sit on basalt like sand, not stark white on black */
 .dark .pattern-preview {
-  filter: invert(1);
+  filter: invert(1) sepia(0.25) brightness(0.95);
 }
 
 /* Marquee animation for scrolling text */

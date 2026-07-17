@@ -874,7 +874,7 @@ export function BrowsePage() {
       {/* Page Header */}
       <div className="flex items-start justify-between gap-4 pl-1">
         <div className="space-y-0.5">
-          <h1 className="text-xl font-semibold tracking-tight">Browse Patterns</h1>
+          <h1 className="font-display text-xl font-semibold tracking-tight">Browse Patterns</h1>
           <p className="text-xs text-muted-foreground">
             {patterns.length} patterns available
           </p>
@@ -1017,7 +1017,7 @@ export function BrowsePage() {
             </span>
           </div>
           <div className="space-y-1">
-            <h2 className="text-xl font-semibold">No patterns found</h2>
+            <h2 className="font-display text-xl font-semibold">No patterns found</h2>
             <p className="text-muted-foreground">Try adjusting your search or filters</p>
           </div>
           {(searchQuery || selectedCategory !== 'all') && (
@@ -1067,7 +1067,7 @@ export function BrowsePage() {
                   role="button"
                   tabIndex={0}
                   className={`shrink-0 transition-colors cursor-pointer flex items-center ${
-                    favorites.has(selectedPattern.path) ? 'text-red-500 hover:text-red-600' : 'text-muted-foreground hover:text-red-500'
+                    favorites.has(selectedPattern.path) ? 'text-destructive hover:text-destructive/80' : 'text-muted-foreground hover:text-destructive'
                   }`}
                   onClick={(e) => toggleFavorite(selectedPattern.path, e)}
                   onKeyDown={(e) => {
@@ -1242,7 +1242,7 @@ export function BrowsePage() {
           >
             {/* Modal Header */}
             <div className="flex items-center justify-between p-6 border-b shrink-0">
-              <h3 className="text-xl font-semibold">
+              <h3 className="font-display text-xl font-semibold">
                 {selectedPattern?.name || 'Animated Preview'}
               </h3>
               <Button
@@ -1458,14 +1458,14 @@ function PatternCard({ pattern, isSelected, isFavorite, playTime, playCount, onT
 
       {/* Name and favorite row */}
       <div className="flex items-center justify-between w-full gap-1 px-0.5">
-        <span className="text-xs font-bold text-foreground truncate" title={pattern.name}>
+        <span className="font-display text-xs font-bold text-foreground truncate" title={pattern.name}>
           {pattern.name}
         </span>
         <span
           role="button"
           tabIndex={0}
           className={`shrink-0 transition-colors cursor-pointer ${
-            isFavorite ? 'text-red-500 hover:text-red-600' : 'text-muted-foreground hover:text-red-500'
+            isFavorite ? 'text-destructive hover:text-destructive/80' : 'text-muted-foreground hover:text-destructive'
           }`}
           onClick={(e) => {
             e.stopPropagation()

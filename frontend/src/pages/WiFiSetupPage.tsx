@@ -42,7 +42,7 @@ function SignalIcon({ signal }: { signal: number }) {
                signal >= 50 ? 'network_wifi_3_bar' :
                signal >= 25 ? 'network_wifi_2_bar' :
                'network_wifi_1_bar'
-  const color = signal >= 50 ? 'text-green-500' : signal >= 25 ? 'text-yellow-500' : 'text-red-500'
+  const color = signal >= 50 ? 'text-success' : signal >= 25 ? 'text-primary' : 'text-destructive'
   return <span className={`material-icons text-lg ${color}`}>{bars}</span>
 }
 
@@ -230,8 +230,8 @@ export function WiFiSetupPage() {
     <div className="container max-w-lg mx-auto px-3 py-4 space-y-3">
       {/* Hotspot Welcome Banner */}
       {isHotspotMode && (
-        <Alert className="border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-800">
-          <span className="material-icons text-blue-500 mr-2">wifi_tethering</span>
+        <Alert className="border-primary/30 bg-primary/10">
+          <span className="material-icons text-primary mr-2">wifi_tethering</span>
           <AlertDescription>
             <strong>Welcome to Dune Weaver!</strong>
             <br />
@@ -483,7 +483,7 @@ export function WiFiSetupPage() {
                 key={network.ssid}
                 onClick={() => openConnectDialog(network)}
                 className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors hover:bg-muted/50
-                  ${network.active ? 'bg-green-50 dark:bg-green-950/20' : ''}`}
+                  ${network.active ? 'bg-success/10' : ''}`}
               >
                 <SignalIcon signal={network.signal} />
                 <div className="flex-1 min-w-0">
