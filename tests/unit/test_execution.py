@@ -113,6 +113,19 @@ class TestMapping:
         assert _from_sd_path("/sd/patterns/x.thr") == "./patterns/x.thr"
         assert _from_sd_path("") is None
 
+    def test_sd_path_refinds_relocated_pattern(self, tmp_path, monkeypatch):
+        # A host custom pattern uploads to SD as 'patterns/<basename>'; the
+        # board reports that SD path, and the mapping must re-find the host
+        # copy (custom_patterns/...) rather than a path that doesn't exist.
+        from modules.core import execution, pattern_manager
+        (tmp_path / "custom_patterns").mkdir()
+        (tmp_path / "custom_patterns" / "capybara.thr").write_text("0 0\n")
+        monkeypatch.setattr(pattern_manager, "THETA_RHO_DIR", str(tmp_path))
+        monkeypatch.setattr(execution, "_sd_path_cache", {})
+        assert _from_sd_path("/sd/patterns/capybara.thr") == "./patterns/custom_patterns/capybara.thr"
+        # Unknown-everywhere paths keep the literal mapping as fallback
+        assert _from_sd_path("/sd/patterns/nope.thr") == "./patterns/nope.thr"
+
 
 class TestTranslateStatus:
     def test_offline(self):

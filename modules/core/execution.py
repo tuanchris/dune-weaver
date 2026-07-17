@@ -136,17 +136,43 @@ def _state(st: Optional[dict]) -> str:
     return ((st or {}).get("state") or "").split(":", 1)[0]
 
 
+_sd_path_cache: dict = {}
+
+
 def _from_sd_path(sd_path: str) -> Optional[str]:
     """Map a board SD path ('/patterns/x.thr', '/sd/patterns/x.thr') to the
-    host-relative path ('./patterns/x.thr') the frontend/history expect."""
+    host-relative path ('./patterns/x.thr') the frontend/history expect.
+
+    The board's SD layout can differ from the host catalog (a host
+    'custom_patterns/x.thr' uploads to SD 'patterns/x.thr'), so when the
+    literal mapping doesn't exist locally, re-find the pattern in the host
+    catalog by path suffix, then unique basename — the reverse of
+    make_sd_path_resolver's matching. Otherwise previews/history for a
+    playing custom pattern point at a path the host doesn't have."""
     if not sd_path:
         return None
+    cached = _sd_path_cache.get(sd_path)
+    if cached:
+        return cached
     p = sd_path.replace("\\", "/")
     if p.startswith("/sd/"):
         p = p[3:]
-    if not p.startswith("/"):
-        p = "/" + p
-    return "." + p
+    p = p.lstrip("/")
+    result = "./" + p
+    if not os.path.exists(result):
+        from modules.core.pattern_manager import list_theta_rho_files
+        rel = p[len("patterns/"):] if p.startswith("patterns/") else p
+        catalog = list_theta_rho_files()
+        hits = [r for r in catalog if r == rel or r.endswith("/" + rel)]
+        if not hits:
+            base = rel.rsplit("/", 1)[-1]
+            hits = [r for r in catalog if r.rsplit("/", 1)[-1] == base]
+        if len(hits) == 1:
+            result = "./patterns/" + hits[0]
+    if len(_sd_path_cache) > 512:
+        _sd_path_cache.clear()
+    _sd_path_cache[sd_path] = result
+    return result
 
 
 # ---------------------------------------------------------------------------

@@ -167,10 +167,11 @@ body {
    to the sand accent — the golden hue the touch app renders its previews in.
    Foreground-tinted lines averaged out to near-white/gray at grid size; the
    primary tokens keep them reading as sand under warm light. Chains are
-   numerically solved to land exactly on the primary tokens:
-   #A87F45 (deep sand, day) / #D9B98A (dune sand, night). */
+   numerically solved to land exactly on the targets: #7A5A2E (deep bronze,
+   day — primary's hue driven to 6:1 contrast so thin lines hold up on the
+   paper card) / #D9B98A (dune sand, night). */
 .pattern-preview {
-  filter: brightness(0) saturate(100%) invert(32%) sepia(100%) saturate(349%) hue-rotate(356deg) brightness(134%) contrast(61%);
+  filter: brightness(0) saturate(100%) invert(52%) sepia(43%) saturate(369%) hue-rotate(355deg) brightness(69%) contrast(123%);
 }
 
 .dark .pattern-preview {
