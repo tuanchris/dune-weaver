@@ -126,6 +126,9 @@ Choose from multiple setup options including systemd service, desktop autostart,
 dune-weaver-touch/
 ├── main.py                     # Application entry point (fonts, QML engine)
 ├── backend.py                  # Backend controller (status poll, actions, LEDs)
+├── firmware_client.py          # Shared async HTTP client to the firmware
+├── discovery.py                # mDNS table discovery
+├── thr_preview.py              # .thr → cached PNG preview renderer
 ├── fonts/                      # Bundled Outfit + Material Icons Round fonts
 ├── models/
 │   ├── pattern_model.py        # Pattern list model (firmware-backed)
@@ -162,17 +165,18 @@ dune-weaver-touch/
   - **Light**: the table's LED ring
   - **Now Playing**: live progress ring and transport controls
 
-### Pattern Management
-1. **Browse Patterns**: Swipe to Patterns page to see grid view with thumbnail previews
-2. **Search**: Use the search field to filter patterns by name
-3. **Select Pattern**: Tap a pattern card to view details and execution options
-4. **Execute**: Choose pre-execution action and tap "Play Pattern"
+### Playing patterns
+1. **Browse**: the Browse tab shows the pattern grid with thumbnail previews; use the
+   search field to filter by name
+2. **Select**: tap a pattern card to open its detail page
+3. **Play**: pick a clear mode (adaptive / from center / from perimeter / none) with the
+   chips, then tap Play — the firmware sequences the clear before the pattern
 
-### Table Control
-1. **Monitor Status**: Swipe to Control page to see current pattern and progress
-2. **Control Execution**: Use Pause/Resume and Stop buttons
-3. **Quick Actions**: Use Clear In, Clear Out, or Circle pattern shortcuts
-4. **Connection Status**: View WebSocket connection status
+### While a pattern runs
+1. **Now Playing** shows the live disc with the ember progress arc and the ball as the
+   moving endpoint, plus Pause/Resume, Stop, Skip, and speed controls
+2. **Control** handles the connection (discovered tables, password), movement/homing,
+   auto-play, and screen settings; the header dot reflects the polled connection state
 
 ## Notes
 
