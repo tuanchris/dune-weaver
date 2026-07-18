@@ -1749,6 +1749,22 @@ export function SettingsPage() {
                       }
                     />
                   </div>
+                  <div className="space-y-3 md:col-span-2">
+                    <Label htmlFor="mqttClientId">Client ID (optional)</Label>
+                    <Input
+                      id="mqttClientId"
+                      value={mqttConfig.client_id || ''}
+                      onChange={(e) =>
+                        setMqttConfig({ ...mqttConfig, client_id: e.target.value })
+                      }
+                      placeholder="Auto (unique ID based on Device ID)"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {mqttConfig.client_id?.trim()
+                        ? 'Using custom Client ID override. Must be unique per table on the broker.'
+                        : 'Leave empty to auto-generate a unique broker client ID from the Device ID.'}
+                    </p>
+                  </div>
                 </div>
 
                 <Alert className="flex items-start">
