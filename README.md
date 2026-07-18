@@ -12,22 +12,22 @@
 - **Pattern Library** — Browse, upload, and manage hundreds of sand patterns with auto-generated previews
 - **Live Preview** — Watch your pattern come to life in real time with progress tracking
 - **Playlists** — Queue up multiple patterns with configurable pause times and automatic clearing between drawings
-- **LED Integration** — Synchronized lighting via native DW LEDs or WLED, with separate idle, playing, and scheduled modes
+- **LED Integration** — The table's built-in LED ring (firmware-driven effects with a live in-app preview) or WLED, with separate idle, playing, and scheduled modes
 - **Still Sands Scheduling** — Set quiet hours so the table pauses automatically on your schedule
-- **Multi-Table Support** — Control several sand tables from a single interface
+- **Multi-Table Support** — Tables and boards are discovered automatically on your network (mDNS); control several from a single interface
 - **Home Assistant Integration** — Connect to Home Assistant or other home automation systems using MQTT
-- **Auto-Updates** — One-click software updates right from the settings page
+- **Auto-Updates** — One-click software *and* board firmware updates right from the settings page
 - **Add-Ons** — Optional [Desert Compass](https://duneweaver.com/docs) for auto-homing and [DW Touch](https://duneweaver.com/docs) for dedicated touchscreen control
 
 ## How It Works
 
-The system is split across two devices connected via USB:
+The system is split across two devices that talk over your network — no USB cable:
 
 ```
-┌─────────────────┐         USB          ┌─────────────────┐
+┌─────────────────┐     Wi-Fi (HTTP)     ┌─────────────────┐
 │  Raspberry Pi   │ ◄──────────────────► │  DLC32 / ESP32  │
-│  (Dune Weaver   │                      │  (FluidNC)      │
-│   Backend)      │                      │                 │
+│  (Dune Weaver   │                      │  (Dune Weaver   │
+│   Backend)      │                      │   firmware)     │
 └─────────────────┘                      └─────────────────┘
         │                                        │
         │ Wi-Fi                                  │ Motor signals
@@ -36,7 +36,7 @@ The system is split across two devices connected via USB:
    (Control UI)                           (Theta & Rho)
 ```
 
-The **Raspberry Pi** runs the web UI, manages pattern files and playlists, and converts patterns into G-code. The **DLC32/ESP32** running [FluidNC](https://github.com/bdring/FluidNC) firmware receives that G-code and drives the stepper motors in real time.
+The **DLC32/ESP32** runs the [Dune Weaver firmware](https://github.com/tuanchris/dune-weaver-firmware) (a [FluidNC](https://github.com/bdring/FluidNC) fork) and executes everything on-board — theta-rho kinematics, pattern playback from its SD card, playlists, clears, quiet hours, and homing — so the table keeps drawing even if the Pi is off. The **Raspberry Pi** backend layers on everything a headless controller can't do: the web UI, pattern management with previews, play history, MQTT/Home Assistant, WLED, multi-table discovery, and one-click software and firmware updates. The backend finds boards automatically via mDNS and drives them over plain HTTP.
 
 ## Hardware
 
@@ -50,7 +50,7 @@ Dune Weaver comes in three premium models:
 | **Controller** | DLC32 | DLC32 | DLC32 |
 | **Best for** | Living rooms | Desktops | Side-table accent piece |
 
-All models run the same software with [FluidNC](https://github.com/bdring/FluidNC) firmware — only the mechanical parts differ.
+All models run the same software with the [Dune Weaver firmware](https://github.com/tuanchris/dune-weaver-firmware) — only the mechanical parts differ.
 
 Free 3D-printable models on MakerWorld: [DW OG](https://makerworld.com/en/models/841332-dune-weaver-a-3d-printed-kinetic-sand-table#profileId-787553) · [DW Mini](https://makerworld.com/en/models/896314-mini-dune-weaver-not-your-typical-marble-run#profileId-854412)
 
