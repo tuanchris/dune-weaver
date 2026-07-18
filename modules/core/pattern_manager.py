@@ -1685,8 +1685,8 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                 state.skip_requested = False
                 idx += 1
 
-            if run_mode == "indefinite":
-                logger.info("Playlist completed. Restarting as per 'indefinite' run mode")
+            if run_mode in ("indefinite", "loop"):
+                logger.info(f"Playlist completed. Restarting as per '{run_mode}' run mode")
                 if pause_time > 0:
                     # Clear current_playing_file to report "idle" state to MQTT/HA during pause
                     state.current_playing_file = None
