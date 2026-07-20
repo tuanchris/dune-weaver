@@ -1,0 +1,39 @@
+name: Version Check
+
+# Guards against the VERSION file drifting from the release tag.
+# The web UI reports the current version by reading VERSION and comparing it to
+# the latest GitHub release tag, so a tag cut before the VERSION bump lands makes
+# every user see a permanent "update available" (see issue #141).
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  version-matches-tag:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Compare VERSION file against tag
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          file_version="$(tr -d '[:space:]' < VERSION)"
+
+          echo "Tag:          $GITHUB_REF_NAME (version $tag_version)"
+          echo "VERSION file: $file_version"
+
+          if [ "$file_version" != "$tag_version" ]; then
+            echo "::error file=VERSION::VERSION is '$file_version' but tag $GITHUB_REF_NAME expects '$tag_version'"
+            echo ""
+            echo "The tag was cut before the VERSION bump landed. To fix:"
+            echo "  1. echo $tag_version > VERSION && git commit -am 'chore: bump version to $tag_version'"
+            echo "  2. git tag -f $GITHUB_REF_NAME && git push --force origin $GITHUB_REF_NAME"
+            echo "  3. Re-publish the release from the corrected tag"
+            exit 1
+          fi
+
+          echo "VERSION matches the release tag."
