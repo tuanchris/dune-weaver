@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Union
 import os
 import logging
 from datetime import datetime
@@ -503,8 +503,8 @@ class DwLedSettingsUpdate(BaseModel):
     brightness: Optional[int] = None
     speed: Optional[int] = None
     intensity: Optional[int] = None
-    idle_effect: Optional[dict] = None
-    playing_effect: Optional[dict] = None
+    idle_effect: Optional[Union[dict, List[dict]]] = None
+    playing_effect: Optional[Union[dict, List[dict]]] = None
     idle_timeout_enabled: Optional[bool] = None
     idle_timeout_minutes: Optional[int] = None
 
@@ -3789,10 +3789,35 @@ async def dw_leds_intensity(request: dict):
         logger.error(f"Failed to set DW LED intensity: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# Maximum number of effect options that can be saved per state (idle/playing).
+# One of them is picked at random each time the effect is applied.
+MAX_LED_EFFECT_OPTIONS = 100
+
+
+def _effect_options_list(stored) -> list:
+    """Normalise a stored idle/playing effect into a list of settings dicts.
+
+    Older configurations hold a single settings dict; newer ones hold a list of
+    options that the LED controller picks from at random.
+    """
+    if isinstance(stored, list):
+        return [s for s in stored if isinstance(s, dict)]
+    if isinstance(stored, dict):
+        return [stored]
+    return []
+
+
 @app.post("/api/dw_leds/save_effect_settings")
 async def dw_leds_save_effect_settings(request: dict):
-    """Save current LED settings as idle or playing effect"""
+    """Save current LED settings as an idle or playing effect option
+
+    Pass ``append: true`` to add the settings as an extra option alongside the
+    ones already saved; otherwise the saved options are replaced.
+    """
     effect_type = request.get("type")  # 'idle' or 'playing'
+
+    if effect_type not in ("idle", "playing"):
+        raise HTTPException(status_code=400, detail="Invalid effect type. Must be 'idle' or 'playing'")
 
     settings = {
         "effect_id": request.get("effect_id"),
@@ -3804,17 +3829,59 @@ async def dw_leds_save_effect_settings(request: dict):
         "color3": request.get("color3")
     }
 
-    if effect_type == "idle":
-        state.dw_led_idle_effect = settings
-    elif effect_type == "playing":
-        state.dw_led_playing_effect = settings
+    if request.get("append"):
+        current = state.dw_led_idle_effect if effect_type == "idle" else state.dw_led_playing_effect
+        options = _effect_options_list(current)
+        if len(options) >= MAX_LED_EFFECT_OPTIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot save more than {MAX_LED_EFFECT_OPTIONS} {effect_type} effect options"
+            )
+        options.append(settings)
     else:
-        raise HTTPException(status_code=400, detail="Invalid effect type. Must be 'idle' or 'playing'")
+        options = [settings]
+
+    if effect_type == "idle":
+        state.dw_led_idle_effect = options
+    else:
+        state.dw_led_playing_effect = options
 
     state.save()
-    logger.info(f"DW LED {effect_type} effect settings saved: {settings}")
+    logger.info(f"DW LED {effect_type} effect settings saved ({len(options)} option(s)): {settings}")
 
-    return {"success": True, "type": effect_type, "settings": settings}
+    return {"success": True, "type": effect_type, "settings": settings, "options": options}
+
+
+@app.post("/api/dw_leds/remove_effect_option")
+async def dw_leds_remove_effect_option(request: dict):
+    """Remove a single saved idle or playing effect option by index"""
+    effect_type = request.get("type")  # 'idle' or 'playing'
+    index = request.get("index")
+
+    if effect_type not in ("idle", "playing"):
+        raise HTTPException(status_code=400, detail="Invalid effect type. Must be 'idle' or 'playing'")
+    if not isinstance(index, int) or isinstance(index, bool):
+        raise HTTPException(status_code=400, detail="Index must be an integer")
+
+    current = state.dw_led_idle_effect if effect_type == "idle" else state.dw_led_playing_effect
+    options = _effect_options_list(current)
+
+    if index < 0 or index >= len(options):
+        raise HTTPException(status_code=400, detail=f"Index {index} is out of range")
+
+    removed = options.pop(index)
+    # No options left means the effect is no longer configured
+    new_value = options or None
+
+    if effect_type == "idle":
+        state.dw_led_idle_effect = new_value
+    else:
+        state.dw_led_playing_effect = new_value
+
+    state.save()
+    logger.info(f"DW LED {effect_type} effect option {index} removed: {removed}")
+
+    return {"success": True, "type": effect_type, "options": options}
 
 @app.post("/api/dw_leds/clear_effect_settings")
 async def dw_leds_clear_effect_settings(request: dict):

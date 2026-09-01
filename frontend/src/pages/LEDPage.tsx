@@ -56,6 +56,17 @@ interface EffectSettings {
   color3: string
 }
 
+// Effect automation stores a list of options per state; one is picked at random
+// each time the effect is applied.
+const MAX_EFFECT_OPTIONS = 100
+const COLLAPSED_EFFECT_OPTIONS = 10
+
+// Saved effects may come back as a single settings object (older configs) or a list
+const toEffectOptions = (value: EffectSettings | EffectSettings[] | null | undefined): EffectSettings[] => {
+  if (Array.isArray(value)) return value
+  return value ? [value] : []
+}
+
 export function LEDPage() {
   const [ledConfig, setLedConfig] = useState<LedConfig | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -81,9 +92,10 @@ export function LEDPage() {
   // LED control mode
   const [controlMode, setControlMode] = useState<'manual' | 'automated'>('automated')
 
-  // Effect automation state
-  const [idleEffect, setIdleEffect] = useState<EffectSettings | null>(null)
-  const [playingEffect, setPlayingEffect] = useState<EffectSettings | null>(null)
+  // Effect automation state - a list of options per state, one picked at random
+  const [idleEffects, setIdleEffects] = useState<EffectSettings[]>([])
+  const [playingEffects, setPlayingEffects] = useState<EffectSettings[]>([])
+  const [expandedEffects, setExpandedEffects] = useState({ idle: false, playing: false })
   const [idleTimeoutEnabled, setIdleTimeoutEnabled] = useState(false)
   const [idleTimeoutMinutes, setIdleTimeoutMinutes] = useState(30)
   const [idleTimeoutInput, setIdleTimeoutInput] = useState('30')
@@ -170,9 +182,12 @@ export function LEDPage() {
 
   const fetchEffectSettings = async () => {
     try {
-      const data = await apiClient.get<{ idle_effect?: EffectSettings; playing_effect?: EffectSettings }>('/api/dw_leds/get_effect_settings')
-      setIdleEffect(data.idle_effect || null)
-      setPlayingEffect(data.playing_effect || null)
+      const data = await apiClient.get<{
+        idle_effect?: EffectSettings | EffectSettings[] | null
+        playing_effect?: EffectSettings | EffectSettings[] | null
+      }>('/api/dw_leds/get_effect_settings')
+      setIdleEffects(toEffectOptions(data.idle_effect))
+      setPlayingEffects(toEffectOptions(data.playing_effect))
     } catch (error) {
       console.error('Error fetching effect settings:', error)
     }
@@ -315,10 +330,11 @@ export function LEDPage() {
     }, 300)
   }
 
-  const saveCurrentEffectSettings = async (type: 'idle' | 'playing') => {
+  const addCurrentEffectSettings = async (type: 'idle' | 'playing') => {
     try {
       const settings = {
         type,
+        append: true,
         effect_id: parseInt(selectedEffect) || 0,
         palette_id: parseInt(selectedPalette) || 0,
         speed,
@@ -329,17 +345,27 @@ export function LEDPage() {
       }
 
       await apiClient.post('/api/dw_leds/save_effect_settings', settings)
-      toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} effect saved`)
+      toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} effect option added`)
       await fetchEffectSettings()
     } catch {
-      toast.error(`Failed to save ${type} effect`)
+      toast.error(`Failed to add ${type} effect option`)
+    }
+  }
+
+  const removeEffectOption = async (type: 'idle' | 'playing', index: number) => {
+    try {
+      await apiClient.post('/api/dw_leds/remove_effect_option', { type, index })
+      toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} effect option removed`)
+      await fetchEffectSettings()
+    } catch {
+      toast.error(`Failed to remove ${type} effect option`)
     }
   }
 
   const clearEffectSettings = async (type: 'idle' | 'playing') => {
     try {
       await apiClient.post('/api/dw_leds/clear_effect_settings', { type })
-      toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} effect cleared`)
+      toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} effects cleared`)
       await fetchEffectSettings()
     } catch {
       toast.error(`Failed to clear ${type} effect`)
@@ -362,11 +388,95 @@ export function LEDPage() {
     await saveIdleTimeout(checked, idleTimeoutMinutes)
   }
 
-  const formatEffectSettings = (settings: EffectSettings | null) => {
-    if (!settings) return 'Not configured'
+  const formatEffectSettings = (settings: EffectSettings) => {
     const effectName = effects.find((e) => e[0] === settings.effect_id)?.[1] || settings.effect_id
     const paletteName = palettes.find((p) => p[0] === settings.palette_id)?.[1] || settings.palette_id
     return `${effectName} | ${paletteName} | Speed: ${settings.speed} | Intensity: ${settings.intensity}`
+  }
+
+  // One automation panel (While Playing / When Idle) listing its saved options
+  const renderEffectPanel = (
+    type: 'idle' | 'playing',
+    options: EffectSettings[],
+    icon: string,
+    iconClassName: string,
+    title: string,
+  ) => {
+    const isExpanded = expandedEffects[type]
+    const visibleOptions = isExpanded ? options : options.slice(0, COLLAPSED_EFFECT_OPTIONS)
+    const hasMore = options.length > COLLAPSED_EFFECT_OPTIONS
+
+    return (
+      <div className="p-4 rounded-lg border space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className={`material-icons ${iconClassName}`}>{icon}</span>
+            <span className="font-medium">{title}</span>
+          </div>
+          {options.length > 1 && (
+            <span className="text-xs text-muted-foreground">{options.length} options</span>
+          )}
+        </div>
+
+        {options.length === 0 ? (
+          <div className="text-xs text-muted-foreground p-2 bg-muted/50 rounded border min-h-[40px]">
+            Not configured
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {visibleOptions.map((settings, index) => (
+              <div
+                key={index}
+                className="flex items-center gap-2 text-xs text-muted-foreground p-2 bg-muted/50 rounded border min-h-[40px]"
+              >
+                <span className="flex-1">{formatEffectSettings(settings)}</span>
+                <button
+                  onClick={() => removeEffectOption(type, index)}
+                  aria-label={`Remove ${title} option ${index + 1}`}
+                  className="shrink-0 text-muted-foreground hover:text-destructive transition-colors"
+                >
+                  <span className="material-icons-outlined text-sm align-middle">close</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {hasMore && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="w-full h-7 gap-1 text-xs"
+            onClick={() => setExpandedEffects((prev) => ({ ...prev, [type]: !isExpanded }))}
+          >
+            <span className="material-icons-outlined text-sm">
+              {isExpanded ? 'expand_less' : 'expand_more'}
+            </span>
+            {isExpanded ? 'Show less' : `Show all ${options.length}`}
+          </Button>
+        )}
+
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            onClick={() => addCurrentEffectSettings(type)}
+            disabled={options.length >= MAX_EFFECT_OPTIONS}
+            className="flex-1 gap-1"
+          >
+            <span className="material-icons text-sm">add</span>
+            Add Current
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => clearEffectSettings(type)}
+            disabled={options.length === 0}
+          >
+            Clear
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   // Loading state
@@ -774,70 +884,17 @@ export function LEDPage() {
             Effect Automation
           </CardTitle>
           <CardDescription>
-            Save current settings to automatically apply when table state changes
+            Add the current settings as an option to apply when the table state changes.
+            Add several and one is picked at random each time.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Playing Effect */}
-            <div className="p-4 rounded-lg border space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="material-icons text-green-600">play_circle</span>
-                  <span className="font-medium">While Playing</span>
-                </div>
-              </div>
-              <div className="text-xs text-muted-foreground p-2 bg-muted/50 rounded border min-h-[40px]">
-                {formatEffectSettings(playingEffect)}
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => saveCurrentEffectSettings('playing')}
-                  className="flex-1 gap-1"
-                >
-                  <span className="material-icons text-sm">save</span>
-                  Save Current
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => clearEffectSettings('playing')}
-                >
-                  Clear
-                </Button>
-              </div>
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+            {/* Playing Effects */}
+            {renderEffectPanel('playing', playingEffects, 'play_circle', 'text-green-600', 'While Playing')}
 
-            {/* Idle Effect */}
-            <div className="p-4 rounded-lg border space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="material-icons text-blue-600">bedtime</span>
-                  <span className="font-medium">When Idle</span>
-                </div>
-              </div>
-              <div className="text-xs text-muted-foreground p-2 bg-muted/50 rounded border min-h-[40px]">
-                {formatEffectSettings(idleEffect)}
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => saveCurrentEffectSettings('idle')}
-                  className="flex-1 gap-1"
-                >
-                  <span className="material-icons text-sm">save</span>
-                  Save Current
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => clearEffectSettings('idle')}
-                >
-                  Clear
-                </Button>
-              </div>
-            </div>
+            {/* Idle Effects */}
+            {renderEffectPanel('idle', idleEffects, 'bedtime', 'text-blue-600', 'When Idle')}
           </div>
         </CardContent>
       </Card>

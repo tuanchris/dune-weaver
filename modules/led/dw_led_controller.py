@@ -2,6 +2,7 @@
 Dune Weaver LED Controller - Embedded NeoPixel LED controller for Raspberry Pi
 Provides direct GPIO control of WS2812B LED strips with beautiful effects
 """
+import random
 import threading
 import time
 import logging
@@ -533,6 +534,19 @@ class DWLEDController:
 
 
 # Helper functions for pattern manager integration
+def _resolve_effect_settings(effect_settings) -> Optional[dict]:
+    """Resolve a stored effect configuration to a single settings dict.
+
+    Idle/playing effects may be stored as a single settings dict or as a list of
+    them. When a list is given, one entry is picked at random each time the
+    effect is applied, so the table varies its lighting between runs.
+    """
+    if isinstance(effect_settings, (list, tuple)):
+        options = [s for s in effect_settings if isinstance(s, dict)]
+        return random.choice(options) if options else None
+    return effect_settings if isinstance(effect_settings, dict) else None
+
+
 def effect_loading(controller: DWLEDController) -> bool:
     """Show loading effect (Rainbow Cycle)"""
     try:
@@ -544,12 +558,17 @@ def effect_loading(controller: DWLEDController) -> bool:
         return False
 
 
-def effect_idle(controller: DWLEDController, effect_settings: Optional[dict] = None) -> bool:
-    """Show idle effect with full settings. If no effect configured, plays Rainbow with current parameters."""
+def effect_idle(controller: DWLEDController, effect_settings=None) -> bool:
+    """Show idle effect with full settings. If no effect configured, plays Rainbow with current parameters.
+
+    ``effect_settings`` may be a single settings dict or a list of them; a list
+    picks one option at random.
+    """
     try:
         controller.set_power(1)
 
-        if effect_settings and isinstance(effect_settings, dict):
+        effect_settings = _resolve_effect_settings(effect_settings)
+        if effect_settings:
             # Configured idle effect: apply full settings
             effect_id = effect_settings.get("effect_id", 0)
             palette_id = effect_settings.get("palette_id", 0)
@@ -610,10 +629,15 @@ def effect_connected(controller: DWLEDController) -> bool:
         return False
 
 
-def effect_playing(controller: DWLEDController, effect_settings: Optional[dict] = None) -> bool:
-    """Show playing effect with full settings"""
+def effect_playing(controller: DWLEDController, effect_settings=None) -> bool:
+    """Show playing effect with full settings.
+
+    ``effect_settings`` may be a single settings dict or a list of them; a list
+    picks one option at random.
+    """
     try:
-        if effect_settings and isinstance(effect_settings, dict):
+        effect_settings = _resolve_effect_settings(effect_settings)
+        if effect_settings:
             # New format: full settings dict
             controller.set_power(1)
 
