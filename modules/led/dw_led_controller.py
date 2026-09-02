@@ -534,16 +534,46 @@ class DWLEDController:
 
 
 # Helper functions for pattern manager integration
-def _resolve_effect_settings(effect_settings) -> Optional[dict]:
+
+# Last option picked for each effect slot ("idle" / "playing"), so a re-roll can
+# avoid repeating it. Only ever holds settings dicts that came from the caller.
+_last_effect_choice: Dict[str, dict] = {}
+
+
+def _reset_effect_choice_history() -> None:
+    """Forget the last option picked for every slot (used by tests)."""
+    _last_effect_choice.clear()
+
+
+def _resolve_effect_settings(effect_settings, slot: Optional[str] = None) -> Optional[dict]:
     """Resolve a stored effect configuration to a single settings dict.
 
     Idle/playing effects may be stored as a single settings dict or as a list of
     them. When a list is given, one entry is picked at random each time the
     effect is applied, so the table varies its lighting between runs.
+
+    ``slot`` ("idle" or "playing") enables the no-immediate-repeat rule: the
+    option picked last time for that slot is held out of the draw, so the same
+    look never lands twice in a row while another option is available. With a
+    single option, or when every option is identical to the last pick, the full
+    list is used again.
     """
     if isinstance(effect_settings, (list, tuple)):
         options = [s for s in effect_settings if isinstance(s, dict)]
-        return random.choice(options) if options else None
+        if not options:
+            return None
+
+        candidates = options
+        if slot is not None and len(options) > 1:
+            previous = _last_effect_choice.get(slot)
+            unrepeated = [s for s in options if s != previous]
+            if unrepeated:
+                candidates = unrepeated
+
+        choice = random.choice(candidates)
+        if slot is not None:
+            _last_effect_choice[slot] = choice
+        return choice
     return effect_settings if isinstance(effect_settings, dict) else None
 
 
@@ -562,12 +592,12 @@ def effect_idle(controller: DWLEDController, effect_settings=None) -> bool:
     """Show idle effect with full settings. If no effect configured, plays Rainbow with current parameters.
 
     ``effect_settings`` may be a single settings dict or a list of them; a list
-    picks one option at random.
+    picks one option at random, never repeating the previous pick back-to-back.
     """
     try:
         controller.set_power(1)
 
-        effect_settings = _resolve_effect_settings(effect_settings)
+        effect_settings = _resolve_effect_settings(effect_settings, slot="idle")
         if effect_settings:
             # Configured idle effect: apply full settings
             effect_id = effect_settings.get("effect_id", 0)
@@ -633,10 +663,10 @@ def effect_playing(controller: DWLEDController, effect_settings=None) -> bool:
     """Show playing effect with full settings.
 
     ``effect_settings`` may be a single settings dict or a list of them; a list
-    picks one option at random.
+    picks one option at random, never repeating the previous pick back-to-back.
     """
     try:
-        effect_settings = _resolve_effect_settings(effect_settings)
+        effect_settings = _resolve_effect_settings(effect_settings, slot="playing")
         if effect_settings:
             # New format: full settings dict
             controller.set_power(1)
