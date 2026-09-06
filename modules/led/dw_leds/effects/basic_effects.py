@@ -557,7 +557,7 @@ def mode_palette_flow(seg: Segment) -> int:
     for i in range(seg.length):
         # Get color from palette based on position and time
         palette_pos = ((i * 255 // max(1, seg.length)) + (counter >> 7)) & 0xFF
-        color = seg.color_from_palette(palette_pos)
+        color = seg.color_from_palette(palette_pos, use_index=False)
 
         # Intensity controls brightness modulation
         if seg.intensity < 255:
